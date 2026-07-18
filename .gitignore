@@ -1,0 +1,11 @@
+node_modules/
+.env
+orders.json
+media/
+tmp/
+local-storage/
+local-storage-private/
+public/local-storage/
+public/testimonials/
+.DS_Store
+npm-debug.log*
