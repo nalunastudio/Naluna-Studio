@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NALUNA — cantecul tau</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;1,9..144,400&family=Sora:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#FAF8F5; --bg-secondary:#F8F6F2; --surface:#FDFCFA;
+    --text:#2B2B2B; --text-secondary:#6B6B6B;
+    --gold:#A8834B; --gold-deep:#8B6D3F; --line:#E8E2D6; --error:#B3574A;
+  }
+  *{box-sizing:border-box;}
+  body{
+    background:var(--bg); color:var(--text); font-family:'Sora', sans-serif;
+    min-height:100vh; display:flex; align-items:center; justify-content:center; margin:0;
+  }
+  .logo-mark{ width:56px; margin:0 auto 24px; display:block; }
+  .card{
+    background:var(--bg-secondary); border:1px solid var(--line); border-radius:20px;
+    padding:48px; max-width:480px; width:100%; text-align:center;
+  }
+  h1{ font-family:'Fraunces', serif; font-weight:400; font-size:26px; margin-bottom:12px; }
+  p{ color:var(--text-secondary); font-size:15px; margin-bottom:24px; }
+  .spinner{
+    width:40px; height:40px; margin:0 auto 24px;
+    border:2px solid var(--line); border-top-color:var(--gold); border-radius:50%;
+    animation:spin 1.1s linear infinite;
+  }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce){ .spinner{ animation-duration:3s; } }
+  audio{ width:100%; margin-top:12px; }
+  .btn{
+    display:inline-block; margin-top:20px; padding:13px 26px; border-radius:999px;
+    background:var(--text); color:var(--bg); text-decoration:none; font-weight:500; font-size:14px;
+    transition:background-color .25s ease;
+  }
+  .btn:hover{ background:var(--gold-deep); }
+  .err{ color:var(--error); }
+</style>
+</head>
+<body>
+  <div class="card" id="card">
+    <img class="logo-mark" src="/logo.svg" alt="NALUNA">
+    <div class="spinner"></div>
+    <h1 id="h1-waiting">Plata confirmata. Se compune melodia...</h1>
+    <p id="p-waiting">Dureaza de obicei 2-3 minute. Nu inchide pagina — actualizam automat.</p>
+  </div>
+
+  <script>
+    const T = {
+      ro: {
+        waiting_title: 'Plata confirmata. Se compune melodia...',
+        waiting_sub: 'Dureaza de obicei 2-3 minute. Nu inchide pagina — actualizam automat.',
+        ready_title: 'Cantecul tau e gata 🎵',
+        for_label: 'Compus pentru',
+        download: 'Descarca fisierul',
+        error_title: 'A aparut o eroare',
+        error_sub: 'Nu am putut genera melodia. Vei fi contactat pentru remediere sau rambursare.',
+        not_found: 'Comanda nu a fost gasita.'
+      },
+      en: {
+        waiting_title: 'Payment confirmed. Composing your song...',
+        waiting_sub: 'This usually takes 2-3 minutes. Don\'t close this page — it updates automatically.',
+        ready_title: 'Your song is ready 🎵',
+        for_label: 'Composed for',
+        download: 'Download the file',
+        error_title: 'Something went wrong',
+        error_sub: 'We couldn\'t generate the song. You\'ll be contacted for a fix or a refund.',
+        not_found: 'Order not found.'
+      },
+      de: {
+        waiting_title: 'Zahlung bestätigt. Dein Lied wird komponiert...',
+        waiting_sub: 'Das dauert normalerweise 2-3 Minuten. Schließe diese Seite nicht — sie aktualisiert sich automatisch.',
+        ready_title: 'Dein Lied ist fertig 🎵',
+        for_label: 'Komponiert für',
+        download: 'Datei herunterladen',
+        error_title: 'Etwas ist schiefgelaufen',
+        error_sub: 'Wir konnten das Lied nicht erstellen. Du wirst für eine Lösung oder Rückerstattung kontaktiert.',
+        not_found: 'Bestellung nicht gefunden.'
+      },
+      es: {
+        waiting_title: 'Pago confirmado. Componiendo tu canción...',
+        waiting_sub: 'Suele tardar 2-3 minutos. No cierres esta página — se actualiza automáticamente.',
+        ready_title: 'Tu canción está lista 🎵',
+        for_label: 'Compuesta para',
+        download: 'Descargar el archivo',
+        error_title: 'Algo salió mal',
+        error_sub: 'No pudimos generar la canción. Te contactaremos para solucionarlo o reembolsarte.',
+        not_found: 'Pedido no encontrado.'
+      },
+      it: {
+        waiting_title: 'Pagamento confermato. Composizione della canzone...',
+        waiting_sub: 'Di solito richiede 2-3 minuti. Non chiudere questa pagina — si aggiorna automaticamente.',
+        ready_title: 'La tua canzone è pronta 🎵',
+        for_label: 'Composta per',
+        download: 'Scarica il file',
+        error_title: 'Qualcosa è andato storto',
+        error_sub: 'Non siamo riusciti a generare la canzone. Sarai contattato per una soluzione o un rimborso.',
+        not_found: 'Ordine non trovato.'
+      },
+      fr: {
+        waiting_title: 'Paiement confirmé. Composition de votre chanson...',
+        waiting_sub: 'Cela prend généralement 2-3 minutes. Ne fermez pas cette page — elle se met à jour automatiquement.',
+        ready_title: 'Votre chanson est prête 🎵',
+        for_label: 'Composée pour',
+        download: 'Télécharger le fichier',
+        error_title: 'Un problème est survenu',
+        error_sub: 'Nous n\'avons pas pu générer la chanson. Vous serez contacté pour une solution ou un remboursement.',
+        not_found: 'Commande introuvable.'
+      },
+      bg: {
+        waiting_title: 'Плащането е потвърдено. Песента се композира...',
+        waiting_sub: 'Обикновено отнема 2-3 минути. Не затваряй тази страница — тя се обновява автоматично.',
+        ready_title: 'Твоята песен е готова 🎵',
+        for_label: 'Композирана за',
+        download: 'Изтегли файла',
+        error_title: 'Нещо се обърка',
+        error_sub: 'Не успяхме да генерираме песента. Ще се свържем с теб за решение или възстановяване на сумата.',
+        not_found: 'Поръчката не е намерена.'
+      },
+      tr: {
+        waiting_title: 'Ödeme onaylandı. Şarkınız besteleniyor...',
+        waiting_sub: 'Bu genellikle 2-3 dakika sürer. Bu sayfayı kapatmayın — otomatik olarak güncellenir.',
+        ready_title: 'Şarkınız hazır 🎵',
+        for_label: 'Kimin için bestelendi',
+        download: 'Dosyayı indir',
+        error_title: 'Bir şeyler ters gitti',
+        error_sub: 'Şarkıyı oluşturamadık. Çözüm veya iade için sizinle iletişime geçilecek.',
+        not_found: 'Sipariş bulunamadı.'
+      }
+    };
+    const supportedLangs = ['ro', 'en', 'de', 'es', 'it', 'fr', 'bg', 'tr'];
+    const savedLang = localStorage.getItem('nds_lang');
+    const lang = supportedLangs.includes(savedLang) ? savedLang : 'ro';
+    const t = T[lang];
+    document.documentElement.lang = lang;
+    document.getElementById('h1-waiting').textContent = t.waiting_title;
+    document.getElementById('p-waiting').textContent = t.waiting_sub;
+
+    const params = new URLSearchParams(window.location.search);
+    const orderId = params.get('order');
+    // token-ul vine din success_url-ul Stripe; fallback pe localStorage pentru cazul rar
+    // in care cineva ajunge pe pagina fara parametrul din URL (link vechi, redirect manual)
+    const accessToken = params.get('token') || localStorage.getItem('nds_access_token');
+    const card = document.getElementById('card');
+
+    async function checkStatus() {
+      try {
+        const res = await fetch(`/api/orders/${orderId}`);
+        const data = await res.json();
+
+        if (data.status === 'ready') {
+          localStorage.removeItem('nds_order_id');
+          const fullUrl = `/media/full/${orderId}?token=${encodeURIComponent(accessToken || '')}`;
+          card.innerHTML = `
+            <h1>${t.ready_title}</h1>
+            <p>${t.for_label} ${data.recipient}</p>
+            <audio controls src="${fullUrl}"></audio>
+            <br>
+            <a class="btn" href="${fullUrl}" download>${t.download}</a>
+          `;
+        } else if (data.status === 'generation_failed') {
+          card.innerHTML = `
+            <h1 class="err">${t.error_title}</h1>
+            <p>${t.error_sub}</p>
+          `;
+        } else {
+          setTimeout(checkStatus, 5000);
+        }
+      } catch (e) {
+        setTimeout(checkStatus, 5000);
+      }
+    }
+
+    if (orderId) checkStatus();
+    else card.innerHTML = `<h1 class="err">${t.not_found}</h1>`;
+  </script>
+</body>
+</html>

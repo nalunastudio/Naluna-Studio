@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin — NALUNA</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500&family=Sora:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#FAF8F5; --bg-secondary:#F8F6F2; --surface:#FDFCFA;
+    --text:#2B2B2B; --text-secondary:#6B6B6B;
+    --gold:#A8834B; --gold-deep:#8B6D3F; --line:#E8E2D6;
+    --success:#5F8F6E; --error:#B3574A;
+  }
+  *{box-sizing:border-box;}
+  body{ background:var(--bg); color:var(--text); font-family:'Sora', sans-serif; margin:0; padding:40px 24px; }
+  .wrap{ max-width:960px; margin:0 auto; }
+  .header-row{ display:flex; align-items:center; gap:14px; margin-bottom:28px; }
+  .logo-mark{ width:32px; }
+  h1{ font-family:'Fraunces', serif; font-weight:400; font-size:26px; }
+  .stats{ display:flex; gap:16px; margin-bottom:32px; }
+  .stat{ background:var(--bg-secondary); border:1px solid var(--line); border-radius:14px; padding:18px 22px; flex:1; }
+  .stat .label{ font-size:12px; color:var(--text-secondary); text-transform:uppercase; letter-spacing:.08em; }
+  .stat .value{ font-family:'Fraunces', serif; font-size:28px; margin-top:6px; color:var(--gold-deep); }
+  table{ width:100%; border-collapse:collapse; background:var(--bg-secondary); border-radius:14px; overflow:hidden; }
+  th, td{ text-align:left; padding:12px 16px; font-size:13px; border-bottom:1px solid var(--line); }
+  th{ color:var(--text-secondary); font-weight:600; text-transform:uppercase; font-size:11px; letter-spacing:.06em; }
+  tr:last-child td{ border-bottom:none; }
+  .badge{ padding:3px 10px; border-radius:999px; font-size:11px; font-family:'Sora', sans-serif; letter-spacing:.03em; }
+  .b-ready{ background:rgba(95,143,110,.14); color:var(--success); }
+  .b-generating, .b-preview_ready{ background:rgba(168,131,75,.14); color:var(--gold-deep); }
+  .b-draft{ background:rgba(107,107,107,.12); color:var(--text-secondary); }
+  .b-generation_failed{ background:rgba(179,87,74,.12); color:var(--error); }
+  .empty{ color:var(--text-secondary); padding:24px; text-align:center; }
+
+  /* REACTII CLIENTI */
+  .section-title{ font-family:'Fraunces', serif; font-weight:400; font-size:22px; margin:52px 0 6px; }
+  .section-sub{ color:var(--text-secondary); font-size:13px; margin-bottom:22px; }
+
+  .t-form{
+    background:var(--bg-secondary); border:1px solid var(--line); border-radius:16px;
+    padding:26px; margin-bottom:28px;
+  }
+  .t-form-row{ display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  .t-field{ margin-bottom:16px; }
+  .t-field label{ display:block; font-size:12px; color:var(--text-secondary); margin-bottom:6px; }
+  .t-field input[type=text], .t-field input[type=file], .t-field select, .t-field textarea{
+    width:100%; background:var(--surface); border:1px solid var(--line); border-radius:9px;
+    padding:10px 12px; font-family:'Sora', sans-serif; font-size:13px; color:var(--text);
+  }
+  .t-field textarea{ min-height:70px; resize:vertical; }
+  .t-check{ display:flex; align-items:flex-start; gap:9px; font-size:13px; margin-bottom:14px; }
+  .t-check input{ margin-top:3px; }
+  .t-check.consent{ background:rgba(168,131,75,.07); border:1px solid var(--line); border-radius:9px; padding:12px; }
+  .t-form-actions{ display:flex; gap:10px; align-items:center; margin-top:6px; }
+  .btn-primary{
+    background:var(--text); color:var(--bg); border:none; border-radius:999px;
+    padding:11px 22px; font-weight:500; font-size:13px; cursor:pointer;
+    transition:background-color .2s ease;
+  }
+  .btn-primary:hover{ background:var(--gold-deep); }
+  .btn-secondary{
+    background:transparent; color:var(--text-secondary); border:1px solid var(--line); border-radius:999px;
+    padding:10px 20px; font-size:13px; cursor:pointer;
+  }
+  .t-form-msg{ font-size:13px; margin-top:10px; }
+  .t-form-msg.err{ color:var(--error); }
+  .t-form-msg.ok{ color:var(--success); }
+
+  .t-list{ display:flex; flex-direction:column; gap:10px; }
+  .t-card{
+    background:var(--bg-secondary); border:1px solid var(--line); border-radius:14px;
+    padding:16px 18px; display:flex; align-items:center; gap:14px;
+  }
+  .t-card-media{
+    width:44px; height:44px; border-radius:9px; background:var(--surface); border:1px solid var(--line);
+    display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0; overflow:hidden;
+  }
+  .t-card-media img{ width:100%; height:100%; object-fit:cover; }
+  .t-card-body{ flex:1; min-width:0; }
+  .t-card-name{ font-weight:600; font-size:14px; }
+  .t-card-location{ color:var(--text-secondary); font-size:12px; }
+  .t-card-quote{ font-size:13px; color:var(--text-secondary); margin-top:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:520px; }
+  .t-card-actions{ display:flex; align-items:center; gap:6px; flex-shrink:0; }
+  .t-icon-btn{
+    width:30px; height:30px; border-radius:8px; border:1px solid var(--line); background:var(--surface);
+    cursor:pointer; font-size:13px; display:flex; align-items:center; justify-content:center;
+  }
+  .t-icon-btn:hover{ border-color:var(--gold); }
+  .t-status-badge{
+    padding:3px 10px; border-radius:999px; font-size:11px; font-weight:500; white-space:nowrap;
+  }
+  .t-status-published{ background:rgba(95,143,110,.14); color:var(--success); }
+  .t-status-hidden{ background:rgba(107,107,107,.12); color:var(--text-secondary); }
+
+  @media (max-width: 700px){
+    .t-form-row{ grid-template-columns:1fr; }
+    .t-card{ flex-wrap:wrap; }
+    .t-card-quote{ max-width:100%; white-space:normal; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="header-row">
+    <img class="logo-mark" src="/logo.svg" alt="NALUNA">
+    <h1>Panou comenzi</h1>
+  </div>
+  <div class="stats">
+    <div class="stat"><div class="label">Comenzi totale</div><div class="value" id="stat-count">—</div></div>
+    <div class="stat"><div class="label">Venit (comenzi platite)</div><div class="value" id="stat-revenue">—</div></div>
+  </div>
+  <table id="orders-table">
+    <thead>
+      <tr><th>Data</th><th>Pentru</th><th>Email</th><th>Limba</th><th>Ocazie</th><th>Gen</th><th>Pachet</th><th>Pret</th><th>Status</th></tr>
+    </thead>
+    <tbody id="orders-body"></tbody>
+  </table>
+
+  <div class="section-title">Reactii clienti</div>
+  <div class="section-sub">Adaugi si gestionezi manual reactiile afisate pe homepage. Clientii nu pot trimite singuri continut.</div>
+
+  <div class="t-form">
+    <form id="t-form">
+      <input type="hidden" id="t-edit-id" value="">
+      <div class="t-form-row">
+        <div class="t-field">
+          <label for="t-name">Prenume client</label>
+          <input type="text" id="t-name" maxlength="80" required>
+        </div>
+        <div class="t-field">
+          <label for="t-location">Oras / tara</label>
+          <input type="text" id="t-location" maxlength="100" placeholder="ex: Londra, UK">
+        </div>
+      </div>
+      <div class="t-field">
+        <label for="t-quote">Citat scurt</label>
+        <textarea id="t-quote" maxlength="500" required></textarea>
+      </div>
+      <div class="t-form-row">
+        <div class="t-field">
+          <label for="t-type">Tip reactie</label>
+          <select id="t-type">
+            <option value="text">Doar text</option>
+            <option value="image">Imagine</option>
+            <option value="video">Video</option>
+            <option value="audio">Audio</option>
+          </select>
+        </div>
+        <div class="t-field" id="t-file-field">
+          <label for="t-file">Fisier (imagine / video / audio)</label>
+          <input type="file" id="t-file" accept="image/*,video/*,audio/*">
+        </div>
+      </div>
+      <div class="t-check">
+        <input type="checkbox" id="t-published">
+        <label for="t-published">Publicata — vizibila pe homepage. Daca e debifat, reactia se salveaza dar ramane ascunsa.</label>
+      </div>
+      <div class="t-check consent">
+        <input type="checkbox" id="t-consent" required>
+        <label for="t-consent"><strong>Confirm</strong> ca am acordul explicit al clientului pentru a publica acest nume, oras si continut pe site.</label>
+      </div>
+      <div class="t-form-actions">
+        <button type="submit" class="btn-primary" id="t-submit-btn">Salveaza reactia</button>
+        <button type="button" class="btn-secondary" id="t-cancel-btn" style="display:none;">Anuleaza editarea</button>
+      </div>
+      <div class="t-form-msg" id="t-form-msg"></div>
+    </form>
+  </div>
+
+  <div class="t-list" id="t-list"></div>
+</div>
+
+<script>
+  const statusLabel = {
+    draft: 'Neplatita',
+    generating: 'Se compune',
+    preview_ready: 'Previzualizare gata',
+    ready: 'Platita si livrata',
+    generation_failed: 'Eroare'
+  };
+
+  fetch('/api/admin/orders')
+    .then(r => r.json())
+    .then(data => {
+      document.getElementById('stat-count').textContent = data.count;
+      document.getElementById('stat-revenue').textContent = '£' + data.revenue;
+
+      const body = document.getElementById('orders-body');
+      if (data.orders.length === 0) {
+        body.innerHTML = '<tr><td colspan="8" class="empty">Nicio comanda inca.</td></tr>';
+        return;
+      }
+
+      body.innerHTML = data.orders.map(o => `
+        <tr>
+          <td>${new Date(o.createdAt).toLocaleString('ro-RO')}</td>
+          <td>${o.recipient}</td>
+          <td>${o.email || '—'}</td>
+          <td>${(o.lang || 'ro').toUpperCase()}</td>
+          <td>${o.occasion}</td>
+          <td>${o.genre}</td>
+          <td>${o.plan}</td>
+          <td>£${o.price}</td>
+          <td><span class="badge b-${o.status}">${statusLabel[o.status] || o.status}</span></td>
+        </tr>
+      `).join('');
+    });
+
+  // ================= REACTII CLIENTI =================
+  const typeIcons = { text: '💬', image: '🖼️', video: '🎬', audio: '🎧' };
+  let testimonialsCache = [];
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str == null ? '' : String(str);
+    return div.innerHTML;
+  }
+
+  const tFileField = document.getElementById('t-file-field');
+  function syncFileFieldVisibility() {
+    tFileField.style.display = tType.value === 'text' ? 'none' : 'block';
+  }
+
+  const tForm = document.getElementById('t-form');
+  const tEditId = document.getElementById('t-edit-id');
+  const tName = document.getElementById('t-name');
+  const tLocation = document.getElementById('t-location');
+  const tQuote = document.getElementById('t-quote');
+  const tType = document.getElementById('t-type');
+  const tFile = document.getElementById('t-file');
+  const tPublished = document.getElementById('t-published');
+  const tConsent = document.getElementById('t-consent');
+  const tSubmitBtn = document.getElementById('t-submit-btn');
+  const tCancelBtn = document.getElementById('t-cancel-btn');
+  const tFormMsg = document.getElementById('t-form-msg');
+  const tList = document.getElementById('t-list');
+
+  function resetTForm() {
+    tForm.reset();
+    tEditId.value = '';
+    tSubmitBtn.textContent = 'Salveaza reactia';
+    tCancelBtn.style.display = 'none';
+    tFormMsg.textContent = '';
+    tFormMsg.className = 't-form-msg';
+    syncFileFieldVisibility();
+  }
+
+  tType.addEventListener('change', syncFileFieldVisibility);
+  syncFileFieldVisibility();
+  tCancelBtn.addEventListener('click', resetTForm);
+
+  async function loadTestimonials() {
+    const res = await fetch('/api/admin/testimonials');
+    const data = await res.json();
+    const items = data.testimonials || [];
+    testimonialsCache = items; // pastram datele intr-o variabila, ca sa nu le injectam in atribute HTML (risc de rupere la ghilimele/apostrof din citate)
+
+    if (items.length === 0) {
+      tList.innerHTML = '<div class="empty">Nicio reactie adaugata inca.</div>';
+      return;
+    }
+
+    tList.innerHTML = items.map((t, i) => {
+      const mediaPreview = t.mediaType === 'image' && t.mediaPath
+        ? `<img src="${escapeHtml(t.mediaPath)}" alt="">`
+        : typeIcons[t.mediaType] || '💬';
+
+      return `
+        <div class="t-card">
+          <div class="t-card-media">${mediaPreview}</div>
+          <div class="t-card-body">
+            <div class="t-card-name">${escapeHtml(t.firstName)}${t.location ? ' · ' + escapeHtml(t.location) : ''}</div>
+            <div class="t-card-quote">"${escapeHtml(t.quote)}"</div>
+          </div>
+          <span class="t-status-badge ${t.published ? 't-status-published' : 't-status-hidden'}">${t.published ? 'Publicata' : 'Ascunsa'}</span>
+          <div class="t-card-actions">
+            <button class="t-icon-btn" title="Muta in sus" ${i === 0 ? 'disabled' : ''} onclick="moveTestimonial('${t.id}','up')">↑</button>
+            <button class="t-icon-btn" title="Muta in jos" ${i === items.length - 1 ? 'disabled' : ''} onclick="moveTestimonial('${t.id}','down')">↓</button>
+            <button class="t-icon-btn" title="Editeaza" onclick="editTestimonial('${t.id}')">✎</button>
+            <button class="t-icon-btn" title="Sterge" onclick="deleteTestimonial('${t.id}')">✕</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  window.editTestimonial = function(id) {
+    const t = testimonialsCache.find(x => x.id === id);
+    if (!t) return;
+    tEditId.value = t.id;
+    tName.value = t.firstName;
+    tLocation.value = t.location || '';
+    tQuote.value = t.quote;
+    tType.value = t.mediaType;
+    syncFileFieldVisibility();
+    tPublished.checked = t.published;
+    tConsent.checked = t.consentConfirmed;
+    tSubmitBtn.textContent = 'Salveaza modificarile';
+    tCancelBtn.style.display = 'inline-block';
+    tFormMsg.textContent = t.mediaPath ? 'Fisier existent pastrat, decat daca incarci altul nou.' : '';
+    tFormMsg.className = 't-form-msg';
+    tForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
+
+  window.deleteTestimonial = async function(id) {
+    if (!confirm('Stergi definitiv aceasta reactie?')) return;
+    const res = await fetch(`/api/admin/testimonials/${id}`, { method: 'DELETE' });
+    if (res.ok) loadTestimonials();
+    else alert('Eroare la stergere.');
+  };
+
+  window.moveTestimonial = async function(id, direction) {
+    await fetch(`/api/admin/testimonials/${id}/move`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ direction })
+    });
+    loadTestimonials();
+  };
+
+  tForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    tFormMsg.textContent = 'Se salveaza...';
+    tFormMsg.className = 't-form-msg';
+
+    const formData = new FormData();
+    formData.append('firstName', tName.value);
+    formData.append('location', tLocation.value);
+    formData.append('quote', tQuote.value);
+    formData.append('mediaType', tType.value);
+    formData.append('published', tPublished.checked);
+    formData.append('consentConfirmed', tConsent.checked);
+    if (tFile.files[0]) formData.append('media', tFile.files[0]);
+
+    const editId = tEditId.value;
+    const url = editId ? `/api/admin/testimonials/${editId}` : '/api/admin/testimonials';
+    const method = editId ? 'PUT' : 'POST';
+
+    try {
+      const res = await fetch(url, { method, body: formData });
+      const data = await res.json();
+
+      if (!res.ok) {
+        tFormMsg.textContent = data.error || 'Eroare la salvare.';
+        tFormMsg.className = 't-form-msg err';
+        return;
+      }
+
+      resetTForm();
+      loadTestimonials();
+    } catch (err) {
+      tFormMsg.textContent = 'Eroare de conexiune.';
+      tFormMsg.className = 't-form-msg err';
+    }
+  });
+
+  loadTestimonials();
+</script>
+</body>
+</html>

@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Comanda mea — NALUNA</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;1,9..144,400&family=Sora:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#FAF8F5; --bg-secondary:#F8F6F2; --surface:#FDFCFA;
+    --text:#2B2B2B; --text-secondary:#6B6B6B;
+    --gold:#A8834B; --gold-deep:#8B6D3F; --line:#E8E2D6;
+    --success:#5F8F6E; --error:#B3574A;
+  }
+  *{box-sizing:border-box;}
+  body{ background:var(--bg); color:var(--text); font-family:'Sora', sans-serif; min-height:100vh; margin:0; }
+  .wrap{ max-width:520px; margin:0 auto; padding:64px 24px; }
+  .logo-mark{ width:44px; margin-bottom:32px; display:block; }
+  h1{ font-family:'Fraunces', serif; font-weight:400; font-size:26px; margin-bottom:8px; }
+  p.sub{ color:var(--text-secondary); font-size:14px; margin-bottom:28px; }
+  .field{ display:flex; gap:10px; margin-bottom:32px; }
+  input{
+    flex:1; background:var(--surface); border:1px solid var(--line); border-radius:10px;
+    padding:12px 14px; color:var(--text); font-family:'Sora', sans-serif; font-size:14px;
+  }
+  input:focus{ outline:2px solid var(--gold); outline-offset:1px; }
+  button{
+    background:var(--text); color:var(--bg); border:none; border-radius:10px;
+    padding:12px 22px; font-weight:500; font-size:14px; cursor:pointer;
+    transition:background-color .25s ease;
+  }
+  button:hover{ background:var(--gold-deep); }
+  .order{
+    background:var(--bg-secondary); border:1px solid var(--line); border-radius:14px;
+    padding:20px; margin-bottom:14px;
+  }
+  .order .top{ display:flex; justify-content:space-between; align-items:center; }
+  .order .name{ font-weight:600; }
+  .status{
+    font-size:11px; padding:4px 10px; border-radius:999px; text-transform:uppercase;
+    letter-spacing:.06em; font-family:'Sora',sans-serif;
+  }
+  .status-ready{ background:rgba(95,143,110,.14); color:var(--success); }
+  .status-generating, .status-preview_ready{ background:rgba(168,131,75,.14); color:var(--gold-deep); }
+  .status-draft{ background:rgba(107,107,107,.12); color:var(--text-secondary); }
+  .status-generation_failed{ background:rgba(179,87,74,.12); color:var(--error); }
+  audio{ width:100%; margin-top:14px; }
+  .empty{ color:var(--text-secondary); font-size:14px; }
+  a.download{ color:var(--gold-deep); font-size:13px; display:inline-block; margin-top:10px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <img class="logo-mark" src="/logo.svg" alt="NALUNA">
+  <h1 id="h1-title">Comanda mea</h1>
+  <p class="sub" id="p-sub">Introdu codul de acces primit pe email ca sa-ti vezi melodia.</p>
+
+  <div class="field">
+    <input type="text" id="token" placeholder="cod din emailul de confirmare" autocomplete="off">
+    <button onclick="lookup()" id="btn-search">Cauta</button>
+  </div>
+
+  <div id="results"></div>
+</div>
+
+<script>
+  // Acces prin cod unic (accessToken), NU prin cautare dupa email — cautarea dupa email
+  // ar fi permis oricui stie adresa de email a cuiva sa-i vada toate comenzile si
+  // povestile private. Codul e primit doar pe email, dupa plata.
+  const T = {
+    ro: {
+      title: 'Comanda mea', sub: 'Introdu codul de acces primit pe email ca sa-ti vezi melodia.',
+      search: 'Cauta', searching: 'Se cauta...', not_found: 'Nu am gasit nicio comanda pentru acest cod.',
+      conn_error: 'Eroare de conexiune. Incearca din nou.', for_label: 'Pentru', download: 'Descarca fisierul',
+      invalid: 'Cod de acces invalid.',
+      status: { draft: 'Neplatita', generating: 'Se compune', preview_ready: 'Previzualizare gata', ready: 'Gata', generation_failed: 'Eroare' }
+    },
+    en: {
+      title: 'My order', sub: 'Enter the access code you received by email to see your song.',
+      search: 'Search', searching: 'Searching...', not_found: 'No order found for this code.',
+      conn_error: 'Connection error. Please try again.', for_label: 'For', download: 'Download the file',
+      invalid: 'Invalid access code.',
+      status: { draft: 'Unpaid', generating: 'Composing', preview_ready: 'Preview ready', ready: 'Ready', generation_failed: 'Error' }
+    },
+    de: {
+      title: 'Meine Bestellung', sub: 'Gib den per E-Mail erhaltenen Zugangscode ein, um dein Lied zu sehen.',
+      search: 'Suchen', searching: 'Suche läuft...', not_found: 'Keine Bestellung für diesen Code gefunden.',
+      conn_error: 'Verbindungsfehler. Bitte versuche es erneut.', for_label: 'Für', download: 'Datei herunterladen',
+      invalid: 'Ungültiger Zugangscode.',
+      status: { draft: 'Unbezahlt', generating: 'Wird komponiert', preview_ready: 'Vorschau bereit', ready: 'Fertig', generation_failed: 'Fehler' }
+    },
+    es: {
+      title: 'Mi pedido', sub: 'Introduce el código de acceso recibido por email para ver tu canción.',
+      search: 'Buscar', searching: 'Buscando...', not_found: 'No se encontró ningún pedido para este código.',
+      conn_error: 'Error de conexión. Inténtalo de nuevo.', for_label: 'Para', download: 'Descargar el archivo',
+      invalid: 'Código de acceso no válido.',
+      status: { draft: 'Sin pagar', generating: 'Componiendo', preview_ready: 'Previsualización lista', ready: 'Lista', generation_failed: 'Error' }
+    },
+    it: {
+      title: 'Il mio ordine', sub: 'Inserisci il codice di accesso ricevuto via email per vedere la tua canzone.',
+      search: 'Cerca', searching: 'Ricerca in corso...', not_found: 'Nessun ordine trovato per questo codice.',
+      conn_error: 'Errore di connessione. Riprova.', for_label: 'Per', download: 'Scarica il file',
+      invalid: 'Codice di accesso non valido.',
+      status: { draft: 'Non pagato', generating: 'In composizione', preview_ready: 'Anteprima pronta', ready: 'Pronta', generation_failed: 'Errore' }
+    },
+    fr: {
+      title: 'Ma commande', sub: 'Entrez le code d\'accès reçu par email pour voir votre chanson.',
+      search: 'Rechercher', searching: 'Recherche...', not_found: 'Aucune commande trouvée pour ce code.',
+      conn_error: 'Erreur de connexion. Veuillez réessayer.', for_label: 'Pour', download: 'Télécharger le fichier',
+      invalid: 'Code d\'accès invalide.',
+      status: { draft: 'Non payée', generating: 'En composition', preview_ready: 'Aperçu prêt', ready: 'Prête', generation_failed: 'Erreur' }
+    },
+    bg: {
+      title: 'Моята поръчка', sub: 'Въведи кода за достъп, получен по имейл, за да видиш песента си.',
+      search: 'Търси', searching: 'Търсене...', not_found: 'Няма намерена поръчка за този код.',
+      conn_error: 'Грешка във връзката. Опитай отново.', for_label: 'За', download: 'Изтегли файла',
+      invalid: 'Невалиден код за достъп.',
+      status: { draft: 'Неплатена', generating: 'Композира се', preview_ready: 'Прегледът е готов', ready: 'Готова', generation_failed: 'Грешка' }
+    },
+    tr: {
+      title: 'Siparişim', sub: 'Şarkınızı görmek için e-posta ile aldığınız erişim kodunu girin.',
+      search: 'Ara', searching: 'Aranıyor...', not_found: 'Bu kod için sipariş bulunamadı.',
+      conn_error: 'Bağlantı hatası. Lütfen tekrar deneyin.', for_label: 'Kimin için', download: 'Dosyayı indir',
+      invalid: 'Geçersiz erişim kodu.',
+      status: { draft: 'Ödenmedi', generating: 'Besteleniyor', preview_ready: 'Ön izleme hazır', ready: 'Hazır', generation_failed: 'Hata' }
+    }
+  };
+  const supportedLangs = ['ro', 'en', 'de', 'es', 'it', 'fr', 'bg', 'tr'];
+  const savedLang = localStorage.getItem('nds_lang');
+  const lang = supportedLangs.includes(savedLang) ? savedLang : 'ro';
+  const t = T[lang];
+  document.documentElement.lang = lang;
+  document.getElementById('h1-title').textContent = t.title;
+  document.getElementById('p-sub').textContent = t.sub;
+  document.getElementById('btn-search').textContent = t.search;
+
+  async function lookup(tokenOverride) {
+    const token = (tokenOverride || document.getElementById('token').value.trim());
+    const results = document.getElementById('results');
+    if (!token) return;
+
+    results.innerHTML = `<p class="empty">${t.searching}</p>`;
+
+    try {
+      const res = await fetch('/api/orders/access/' + encodeURIComponent(token));
+
+      if (res.status === 400) {
+        results.innerHTML = `<p class="empty">${t.invalid}</p>`;
+        return;
+      }
+      if (res.status === 404) {
+        results.innerHTML = `<p class="empty">${t.not_found}</p>`;
+        return;
+      }
+      if (!res.ok) {
+        results.innerHTML = `<p class="empty">${t.conn_error}</p>`;
+        return;
+      }
+
+      const o = await res.json();
+      const fullUrl = `/media/full/${o.id}?token=${encodeURIComponent(token)}`;
+
+      results.innerHTML = `
+        <div class="order">
+          <div class="top">
+            <div class="name">${t.for_label} ${o.recipient}</div>
+            <div class="status status-${o.status}">${t.status[o.status] || o.status}</div>
+          </div>
+          ${o.status === 'ready' ? `
+            <audio controls src="${fullUrl}"></audio>
+            <a class="download" href="${fullUrl}" download>${t.download}</a>
+          ` : ''}
+        </div>
+      `;
+    } catch (e) {
+      results.innerHTML = `<p class="empty">${t.conn_error}</p>`;
+    }
+  }
+
+  // daca vine dintr-un link din email (?token=...), cautam automat, fara sa mai tasteze nimic
+  const urlToken = new URLSearchParams(window.location.search).get('token');
+  if (urlToken) {
+    document.getElementById('token').value = urlToken;
+    lookup(urlToken);
+  }
+</script>
+</body>
+</html>
