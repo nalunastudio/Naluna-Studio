@@ -59,6 +59,11 @@ async function initDb() {
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_orders_access_token ON orders(access_token);`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at DESC);`);
 
+  // ALTER separat (nu doar in CREATE TABLE) — ca baza de date sa se actualizeze corect
+  // si pentru instalari deja existente, unde tabela orders exista deja fara aceasta coloana
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS music_task_id TEXT;`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_orders_music_task_id ON orders(music_task_id);`);
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS testimonials (
       id UUID PRIMARY KEY,
@@ -97,6 +102,7 @@ function rowToOrder(row) {
     editsUsed: row.edits_used,
     variants: row.variants || [],
     selectedVariantId: row.selected_variant_id,
+    musicTaskId: row.music_task_id,
     error: row.error,
     createdAt: row.created_at,
     generatedAt: row.generated_at,
@@ -129,6 +135,37 @@ async function getOrderByToken(token) {
   return rowToOrder(result.rows[0]);
 }
 
+// folosita de POST /api/music/callback — identifica ce comanda corespunde unui taskId
+// primit de la SunoAPI, ca sa stim ce inregistrare sa actualizam
+async function getOrderByMusicTaskId(taskId) {
+  const result = await pool.query(`SELECT * FROM orders WHERE music_task_id = $1`, [taskId]);
+  return rowToOrder(result.rows[0]);
+}
+
+// ==================================================================================
+// PRELUARE ATOMICA a unei comenzi pentru procesare (descarcare + upload), inainte sa
+// atingem vreun fisier. Polling-ul si callback-ul SunoAPI pot ajunge la SUCCESS aproape
+// simultan — daca ambele ar verifica "e deja procesata?" separat, apoi ar proceda separat,
+// exista o fereastra reala in care ambele trec de verificare inainte ca vreuna sa apuce
+// sa scrie noul status (clasica cursa "check-then-act"). UPDATE ... WHERE ... RETURNING
+// e o singura instructiune atomica in Postgres: daca doua cereri o executa "simultan",
+// baza de date le serializeaza intern (row-level lock) — doar UNA poate vedea starea
+// veche si actualiza, cealalta gaseste deja starea noua in clauza WHERE si nu returneaza
+// niciun rand. Nu exista fereastra de timp intre citire si scriere, pentru ca sunt
+// aceeasi operatie.
+// ==================================================================================
+async function claimOrderForProviderFinalization(orderId) {
+  const result = await pool.query(
+    `UPDATE orders
+     SET status = 'processing_provider_result'
+     WHERE id = $1
+       AND status NOT IN ('processing_provider_result', 'preview_ready', 'ready', 'generation_failed')
+     RETURNING *`,
+    [orderId]
+  );
+  return rowToOrder(result.rows[0]); // null daca alta cerere a preluat-o deja (sau era deja finalizata)
+}
+
 // mapare camelCase (folosit in restul aplicatiei) -> nume coloana in DB,
 // ca sa putem construi un UPDATE dinamic dintr-un obiect partial (patch)
 const COLUMN_MAP = {
@@ -136,6 +173,7 @@ const COLUMN_MAP = {
   editsUsed: 'edits_used',
   variants: 'variants',
   selectedVariantId: 'selected_variant_id',
+  musicTaskId: 'music_task_id',
   error: 'error',
   generatedAt: 'generated_at',
   paidAt: 'paid_at'
@@ -271,7 +309,8 @@ async function moveTestimonial(id, direction) {
 }
 
 module.exports = {
-  pool, initDb, createOrder, getOrderById, getOrderByToken,
+  pool, initDb, createOrder, getOrderById, getOrderByToken, getOrderByMusicTaskId,
+  claimOrderForProviderFinalization,
   updateOrder, listOrders, computeRevenue,
   createTestimonial, getTestimonialById, updateTestimonial, deleteTestimonial,
   listAllTestimonials, listPublishedTestimonials, moveTestimonial

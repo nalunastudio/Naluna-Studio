@@ -73,7 +73,6 @@ const PORT = process.env.PORT || 3000;
 const DOMAIN = process.env.DOMAIN;
 const PREVIEW_SECONDS = 55;
 const FREE_EDITS = 3;
-const VARIANTS_PER_ROUND = 2;
 const FETCH_TIMEOUT_MS = 25000;
 
 // Preturile NU vin niciodata de la client. Un client care modifica payload-ul (curl/devtools)
@@ -794,8 +793,63 @@ app.get('/api/orders/access/:token', lookupLimiter, async (req, res, next) => {
 });
 
 // ==========================================================================================
-// GENERARE: 2 variante in paralel -> descarcare -> preview 55s -> durata reala
+// POST /api/music/callback — SunoAPI trimite aici rezultatul, in paralel cu polling-ul
+// nostru (vezi pollForResult mai jos). Cele doua mecanisme pot ajunge la rezultat aproape
+// simultan — finalizeVariantsIfNeeded() are o garda explicita (verifica statusul comenzii
+// inainte de a scrie) ca sa nu procesam aceeasi generare de doua ori (descarcare + upload
+// dublu in R2/S3). Raspundem mereu 200 catre Suno, ca sa nu retrimita webhook-ul la infinit.
 // ==========================================================================================
+app.post('/api/music/callback', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const data = body.data || body;
+    const taskId = data.taskId || body.taskId;
+
+    if (!taskId || typeof taskId !== 'string') {
+      console.warn('Callback SunoAPI primit fara taskId recunoscut.');
+      return res.status(200).json({ received: true });
+    }
+
+    const order = await db.getOrderByMusicTaskId(taskId);
+    if (!order) {
+      console.warn(`Callback SunoAPI pentru un taskId necunoscut in baza de date: ${taskId}`);
+      return res.status(200).json({ received: true });
+    }
+
+    const statusName = data.status || body.status;
+
+    if (statusName === SUNO_SUCCESS_STATUS) {
+      const tracks = extractSunoTracks(body);
+      await finalizeVariantsIfNeeded(order.id, tracks).catch(err => {
+        console.error(`Callback SunoAPI: eroare la finalizarea comenzii ${order.id}:`, err.message);
+      });
+    } else if (SUNO_ERROR_STATUSES.includes(statusName)) {
+      const current = await db.getOrderById(order.id);
+      if (current && !['preview_ready', 'ready', 'generation_failed'].includes(current.status)) {
+        await db.updateOrder(order.id, { status: 'generation_failed', error: `Suno: ${statusName}` });
+      }
+    }
+    // PENDING / TEXT_SUCCESS / FIRST_SUCCESS / status necunoscut -> nu facem nimic aici,
+    // polling-ul (pollForResult) continua sa verifice independent
+
+    res.status(200).json({ received: true });
+  } catch (err) {
+    console.error('Eroare la procesarea callback-ului SunoAPI:', err.message);
+    res.status(200).json({ received: true }); // 200 oricum — nu vrem retrimiteri la infinit
+  }
+});
+
+// ==========================================================================================
+// GENERARE — integrare SunoAPI.org, verificata contra documentatiei oficiale.
+//
+// UN SINGUR apel catre POST /api/v1/generate produce ambele variante (SunoAPI returneaza
+// de obicei 2 piese per task) — NU facem 2 apeluri separate, ca sa nu consumam credite duble
+// pentru ceva ce vine deja intr-un singur raspuns.
+// ==========================================================================================
+
+const SUNO_SUCCESS_STATUS = 'SUCCESS';
+const SUNO_ERROR_STATUSES = ['CREATE_TASK_FAILED', 'GENERATE_AUDIO_FAILED', 'CALLBACK_EXCEPTION', 'SENSITIVE_WORD_ERROR'];
+const SUNO_CONTINUE_STATUSES = ['PENDING', 'TEXT_SUCCESS', 'FIRST_SUCCESS'];
 
 async function runGeneration(orderId, feedback) {
   const order = await db.getOrderById(orderId);
@@ -803,28 +857,79 @@ async function runGeneration(orderId, feedback) {
 
   const prompt = buildPrompt(order, feedback);
 
-  const variantIds = Array.from({ length: VARIANTS_PER_ROUND }, () => randomUUID().slice(0, 8));
-  const variants = await Promise.all(
-    variantIds.map(variantId => generateSingleVariant(orderId, variantId, order, prompt))
-  );
+  const taskId = await callMusicProvider(orderId, prompt);
+  const { status: finalStatus, tracks } = await pollForResult(taskId);
 
-  await db.updateOrder(orderId, {
-    status: 'preview_ready',
-    variants,
-    selectedVariantId: variants[0]?.id || null,
-    generatedAt: new Date().toISOString()
-  });
+  if (finalStatus !== SUNO_SUCCESS_STATUS) {
+    throw new Error(`Suno a raportat un status de eroare: ${finalStatus}`);
+  }
+
+  // ghidat de acelasi mecanism folosit si de /api/music/callback — daca ambele au ajuns
+  // aproape simultan la rezultat, doar primul care ajunge aici proceseaza efectiv fisierele
+  await finalizeVariantsIfNeeded(orderId, tracks);
 }
 
-async function generateSingleVariant(orderId, variantId, order, prompt) {
-  const audioSourceUrl = await callMusicProvider(order, prompt);
+// Descarca+taie+urca in stocare fiecare piesa primita de la Suno, si scrie variantele
+// finale pe comanda — DAR doar daca reuseste sa "preia" comanda atomic (vezi
+// db.claimOrderForProviderFinalization). Polling-ul si callback-ul pot ajunge la SUCCESS
+// aproape simultan; fara preluare atomica la nivel de baza de date, o simpla verificare
+// "e deja procesata?" facuta separat de fiecare ar lasa o fereastra reala in care ambele
+// trec de verificare inainte sa apuce vreuna sa scrie — ambele ar descarca si urca fisierele,
+// dublu cost, dublu risc. UPDATE...WHERE...RETURNING e o singura operatie atomica in
+// Postgres: doar una dintre cererile concurente poate "castiga" preluarea.
+async function finalizeVariantsIfNeeded(orderId, tracks) {
+  const claimed = await db.claimOrderForProviderFinalization(orderId);
+  if (!claimed) {
+    return false; // alta cerere (polling sau callback) a preluat-o deja — nu procesam a doua oara
+  }
 
-  // Procesarea (descarcare + taiere cu ffmpeg) se intampla mereu pe disc local, temporar —
-  // ffmpeg/ffprobe au nevoie de fisiere reale, nu pot lucra direct pe un obiect din R2/S3.
+  try {
+    if (!tracks || tracks.length === 0) {
+      throw new Error('Suno a raportat SUCCESS, dar nu am gasit nicio piesa cu audioUrl in raspuns.');
+    }
+    if (tracks.length !== 2) {
+      console.warn(`SunoAPI a returnat ${tracks.length} piese in loc de 2, pentru comanda ${orderId}. Continui cu cate au venit.`);
+    }
+
+    const variants = await Promise.all(
+      tracks.map(track => buildVariantFromTrack(orderId, randomUUID().slice(0, 8), track))
+    );
+
+    await db.updateOrder(orderId, {
+      status: 'preview_ready',
+      variants,
+      selectedVariantId: variants[0]?.id || null,
+      generatedAt: new Date().toISOString()
+    });
+    return true;
+  } catch (err) {
+    // Am apucat sa marcam comanda "processing_provider_result" (am preluat-o), dar
+    // procesarea a esuat la mijloc (descarcare, ffmpeg, upload etc). NU o lasam blocata
+    // acolo permanent — o marcam explicit esuata, cu un mesaj de eroare sigur (trunchiat,
+    // fara detalii interne sensibile).
+    console.error(`Eroare la finalizarea comenzii ${orderId} dupa preluare:`, err.message);
+    await db.updateOrder(orderId, {
+      status: 'generation_failed',
+      error: String(err.message || err).slice(0, 500)
+    }).catch(dbErr => {
+      console.error(`Eroare suplimentara la marcarea esecului pentru comanda ${orderId}:`, dbErr.message);
+    });
+    throw err;
+  }
+}
+
+// Proceseaza O SINGURA piesa primita de la Suno (deja avem URL-ul audio): descarcare,
+// taiere preview cu ffmpeg, citire durata, urcare in stocare (cloud sau fallback local).
+// Identic ca logica de stocare cu versiunea anterioara — doar decuplat de apelul catre provider.
+async function buildVariantFromTrack(orderId, variantId, track) {
+  if (!track.audioUrl) {
+    throw new Error(`Piesa primita de la Suno (id: ${track.id || 'necunoscut'}) nu are audioUrl/audio_url.`);
+  }
+
   const tempFull = path.join(TEMP_DIR, `${orderId}-${variantId}-full.mp3`);
   const tempPreview = path.join(TEMP_DIR, `${orderId}-${variantId}-preview.mp3`);
 
-  await downloadFile(audioSourceUrl, tempFull);
+  await downloadFile(track.audioUrl, tempFull);
   await trimAudio(tempFull, tempPreview, PREVIEW_SECONDS);
   const durationSeconds = await getAudioDuration(tempFull);
 
@@ -862,83 +967,151 @@ async function generateSingleVariant(orderId, variantId, order, prompt) {
   };
 }
 
+// Citeste raspunsul unei cereri esuate ca text simplu, trunchiat, pentru loguri utile —
+// NICIODATA nu include header-ele cererii (deci nici Authorization/MUSIC_API_KEY).
+async function safeReadBody(res, maxLen = 500) {
+  try {
+    const text = await res.text();
+    return text.length > maxLen ? text.slice(0, maxLen) + '…' : text;
+  } catch (e) {
+    return '(nu am putut citi corpul raspunsului)';
+  }
+}
+
+// Extrage piesele generate dintr-un raspuns Suno (polling SAU callback). Primeste
+// payload-ul BRUT (raspunsul JSON complet, nedespachetat), pentru ca structura difera
+// intre endpoint-ul de polling si webhook-ul de callback, si documentatia disponibila
+// nu e perfect consistenta intre cele doua. Verificam explicit, in ordine, toate
+// formele documentate:
+//   payload.data.response.sunoData
+//   payload.data.response.data
+//   payload.data.data
+//   payload.data                    (daca e deja array, direct)
+//   payload.response.sunoData / payload.response.data   (daca payload e deja "data"-ul despachetat)
+//   payload.sunoData                (fallback suplimentar)
+// Accepta ambele denumiri de camp pentru URL audio: audioUrl (camelCase) sau audio_url (snake_case).
+function extractSunoTracks(payload) {
+  if (!payload || typeof payload !== 'object') return [];
+
+  const data = payload.data;
+
+  const candidates = [
+    data && data.response && data.response.sunoData,
+    data && data.response && data.response.data,
+    data && data.data,
+    data,
+    payload.response && payload.response.sunoData,
+    payload.response && payload.response.data,
+    payload.sunoData
+  ];
+
+  const rawTracks = candidates.find(c => Array.isArray(c)) || [];
+
+  return rawTracks
+    .map(t => ({
+      id: t.id,
+      audioUrl: t.audioUrl || t.audio_url,
+      title: t.title,
+      duration: t.duration
+    }))
+    .filter(t => !!t.audioUrl);
+}
+
 // ==========================================================================================
-// INTEGRARE API MUZICA — sectiune care necesita confirmare, nu presupuneri.
-//
-// Codul de mai jos e structura GENERICA a unei integrari REST de generare muzicala:
-// trimite un prompt, primeste un task id, face polling pana la rezultat. NU e verificat
-// contra unui provider real, pentru ca nu exista API oficial public Suno si nu ai
-// confirmat inca ce provider tert folosesti.
-//
-// INFORMATII CARE LIPSESC SI TREBUIE CONFIRMATE DE TINE, EXACT, INAINTE DE LANSARE:
-// 1. Providerul exact ales (sunoapi.org / apiframe.ai / aimlapi.com / altul) si
-//    MUSIC_API_BASE_URL exact al lui.
-// 2. Endpoint-ul de generare: e chiar "/generate"? Ce camp de request asteapta pentru
-//    stilul muzical si ce camp pentru versuri — se numesc "prompt"/"lyrics" ca mai jos,
-//    sau altfel (ex: "style", "custom_lyrics", "tags")?
-// 3. Formatul de autentificare: header "Authorization: Bearer <key>" ca mai jos, sau
-//    header custom (ex: "X-API-Key")?
-// 4. Raspunsul la creare: campul cu id-ul task-ului se numeste "id" sau "task_id" ca
-//    mai jos, sau altceva (ex: "clip_id", "generation_id")?
-// 5. Endpoint-ul de status: e "/status/:id" ca mai jos? Ce valori exacte poate avea
-//    campul de status ("complete"/"succeeded" ca mai jos, sau "SUCCESS"/"done"?)
-// 6. Campul cu URL-ul audio final: "audio_url" ca mai jos, sau altceva (ex: "output_url",
-//    un array de clipuri in loc de unul singur)?
-// 7. Daca providerul returneaza DEJA 2 clipuri per apel (comun la Suno) — in acest caz,
-//    bucla de mai sus care apeleaza providerul de 2 ori independent e GRESITA, platesti
-//    de 2 ori pentru ceva ce vine intr-un singur apel. Trebuie adaptat sa desparta cele
-//    2 URL-uri dintr-un singur raspuns.
-//
-// Fara raspunsuri exacte la toate cele de mai sus, nu pot confirma ca aceasta integrare
-// functioneaza — arhitectura (paralelism, timeout, retry) e corecta, dar detaliile de
-// request/response sunt un exemplu generic, nu o integrare verificata.
+// POST /api/v1/generate — creeaza task-ul, o singura data per runda (initiala sau editare).
+// Salveaza taskId-ul pe comanda IMEDIAT, inainte de polling — ca /api/music/callback (care
+// poate ajunge oricand, chiar in paralel cu polling-ul) sa poata identifica ce comanda
+// corespunde raspunsului primit de la Suno.
 // ==========================================================================================
-async function callMusicProvider(order, prompt) {
-  const createRes = await fetchWithTimeout(`${process.env.MUSIC_API_BASE_URL}/generate`, {
+async function callMusicProvider(orderId, prompt) {
+  // validare explicita inainte de request — desi buildPrompt() deja arunca eroare pentru
+  // un prompt gol, verificam din nou aici, la locul unde chiar pleaca cererea catre Suno
+  if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
+    throw new Error('Prompt invalid sau gol — cererea catre SunoAPI nu a fost trimisa.');
+  }
+
+  const requestBody = {
+    prompt,
+    customMode: false,
+    instrumental: false,
+    model: 'V4_5ALL',
+    callBackUrl: `${DOMAIN}/api/music/callback`
+  };
+
+  const createRes = await fetchWithTimeout(`${process.env.MUSIC_API_BASE_URL}/api/v1/generate`, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${process.env.MUSIC_API_KEY}`
+      'Authorization': `Bearer ${process.env.MUSIC_API_KEY}`,
+      'Content-Type': 'application/json'
     },
-    body: JSON.stringify({
-      prompt: prompt.styleTags,
-      lyrics: prompt.lyricsBrief,
-      make_instrumental: false,
-      title: `Cantec pentru ${order.recipient}`
-    })
+    body: JSON.stringify(requestBody)
   }, 30000);
 
   if (!createRes.ok) {
-    throw new Error(`Provider API a raspuns cu status ${createRes.status}`);
-  }
-  const createData = await createRes.json();
-  const taskId = createData.id || createData.task_id;
-  if (!taskId) {
-    throw new Error('Raspunsul providerului nu contine un id de task recunoscut (camp "id" sau "task_id").');
+    const bodyText = await safeReadBody(createRes);
+    console.error(`SunoAPI /api/v1/generate a raspuns cu eroare HTTP ${createRes.status}. Corp raspuns: ${bodyText}`);
+    throw new Error(`SunoAPI a raspuns cu status HTTP ${createRes.status} la crearea task-ului.`);
   }
 
-  return pollForResult(taskId);
+  const createData = await createRes.json();
+  if (createData.code !== 200) {
+    console.error(`SunoAPI /api/v1/generate: cod ${createData.code}, mesaj furnizor: "${createData.msg || 'necunoscut'}"`);
+    throw new Error(`SunoAPI: ${createData.msg || 'eroare necunoscuta la crearea task-ului'}`);
+  }
+
+  const taskId = createData.data && createData.data.taskId;
+  if (!taskId) {
+    console.error('SunoAPI /api/v1/generate: raspuns 200 dar fara data.taskId. Corp raspuns:', JSON.stringify(createData).slice(0, 500));
+    throw new Error('Raspunsul SunoAPI nu contine data.taskId.');
+  }
+
+  await db.updateOrder(orderId, { musicTaskId: taskId });
+
+  return taskId;
 }
 
+// ==========================================================================================
+// GET /api/v1/generate/record-info?taskId=... — polling pana la un status final.
+// SUCCESS = gata (extragem piesele). CREATE_TASK_FAILED / GENERATE_AUDIO_FAILED /
+// CALLBACK_EXCEPTION / SENSITIVE_WORD_ERROR = eroare definitiva. PENDING / TEXT_SUCCESS /
+// FIRST_SUCCESS = inca in lucru, continuam polling-ul.
+// ==========================================================================================
 async function pollForResult(taskId, maxAttempts = 30, intervalMs = 6000) {
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise(r => setTimeout(r, intervalMs));
 
-    const res = await fetchWithTimeout(`${process.env.MUSIC_API_BASE_URL}/status/${taskId}`, {
-      headers: { 'Authorization': `Bearer ${process.env.MUSIC_API_KEY}` }
-    }, 15000);
+    const res = await fetchWithTimeout(
+      `${process.env.MUSIC_API_BASE_URL}/api/v1/generate/record-info?taskId=${encodeURIComponent(taskId)}`,
+      { headers: { 'Authorization': `Bearer ${process.env.MUSIC_API_KEY}` } },
+      15000
+    );
 
-    if (!res.ok) continue; // eroare tranzitorie — reincercam la urmatorul poll, nu abandonam imediat
-
-    const data = await res.json();
-
-    if (data.status === 'complete' || data.status === 'succeeded') {
-      if (!data.audio_url) throw new Error('Raspunsul providerului nu contine "audio_url".');
-      return data.audio_url;
+    if (!res.ok) {
+      const bodyText = await safeReadBody(res);
+      console.error(`SunoAPI record-info a raspuns cu eroare HTTP ${res.status} pentru taskId ${taskId}. Corp raspuns: ${bodyText}`);
+      continue; // eroare tranzitorie — reincercam la urmatorul poll, nu abandonam imediat
     }
-    if (data.status === 'failed') {
-      throw new Error('Generarea a esuat la providerul de muzica.');
+
+    const body = await res.json();
+    if (body.code !== 200) {
+      console.error(`SunoAPI record-info: cod ${body.code}, mesaj furnizor: "${body.msg || 'necunoscut'}" pentru taskId ${taskId}`);
+      continue;
     }
+
+    const statusName = body.data && body.data.status;
+
+    if (statusName === SUNO_SUCCESS_STATUS) {
+      const tracks = extractSunoTracks(body);
+      return { status: statusName, tracks };
+    }
+    if (SUNO_ERROR_STATUSES.includes(statusName)) {
+      console.error(`SunoAPI record-info: task ${taskId} a esuat cu status "${statusName}".`);
+      return { status: statusName, tracks: [] };
+    }
+    if (!SUNO_CONTINUE_STATUSES.includes(statusName)) {
+      console.warn(`SunoAPI record-info: status necunoscut "${statusName}" pentru taskId ${taskId} — continui polling-ul.`);
+    }
+    // PENDING / TEXT_SUCCESS / FIRST_SUCCESS (sau orice status necunoscut) -> continuam bucla
   }
   throw new Error('Timeout: melodia nu a fost gata in timpul asteptat.');
 }
@@ -961,6 +1134,28 @@ async function getAudioDuration(filePath) {
   return Math.round(parseFloat(stdout.trim()));
 }
 
+// SunoAPI, in customMode:false, accepta un SINGUR camp "prompt" — nu exista campuri
+// separate pentru stil muzical si versuri. Combinam totul intr-un singur text descriptiv:
+// stilul (tags), instructiunea explicita de limba, si povestea/ocazia/destinatarul.
+//
+// LIMITA SUNOAPI: cu customMode:false, campul "prompt" e limitat la 500 caractere.
+// Prioritate la trunchiere (partea fixa nu se taie niciodata):
+//   1. limba + stilul + ocazia + destinatarul — obligatorii, intacte
+//   2. feedback-ul de editare (daca exista) — i se rezerva spatiu, dar limitat
+//   3. povestea — umple spatiul ramas, prima taiata daca nu incape tot
+// Taierea se face pe caractere Unicode complete (code points), nu pe unitati UTF-16,
+// ca sa nu rupem niciodata un caracter multi-byte (emoji, litere in afara BMP) la mijloc.
+const SUNO_PROMPT_MAX_LEN = 500;
+
+// imparte corect pe caractere Unicode si taie fara sa rupa vreunul la mijloc
+function truncateSafely(str, maxLen) {
+  if (!str) return '';
+  if (maxLen <= 0) return '';
+  const chars = Array.from(str);
+  if (chars.length <= maxLen) return str;
+  return chars.slice(0, maxLen).join('').trimEnd();
+}
+
 function buildPrompt(order, feedback) {
   const genreMap = {
     emotional: 'emotional ballad-pop, tender vocals, heartfelt',
@@ -978,16 +1173,54 @@ function buildPrompt(order, feedback) {
     it: 'Italian', fr: 'French', bg: 'Bulgarian', tr: 'Turkish'
   };
   const lyricsLanguage = languageNames[order.lang] || 'Romanian';
+  const styleTags = genreMap[order.genre] || 'pop, warm vocals';
 
-  let lyricsBrief = `Write the lyrics entirely in ${lyricsLanguage}. Occasion: ${order.occasion}. Dedicated to ${order.recipient}. Story/details to include: ${order.story}`;
-  if (feedback) {
-    lyricsBrief += ` Client-requested adjustment: ${feedback}`;
+  // partea FIXA — limba, stilul, ocazia, destinatarul — niciodata trunchiata
+  const head = `${styleTags}. Write the song lyrics entirely in ${lyricsLanguage}. Occasion: ${order.occasion}. Dedicated to ${order.recipient}.`;
+
+  const storyLabel = ' Story/details to include: ';
+  const feedbackLabel = ' Client-requested adjustment: ';
+  const feedbackText = feedback ? String(feedback).trim() : '';
+
+  let remaining = SUNO_PROMPT_MAX_LEN - head.length;
+  if (remaining < 0) remaining = 0;
+
+  // rezervam spatiu pentru feedback (max 40% din ce a ramas dupa partea fixa),
+  // ca sa nu consume tot bugetul si sa nu mai ramana loc deloc pentru poveste
+  let feedbackFull = '';
+  if (feedbackText) {
+    const feedbackBudget = Math.max(0, Math.floor(remaining * 0.4) - feedbackLabel.length);
+    const feedbackTrimmed = truncateSafely(feedbackText, feedbackBudget);
+    if (feedbackTrimmed) {
+      feedbackFull = `${feedbackLabel}${feedbackTrimmed}`;
+      remaining -= feedbackFull.length;
+    }
+  }
+  if (remaining < 0) remaining = 0;
+
+  // povestea umple spatiul ramas
+  let storyFull = '';
+  const storyBudget = remaining - storyLabel.length;
+  if (storyBudget > 0) {
+    const storyTrimmed = truncateSafely(order.story, storyBudget);
+    if (storyTrimmed) {
+      storyFull = `${storyLabel}${storyTrimmed}`;
+    }
   }
 
-  return {
-    styleTags: genreMap[order.genre] || 'pop, warm vocals',
-    lyricsBrief
-  };
+  let prompt = `${head}${storyFull}${feedbackFull}`;
+
+  // plasa de siguranta — in teorie nu ar trebui sa se intample, dat fiind bugetul calculat mai sus,
+  // dar nu trimitem niciodata catre Suno un prompt mai lung decat limita documentata
+  if (prompt.length > SUNO_PROMPT_MAX_LEN) {
+    prompt = truncateSafely(prompt, SUNO_PROMPT_MAX_LEN);
+  }
+
+  if (!prompt || !prompt.trim()) {
+    throw new Error('Promptul construit pentru SunoAPI este gol — comanda nu are date suficiente pentru generare.');
+  }
+
+  return prompt;
 }
 
 // ==========================================================================================
