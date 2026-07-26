@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Se compune melodia ta — NALUNA</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;1,9..144,400&family=Sora:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#FAF8F5; --bg-secondary:#F8F6F2; --surface:#FDFCFA;
+    --text:#2B2B2B; --text-secondary:#6B6B6B;
+    --gold:#A8834B; --gold-soft:#C9A876; --gold-deep:#8B6D3F; --line:#E8E2D6;
+    --success:#5F8F6E; --error:#B3574A;
+  }
+  *{box-sizing:border-box;}
+  html, body{ height:100%; }
+  body{
+    background:var(--bg); color:var(--text); font-family:'Sora', sans-serif;
+    min-height:100vh; display:flex; align-items:center; justify-content:center; margin:0;
+    padding:24px; position:relative; overflow:hidden;
+  }
+  @media (prefers-reduced-motion: reduce){
+    *{ animation-duration:0.01ms !important; animation-iteration-count:1 !important; transition-duration:0.01ms !important; }
+  }
+
+  .ambient-wash{
+    position:fixed; inset:0; z-index:0; pointer-events:none;
+    background:
+      radial-gradient(circle at 18% 20%, rgba(168,131,75,.08), transparent 45%),
+      radial-gradient(circle at 85% 80%, rgba(168,131,75,.07), transparent 50%);
+  }
+  .ambient-blob{
+    position:fixed; border-radius:50%; filter:blur(60px); pointer-events:none; z-index:0;
+    background:radial-gradient(circle, rgba(201,168,118,.16), transparent 70%);
+  }
+  .blob-1{ width:340px; height:340px; top:-80px; left:-100px; animation:driftA 22s ease-in-out infinite; }
+  .blob-2{ width:280px; height:280px; bottom:-100px; right:-80px; animation:driftB 26s ease-in-out infinite; }
+  @keyframes driftA{ 0%,100%{ transform:translate(0,0); } 50%{ transform:translate(40px,30px); } }
+  @keyframes driftB{ 0%,100%{ transform:translate(0,0); } 50%{ transform:translate(-30px,-40px); } }
+
+  .soundwave{
+    position:absolute; left:50%; bottom:8%; transform:translateX(-50%);
+    display:flex; align-items:flex-end; gap:5px; height:44px; z-index:0; opacity:.35;
+  }
+  .soundwave span{
+    width:3px; border-radius:2px; background:var(--gold-soft);
+    animation:wavebar 1.8s ease-in-out infinite;
+  }
+  @keyframes wavebar{ 0%,100%{ height:6px; } 50%{ height:36px; } }
+
+  .card{
+    position:relative; z-index:1;
+    background:rgba(253,252,250,.68);
+    backdrop-filter:blur(18px) saturate(140%);
+    -webkit-backdrop-filter:blur(18px) saturate(140%);
+    border:1px solid rgba(255,255,255,.5);
+    border-radius:26px;
+    padding:52px 42px;
+    max-width:520px; width:100%; text-align:center;
+    box-shadow:0 24px 60px -20px rgba(139,109,63,.18), 0 2px 8px rgba(43,43,43,.05);
+    transition:box-shadow .6s ease;
+  }
+  .logo-mark{ width:48px; margin:0 auto 26px; display:block; opacity:.92; }
+
+  .spinner-wrap{ position:relative; width:80px; height:80px; margin:0 auto 26px; }
+  .spinner-glow{
+    position:absolute; inset:-16px; border-radius:50%;
+    background:radial-gradient(circle, rgba(168,131,75,.2), rgba(168,131,75,0) 70%);
+    animation:glow 3.4s ease-in-out infinite;
+  }
+  @keyframes glow{ 0%,100%{ opacity:.55; transform:scale(1); } 50%{ opacity:1; transform:scale(1.1); } }
+  .spinner{
+    position:absolute; inset:0; border-radius:50%;
+    border:2px solid var(--line); border-top-color:var(--gold); border-right-color:var(--gold-soft);
+    animation:spin 2.6s linear infinite;
+  }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+  .spinner-check{
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    font-size:28px; color:var(--success); opacity:0; transform:scale(.6);
+    transition:opacity .5s ease, transform .5s ease;
+  }
+  .spinner-check.show{ opacity:1; transform:scale(1); }
+
+  h1{ font-family:'Fraunces', serif; font-weight:400; font-size:23px; margin-bottom:8px; letter-spacing:-.01em; }
+  p.sub{ color:var(--text-secondary); font-size:14px; margin-bottom:22px; }
+
+  .status-msg{
+    font-family:'Fraunces', serif; font-style:italic; color:var(--gold-deep);
+    font-size:16px; min-height:24px; margin-bottom:18px;
+    opacity:1; transition:opacity .5s ease;
+  }
+  .status-msg.fading{ opacity:0; }
+
+  .progress-track{
+    height:7px; border-radius:999px; background:var(--surface); border:1px solid var(--line);
+    overflow:hidden; margin-bottom:12px; position:relative;
+  }
+  .progress-fill{
+    height:100%; border-radius:999px; position:relative; overflow:hidden;
+    background:linear-gradient(90deg, var(--gold-deep), var(--gold-soft));
+    width:2%; transition:width 1.4s cubic-bezier(.4,0,.2,1);
+  }
+  .progress-fill::after{
+    content:''; position:absolute; inset:0;
+    background:linear-gradient(90deg, transparent, rgba(255,255,255,.5), transparent);
+    animation:shimmer 2.2s linear infinite;
+  }
+  @keyframes shimmer{ 0%{ transform:translateX(-100%); } 100%{ transform:translateX(100%); } }
+  .progress-percent{ font-size:12px; color:var(--text-secondary); letter-spacing:.04em; margin-bottom:22px; }
+
+  .estimate-pill{
+    display:inline-block; padding:6px 16px; border-radius:999px;
+    background:rgba(168,131,75,.1); color:var(--gold-deep); font-size:13px; font-weight:500;
+    margin-bottom:20px; transition:opacity .5s ease;
+  }
+  .estimate-pill.hidden{ opacity:0; height:0; padding:0; margin:0; overflow:hidden; }
+
+  .keep-open{ color:var(--text-secondary); font-size:13px; line-height:1.5; }
+
+  .soft-notice{
+    display:none; margin-top:18px; padding:12px 16px; border-radius:14px;
+    background:rgba(168,131,75,.08); color:var(--gold-deep); font-size:13px; line-height:1.5;
+  }
+
+  .error-state{ display:none; }
+  .error-state h1{ color:var(--error); }
+  .btn{
+    display:inline-block; margin-top:16px; padding:13px 28px; border-radius:999px;
+    background:var(--text); color:var(--bg); border:none; font-weight:500; font-size:14px;
+    cursor:pointer; transition:background-color .25s ease;
+  }
+  .btn:hover{ background:var(--gold-deep); }
+  .btn:disabled{ opacity:.6; cursor:default; }
+
+  @media (max-width: 480px){
+    .card{ padding:38px 26px; }
+    .blob-1, .blob-2{ display:none; }
+  }
+</style>
+</head>
+<body>
+  <div class="ambient-wash"></div>
+  <div class="ambient-blob blob-1"></div>
+  <div class="ambient-blob blob-2"></div>
+  <div class="soundwave" id="soundwave"></div>
+
+  <div class="card">
+    <img class="logo-mark" src="/logo.svg" alt="NALUNA">
+
+    <div id="progress-state">
+      <div class="spinner-wrap">
+        <div class="spinner-glow"></div>
+        <div class="spinner" id="spinner"></div>
+        <div class="spinner-check" id="spinner-check">✓</div>
+      </div>
+
+      <h1 id="p-title">Melodia ta se compune acum</h1>
+      <p class="sub" id="p-subtitle">Pregatim 2 variante personalizate pentru tine.</p>
+
+      <div class="status-msg" id="status-msg"></div>
+
+      <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+      <div class="progress-percent" id="progress-percent">0%</div>
+
+      <div class="estimate-pill" id="estimate-pill"></div>
+      <p class="keep-open" id="p-keepopen">Nu inchide aceasta pagina. Rezultatul va aparea automat cand este gata.</p>
+
+      <div class="soft-notice" id="soft-notice"></div>
+    </div>
+
+    <div class="error-state" id="error-state">
+      <h1 id="err-title">Generarea dureaza putin mai mult decat de obicei.</h1>
+      <p class="sub" id="err-sub">Incearca din nou — comanda ta ramane salvata.</p>
+      <button class="btn" id="retry-btn">Incearca din nou</button>
+    </div>
+  </div>
+
+<script>
+  const T = {
+    ro: {
+      title: 'Melodia ta se compune acum',
+      subtitle: 'Pregatim 2 variante personalizate pentru tine.',
+      keepOpen: 'Nu inchide aceasta pagina. Rezultatul va aparea automat cand este gata.',
+      stages: [
+        'Analizam povestea ta...',
+        'Descoperim emotiile din mesaj...',
+        'Compunem primele versuri...',
+        'Cream linia melodica...',
+        'Adaugam armonie si emotie...',
+        'Inregistram previzualizarea...',
+        'Aproape gata...'
+      ],
+      readyMsg: 'Previzualizarea este gata!',
+      readySub: 'Pregatim playerul...',
+      estimate: (m) => m <= 0 ? 'Aproape gata' : `Timp estimat ramas: aproximativ ${m} ${m === 1 ? 'minut' : 'minute'}`,
+      softNotice: 'Conexiunea dureaza putin mai mult. Verificam in continuare.',
+      errTitle: 'Nu am putut finaliza melodia de aceasta data.',
+      errSub: 'Nu ai fost taxat. Poti incerca din nou.',
+      retryBtn: 'Incearca din nou', retrying: 'Se reincearca...'
+    },
+    en: {
+      title: 'Your song is being composed',
+      subtitle: 'We\'re preparing 2 personalised versions for you.',
+      keepOpen: 'Don\'t close this page. The result will appear automatically when ready.',
+      stages: [
+        'Analysing your story...',
+        'Uncovering the emotions in it...',
+        'Composing the first verses...',
+        'Creating the melody...',
+        'Adding harmony and emotion...',
+        'Recording the preview...',
+        'Almost there...'
+      ],
+      readyMsg: 'Your preview is ready!',
+      readySub: 'Preparing the player...',
+      estimate: (m) => m <= 0 ? 'Almost there' : `Estimated time left: about ${m} ${m === 1 ? 'minute' : 'minutes'}`,
+      softNotice: 'The connection is taking a little longer. We\'re still checking.',
+      errTitle: 'We couldn\'t finish your song this time.',
+      errSub: 'You haven\'t been charged. You can try again.',
+      retryBtn: 'Try again', retrying: 'Retrying...'
+    },
+    de: {
+      title: 'Dein Lied wird gerade komponiert',
+      subtitle: 'Wir bereiten 2 personalisierte Versionen für dich vor.',
+      keepOpen: 'Schließe diese Seite nicht. Das Ergebnis erscheint automatisch, sobald es fertig ist.',
+      stages: [
+        'Wir analysieren deine Geschichte...',
+        'Wir entdecken die Emotionen darin...',
+        'Wir komponieren die ersten Verse...',
+        'Wir erschaffen die Melodie...',
+        'Wir fügen Harmonie und Emotion hinzu...',
+        'Wir nehmen die Vorschau auf...',
+        'Gleich fertig...'
+      ],
+      readyMsg: 'Deine Vorschau ist fertig!',
+      readySub: 'Der Player wird vorbereitet...',
+      estimate: (m) => m <= 0 ? 'Gleich fertig' : `Geschätzte verbleibende Zeit: ca. ${m} ${m === 1 ? 'Minute' : 'Minuten'}`,
+      softNotice: 'Die Verbindung dauert etwas länger. Wir prüfen weiterhin.',
+      errTitle: 'Wir konnten dein Lied dieses Mal nicht fertigstellen.',
+      errSub: 'Du wurdest nicht belastet. Du kannst es erneut versuchen.',
+      retryBtn: 'Erneut versuchen', retrying: 'Erneuter Versuch...'
+    },
+    es: {
+      title: 'Tu canción se está componiendo',
+      subtitle: 'Estamos preparando 2 versiones personalizadas para ti.',
+      keepOpen: 'No cierres esta página. El resultado aparecerá automáticamente cuando esté listo.',
+      stages: [
+        'Analizando tu historia...',
+        'Descubriendo las emociones...',
+        'Componiendo los primeros versos...',
+        'Creando la melodía...',
+        'Añadiendo armonía y emoción...',
+        'Grabando la previsualización...',
+        'Casi listo...'
+      ],
+      readyMsg: '¡Tu previsualización está lista!',
+      readySub: 'Preparando el reproductor...',
+      estimate: (m) => m <= 0 ? 'Casi listo' : `Tiempo estimado restante: unos ${m} ${m === 1 ? 'minuto' : 'minutos'}`,
+      softNotice: 'La conexión está tardando un poco más. Seguimos comprobando.',
+      errTitle: 'No pudimos terminar tu canción esta vez.',
+      errSub: 'No se te ha cobrado. Puedes intentarlo de nuevo.',
+      retryBtn: 'Intentar de nuevo', retrying: 'Reintentando...'
+    },
+    it: {
+      title: 'La tua canzone è in composizione',
+      subtitle: 'Stiamo preparando 2 versioni personalizzate per te.',
+      keepOpen: 'Non chiudere questa pagina. Il risultato apparirà automaticamente quando sarà pronto.',
+      stages: [
+        'Analizziamo la tua storia...',
+        'Scopriamo le emozioni al suo interno...',
+        'Componiamo i primi versi...',
+        'Creiamo la melodia...',
+        'Aggiungiamo armonia ed emozione...',
+        'Registriamo l\'anteprima...',
+        'Quasi pronto...'
+      ],
+      readyMsg: 'La tua anteprima è pronta!',
+      readySub: 'Preparazione del player...',
+      estimate: (m) => m <= 0 ? 'Quasi pronto' : `Tempo stimato rimanente: circa ${m} ${m === 1 ? 'minuto' : 'minuti'}`,
+      softNotice: 'La connessione sta impiegando un po\' più di tempo. Stiamo ancora verificando.',
+      errTitle: 'Questa volta non siamo riusciti a completare la tua canzone.',
+      errSub: 'Non ti è stato addebitato nulla. Puoi riprovare.',
+      retryBtn: 'Riprova', retrying: 'Nuovo tentativo...'
+    },
+    fr: {
+      title: 'Votre chanson est en cours de composition',
+      subtitle: 'Nous préparons 2 versions personnalisées pour vous.',
+      keepOpen: 'Ne fermez pas cette page. Le résultat apparaîtra automatiquement une fois prêt.',
+      stages: [
+        'Analyse de votre histoire...',
+        'Découverte des émotions...',
+        'Composition des premiers vers...',
+        'Création de la mélodie...',
+        'Ajout d\'harmonie et d\'émotion...',
+        'Enregistrement de l\'aperçu...',
+        'Presque prêt...'
+      ],
+      readyMsg: 'Votre aperçu est prêt !',
+      readySub: 'Préparation du lecteur...',
+      estimate: (m) => m <= 0 ? 'Presque prêt' : `Temps restant estimé : environ ${m} ${m === 1 ? 'minute' : 'minutes'}`,
+      softNotice: 'La connexion prend un peu plus de temps. Nous continuons à vérifier.',
+      errTitle: 'Nous n\'avons pas pu terminer votre chanson cette fois-ci.',
+      errSub: 'Vous n\'avez pas été débité. Vous pouvez réessayer.',
+      retryBtn: 'Réessayer', retrying: 'Nouvelle tentative...'
+    },
+    bg: {
+      title: 'Твоята песен се композира сега',
+      subtitle: 'Подготвяме 2 персонализирани версии за теб.',
+      keepOpen: 'Не затваряй тази страница. Резултатът ще се появи автоматично, когато е готов.',
+      stages: [
+        'Анализираме историята ти...',
+        'Откриваме емоциите в нея...',
+        'Композираме първите куплети...',
+        'Създаваме мелодията...',
+        'Добавяме хармония и емоция...',
+        'Записваме прегледа...',
+        'Почти готово...'
+      ],
+      readyMsg: 'Твоят преглед е готов!',
+      readySub: 'Подготвяме плейъра...',
+      estimate: (m) => m <= 0 ? 'Почти готово' : `Оставащо време: около ${m} ${m === 1 ? 'минута' : 'минути'}`,
+      softNotice: 'Връзката отнема малко повече време. Продължаваме да проверяваме.',
+      errTitle: 'Този път не успяхме да завършим песента ти.',
+      errSub: 'Не си таксуван. Можеш да опиташ отново.',
+      retryBtn: 'Опитай отново', retrying: 'Нов опит...'
+    },
+    tr: {
+      title: 'Şarkınız şu anda besteleniyor',
+      subtitle: 'Sizin için 2 kişiselleştirilmiş versiyon hazırlıyoruz.',
+      keepOpen: 'Bu sayfayı kapatmayın. Sonuç hazır olduğunda otomatik olarak görünecektir.',
+      stages: [
+        'Hikayenizi analiz ediyoruz...',
+        'İçindeki duyguları keşfediyoruz...',
+        'İlk dizeleri besteliyoruz...',
+        'Melodiyi oluşturuyoruz...',
+        'Armoni ve duygu ekliyoruz...',
+        'Ön izlemeyi kaydediyoruz...',
+        'Neredeyse hazır...'
+      ],
+      readyMsg: 'Ön izlemeniz hazır!',
+      readySub: 'Oynatıcı hazırlanıyor...',
+      estimate: (m) => m <= 0 ? 'Neredeyse hazır' : `Tahmini kalan süre: yaklaşık ${m} dakika`,
+      softNotice: 'Bağlantı biraz daha uzun sürüyor. Kontrol etmeye devam ediyoruz.',
+      errTitle: 'Bu sefer şarkınızı tamamlayamadık.',
+      errSub: 'Ücretlendirilmediniz. Tekrar deneyebilirsiniz.',
+      retryBtn: 'Tekrar dene', retrying: 'Tekrar deneniyor...'
+    }
+  };
+
+  const supportedLangs = ['ro', 'en', 'de', 'es', 'it', 'fr', 'bg', 'tr'];
+  const savedLang = localStorage.getItem('nds_lang');
+  const lang = supportedLangs.includes(savedLang) ? savedLang : 'ro';
+  const t = T[lang];
+  document.documentElement.lang = lang;
+
+  document.getElementById('p-title').textContent = t.title;
+  document.getElementById('p-subtitle').textContent = t.subtitle;
+  document.getElementById('p-keepopen').textContent = t.keepOpen;
+  document.getElementById('err-title').textContent = t.errTitle;
+  document.getElementById('err-sub').textContent = t.errSub;
+  document.getElementById('retry-btn').textContent = t.retryBtn;
+  document.getElementById('soft-notice').textContent = t.softNotice;
+
+  const soundwaveEl = document.getElementById('soundwave');
+  for (let i = 0; i < 18; i++) {
+    const bar = document.createElement('span');
+    bar.style.animationDelay = (Math.random() * 1.8).toFixed(2) + 's';
+    bar.style.height = (8 + Math.random() * 14) + 'px';
+    soundwaveEl.appendChild(bar);
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  const orderId = params.get('id');
+  const accessToken = params.get('token') || localStorage.getItem('nds_access_token') || '';
+
+  if (!orderId) {
+    window.location.href = '/index.html';
+  }
+
+  const progressState = document.getElementById('progress-state');
+  const errorState = document.getElementById('error-state');
+  const progressFill = document.getElementById('progress-fill');
+  const progressPercentEl = document.getElementById('progress-percent');
+  const statusMsgEl = document.getElementById('status-msg');
+  const estimatePillEl = document.getElementById('estimate-pill');
+  const softNoticeEl = document.getElementById('soft-notice');
+  const spinnerEl = document.getElementById('spinner');
+  const spinnerCheckEl = document.getElementById('spinner-check');
+  const retryBtn = document.getElementById('retry-btn');
+
+  const startKey = `nds_gen_start_${orderId}`;
+  let startTime = Number(localStorage.getItem(startKey));
+  if (!startTime) {
+    startTime = Date.now();
+    localStorage.setItem(startKey, String(startTime));
+  }
+
+  const ESTIMATE_MS = 165000;
+  const STAGE_THRESHOLDS = [15, 30, 45, 65, 85, 97, 99];
+  let currentStageIndex = -1;
+  let finished = false;
+
+  function percentToStageIndex(pct) {
+    for (let i = 0; i < STAGE_THRESHOLDS.length; i++) {
+      if (pct <= STAGE_THRESHOLDS[i]) return i;
+    }
+    return STAGE_THRESHOLDS.length - 1;
+  }
+
+  function setStatusMessage(msg) {
+    statusMsgEl.classList.add('fading');
+    setTimeout(() => {
+      statusMsgEl.textContent = msg;
+      statusMsgEl.classList.remove('fading');
+    }, 220);
+  }
+
+  function updateProgress() {
+    if (finished) return;
+    const elapsed = Date.now() - startTime;
+    const fraction = Math.min(elapsed / ESTIMATE_MS, 0.99);
+    const pct = Math.round(fraction * 100);
+
+    progressFill.style.width = pct + '%';
+    progressPercentEl.textContent = pct + '%';
+
+    const stageIndex = percentToStageIndex(pct);
+    if (stageIndex !== currentStageIndex) {
+      currentStageIndex = stageIndex;
+      setStatusMessage(t.stages[stageIndex]);
+    }
+
+    const remainingMs = Math.max(ESTIMATE_MS - elapsed, 0);
+    const remainingMin = Math.ceil(remainingMs / 60000);
+    if (remainingMs <= 0) {
+      estimatePillEl.classList.add('hidden');
+    } else {
+      estimatePillEl.classList.remove('hidden');
+      estimatePillEl.textContent = t.estimate(remainingMin);
+    }
+  }
+  updateProgress();
+  const progressTimer = setInterval(updateProgress, 1000);
+
+  function finishSuccess() {
+    finished = true;
+    clearInterval(progressTimer);
+    localStorage.removeItem(startKey);
+
+    progressFill.style.width = '100%';
+    progressPercentEl.textContent = '100%';
+    estimatePillEl.classList.add('hidden');
+    setStatusMessage(t.readyMsg);
+    spinnerEl.style.opacity = '0';
+    spinnerCheckEl.classList.add('show');
+    document.getElementById('p-subtitle').textContent = t.readySub;
+
+    setTimeout(() => {
+      window.location.href = `/index.html?ready=${encodeURIComponent(orderId)}`;
+    }, 1400);
+  }
+
+  let consecutivePollFailures = 0;
+
+  function showSoftNotice() {
+    softNoticeEl.style.display = 'block';
+  }
+  function hideSoftNotice() {
+    softNoticeEl.style.display = 'none';
+  }
+
+  // Statusul "generation_failed" e final — NU pornim automat o noua generare.
+  // Un task Suno esuat nu se repara singur reincercand orbeste (si ar consuma credite
+  // pentru fiecare incercare automata); clientul decide explicit daca vrea sa reincerce.
+  function handleGenerationFailed() {
+    finished = true;
+    if (pollTimer) clearTimeout(pollTimer);
+    clearInterval(progressTimer);
+    hideSoftNotice();
+    progressState.style.display = 'none';
+    errorState.style.display = 'block';
+  }
+
+  let pollTimer = null;
+  async function pollStatus() {
+    try {
+      const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}`);
+      if (!res.ok) {
+        consecutivePollFailures++;
+        if (consecutivePollFailures >= 2) showSoftNotice();
+        pollTimer = setTimeout(pollStatus, 4000);
+        return;
+      }
+      consecutivePollFailures = 0;
+      hideSoftNotice();
+      const order = await res.json();
+
+      if (order.status === 'preview_ready' || order.status === 'ready') {
+        finishSuccess();
+      } else if (order.status === 'generation_failed') {
+        handleGenerationFailed();
+      } else {
+        pollTimer = setTimeout(pollStatus, 4000);
+      }
+    } catch (err) {
+      // Eroare de retea/conexiune la polling — NU inseamna ca generarea a esuat, doar ca
+      // nu am putut verifica statusul chiar acum. Aratam mesajul linistitor si continuam
+      // sa verificam — nu pornim nicio generare noua din acest motiv.
+      consecutivePollFailures++;
+      if (consecutivePollFailures >= 2) showSoftNotice();
+      pollTimer = setTimeout(pollStatus, 4000);
+    }
+  }
+  pollStatus();
+
+  // -------- Reincercare STRICT manuala — singurul loc din pagina care apeleaza /generate.
+  // Trimite o singura cerere, dezactiveaza butonul imediat (previne dublu-click), verifica
+  // raspunsul HTTP explicit (inclusiv 409 — generare deja in curs, gestionat ca succes,
+  // pentru ca inseamna ca exista deja un task activ pe server). --------
+  retryBtn.addEventListener('click', async () => {
+    retryBtn.disabled = true;
+    retryBtn.textContent = t.retrying;
+
+    try {
+      const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ feedback: null })
+      });
+
+      if (!res.ok && res.status !== 409) {
+        // cererea a esuat cu adevarat (nu doar "deja in curs") — aratam eroare clara,
+        // reactivam butonul, NU pornim polling-ul din nou
+        let serverMsg = '';
+        try { const data = await res.json(); serverMsg = data && data.error; } catch (e) {}
+        retryBtn.disabled = false;
+        retryBtn.textContent = t.retryBtn;
+        document.getElementById('err-sub').textContent = serverMsg || t.errSub;
+        return;
+      }
+
+      // acceptat (200) sau deja in desfasurare (409, ex. pornit din alta fila) —
+      // in ambele cazuri exista acum un task activ, reluam polling-ul normal
+      consecutivePollFailures = 0;
+      startTime = Date.now();
+      localStorage.setItem(startKey, String(startTime));
+
+      finished = false;
+      errorState.style.display = 'none';
+      progressState.style.display = 'block';
+      retryBtn.disabled = false;
+      retryBtn.textContent = t.retryBtn;
+      spinnerEl.style.opacity = '1';
+      spinnerCheckEl.classList.remove('show');
+      currentStageIndex = -1;
+
+      updateProgress();
+      pollStatus();
+    } catch (err) {
+      // eroare de retea la trimiterea cererii de retry - reactivam butonul, ramanem
+      // in starea de eroare, clientul poate incerca din nou cand vrea
+      retryBtn.disabled = false;
+      retryBtn.textContent = t.retryBtn;
+      document.getElementById('err-sub').textContent = t.errSub;
+    }
+  });
+</script>
+</body>
+</html>

@@ -331,7 +331,7 @@
       <div class="hero-cta-row">
         <a href="#comanda" class="btn btn-primary" data-i18n="hero_cta">Incepe — de la £15</a>
         <span class="price-note" data-i18n="hero_note">Plata securizata · fara abonament</span>
-        <span class="price-note" data-i18n="uk_only_note" style="display:block; margin-top:4px;">Disponibil doar pentru clienti din Marea Britanie</span>
+        <span class="price-note" data-i18n="intl_note" style="display:block; margin-top:4px;">Livrare internationala, prin email</span>
       </div>
     </div>
     <div class="moon-stage">
@@ -502,7 +502,7 @@
         </div>
 
         <button type="submit" class="btn btn-primary" id="generate-btn" style="width:100%; justify-content:center; margin-top:20px;">
-          <span data-i18n="btn_generate">Genereaza previzualizarea gratuit →</span>
+          <span data-i18n="btn_generate" id="generate-btn-label">Genereaza previzualizarea gratuit →</span>
         </button>
         <div class="price-note" style="margin-top:10px; text-align:center;" data-i18n="note_free">Nu platesti acum. Platesti doar daca iti place rezultatul.</div>
         <div id="status-msg"></div>
@@ -555,7 +555,7 @@
       <div class="logo-mark"><img src="/logo.svg" alt="NALUNA"></div>
       <span>© 2026 NALUNA</span>
     </div>
-    <span data-i18n="footer_note">Muzica generata prin AI · compozitie originala pe baza datelor furnizate de client</span>
+    <span data-i18n="footer_note">Compozitie originala personalizata pe baza povestii tale.</span>
   </footer>
 </div>
 
@@ -569,7 +569,7 @@
       hero_sub: 'Spui povestea. Noi scriem versurile si compunem melodia, cu voce, in stilul muzical pe care il alegi. Livrare pe email, gata de trimis sau descarcat.',
       hero_cta: 'Incepe — de la £15',
       hero_note: 'Plata securizata · fara abonament',
-      uk_only_note: 'Disponibil doar pentru clienti din Marea Britanie',
+      intl_note: 'Livrare internationala, prin email',
       disc_label: 'SE COMPUNE',
       how_eyebrow: 'Proces', how_title: 'Patru pasi, fara studio, fara compozitor.',
       how_sub: 'Motorul de compozitie scrie versurile pe baza povestii tale si genereaza melodia cu voce, in orice gen muzical alegi.',
@@ -604,6 +604,7 @@
       plan_video_name: 'Cadou video', plan_video_desc: 'Melodie + video cu versuri pentru social/WhatsApp',
       sum_package: 'Pachet', sum_total: 'Total',
       btn_generate: 'Genereaza previzualizarea gratuit →',
+      btn_generate_starting: 'Pornim compunerea...',
       note_free: 'Nu platesti acum. Platesti doar daca iti place rezultatul.',
       resume_msg: 'Plata nu s-a finalizat 💛 Nicio grija — cantecul e salvat si te asteapta.',
       resume_btn: 'Incearca plata din nou',
@@ -613,7 +614,7 @@
       label_feedback: 'Nu e exact cum vrei? Descrie ce sa schimbam', ph_feedback: 'ex: mai vesel, mai lent, alt inceput...',
       btn_regenerate: 'Editeaza cantecul', edits_left_label: 'editari gratuite ramase',
       btn_checkout: 'Finalizeaza cadoul', variant_word: 'varianta',
-      footer_note: 'Muzica generata prin AI · compozitie originala pe baza datelor furnizate de client',
+      footer_note: 'Compozitie originala personalizata pe baza povestii tale.',
       msg_creating_order: 'Se creeaza comanda...',
       msg_generating: 'Se compun 2 variante... (~2-3 minute, gratuit)',
       msg_regenerating: 'Se regenereaza 2 variante noi...',
@@ -631,7 +632,7 @@
       hero_sub: 'You tell the story. We write the lyrics and compose the song, with vocals, in the musical style you choose. Delivered by email, ready to send or download.',
       hero_cta: 'Start — from £15',
       hero_note: 'Secure payment · no subscription',
-      uk_only_note: 'Available to UK customers only',
+      intl_note: 'Delivered internationally, by email',
       disc_label: 'COMPOSING',
       how_eyebrow: 'Process', how_title: 'Four steps, no studio, no composer.',
       how_sub: 'The composition engine writes the lyrics from your story and generates the song with vocals, in any musical style you choose.',
@@ -666,6 +667,7 @@
       plan_video_name: 'Video gift', plan_video_desc: 'Song + lyric video for social/WhatsApp',
       sum_package: 'Package', sum_total: 'Total',
       btn_generate: 'Generate your free preview →',
+      btn_generate_starting: 'Starting composition...',
       note_free: 'You don\'t pay now. You only pay if you like the result.',
       resume_msg: 'Payment wasn\'t completed 💛 No worries — your song is saved and waiting for you.',
       resume_btn: 'Try payment again',
@@ -675,7 +677,7 @@
       label_feedback: 'Not quite right? Describe what to change', ph_feedback: 'e.g. more upbeat, slower, different intro...',
       btn_regenerate: 'Edit the song', edits_left_label: 'free edits left',
       btn_checkout: 'Finish the gift', variant_word: 'version',
-      footer_note: 'Music generated with AI · original composition based on details you provide',
+      footer_note: 'Original composition, personalised around your story.',
       msg_creating_order: 'Creating your order...',
       msg_generating: 'Composing 2 versions... (~2-3 minutes, free)',
       msg_regenerating: 'Regenerating 2 new versions...',
@@ -693,7 +695,7 @@
       hero_sub: 'Du erzählst die Geschichte. Wir schreiben den Text und komponieren das Lied, mit Gesang, im Musikstil deiner Wahl. Lieferung per E-Mail, bereit zum Versenden oder Herunterladen.',
       hero_cta: 'Loslegen — ab £15',
       hero_note: 'Sichere Zahlung · kein Abo',
-      uk_only_note: 'Nur für Kunden aus Großbritannien verfügbar',
+      intl_note: 'Weltweiter Versand, per E-Mail',
       disc_label: 'WIRD KOMPONIERT',
       how_eyebrow: 'Ablauf', how_title: 'Vier Schritte, kein Studio, kein Komponist.',
       how_sub: 'Die Kompositions-Engine schreibt den Text aus deiner Geschichte und erzeugt das Lied mit Gesang, in jedem gewünschten Musikstil.',
@@ -728,6 +730,7 @@
       plan_video_name: 'Video-Geschenk', plan_video_desc: 'Lied + Lyric-Video für Social Media/WhatsApp',
       sum_package: 'Paket', sum_total: 'Gesamt',
       btn_generate: 'Kostenlose Vorschau erstellen →',
+      btn_generate_starting: 'Komposition wird gestartet...',
       note_free: 'Du zahlst jetzt noch nicht. Nur wenn dir das Ergebnis gefällt.',
       resume_msg: 'Zahlung wurde nicht abgeschlossen 💛 Kein Problem — dein Lied ist gespeichert und wartet auf dich.',
       resume_btn: 'Zahlung erneut versuchen',
@@ -737,7 +740,7 @@
       label_feedback: 'Nicht ganz richtig? Beschreibe, was geändert werden soll', ph_feedback: 'z.B. fröhlicher, langsamer, anderer Anfang...',
       btn_regenerate: 'Lied bearbeiten', edits_left_label: 'kostenlose Änderungen übrig',
       btn_checkout: 'Geschenk abschließen', variant_word: 'Version',
-      footer_note: 'Musik mit KI erstellt · Originalkomposition basierend auf deinen Angaben',
+      footer_note: 'Originalkomposition, persönlich auf deine Geschichte abgestimmt.',
       msg_creating_order: 'Bestellung wird erstellt...',
       msg_generating: '2 Versionen werden komponiert... (~2-3 Minuten, kostenlos)',
       msg_regenerating: '2 neue Versionen werden erstellt...',
@@ -755,7 +758,7 @@
       hero_sub: 'Cuentas la historia. Nosotros escribimos la letra y componemos la canción, con voz, en el estilo musical que elijas. Entrega por email, lista para enviar o descargar.',
       hero_cta: 'Empieza — desde £15',
       hero_note: 'Pago seguro · sin suscripción',
-      uk_only_note: 'Disponible solo para clientes del Reino Unido',
+      intl_note: 'Entrega internacional, por email',
       disc_label: 'COMPONIENDO',
       how_eyebrow: 'Proceso', how_title: 'Cuatro pasos, sin estudio, sin compositor.',
       how_sub: 'El motor de composición escribe la letra a partir de tu historia y genera la canción con voz, en el género musical que elijas.',
@@ -790,6 +793,7 @@
       plan_video_name: 'Regalo en video', plan_video_desc: 'Canción + video lírico para redes/WhatsApp',
       sum_package: 'Paquete', sum_total: 'Total',
       btn_generate: 'Generar previsualización gratis →',
+      btn_generate_starting: 'Iniciando la composición...',
       note_free: 'No pagas ahora. Solo pagas si te gusta el resultado.',
       resume_msg: 'El pago no se completó 💛 No te preocupes — tu canción está guardada y te espera.',
       resume_btn: 'Intentar el pago de nuevo',
@@ -799,7 +803,7 @@
       label_feedback: '¿No es exactamente lo que quieres? Describe qué cambiar', ph_feedback: 'ej: más alegre, más lenta, otro inicio...',
       btn_regenerate: 'Editar la canción', edits_left_label: 'ediciones gratuitas restantes',
       btn_checkout: 'Finalizar el regalo', variant_word: 'versión',
-      footer_note: 'Música generada con IA · composición original basada en los datos que proporcionas',
+      footer_note: 'Composición original, personalizada según tu historia.',
       msg_creating_order: 'Creando el pedido...',
       msg_generating: 'Componiendo 2 versiones... (~2-3 minutos, gratis)',
       msg_regenerating: 'Regenerando 2 versiones nuevas...',
@@ -817,7 +821,7 @@
       hero_sub: 'Racconti la storia. Noi scriviamo il testo e componiamo la canzone, con voce, nello stile musicale che scegli. Consegna via email, pronta da inviare o scaricare.',
       hero_cta: 'Inizia — da £15',
       hero_note: 'Pagamento sicuro · nessun abbonamento',
-      uk_only_note: 'Disponibile solo per clienti nel Regno Unito',
+      intl_note: 'Consegna internazionale, via email',
       disc_label: 'IN COMPOSIZIONE',
       how_eyebrow: 'Processo', how_title: 'Quattro passi, senza studio, senza compositore.',
       how_sub: 'Il motore di composizione scrive il testo dalla tua storia e genera la canzone con voce, nel genere musicale che scegli.',
@@ -852,6 +856,7 @@
       plan_video_name: 'Regalo video', plan_video_desc: 'Canzone + video con testo per social/WhatsApp',
       sum_package: 'Pacchetto', sum_total: 'Totale',
       btn_generate: 'Genera l\'anteprima gratis →',
+      btn_generate_starting: 'Avvio della composizione...',
       note_free: 'Non paghi ora. Paghi solo se ti piace il risultato.',
       resume_msg: 'Il pagamento non è stato completato 💛 Nessun problema — la tua canzone è salvata e ti aspetta.',
       resume_btn: 'Riprova il pagamento',
@@ -861,7 +866,7 @@
       label_feedback: 'Non è esattamente come vuoi? Descrivi cosa cambiare', ph_feedback: 'es: più allegra, più lenta, inizio diverso...',
       btn_regenerate: 'Modifica la canzone', edits_left_label: 'modifiche gratuite rimaste',
       btn_checkout: 'Completa il regalo', variant_word: 'versione',
-      footer_note: 'Musica generata con IA · composizione originale basata sui dati forniti',
+      footer_note: 'Composizione originale, personalizzata sulla tua storia.',
       msg_creating_order: 'Creazione ordine...',
       msg_generating: 'Composizione di 2 versioni... (~2-3 minuti, gratis)',
       msg_regenerating: 'Rigenerazione di 2 nuove versioni...',
@@ -879,7 +884,7 @@
       hero_sub: 'Vous racontez l\'histoire. Nous écrivons les paroles et composons la chanson, avec voix, dans le style musical de votre choix. Livrée par email, prête à envoyer ou télécharger.',
       hero_cta: 'Commencer — à partir de £15',
       hero_note: 'Paiement sécurisé · sans abonnement',
-      uk_only_note: 'Disponible uniquement pour les clients du Royaume-Uni',
+      intl_note: 'Livraison internationale, par email',
       disc_label: 'EN COMPOSITION',
       how_eyebrow: 'Processus', how_title: 'Quatre étapes, sans studio, sans compositeur.',
       how_sub: 'Le moteur de composition écrit les paroles à partir de votre histoire et génère la chanson avec voix, dans le genre musical de votre choix.',
@@ -914,6 +919,7 @@
       plan_video_name: 'Cadeau vidéo', plan_video_desc: 'Chanson + vidéo lyrics pour réseaux sociaux/WhatsApp',
       sum_package: 'Pack', sum_total: 'Total',
       btn_generate: 'Générer l\'aperçu gratuit →',
+      btn_generate_starting: 'Démarrage de la composition...',
       note_free: 'Vous ne payez pas maintenant. Seulement si le résultat vous plaît.',
       resume_msg: 'Le paiement n\'a pas abouti 💛 Pas d\'inquiétude — votre chanson est enregistrée et vous attend.',
       resume_btn: 'Réessayer le paiement',
@@ -923,7 +929,7 @@
       label_feedback: 'Pas tout à fait ce que vous voulez ? Décrivez ce qu\'il faut changer', ph_feedback: 'ex : plus joyeux, plus lent, autre intro...',
       btn_regenerate: 'Modifier la chanson', edits_left_label: 'modifications gratuites restantes',
       btn_checkout: 'Finaliser le cadeau', variant_word: 'version',
-      footer_note: 'Musique générée par IA · composition originale basée sur vos informations',
+      footer_note: 'Composition originale, personnalisée selon votre histoire.',
       msg_creating_order: 'Création de la commande...',
       msg_generating: 'Composition de 2 versions... (~2-3 minutes, gratuit)',
       msg_regenerating: 'Régénération de 2 nouvelles versions...',
@@ -941,7 +947,7 @@
       hero_sub: 'Разказваш историята. Ние пишем текста и композираме песента, с вокал, в избрания от теб музикален стил. Доставка по имейл, готова за изпращане или изтегляне.',
       hero_cta: 'Започни — от £15',
       hero_note: 'Сигурно плащане · без абонамент',
-      uk_only_note: 'Достъпно само за клиенти от Обединеното кралство',
+      intl_note: 'Международна доставка, по имейл',
       disc_label: 'СЕ КОМПОЗИРА',
       how_eyebrow: 'Процес', how_title: 'Четири стъпки, без студио, без композитор.',
       how_sub: 'Двигателят за композиране пише текста по твоята история и генерира песента с вокал, в избрания от теб музикален жанр.',
@@ -976,6 +982,7 @@
       plan_video_name: 'Видео подарък', plan_video_desc: 'Песен + видео с текст за социални мрежи/WhatsApp',
       sum_package: 'Пакет', sum_total: 'Общо',
       btn_generate: 'Генерирай безплатен преглед →',
+      btn_generate_starting: 'Стартираме композирането...',
       note_free: 'Не плащаш сега. Плащаш само ако ти хареса резултатът.',
       resume_msg: 'Плащането не завърши 💛 Няма проблем — песента ти е запазена и те чака.',
       resume_btn: 'Опитай плащането отново',
@@ -985,7 +992,7 @@
       label_feedback: 'Не е точно както искаш? Опиши какво да променим', ph_feedback: 'напр. по-весело, по-бавно, друго начало...',
       btn_regenerate: 'Редактирай песента', edits_left_label: 'безплатни редакции остават',
       btn_checkout: 'Завърши подаръка', variant_word: 'версия',
-      footer_note: 'Музика, генерирана с ИИ · оригинална композиция по предоставените от теб данни',
+      footer_note: 'Оригинална композиция, персонализирана според твоята история.',
       msg_creating_order: 'Създава се поръчката...',
       msg_generating: 'Композират се 2 версии... (~2-3 минути, безплатно)',
       msg_regenerating: 'Генерират се 2 нови версии...',
@@ -1003,7 +1010,7 @@
       hero_sub: 'Hikayeyi siz anlatın. Biz sözleri yazıp seçtiğiniz müzik tarzında, vokalli olarak şarkıyı besteleriz. E-posta ile teslim edilir, göndermeye veya indirmeye hazır.',
       hero_cta: 'Başlayın — £15\'ten itibaren',
       hero_note: 'Güvenli ödeme · abonelik yok',
-      uk_only_note: 'Sadece Birleşik Krallık müşterileri için geçerlidir',
+      intl_note: 'Uluslararası teslimat, e-posta ile',
       disc_label: 'BESTELENİYOR',
       how_eyebrow: 'Süreç', how_title: 'Stüdyosuz, bestecisiz dört adım.',
       how_sub: 'Kompozisyon motoru hikayenizden yola çıkarak sözleri yazar ve seçtiğiniz müzik türünde vokalli şarkıyı oluşturur.',
@@ -1038,6 +1045,7 @@
       plan_video_name: 'Video hediye', plan_video_desc: 'Şarkı + sosyal medya/WhatsApp için sözlü video',
       sum_package: 'Paket', sum_total: 'Toplam',
       btn_generate: 'Ücretsiz ön izlemeyi oluştur →',
+      btn_generate_starting: 'Beste başlıyor...',
       note_free: 'Şimdi ödemezsiniz. Sadece sonucu beğenirseniz ödersiniz.',
       resume_msg: 'Ödeme tamamlanmadı 💛 Endişelenmeyin — şarkınız kaydedildi ve sizi bekliyor.',
       resume_btn: 'Ödemeyi tekrar deneyin',
@@ -1047,7 +1055,7 @@
       label_feedback: 'Tam istediğiniz gibi değil mi? Neyin değişmesini istediğinizi yazın', ph_feedback: 'örn: daha neşeli, daha yavaş, farklı bir giriş...',
       btn_regenerate: 'Şarkıyı düzenle', edits_left_label: 'ücretsiz düzenleme hakkı kaldı',
       btn_checkout: 'Hediyeyi tamamla', variant_word: 'versiyon',
-      footer_note: 'Yapay zeka ile üretilen müzik · sizin verdiğiniz bilgilere dayanan özgün kompozisyon',
+      footer_note: 'Hikayenize özel, orijinal beste.',
       msg_creating_order: 'Sipariş oluşturuluyor...',
       msg_generating: '2 versiyon besteleniyor... (~2-3 dakika, ücretsiz)',
       msg_regenerating: '2 yeni versiyon yeniden oluşturuluyor...',
@@ -1238,7 +1246,10 @@
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     generateBtn.disabled = true;
-    statusMsg.textContent = t('msg_creating_order');
+    const generateBtnLabel = document.getElementById('generate-btn-label');
+    const originalBtnText = generateBtnLabel.textContent;
+    generateBtnLabel.textContent = t('btn_generate_starting');
+    statusMsg.textContent = '';
     statusMsg.className = '';
 
     try {
@@ -1253,6 +1264,7 @@
         statusMsg.textContent = t('msg_error_prefix') + (createData.error || t('msg_try_again'));
         statusMsg.className = 'status-err';
         generateBtn.disabled = false;
+        generateBtnLabel.textContent = originalBtnText;
         return;
       }
 
@@ -1261,26 +1273,23 @@
       if (createData.accessToken) localStorage.setItem('nds_access_token', createData.accessToken);
       checkoutPriceEl.textContent = '£' + selectedPlan.price;
 
-      await startGeneration(currentOrderId);
+      // pornim generarea, apoi redirectionam imediat catre pagina dedicata de asteptare —
+      // nu mai facem polling inline pe formular, ca sa nu para ca site-ul s-a blocat
+      await fetch(`/api/orders/${currentOrderId}/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ feedback: null })
+      });
+
+      const tokenParam = encodeURIComponent(createData.accessToken || '');
+      window.location.href = `/se-compune.html?id=${currentOrderId}&token=${tokenParam}`;
     } catch (err) {
       statusMsg.textContent = t('msg_conn_error');
       statusMsg.className = 'status-err';
       generateBtn.disabled = false;
+      generateBtnLabel.textContent = originalBtnText;
     }
   });
-
-  async function startGeneration(orderId, feedback) {
-    statusMsg.textContent = t('msg_generating');
-    statusMsg.className = '';
-
-    await fetch(`/api/orders/${orderId}/generate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ feedback: feedback || null })
-    });
-
-    pollOrderStatus(orderId);
-  }
 
   function wireVariantProgress(index, durationSeconds) {
     const audio = variantAudios[index];
@@ -1405,23 +1414,32 @@
   checkoutBtn.addEventListener('click', () => goToCheckout(currentOrderId, checkoutBtn, previewStatusMsg));
   resumeCheckoutBtn.addEventListener('click', () => goToCheckout(currentOrderId, resumeCheckoutBtn, previewStatusMsg));
 
-  // -------- Recuperare comanda abandonata --------
-  // Cazul 1: revine printr-un link cu ?resume=<orderId> (dupa ce a anulat plata pe Stripe).
-  // Cazul 2: revine direct pe site, fara link, dar are o comanda nefinalizata in localStorage.
+  // -------- Revenire pe formular, dupa ce previzualizarea e gata sau plata a fost abandonata --------
+  // Cazul 1: ?ready=<orderId> — tocmai a terminat de generat pe /se-compune.html, prima
+  //          data cand vede previzualizarea. NU arata bannerul de "plata neterminata".
+  // Cazul 2: ?resume=<orderId> — a anulat plata pe Stripe (cancel_url), revine la un
+  //          preview deja generat anterior. Arata bannerul de recuperare.
+  // Cazul 3: fara parametru in URL, dar exista o comanda nefinalizata in localStorage —
+  //          tratat identic cu cazul 2 (comportamentul de dinainte, neschimbat).
   (async function checkResume() {
     const params = new URLSearchParams(window.location.search);
+    const readyId = params.get('ready');
     const resumeId = params.get('resume') || localStorage.getItem('nds_order_id');
-    if (!resumeId) return;
+
+    const targetId = readyId || resumeId;
+    if (!targetId) return;
+
+    const showBanner = !readyId; // doar pentru cazurile 2 si 3, nu pentru cazul 1
 
     try {
-      const res = await fetch(`/api/orders/${resumeId}`);
+      const res = await fetch(`/api/orders/${targetId}`);
       if (!res.ok) { localStorage.removeItem('nds_order_id'); return; }
       const order = await res.json();
 
       if (order.status === 'preview_ready') {
-        currentOrderId = resumeId;
+        currentOrderId = targetId;
         checkoutPriceEl.textContent = '£' + order.price;
-        pollOrderStatus(resumeId, true);
+        pollOrderStatus(targetId, showBanner);
       } else if (order.status === 'ready') {
         localStorage.removeItem('nds_order_id');
       }

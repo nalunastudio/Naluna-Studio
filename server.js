@@ -5,13 +5,15 @@
 // 1. Clientul completeaza formularul si apasa "Genereaza previzualizarea" (GRATUIT).
 // 2. POST /api/orders creeaza comanda in PostgreSQL (validare stricta, pret calculat
 //    server-side dupa pachet — pretul trimis de client NU e niciodata folosit direct).
-// 3. POST /api/orders/:id/generate genereaza 2 VARIANTE in paralel, descarca fiecare
-//    fisier complet (privat), taie un preview de 55 sec cu ffmpeg, citeste durata reala.
+// 3. POST /api/orders/:id/generate trimite UN SINGUR apel catre SunoAPI, care returneaza
+//    de obicei 2 piese per task — folosite ca cele 2 variante. Pentru fiecare, descarca
+//    fisierul complet (privat), taie un preview de 55 sec cu ffmpeg, citeste durata reala.
 // 4. Clientul asculta, alege o varianta (POST /api/orders/:id/select), sau cere editari
 //    (POST /api/orders/:id/regenerate) — 3 runde gratuite.
-// 5. POST /api/orders/:id/checkout creeaza sesiunea Stripe, RESTRICTIONATA tehnic la
-//    clienti din UK (shipping_address_collection.allowed_countries), fara calcul automat
-//    de TVA (automatic_tax dezactivat — sole trader UK, neinregistrat TVA).
+// 5. POST /api/orders/:id/checkout creeaza sesiunea Stripe — vanzare internationala, fara
+//    restrictie de tara. Produs digital, fara colectare de adresa de livrare. TVA ramane
+//    dezactivat implicit, activabil explicit prin STRIPE_AUTOMATIC_TAX_ENABLED=true dupa
+//    ce contul Stripe e configurat corespunzator (vezi README).
 // 6. Dupa plata confirmata (webhook), fisierul COMPLET devine accesibil la
 //    /media/full/:orderId?token=ACCESS_TOKEN — token-ul e obligatoriu, verificat
 //    timing-safe fata de order.accessToken. Comanda inexistenta, token lipsa, token
@@ -181,7 +183,31 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, 
       if (orderId) {
         const order = await db.getOrderById(orderId);
         if (order && order.status !== 'ready') {
-          const updated = await db.updateOrder(orderId, { status: 'ready', paidAt: new Date().toISOString() });
+          // Date de tranzactie pastrate pentru evidenta contabila si pregatire OSS —
+          // strict cele returnate de Stripe, fara nicio presupunere sau calcul propriu.
+          // NU logam sesiunea Stripe intreaga (contine date de client) — doar campurile
+          // specifice de care avem nevoie, si niciodata cheia secreta sau date de card.
+          const customerCountry = (session.customer_details && session.customer_details.address && session.customer_details.address.country) || null;
+          const paymentCurrency = session.currency || null;
+          const amountTotal = typeof session.amount_total === 'number' ? session.amount_total / 100 : null;
+          const taxAmount = (session.total_details && typeof session.total_details.amount_tax === 'number')
+            ? session.total_details.amount_tax / 100
+            : null;
+          const stripeSessionId = session.id || null;
+          const stripePaymentIntentId = typeof session.payment_intent === 'string'
+            ? session.payment_intent
+            : (session.payment_intent && session.payment_intent.id) || null;
+
+          const updated = await db.updateOrder(orderId, {
+            status: 'ready',
+            paidAt: new Date().toISOString(),
+            customerCountry,
+            paymentCurrency,
+            amountTotal,
+            taxAmount,
+            stripeSessionId,
+            stripePaymentIntentId
+          });
           sendDeliveryEmail(updated).catch(err => {
             console.error('Email de livrare esuat pentru comanda', orderId, err.message);
             // nu blocam livrarea — clientul tot poate lua melodia din pagina de succes
@@ -191,7 +217,7 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, 
     }
     res.json({ received: true });
   } catch (err) {
-    console.error('Eroare la procesarea webhook-ului:', err);
+    console.error('Eroare la procesarea webhook-ului:', err.message);
     // raspundem 200 catre Stripe ca sa nu reincerce la infinit un eveniment pe care
     // oricum nu il putem procesa corect fara interventie; eroarea ramane in log.
     res.json({ received: true, processedWithError: true });
@@ -509,6 +535,13 @@ app.post('/api/orders/:orderId/generate', generationLimiter, async (req, res, ne
     if (!order) return res.status(404).json({ error: 'Comanda nu exista.' });
     if (order.status === 'ready') return res.status(400).json({ error: 'Comanda e deja platita si finalizata.' });
 
+    // Blocaj impotriva a doua generari in paralel pentru aceeasi comanda — fara asta,
+    // un dublu-click sau un retry de pe client ar putea porni un al doilea task SunoAPI
+    // in timp ce primul e inca activ, consumand credite degeaba pentru aceeasi comanda.
+    if (order.status === 'generating' || order.status === 'processing_provider_result') {
+      return res.status(409).json({ error: 'Generarea este deja in desfasurare.' });
+    }
+
     const feedback = typeof req.body?.feedback === 'string' ? req.body.feedback.slice(0, 500) : null;
 
     await db.updateOrder(order.id, { status: 'generating' });
@@ -539,6 +572,12 @@ app.post('/api/orders/:orderId/regenerate', generationLimiter, async (req, res, 
     if (order.status === 'ready') return res.status(400).json({ error: 'Comanda e deja platita si finalizata.' });
     if (order.editsUsed >= FREE_EDITS) {
       return res.status(400).json({ error: `Ai folosit toate cele ${FREE_EDITS} editari gratuite.` });
+    }
+
+    // Acelasi blocaj ca la /generate — nu pornim o a doua generare in paralel pentru
+    // aceeasi comanda.
+    if (order.status === 'generating' || order.status === 'processing_provider_result') {
+      return res.status(409).json({ error: 'Generarea este deja in desfasurare.' });
     }
 
     const feedback = typeof req.body?.feedback === 'string' ? req.body.feedback.slice(0, 500) : null;
@@ -619,9 +658,10 @@ app.get('/api/orders/:orderId', async (req, res, next) => {
 });
 
 // ==========================================================================================
-// 6. Creeaza sesiunea de plata pentru varianta selectata
-// TVA: dezactivat (sole trader UK, neinregistrat TVA). UK-only: blocaj tehnic la nivel
-// de tara permisa pentru "livrare" (produs digital, dar campul e refolosit ca filtru de tara).
+// 6. Creeaza sesiunea de plata pentru varianta selectata.
+// Vanzare internationala — fara restrictie de tara. Produs digital: nu se colecteaza
+// adresa de livrare (nu exista ce sa se livreze fizic). TVA ramane dezactivat implicit,
+// controlat explicit prin STRIPE_AUTOMATIC_TAX_ENABLED — vezi comentariul de mai jos.
 // ==========================================================================================
 app.post('/api/orders/:orderId/checkout', async (req, res, next) => {
   try {
@@ -635,6 +675,12 @@ app.post('/api/orders/:orderId/checkout', async (req, res, next) => {
     if (!order.selectedVariantId) {
       return res.status(400).json({ error: 'Alege o varianta inainte de plata.' });
     }
+
+    // TVA: dezactivat implicit. Se activeaza DOAR daca STRIPE_AUTOMATIC_TAX_ENABLED=true
+    // in .env — si asta doar dupa ce contul Stripe e configurat si verificat pentru
+    // calcul automat de taxe (Stripe Tax activat din Dashboard, inregistrari fiscale
+    // relevante puse la punct). Nu schimba aceasta valoare fara acea configurare prealabila.
+    const automaticTaxEnabled = process.env.STRIPE_AUTOMATIC_TAX_ENABLED === 'true';
 
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
@@ -650,18 +696,15 @@ app.post('/api/orders/:orderId/checkout', async (req, res, next) => {
         },
         quantity: 1
       }],
-      // Colectam adresa de facturare ca dovada suplimentara de UK — nu pentru TVA (dezactivat mai jos).
-      billing_address_collection: 'required',
-      // BLOCAJ TEHNIC: vanzare doar catre UK. Produsul e digital, nu se livreaza fizic
-      // nimic, dar folosim campul de "livrare" ca sa restrictionam ce tari poate alege
-      // clientul la checkout — daca nu poate selecta UK, nu poate finaliza plata.
-      shipping_address_collection: { allowed_countries: ['GB'] },
-      // TVA DEZACTIVAT explicit: sole trader in UK, neinregistrat TVA momentan.
-      // Cand te inregistrezi TVA (dupa ce depasesti pragul de ~£90.000/an sau optezi
-      // voluntar mai devreme), activezi Stripe Tax din Dashboard SI schimbi valoarea
-      // de mai jos in true — pana atunci, ramane false, nu se calculeaza si nu se
-      // colecteaza TVA de la clienti.
-      automatic_tax: { enabled: false },
+      // Colectam adresa de facturare — Stripe o cere oricum pentru anumite metode de plata
+      // si e utila pentru evidenta contabila (tara clientului, vezi webhook). 'auto' inseamna
+      // ca Stripe decide cand chiar e necesara, in loc sa o ceara mereu, indiferent de caz.
+      billing_address_collection: 'auto',
+      // Fara shipping_address_collection — produsul e digital (livrare prin email), nu
+      // exista nimic de expediat fizic, deci nu exista niciun motiv sa cerem sau sa
+      // restrictionam o adresa de livrare. Asta elimina si blocajul tehnic care limita
+      // anterior cumpararea doar la clienti din UK.
+      automatic_tax: { enabled: automaticTaxEnabled },
       metadata: { orderId: order.id },
       success_url: `${DOMAIN}/succes.html?order=${order.id}&token=${order.accessToken}`,
       // plata abandonata sau esuata -> revine pe pagina principala cu comanda deja salvata

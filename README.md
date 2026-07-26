@@ -1,6 +1,6 @@
 # NALUNA — generator de melodii personalizate
 
-Site de comenzi cadou: melodie personalizata generata prin AI, preview gratuit inainte de plata, plata securizata prin Stripe, livrare automata pe email. Vanzare restrictionata tehnic la Marea Britanie, 8 limbi de interfata.
+Site de comenzi cadou: melodie personalizata generata prin AI, preview gratuit inainte de plata, plata securizata prin Stripe, livrare automata pe email. Vanzare internationala, fara restrictie de tara, 8 limbi de interfata.
 
 ## Ce contine
 
@@ -31,18 +31,21 @@ Pe Railway: din dashboard, **New -> Database -> Add PostgreSQL**. Railway inject
 Local: instalezi Postgres sau rulezi `docker run -p 5432:5432 -e POSTGRES_PASSWORD=parola postgres`, apoi pui `DATABASE_URL` in `.env`.
 
 ### 2. Cont Stripe
-- Creezi cont pe stripe.com, activezi platile in GBP.
+- Creezi cont pe stripe.com. Vanzarea e internationala — nu exista restrictie de tara la checkout, Stripe decide singur ce metode de plata ofera fiecarui client.
 - Din Dashboard -> Developers -> API keys, copiezi `STRIPE_SECRET_KEY`.
 - Din Developers -> Webhooks, adaugi endpoint `https://domeniul-tau.ro/api/webhook`, selectezi evenimentul `checkout.session.completed`, copiezi `STRIPE_WEBHOOK_SECRET`.
-- **TVA**: `automatic_tax` e dezactivat explicit in cod (`enabled: false`) — sole trader UK, neinregistrat TVA momentan. Cand te inregistrezi, activezi Stripe Tax din Dashboard SI schimbi valoarea in `server.js` (cauta `automatic_tax`).
+- **TVA**: `automatic_tax` ramane **dezactivat implicit** (`STRIPE_AUTOMATIC_TAX_ENABLED=false` in `.env`). Nu-l activezi doar schimband codul — trebuie intai sa activezi Stripe Tax din Dashboard-ul Stripe si sa confirmi ca inregistrarile fiscale relevante (ex: OSS, daca vinzi catre UE) sunt puse la punct. Abia dupa aceea schimbi variabila in `true`. Codul nu presupune si nu declara singur nicio conformitate fiscala — doar respecta valoarea variabilei.
+- **Produs digital**: checkout-ul nu colecteaza adresa de livrare (nu exista ce sa se livreze fizic) — doar adresa de facturare, si doar cand Stripe o considera necesara (`billing_address_collection: 'auto'`).
 
-### 3. Provider API de muzica — NECESITA CONFIRMAREA TA
-Nu exista API oficial public Suno inca. Codul din `server.js` (functia `callMusicProvider`) e o **structura generica**, nu o integrare verificata cu un provider real — inainte de lansare trebuie sa confirmi exact:
-- Providerul ales (sunoapi.org / apiframe.ai / aimlapi.com / altul) si `MUSIC_API_BASE_URL` lui exact.
-- Numele exact al campurilor din request (stil muzical, versuri) si din raspuns (id task, url audio, valorile posibile pentru status).
-- Daca providerul returneaza deja 2 clipuri per apel (comun la Suno) — daca da, codul actual apeleaza de 2 ori si plateste de 2 ori degeaba, trebuie adaptat sa desparta cele 2 URL-uri dintr-un singur raspuns.
+### 3. Provider API de muzica — SunoAPI.org, integrare confirmata
+Integrarea foloseste API-ul real, documentat, al [sunoapi.org](https://sunoapi.org):
+- `POST /api/v1/generate` — creeaza un task cu `customMode: false`, `instrumental: false`, `model: "V4_5ALL"`, si `callBackUrl` catre `${DOMAIN}/api/music/callback`. Un singur apel produce **doua** variante (nu platesti de doua ori).
+- **Promptul e limitat la 500 de caractere** (limita reala SunoAPI pentru `customMode:false`) — `buildPrompt()` pastreaza intotdeauna intacte limba, stilul, ocazia si destinatarul, aloca spatiul ramas povestii si, daca exista, feedback-ului de editare, si taie sigur pe caractere Unicode complete (niciodata la mijlocul unui emoji sau al altui caracter multi-byte). Daca promptul rezultat ar fi gol, arunca o eroare clara in loc sa trimita o cerere invalida.
+- `GET /api/v1/generate/record-info?taskId=...` — polling la fiecare 6 secunde, pana la `SUCCESS` (sau un status de eroare: `CREATE_TASK_FAILED`, `GENERATE_AUDIO_FAILED`, `CALLBACK_EXCEPTION`, `SENSITIVE_WORD_ERROR`).
+- `POST /api/music/callback` — SunoAPI trimite rezultatul si aici, in paralel cu polling-ul. **Preluarea e atomica la nivel de baza de date**: `db.claimOrderForProviderFinalization()` executa un singur `UPDATE ... WHERE status NOT IN (...) RETURNING *` — Postgres serializeaza cererile concurente, deci doar polling-ul SAU callback-ul (niciodata ambele) descarca si urca efectiv fisierele. Comanda trece temporar prin statusul `processing_provider_result`; daca procesarea esueaza dupa preluare, comanda e marcata explicit `generation_failed`, nu ramane blocata.
+- Extractia pieselor din raspuns (`extractSunoTracks()`) verifica, in ordine, toate structurile posibile documentate (`data.response.sunoData`, `data.response.data`, `data.data`, `data` direct, si variante partial-despachetate) si ambele denumiri de camp pentru URL (`audioUrl`/`audio_url`) — documentatia publica nu era perfect consistenta intre surse pe forma exacta a callback-ului.
 
-Comentariile din jurul functiei `callMusicProvider()` din `server.js` detaliaza exact fiecare intrebare. Fara raspunsuri la ele, generarea de melodii poate esua sau poate costa dublu fata de cat trebuie.
+**Un lucru pe care nu l-am putut verifica**: nu am acces la retea in acest mediu, deci nu am facut un apel real catre SunoAPI si nu am vazut un callback autentic. Extractia robusta si preluarea atomica sunt testate cu date simulate (vezi rezultatele testelor din conversatie), dar prima comanda reala, dupa deploy, ramane confirmarea finala.
 
 ### 4. Email de livrare — Resend
 1. Cont pe resend.com, verifici un domeniu (Settings -> Domains) — fara domeniu verificat, poti trimite doar de pe `onboarding@resend.dev`, valabil pentru testare, nu pentru productie.
@@ -157,6 +160,22 @@ Sectiune noua, gestionata exclusiv din `/admin` — nu exista formular public de
 - **Fisierele** merg direct in Cloudflare R2 / AWS S3, daca ai configurat stocarea cloud (vezi sectiunea dedicata mai jos). Fara ea configurata, folosesc acelasi fallback local ca fisierele audio ale comenzilor — cu acelasi risc de disc efemer pe Railway.
 - **Limite fisiere**: max 60MB per fisier, tipuri acceptate: imagini (jpg/png/webp), video (mp4/webm), audio (mp3/wav/m4a) — validate atat dupa extensie cat si dupa tipul real MIME.
 
+## Pagina de asteptare in timpul generarii (`se-compune.html`)
+
+Dupa ce apasa "Genereaza previzualizarea", clientul e redirectionat (aceeasi fila) catre `/se-compune.html?id=<orderId>&token=<accessToken>` — nu mai ramane pe formular cu un text mic sub buton, care putea da impresia ca pagina s-a blocat.
+
+**Progresul e o estimare bazata pe timp scurs, nu un procent real primit de la Suno** (furnizorul nu ofera asa ceva) — plafonata dur la **99%**, niciodata 100% decat cand serverul confirma explicit `preview_ready` sau `ready`. Mesajul afisat trece prin 7 praguri de procent (analiza poveste -> versuri -> linie melodica -> armonie -> inregistrare preview -> aproape gata), cu un cronometru estimat care scade si dispare cand nu mai are sens. Progresul se pastreaza in `localStorage` (cheie per comanda) — daca clientul inchide si revine pe acelasi link, continua de unde a ramas, nu reporneste de la 0%.
+
+**Fara reincercare automata.** Cand statusul devine `generation_failed`, pagina opreste complet polling-ul si progresul si arata o stare de eroare cu mesaj clar ("Nu am putut finaliza melodia de aceasta data. Nu ai fost taxat.") si un buton manual "Incearca din nou" — acesta e **singurul loc** din pagina care apeleaza `/generate`, si doar la click explicit. Nu se porneste niciun task Suno nou fara actiune directa a clientului. O eroare de retea la polling (nu de generare) arata doar un mesaj discret ("Conexiunea dureaza putin mai mult") si continua sa verifice, fara sa atinga `/generate`.
+
+Cand statusul devine `preview_ready`, redirectioneaza automat catre `/index.html?ready=<orderId>` — un parametru **diferit** de `?resume=` (folosit pentru plati abandonate), tocmai ca sa nu apara gresit bannerul de "plata neterminata" pentru un client care nici n-a ajuns inca la plata.
+
+Editarea (regenerarea unei previzualizari deja afisate) ramane neschimbata — se intampla inline, pe formularul principal, nu redirectioneaza nicaieri.
+
+## Protectie impotriva generarilor duplicate
+
+`POST /api/orders/:id/generate` si `POST /api/orders/:id/regenerate` verifica acum statusul curent inainte sa porneasca un task nou: daca statusul e deja `generating` sau `processing_provider_result`, raspund cu **409** si mesajul "Generarea este deja in desfasurare." — previne pornirea a doua task-uri Suno in paralel pentru aceeasi comanda (dublu-click, retry de pe client, tab-uri multiple etc.), care ar consuma credite degeaba.
+
 ## Identitate vizuala — NALUNA
 
 Rebranding complet fata de versiunea anterioara ("Nota de Suflet"). Nicio functionalitate nu s-a schimbat — doar culori, tipografie, logo.
@@ -171,5 +190,6 @@ Rebranding complet fata de versiunea anterioara ("Nota de Suflet"). Nicio functi
 ## Note tehnice
 
 - **8 limbi** — romana, engleza, germana, spaniola, italiana, franceza, bulgara, turca. Traducerile sunt in obiectul `translations` din `public/index.html` (cauta `const translations = {`), plus dictionare mai mici in `succes.html` si `comanda-mea.html`. Emailul de livrare vine automat in limba selectata de client la comanda.
-- **UK-only, tehnic, nu doar declarativ**: `shipping_address_collection: { allowed_countries: ['GB'] }` in sesiunea Stripe Checkout — desi produsul e digital, campul de "livrare" e refolosit ca filtru de tara, clientul nu poate finaliza plata daca nu selecteaza UK.
+- **Vanzare internationala** — checkout-ul nu mai restrictioneaza tara clientului (a existat anterior un blocaj tehnic prin `shipping_address_collection.allowed_countries: ['GB']`, eliminat complet). Stripe decide singur ce metode de plata ofera fiecarui client, in functie de tara si cont.
+- **Date de tranzactie, pentru evidenta si pregatire OSS** — la fiecare plata confirmata, webhook-ul salveaza pe comanda: tara clientului (`customerCountry`), moneda (`paymentCurrency`), suma totala platita (`amountTotal`), taxa calculata de Stripe daca exista (`taxAmount`), ID-ul sesiunii Stripe (`stripeSessionId`) si ID-ul payment intent-ului (`stripePaymentIntentId`). Sunt strict campurile returnate de Stripe — codul nu calculeaza sau presupune nimic despre obligatii fiscale, si nu declara nicaieri conformitate OSS; doar pastreaza datele de care ai nevoie cand faci acea inregistrare.
 - **Teme**: formularul are 8 teme (dor, onomastica, aniversare, declaratie, nunta, pierdere, pentru mine, altceva). Fiecare influenteaza promptul trimis catre AI prin `buildPrompt()` din `server.js`.

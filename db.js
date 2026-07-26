@@ -64,6 +64,17 @@ async function initDb() {
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS music_task_id TEXT;`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_orders_music_task_id ON orders(music_task_id);`);
 
+  // Date de tranzactie Stripe, salvate la confirmarea platii (webhook) — strict cele
+  // returnate de Stripe, pentru evidenta contabila si pregatire pentru inregistrare OSS
+  // ulterioara. Migrare sigura: ADD COLUMN IF NOT EXISTS nu atinge randurile existente,
+  // comenzile deja platite raman intacte, doar cu aceste campuri goale (NULL) retroactiv.
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS customer_country TEXT;`);
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_currency TEXT;`);
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS amount_total NUMERIC;`);
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS tax_amount NUMERIC;`);
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS stripe_session_id TEXT;`);
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS stripe_payment_intent_id TEXT;`);
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS testimonials (
       id UUID PRIMARY KEY,
@@ -106,7 +117,13 @@ function rowToOrder(row) {
     error: row.error,
     createdAt: row.created_at,
     generatedAt: row.generated_at,
-    paidAt: row.paid_at
+    paidAt: row.paid_at,
+    customerCountry: row.customer_country,
+    paymentCurrency: row.payment_currency,
+    amountTotal: row.amount_total !== null && row.amount_total !== undefined ? Number(row.amount_total) : null,
+    taxAmount: row.tax_amount !== null && row.tax_amount !== undefined ? Number(row.tax_amount) : null,
+    stripeSessionId: row.stripe_session_id,
+    stripePaymentIntentId: row.stripe_payment_intent_id
   };
 }
 
@@ -176,7 +193,13 @@ const COLUMN_MAP = {
   musicTaskId: 'music_task_id',
   error: 'error',
   generatedAt: 'generated_at',
-  paidAt: 'paid_at'
+  paidAt: 'paid_at',
+  customerCountry: 'customer_country',
+  paymentCurrency: 'payment_currency',
+  amountTotal: 'amount_total',
+  taxAmount: 'tax_amount',
+  stripeSessionId: 'stripe_session_id',
+  stripePaymentIntentId: 'stripe_payment_intent_id'
 };
 
 async function updateOrder(id, patch) {
