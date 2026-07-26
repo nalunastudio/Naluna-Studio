@@ -1,2 +1,12 @@
+# nixpacks.toml — configurare build pentru Railway
+#
+# "..." extinde pachetele detectate automat de Nixpacks pentru proiect (Node.js, npm) —
+# FARA acest spread, array-ul de mai jos ar INLOCUI complet lista auto-detectata, iar
+# Node.js nu ar mai fi instalat deloc (aplicatia nu ar mai porni).
+#
+# Am folosit anterior `aptPkgs = ["ffmpeg"]`, care in practica s-a dovedit nesigur pe
+# Railway pentru exact acest pachet — mai multi dezvoltatori au raportat aceeasi eroare
+# ("ffmpeg": executable file not found / ENOENT) cu acea configurare. `nixPkgs` e metoda
+# documentata oficial si confirmata ca functioneaza pentru ffmpeg.
 [phases.setup]
-aptPkgs = ["ffmpeg"]
+nixPkgs = ["...", "ffmpeg"]

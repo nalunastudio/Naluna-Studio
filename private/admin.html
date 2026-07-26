@@ -109,17 +109,17 @@
   </div>
   <div class="stats">
     <div class="stat"><div class="label">Comenzi totale</div><div class="value" id="stat-count">—</div></div>
-    <div class="stat"><div class="label">Venit (comenzi platite)</div><div class="value" id="stat-revenue">—</div></div>
+    <div class="stat"><div class="label">Venit (comenzi plătite)</div><div class="value" id="stat-revenue">—</div></div>
   </div>
   <table id="orders-table">
     <thead>
-      <tr><th>Data</th><th>Pentru</th><th>Email</th><th>Limba</th><th>Ocazie</th><th>Gen</th><th>Pachet</th><th>Pret</th><th>Status</th></tr>
+      <tr><th>Data</th><th>Pentru</th><th>Email</th><th>Limba</th><th>Ocazie</th><th>Gen</th><th>Pachet</th><th>Preț</th><th>Status</th></tr>
     </thead>
     <tbody id="orders-body"></tbody>
   </table>
 
-  <div class="section-title">Reactii clienti</div>
-  <div class="section-sub">Adaugi si gestionezi manual reactiile afisate pe homepage. Clientii nu pot trimite singuri continut.</div>
+  <div class="section-title">Reacții clienți</div>
+  <div class="section-sub">Adaugi și gestionezi manual reacțiile afișate pe homepage. Clienții nu pot trimite singuri conținut</div>
 
   <div class="t-form">
     <form id="t-form">
@@ -130,7 +130,7 @@
           <input type="text" id="t-name" maxlength="80" required>
         </div>
         <div class="t-field">
-          <label for="t-location">Oras / tara</label>
+          <label for="t-location">Oraș / țară</label>
           <input type="text" id="t-location" maxlength="100" placeholder="ex: Londra, UK">
         </div>
       </div>
@@ -140,7 +140,7 @@
       </div>
       <div class="t-form-row">
         <div class="t-field">
-          <label for="t-type">Tip reactie</label>
+          <label for="t-type">Tip reacție</label>
           <select id="t-type">
             <option value="text">Doar text</option>
             <option value="image">Imagine</option>
@@ -149,21 +149,21 @@
           </select>
         </div>
         <div class="t-field" id="t-file-field">
-          <label for="t-file">Fisier (imagine / video / audio)</label>
+          <label for="t-file">Fișier (imagine / video / audio)</label>
           <input type="file" id="t-file" accept="image/*,video/*,audio/*">
         </div>
       </div>
       <div class="t-check">
         <input type="checkbox" id="t-published">
-        <label for="t-published">Publicata — vizibila pe homepage. Daca e debifat, reactia se salveaza dar ramane ascunsa.</label>
+        <label for="t-published">Publicată — vizibilă pe homepage. Dacă e debifat, reacția se salvează dar rămâne ascunsă</label>
       </div>
       <div class="t-check consent">
         <input type="checkbox" id="t-consent" required>
-        <label for="t-consent"><strong>Confirm</strong> ca am acordul explicit al clientului pentru a publica acest nume, oras si continut pe site.</label>
+        <label for="t-consent"><strong>Confirm</strong> că am acordul explicit al clientului pentru a publica acest nume, oraș și conținut pe site</label>
       </div>
       <div class="t-form-actions">
-        <button type="submit" class="btn-primary" id="t-submit-btn">Salveaza reactia</button>
-        <button type="button" class="btn-secondary" id="t-cancel-btn" style="display:none;">Anuleaza editarea</button>
+        <button type="submit" class="btn-primary" id="t-submit-btn">Salvează reacția</button>
+        <button type="button" class="btn-secondary" id="t-cancel-btn" style="display:none;">Anulează editarea</button>
       </div>
       <div class="t-form-msg" id="t-form-msg"></div>
     </form>
@@ -174,10 +174,10 @@
 
 <script>
   const statusLabel = {
-    draft: 'Neplatita',
+    draft: 'Neplătită',
     generating: 'Se compune',
     preview_ready: 'Previzualizare gata',
-    ready: 'Platita si livrata',
+    ready: 'Plătită și livrată',
     generation_failed: 'Eroare'
   };
 
@@ -189,7 +189,7 @@
 
       const body = document.getElementById('orders-body');
       if (data.orders.length === 0) {
-        body.innerHTML = '<tr><td colspan="8" class="empty">Nicio comanda inca.</td></tr>';
+        body.innerHTML = '<tr><td colspan="8" class="empty">Nicio comandă încă</td></tr>';
         return;
       }
 
@@ -240,7 +240,7 @@
   function resetTForm() {
     tForm.reset();
     tEditId.value = '';
-    tSubmitBtn.textContent = 'Salveaza reactia';
+    tSubmitBtn.textContent = 'Salvează reacția';
     tCancelBtn.style.display = 'none';
     tFormMsg.textContent = '';
     tFormMsg.className = 't-form-msg';
@@ -258,7 +258,7 @@
     testimonialsCache = items; // pastram datele intr-o variabila, ca sa nu le injectam in atribute HTML (risc de rupere la ghilimele/apostrof din citate)
 
     if (items.length === 0) {
-      tList.innerHTML = '<div class="empty">Nicio reactie adaugata inca.</div>';
+      tList.innerHTML = '<div class="empty">Nicio reacție adăugată încă</div>';
       return;
     }
 
@@ -274,12 +274,12 @@
             <div class="t-card-name">${escapeHtml(t.firstName)}${t.location ? ' · ' + escapeHtml(t.location) : ''}</div>
             <div class="t-card-quote">"${escapeHtml(t.quote)}"</div>
           </div>
-          <span class="t-status-badge ${t.published ? 't-status-published' : 't-status-hidden'}">${t.published ? 'Publicata' : 'Ascunsa'}</span>
+          <span class="t-status-badge ${t.published ? 't-status-published' : 't-status-hidden'}">${t.published ? 'Publicată' : 'Ascunsă'}</span>
           <div class="t-card-actions">
-            <button class="t-icon-btn" title="Muta in sus" ${i === 0 ? 'disabled' : ''} onclick="moveTestimonial('${t.id}','up')">↑</button>
-            <button class="t-icon-btn" title="Muta in jos" ${i === items.length - 1 ? 'disabled' : ''} onclick="moveTestimonial('${t.id}','down')">↓</button>
-            <button class="t-icon-btn" title="Editeaza" onclick="editTestimonial('${t.id}')">✎</button>
-            <button class="t-icon-btn" title="Sterge" onclick="deleteTestimonial('${t.id}')">✕</button>
+            <button class="t-icon-btn" title="Mută în sus" ${i === 0 ? 'disabled' : ''} onclick="moveTestimonial('${t.id}','up')">↑</button>
+            <button class="t-icon-btn" title="Mută în jos" ${i === items.length - 1 ? 'disabled' : ''} onclick="moveTestimonial('${t.id}','down')">↓</button>
+            <button class="t-icon-btn" title="Editează" onclick="editTestimonial('${t.id}')">✎</button>
+            <button class="t-icon-btn" title="Șterge" onclick="deleteTestimonial('${t.id}')">✕</button>
           </div>
         </div>
       `;
@@ -297,18 +297,18 @@
     syncFileFieldVisibility();
     tPublished.checked = t.published;
     tConsent.checked = t.consentConfirmed;
-    tSubmitBtn.textContent = 'Salveaza modificarile';
+    tSubmitBtn.textContent = 'Salvează modificările';
     tCancelBtn.style.display = 'inline-block';
-    tFormMsg.textContent = t.mediaPath ? 'Fisier existent pastrat, decat daca incarci altul nou.' : '';
+    tFormMsg.textContent = t.mediaPath ? 'Fișier existent păstrat, decât dacă încarci altul nou' : '';
     tFormMsg.className = 't-form-msg';
     tForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
   };
 
   window.deleteTestimonial = async function(id) {
-    if (!confirm('Stergi definitiv aceasta reactie?')) return;
+    if (!confirm('Ștergi definitiv această reacție?')) return;
     const res = await fetch(`/api/admin/testimonials/${id}`, { method: 'DELETE' });
     if (res.ok) loadTestimonials();
-    else alert('Eroare la stergere.');
+    else alert('Eroare la ștergere');
   };
 
   window.moveTestimonial = async function(id, direction) {
@@ -322,7 +322,7 @@
 
   tForm.addEventListener('submit', async (e) => {
     e.preventDefault();
-    tFormMsg.textContent = 'Se salveaza...';
+    tFormMsg.textContent = 'Se salvează...';
     tFormMsg.className = 't-form-msg';
 
     const formData = new FormData();
@@ -343,7 +343,7 @@
       const data = await res.json();
 
       if (!res.ok) {
-        tFormMsg.textContent = data.error || 'Eroare la salvare.';
+        tFormMsg.textContent = data.error || 'Eroare la salvare';
         tFormMsg.className = 't-form-msg err';
         return;
       }
@@ -351,7 +351,7 @@
       resetTForm();
       loadTestimonials();
     } catch (err) {
-      tFormMsg.textContent = 'Eroare de conexiune.';
+      tFormMsg.textContent = 'Eroare de conexiune';
       tFormMsg.className = 't-form-msg err';
     }
   });

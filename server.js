@@ -231,15 +231,15 @@ app.use(helmet({ contentSecurityPolicy: false }));
 // -------- rate limiting pe rutele care costa bani (apeleaza API-ul de muzica) sau sunt tinta de abuz --------
 const orderCreationLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, max: 20, standardHeaders: true, legacyHeaders: false,
-  message: { error: 'Prea multe comenzi create de la aceasta adresa. Incearca din nou mai tarziu.' }
+  message: { error: 'Prea multe comenzi create de la această adresă. Încearcă din nou mai târziu' }
 });
 const generationLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, max: 15, standardHeaders: true, legacyHeaders: false,
-  message: { error: 'Prea multe generari solicitate. Incearca din nou mai tarziu.' }
+  message: { error: 'Prea multe generări solicitate. Încearcă din nou mai târziu' }
 });
 const lookupLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false,
-  message: { error: 'Prea multe incercari. Incearca din nou mai tarziu.' }
+  message: { error: 'Prea multe încercări. Încearcă din nou mai târziu' }
 });
 
 // -------- Login owner: HTTP Basic Auth pentru panoul de admin --------
@@ -248,7 +248,7 @@ function requireAdminAuth(req, res, next) {
 
   if (!header || !header.startsWith('Basic ')) {
     res.set('WWW-Authenticate', 'Basic realm="Admin NALUNA"');
-    return res.status(401).send('Autentificare necesara.');
+    return res.status(401).send('Autentificare necesară');
   }
 
   const decoded = Buffer.from(header.split(' ')[1], 'base64').toString();
@@ -261,7 +261,7 @@ function requireAdminAuth(req, res, next) {
   }
 
   res.set('WWW-Authenticate', 'Basic realm="Admin NALUNA"');
-  return res.status(401).send('Date de autentificare incorecte.');
+  return res.status(401).send('Date de autentificare incorecte');
 }
 
 app.get('/admin', requireAdminAuth, (req, res) => {
@@ -340,18 +340,18 @@ app.post('/api/admin/testimonials', (req, res, next) => {
         return res.status(400).json({ error: 'Prenumele clientului este obligatoriu (max 80 caractere).' });
       }
       if (!isValidString(quote, 3, 500)) {
-        return res.status(400).json({ error: 'Citatul trebuie sa aiba intre 3 si 500 de caractere.' });
+        return res.status(400).json({ error: 'Citatul trebuie să aibă între 3 și 500 de caractere.' });
       }
       if (!TESTIMONIAL_TYPES.includes(mediaType)) {
-        return res.status(400).json({ error: 'Tip de reactie invalid.' });
+        return res.status(400).json({ error: 'Tip de reacție invalid.' });
       }
       if (!consentConfirmed) {
-        return res.status(400).json({ error: 'Trebuie sa confirmi ca ai acordul clientului pentru publicare.' });
+        return res.status(400).json({ error: 'Trebuie să confirmi că ai acordul clientului pentru publicare.' });
       }
       if (mediaType !== 'text' && req.file) {
         const expected = TESTIMONIAL_MIME_TYPES[mediaType] || [];
         if (!expected.includes(req.file.mimetype)) {
-          return res.status(400).json({ error: `Fisierul incarcat nu corespunde tipului "${mediaType}".` });
+          return res.status(400).json({ error: `Fișierul încărcat nu corespunde tipului "${mediaType}".` });
         }
       }
 
@@ -382,7 +382,7 @@ app.put('/api/admin/testimonials/:id', (req, res, next) => {
       if (!UUID_RE.test(req.params.id)) return res.status(400).json({ error: 'ID invalid.' });
 
       const existing = await db.getTestimonialById(req.params.id);
-      if (!existing) return res.status(404).json({ error: 'Reactia nu exista.' });
+      if (!existing) return res.status(404).json({ error: 'Reacția nu există.' });
 
       const { firstName, location, quote, mediaType } = req.body;
       const published = isTruthy(req.body.published);
@@ -392,18 +392,18 @@ app.put('/api/admin/testimonials/:id', (req, res, next) => {
         return res.status(400).json({ error: 'Prenumele clientului este obligatoriu (max 80 caractere).' });
       }
       if (!isValidString(quote, 3, 500)) {
-        return res.status(400).json({ error: 'Citatul trebuie sa aiba intre 3 si 500 de caractere.' });
+        return res.status(400).json({ error: 'Citatul trebuie să aibă între 3 și 500 de caractere.' });
       }
       if (!TESTIMONIAL_TYPES.includes(mediaType)) {
-        return res.status(400).json({ error: 'Tip de reactie invalid.' });
+        return res.status(400).json({ error: 'Tip de reacție invalid.' });
       }
       if (!consentConfirmed) {
-        return res.status(400).json({ error: 'Trebuie sa confirmi ca ai acordul clientului pentru publicare.' });
+        return res.status(400).json({ error: 'Trebuie să confirmi că ai acordul clientului pentru publicare.' });
       }
       if (mediaType !== 'text' && req.file) {
         const expected = TESTIMONIAL_MIME_TYPES[mediaType] || [];
         if (!expected.includes(req.file.mimetype)) {
-          return res.status(400).json({ error: `Fisierul incarcat nu corespunde tipului "${mediaType}".` });
+          return res.status(400).json({ error: `Fișierul încărcat nu corespunde tipului "${mediaType}".` });
         }
       }
 
@@ -437,7 +437,7 @@ app.delete('/api/admin/testimonials/:id', async (req, res, next) => {
     if (!UUID_RE.test(req.params.id)) return res.status(400).json({ error: 'ID invalid.' });
 
     const existing = await db.getTestimonialById(req.params.id);
-    if (!existing) return res.status(404).json({ error: 'Reactia nu exista.' });
+    if (!existing) return res.status(404).json({ error: 'Reacția nu există.' });
 
     await deleteTestimonialFile(existing.mediaPath);
     await db.deleteTestimonial(req.params.id);
@@ -452,11 +452,11 @@ app.post('/api/admin/testimonials/:id/move', express.json(), async (req, res, ne
     if (!UUID_RE.test(req.params.id)) return res.status(400).json({ error: 'ID invalid.' });
     const { direction } = req.body || {};
     if (direction !== 'up' && direction !== 'down') {
-      return res.status(400).json({ error: 'Directie invalida.' });
+      return res.status(400).json({ error: 'Direcție invalidă.' });
     }
 
     const testimonial = await db.moveTestimonial(req.params.id, direction);
-    if (!testimonial) return res.status(404).json({ error: 'Reactia nu exista.' });
+    if (!testimonial) return res.status(404).json({ error: 'Reacția nu există.' });
     res.json({ testimonial: { ...testimonial, mediaPath: resolveTestimonialMediaUrl(testimonial.mediaPath) } });
   } catch (err) {
     next(err);
@@ -487,16 +487,16 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
     const { occasion, recipient, email, story, genre, plan, lang } = req.body || {};
 
     if (!ALLOWED_OCCASIONS.includes(occasion)) {
-      return res.status(400).json({ error: 'Ocazie invalida.' });
+      return res.status(400).json({ error: 'Ocazie invalidă.' });
     }
     if (!isValidString(recipient, 1, 100)) {
       return res.status(400).json({ error: 'Numele destinatarului este obligatoriu (max 100 caractere).' });
     }
     if (!isValidEmail(email)) {
-      return res.status(400).json({ error: 'Adresa de email nu este valida.' });
+      return res.status(400).json({ error: 'Adresa de email nu este validă.' });
     }
     if (!isValidString(story, 5, 2000)) {
-      return res.status(400).json({ error: 'Povestea trebuie sa aiba intre 5 si 2000 de caractere.' });
+      return res.status(400).json({ error: 'Povestea trebuie să aibă între 5 și 2000 de caractere.' });
     }
     if (!ALLOWED_GENRES.includes(genre)) {
       return res.status(400).json({ error: 'Gen muzical invalid.' });
@@ -529,17 +529,17 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
 // ==========================================================================================
 app.post('/api/orders/:orderId/generate', generationLimiter, async (req, res, next) => {
   try {
-    if (!UUID_RE.test(req.params.orderId)) return res.status(400).json({ error: 'ID comanda invalid.' });
+    if (!UUID_RE.test(req.params.orderId)) return res.status(400).json({ error: 'ID comandă invalid.' });
 
     const order = await db.getOrderById(req.params.orderId);
-    if (!order) return res.status(404).json({ error: 'Comanda nu exista.' });
-    if (order.status === 'ready') return res.status(400).json({ error: 'Comanda e deja platita si finalizata.' });
+    if (!order) return res.status(404).json({ error: 'Comanda nu există.' });
+    if (order.status === 'ready') return res.status(400).json({ error: 'Comanda e deja plătită și finalizată.' });
 
     // Blocaj impotriva a doua generari in paralel pentru aceeasi comanda — fara asta,
     // un dublu-click sau un retry de pe client ar putea porni un al doilea task SunoAPI
     // in timp ce primul e inca activ, consumand credite degeaba pentru aceeasi comanda.
     if (order.status === 'generating' || order.status === 'processing_provider_result') {
-      return res.status(409).json({ error: 'Generarea este deja in desfasurare.' });
+      return res.status(409).json({ error: 'Generarea este deja în desfășurare.' });
     }
 
     const feedback = typeof req.body?.feedback === 'string' ? req.body.feedback.slice(0, 500) : null;
@@ -565,19 +565,19 @@ app.post('/api/orders/:orderId/generate', generationLimiter, async (req, res, ne
 // ==========================================================================================
 app.post('/api/orders/:orderId/regenerate', generationLimiter, async (req, res, next) => {
   try {
-    if (!UUID_RE.test(req.params.orderId)) return res.status(400).json({ error: 'ID comanda invalid.' });
+    if (!UUID_RE.test(req.params.orderId)) return res.status(400).json({ error: 'ID comandă invalid.' });
 
     const order = await db.getOrderById(req.params.orderId);
-    if (!order) return res.status(404).json({ error: 'Comanda nu exista.' });
-    if (order.status === 'ready') return res.status(400).json({ error: 'Comanda e deja platita si finalizata.' });
+    if (!order) return res.status(404).json({ error: 'Comanda nu există.' });
+    if (order.status === 'ready') return res.status(400).json({ error: 'Comanda e deja plătită și finalizată.' });
     if (order.editsUsed >= FREE_EDITS) {
-      return res.status(400).json({ error: `Ai folosit toate cele ${FREE_EDITS} editari gratuite.` });
+      return res.status(400).json({ error: `Ai folosit toate cele ${FREE_EDITS} editări gratuite.` });
     }
 
     // Acelasi blocaj ca la /generate — nu pornim o a doua generare in paralel pentru
     // aceeasi comanda.
     if (order.status === 'generating' || order.status === 'processing_provider_result') {
-      return res.status(409).json({ error: 'Generarea este deja in desfasurare.' });
+      return res.status(409).json({ error: 'Generarea este deja în desfășurare.' });
     }
 
     const feedback = typeof req.body?.feedback === 'string' ? req.body.feedback.slice(0, 500) : null;
@@ -603,14 +603,14 @@ app.post('/api/orders/:orderId/regenerate', generationLimiter, async (req, res, 
 // ==========================================================================================
 app.post('/api/orders/:orderId/select', async (req, res, next) => {
   try {
-    if (!UUID_RE.test(req.params.orderId)) return res.status(400).json({ error: 'ID comanda invalid.' });
+    if (!UUID_RE.test(req.params.orderId)) return res.status(400).json({ error: 'ID comandă invalid.' });
 
     const order = await db.getOrderById(req.params.orderId);
-    if (!order) return res.status(404).json({ error: 'Comanda nu exista.' });
+    if (!order) return res.status(404).json({ error: 'Comanda nu există.' });
 
     const { variantId } = req.body || {};
     const exists = (order.variants || []).some(v => v.id === variantId);
-    if (!exists) return res.status(400).json({ error: 'Varianta nu exista.' });
+    if (!exists) return res.status(400).json({ error: 'Varianta nu există.' });
 
     await db.updateOrder(order.id, { selectedVariantId: variantId });
     res.json({ ok: true });
@@ -625,10 +625,10 @@ app.post('/api/orders/:orderId/select', async (req, res, next) => {
 // ==========================================================================================
 app.get('/api/orders/:orderId', async (req, res, next) => {
   try {
-    if (!UUID_RE.test(req.params.orderId)) return res.status(400).json({ error: 'ID comanda invalid.' });
+    if (!UUID_RE.test(req.params.orderId)) return res.status(400).json({ error: 'ID comandă invalid.' });
 
     const order = await db.getOrderById(req.params.orderId);
-    if (!order) return res.status(404).json({ error: 'Comanda nu exista.' });
+    if (!order) return res.status(404).json({ error: 'Comanda nu există.' });
 
     // niciodata nu trimitem calea fisierelor complete catre client inainte de plata
     const safeVariants = (order.variants || []).map(v => ({
@@ -665,15 +665,15 @@ app.get('/api/orders/:orderId', async (req, res, next) => {
 // ==========================================================================================
 app.post('/api/orders/:orderId/checkout', async (req, res, next) => {
   try {
-    if (!UUID_RE.test(req.params.orderId)) return res.status(400).json({ error: 'ID comanda invalid.' });
+    if (!UUID_RE.test(req.params.orderId)) return res.status(400).json({ error: 'ID comandă invalid.' });
 
     const order = await db.getOrderById(req.params.orderId);
-    if (!order) return res.status(404).json({ error: 'Comanda nu exista.' });
+    if (!order) return res.status(404).json({ error: 'Comanda nu există.' });
     if (order.status !== 'preview_ready') {
-      return res.status(400).json({ error: 'Genereaza o previzualizare inainte de plata.' });
+      return res.status(400).json({ error: 'Generează o previzualizare înainte de plată.' });
     }
     if (!order.selectedVariantId) {
-      return res.status(400).json({ error: 'Alege o varianta inainte de plata.' });
+      return res.status(400).json({ error: 'Alege o variantă înainte de plată.' });
     }
 
     // TVA: dezactivat implicit. Se activeaza DOAR daca STRIPE_AUTOMATIC_TAX_ENABLED=true
@@ -714,7 +714,7 @@ app.post('/api/orders/:orderId/checkout', async (req, res, next) => {
     res.json({ url: session.url });
   } catch (err) {
     console.error('Eroare la initierea platii:', err.message);
-    res.status(502).json({ error: 'Eroare la initierea platii. Incearca din nou in cateva momente.' });
+    res.status(502).json({ error: 'Eroare la inițierea plății. Încearcă din nou în câteva momente' });
   }
 });
 
@@ -726,7 +726,7 @@ app.post('/api/orders/:orderId/checkout', async (req, res, next) => {
 // ==========================================================================================
 app.get('/media/preview/:orderId/:variantId', async (req, res, next) => {
   try {
-    if (!UUID_RE.test(req.params.orderId)) return res.status(400).send('ID comanda invalid.');
+    if (!UUID_RE.test(req.params.orderId)) return res.status(400).send('ID comandă invalid.');
 
     const order = await db.getOrderById(req.params.orderId);
     if (!order || order.status === 'draft' || order.status === 'generating') {
@@ -734,7 +734,7 @@ app.get('/media/preview/:orderId/:variantId', async (req, res, next) => {
     }
 
     const variant = (order.variants || []).find(v => v.id === req.params.variantId);
-    if (!variant) return res.status(404).send('Varianta nu exista.');
+    if (!variant) return res.status(404).send('Varianta nu există.');
 
     if (storage.CLOUD_ENABLED) {
       // NU cautam niciodata pe disc local cand cloud e activ — fisierul pur si simplu nu e acolo.
@@ -776,7 +776,7 @@ app.get('/media/preview/:orderId/:variantId', async (req, res, next) => {
 // ==========================================================================================
 app.get('/media/full/:orderId', async (req, res, next) => {
   try {
-    const denyGeneric = () => res.status(404).send('Resursa nu este disponibila.');
+    const denyGeneric = () => res.status(404).send('Resursa nu este disponibilă');
 
     if (!UUID_RE.test(req.params.orderId)) return denyGeneric();
 
@@ -791,7 +791,7 @@ app.get('/media/full/:orderId', async (req, res, next) => {
     if (!order || !tokenValid) return denyGeneric();
 
     if (order.status !== 'ready') {
-      return res.status(403).send('Melodia completa se deblocheaza dupa plata.');
+      return res.status(403).send('Melodia completă se deblochează după plată');
     }
 
     const variant = (order.variants || []).find(v => v.id === order.selectedVariantId);
@@ -803,7 +803,7 @@ app.get('/media/full/:orderId', async (req, res, next) => {
 
     // fallback local — fara stocare cloud configurata
     const filePath = path.join(MEDIA_FULL_DIR, `${order.id}-${order.selectedVariantId}.mp3`);
-    if (!fs.existsSync(filePath)) return res.status(404).send('Fisier indisponibil.');
+    if (!fs.existsSync(filePath)) return res.status(404).send('Fișier indisponibil');
     res.download(filePath, `cantec-${order.recipient}.mp3`);
   } catch (err) {
     next(err);
@@ -824,7 +824,7 @@ app.get('/api/orders/access/:token', lookupLimiter, async (req, res, next) => {
     }
 
     const order = await db.getOrderByToken(token);
-    if (!order) return res.status(404).json({ error: 'Nicio comanda gasita pentru acest cod.' });
+    if (!order) return res.status(404).json({ error: 'Nicio comandă găsită pentru acest cod.' });
 
     res.json({
       id: order.id, recipient: order.recipient, status: order.status,
@@ -896,7 +896,7 @@ const SUNO_CONTINUE_STATUSES = ['PENDING', 'TEXT_SUCCESS', 'FIRST_SUCCESS'];
 
 async function runGeneration(orderId, feedback) {
   const order = await db.getOrderById(orderId);
-  if (!order) throw new Error('Comanda a disparut in timpul generarii.');
+  if (!order) throw new Error('Comanda a dispărut în timpul generării');
 
   const prompt = buildPrompt(order, feedback);
 
@@ -1161,7 +1161,7 @@ async function pollForResult(taskId, maxAttempts = 30, intervalMs = 6000) {
 
 async function downloadFile(url, destPath) {
   const res = await fetchWithTimeout(url, {}, 30000);
-  if (!res.ok || !res.body) throw new Error('Nu am putut descarca fisierul audio complet.');
+  if (!res.ok || !res.body) throw new Error('Nu am putut descărca fișierul audio complet');
   await pipeline(res.body, fs.createWriteStream(destPath));
 }
 
@@ -1260,7 +1260,7 @@ function buildPrompt(order, feedback) {
   }
 
   if (!prompt || !prompt.trim()) {
-    throw new Error('Promptul construit pentru SunoAPI este gol — comanda nu are date suficiente pentru generare.');
+    throw new Error('Promptul construit pentru SunoAPI este gol — comanda nu are date suficiente pentru generare');
   }
 
   return prompt;
@@ -1279,8 +1279,8 @@ async function sendDeliveryEmail(order) {
   const accessUrl = `${DOMAIN}/comanda-mea.html?token=${order.accessToken}`;
 
   const templates = {
-    ro: { subject: `Cantecul tau pentru ${order.recipient} e gata`,
-      html: `<p>Salut,</p><p>Cantecul tau personalizat pentru <strong>${order.recipient}</strong> e gata.</p><p><a href="${downloadUrl}">Descarca melodia</a></p><p>O poti regasi oricand la <a href="${accessUrl}">acest link</a>.</p><p>— NALUNA</p>` },
+    ro: { subject: `Cântecul tău pentru ${order.recipient} e gata`,
+      html: `<p>Salut,</p><p>Cântecul tău personalizat pentru <strong>${order.recipient}</strong> e gata.</p><p><a href="${downloadUrl}">Descarcă melodia</a></p><p>O poți regăsi oricând la <a href="${accessUrl}">acest link</a>.</p><p>— NALUNA</p>` },
     en: { subject: `Your song for ${order.recipient} is ready`,
       html: `<p>Hi,</p><p>Your personalised song for <strong>${order.recipient}</strong> is ready.</p><p><a href="${downloadUrl}">Download your song</a></p><p>You can find it anytime at <a href="${accessUrl}">this link</a>.</p><p>— NALUNA</p>` },
     de: { subject: `Dein Lied für ${order.recipient} ist fertig`,
@@ -1316,14 +1316,14 @@ async function sendDeliveryEmail(order) {
 
 // -------- 404 pentru orice ruta necunoscuta (dupa fisierele statice si toate rutele API) --------
 app.use((req, res) => {
-  res.status(404).json({ error: 'Ruta inexistenta.' });
+  res.status(404).json({ error: 'Rută inexistentă.' });
 });
 
 // -------- error handler central — nicio eroare nescapata nu trebuie sa opreasca serverul --------
 app.use((err, req, res, next) => {
   console.error('Eroare necapturata pe o cerere:', err);
   if (res.headersSent) return next(err);
-  res.status(500).json({ error: 'A aparut o eroare neasteptata. Incearca din nou.' });
+  res.status(500).json({ error: 'A apărut o eroare neașteptată. Încearcă din nou' });
 });
 
 // -------- siguranta la nivel de proces: loga, nu lasa serverul intr-o stare nedefinita --------
@@ -1335,9 +1335,22 @@ process.on('uncaughtException', (err) => {
   process.exit(1); // Railway reporneste automat procesul
 });
 
+// -------- verificare FFmpeg la pornire — STRICT informativa, nu opreste serverul indiferent
+// de rezultat. Utila ca sa vezi imediat in log-urile Railway daca binarul e gasit pe PATH,
+// fara sa astepti prima comanda reala ca sa afli. --------
+async function checkFfmpegAvailability() {
+  try {
+    await execFileAsync('ffmpeg', ['-version']);
+    console.log('FFmpeg disponibil');
+  } catch (err) {
+    console.error('FFmpeg indisponibil —', err.message);
+  }
+}
+
 // -------- pornire: verificam intai conexiunea la baza de date --------
 db.initDb()
   .then(() => {
+    checkFfmpegAvailability(); // fire-and-forget — nu blocheaza si nu conditioneaza pornirea
     app.listen(PORT, () => {
       console.log(`NALUNA ruleaza pe ${DOMAIN}`);
     });

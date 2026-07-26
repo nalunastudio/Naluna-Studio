@@ -157,7 +157,7 @@
       </div>
 
       <h1 id="p-title">Melodia ta se compune acum</h1>
-      <p class="sub" id="p-subtitle">Pregatim 2 variante personalizate pentru tine.</p>
+      <p class="sub" id="p-subtitle">Pregătim 2 variante personalizate pentru tine</p>
 
       <div class="status-msg" id="status-msg"></div>
 
@@ -165,15 +165,15 @@
       <div class="progress-percent" id="progress-percent">0%</div>
 
       <div class="estimate-pill" id="estimate-pill"></div>
-      <p class="keep-open" id="p-keepopen">Nu inchide aceasta pagina. Rezultatul va aparea automat cand este gata.</p>
+      <p class="keep-open" id="p-keepopen">Nu închide această pagină. Rezultatul va apărea automat când este gata.</p>
 
       <div class="soft-notice" id="soft-notice"></div>
     </div>
 
     <div class="error-state" id="error-state">
-      <h1 id="err-title">Generarea dureaza putin mai mult decat de obicei.</h1>
-      <p class="sub" id="err-sub">Incearca din nou — comanda ta ramane salvata.</p>
-      <button class="btn" id="retry-btn">Incearca din nou</button>
+      <h1 id="err-title">Nu am putut finaliza melodia de această dată</h1>
+      <p class="sub" id="err-sub">Nu ai fost taxat. Poți încerca din nou</p>
+      <button class="btn" id="retry-btn">Încearcă din nou</button>
     </div>
   </div>
 
@@ -181,24 +181,24 @@
   const T = {
     ro: {
       title: 'Melodia ta se compune acum',
-      subtitle: 'Pregatim 2 variante personalizate pentru tine.',
-      keepOpen: 'Nu inchide aceasta pagina. Rezultatul va aparea automat cand este gata.',
+      subtitle: 'Pregătim 2 variante personalizate pentru tine',
+      keepOpen: 'Nu închide această pagină. Rezultatul va apărea automat când este gata.',
       stages: [
-        'Analizam povestea ta...',
-        'Descoperim emotiile din mesaj...',
+        'Analizăm povestea ta...',
+        'Descoperim emoțiile din mesaj...',
         'Compunem primele versuri...',
-        'Cream linia melodica...',
-        'Adaugam armonie si emotie...',
-        'Inregistram previzualizarea...',
+        'Creăm linia melodică...',
+        'Adăugăm armonie și emoție...',
+        'Înregistrăm previzualizarea...',
         'Aproape gata...'
       ],
       readyMsg: 'Previzualizarea este gata!',
-      readySub: 'Pregatim playerul...',
-      estimate: (m) => m <= 0 ? 'Aproape gata' : `Timp estimat ramas: aproximativ ${m} ${m === 1 ? 'minut' : 'minute'}`,
-      softNotice: 'Conexiunea dureaza putin mai mult. Verificam in continuare.',
-      errTitle: 'Nu am putut finaliza melodia de aceasta data.',
-      errSub: 'Nu ai fost taxat. Poti incerca din nou.',
-      retryBtn: 'Incearca din nou', retrying: 'Se reincearca...'
+      readySub: 'Pregătim playerul...',
+      estimate: (m) => m <= 0 ? 'Aproape gata' : `Timp estimat rămas: aproximativ ${m} ${m === 1 ? 'minut' : 'minute'}`,
+      softNotice: 'Conexiunea durează puțin mai mult. Verificăm în continuare',
+      errTitle: 'Nu am putut finaliza melodia de această dată',
+      errSub: 'Nu ai fost taxat. Poți încerca din nou',
+      retryBtn: 'Încearcă din nou', retrying: 'Se reîncearcă...'
     },
     en: {
       title: 'Your song is being composed',

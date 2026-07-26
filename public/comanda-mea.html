@@ -54,11 +54,11 @@
 <div class="wrap">
   <img class="logo-mark" src="/logo.svg" alt="NALUNA">
   <h1 id="h1-title">Comanda mea</h1>
-  <p class="sub" id="p-sub">Introdu codul de acces primit pe email ca sa-ti vezi melodia.</p>
+  <p class="sub" id="p-sub">Introdu codul de acces primit pe email ca să-ți vezi melodia</p>
 
   <div class="field">
     <input type="text" id="token" placeholder="cod din emailul de confirmare" autocomplete="off">
-    <button onclick="lookup()" id="btn-search">Cauta</button>
+    <button onclick="lookup()" id="btn-search">Caută</button>
   </div>
 
   <div id="results"></div>
@@ -70,11 +70,11 @@
   // povestile private. Codul e primit doar pe email, dupa plata.
   const T = {
     ro: {
-      title: 'Comanda mea', sub: 'Introdu codul de acces primit pe email ca sa-ti vezi melodia.',
-      search: 'Cauta', searching: 'Se cauta...', not_found: 'Nu am gasit nicio comanda pentru acest cod.',
-      conn_error: 'Eroare de conexiune. Incearca din nou.', for_label: 'Pentru', download: 'Descarca fisierul',
-      invalid: 'Cod de acces invalid.',
-      status: { draft: 'Neplatita', generating: 'Se compune', preview_ready: 'Previzualizare gata', ready: 'Gata', generation_failed: 'Eroare' }
+      title: 'Comanda mea', sub: 'Introdu codul de acces primit pe email ca să-ți vezi melodia',
+      search: 'Caută', searching: 'Se caută...', not_found: 'Nu am găsit nicio comandă pentru acest cod',
+      conn_error: 'Eroare de conexiune. Încearcă din nou', for_label: 'Pentru', download: 'Descarcă fișierul',
+      invalid: 'Cod de acces invalid',
+      status: { draft: 'Neplătită', generating: 'Se compune', preview_ready: 'Previzualizare gata', ready: 'Gata', generation_failed: 'Eroare' }
     },
     en: {
       title: 'My order', sub: 'Enter the access code you received by email to see your song.',
