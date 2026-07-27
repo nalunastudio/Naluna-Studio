@@ -1,0 +1,978 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Compune cântecul tău — NALUNA</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;1,9..144,400&family=Sora:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#FAF8F5; --bg-secondary:#F8F6F2; --surface:#FDFCFA;
+    --text:#2B2B2B; --text-secondary:#6B6B6B;
+    --gold:#A8834B; --gold-soft:#C9A876; --gold-deep:#8B6D3F; --line:#E8E2D6;
+    --error:#B3574A; --success:#5F8F6E;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html{scroll-behavior:smooth;}
+  body{
+    background:var(--bg); color:var(--text); font-family:'Sora', sans-serif;
+    line-height:1.6; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{ max-width:960px; margin:0 auto; padding:0 24px 80px; }
+
+  .topbar{ display:flex; align-items:center; justify-content:space-between; padding:26px 0; }
+  .logo{ display:flex; align-items:center; gap:12px; }
+  .logo-mark{ width:32px; }
+  .logo-mark img{ width:100%; height:auto; display:block; }
+  .logo-text{
+    font-family:'Fraunces', serif; font-size:19px; font-weight:400; letter-spacing:.1em;
+    background:linear-gradient(90deg, #8B6D3F, #C9A876);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+  .back-link{ font-size:13px; color:var(--text-secondary); text-decoration:none; transition:color .2s ease; }
+  .back-link:hover{ color:var(--gold-deep); }
+
+  .section-head{ max-width:640px; margin:8px 0 36px; }
+  h1{ font-family:'Fraunces', serif; font-weight:400; font-size:clamp(26px,3.4vw,34px); letter-spacing:-.01em; }
+  .section-head p{ color:var(--text-secondary); margin-top:12px; font-size:15px; }
+
+  .order-panel{
+    background:var(--bg-secondary); border:1px solid var(--line); border-radius:20px;
+    padding:40px; display:grid; grid-template-columns:1fr 1fr; gap:44px;
+  }
+  .field{ margin-bottom:20px; }
+  label{ display:block; font-size:13px; color:var(--text-secondary); margin-bottom:9px; }
+  input, select, textarea{
+    width:100%; background:var(--surface); border:1px solid var(--line); border-radius:10px;
+    padding:13px 15px; color:var(--text); font-family:'Sora', sans-serif; font-size:14px;
+    transition:border-color .2s ease;
+  }
+  textarea{ min-height:110px; resize:vertical; }
+  input:focus, select:focus, textarea:focus{ outline:2px solid var(--gold); outline-offset:1px; border-color:var(--gold); }
+
+  .theme-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:4px; }
+  .theme-card{
+    border:1px solid var(--line); border-radius:12px; padding:15px 17px; cursor:pointer;
+    background:var(--surface); transition:border-color .2s ease, background-color .2s ease;
+  }
+  .theme-card.active{ border-color:var(--gold); background:rgba(168,131,75,.07); }
+  .theme-name{ font-weight:600; font-size:14px; }
+  .theme-desc{ color:var(--text-secondary); font-size:12px; margin-top:3px; }
+
+  .voice-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:4px; }
+  .voice-card{
+    border:1px solid var(--line); border-radius:12px; padding:15px 17px; cursor:pointer;
+    background:var(--surface); text-align:center; transition:border-color .2s ease, background-color .2s ease, transform .15s ease;
+  }
+  .voice-card:hover{ transform:translateY(-1px); }
+  .voice-card.active{ border-color:var(--gold); background:rgba(168,131,75,.07); }
+  .voice-name{ font-weight:600; font-size:14px; }
+  @media (max-width: 480px){
+    .voice-grid{ grid-template-columns:1fr; }
+  }
+
+  .plan-list{ display:flex; flex-direction:column; gap:12px; }
+  .plan{
+    border:1px solid var(--line); border-radius:14px; padding:19px 21px;
+    display:flex; align-items:center; justify-content:space-between; cursor:pointer;
+    transition:border-color .2s ease, background-color .2s ease;
+  }
+  .plan.active{ border-color:var(--gold); background:rgba(168,131,75,.06); }
+  .plan-name{ font-weight:600; font-size:15px; }
+  .plan-desc{ color:var(--text-secondary); font-size:13px; margin-top:2px; }
+  .plan-price{ font-family:'Fraunces', serif; font-size:22px; color:var(--gold-deep); }
+
+  .order-summary{ margin-top:22px; padding-top:22px; border-top:1px solid var(--line); }
+  .order-summary .row{ display:flex; justify-content:space-between; font-size:14px; margin-bottom:8px; color:var(--text-secondary); }
+  .order-summary .total{ color:var(--text); font-weight:700; font-size:17px; }
+
+  .price-note{ font-size:13px; color:var(--text-secondary); }
+
+  .btn{
+    display:inline-flex; align-items:center; justify-content:center; gap:10px;
+    padding:15px 28px; border-radius:999px; font-size:14px; font-weight:500;
+    border:1px solid transparent; cursor:pointer;
+    transition:transform .25s ease, box-shadow .25s ease, background-color .25s ease;
+  }
+  .btn:hover{ transform:translateY(-1px); }
+  .btn-primary{ background:var(--text); color:var(--bg); }
+  .btn-primary:hover{ background:var(--gold-deep); box-shadow:0 12px 28px -10px rgba(139,109,63,.45); }
+
+  #status-msg{ margin-top:14px; font-size:13px; }
+  .status-ok{ color:var(--success); }
+  .status-err{ color:var(--error); }
+
+  @media (max-width: 860px){
+    .order-panel{ grid-template-columns:1fr; padding:26px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div class="logo">
+      <div class="logo-mark"><img src="/logo.svg" alt="NALUNA"></div>
+      <div class="logo-text">NALUNA</div>
+    </div>
+    <a href="/index.html" class="back-link" data-i18n="back_link">← Înapoi la pagina principală</a>
+  </div>
+
+  <div class="section-head">
+    <h1 data-i18n="order_title">Compune cântecul tău</h1>
+    <p data-i18n="order_sub">Completează povestea, asculți gratuit un preview de 55 secunde, ceri editări dacă nu e exact ce vrei — plătești doar când ești mulțumit</p>
+  </div>
+
+  <form class="order-panel" id="order-form">
+    <div>
+      <div class="field">
+        <label data-i18n="theme_label">Pentru ce moment vrei cântecul</label>
+        <div class="theme-grid" id="theme-grid">
+          <div class="theme-card active" data-theme="dor">
+            <div class="theme-name" data-i18n="theme_dor_name">Mi-e dor de cineva</div>
+            <div class="theme-desc" data-i18n="theme_dor_desc">Fără ocazie. Doar dor</div>
+          </div>
+          <div class="theme-card" data-theme="onomastica">
+            <div class="theme-name" data-i18n="theme_onomastica_name">Își serbează numele</div>
+            <div class="theme-desc" data-i18n="theme_onomastica_desc">Onomastică, sfinți, familie</div>
+          </div>
+          <div class="theme-card" data-theme="aniversare">
+            <div class="theme-name" data-i18n="theme_aniversare_name">E ziua lui/ei</div>
+            <div class="theme-desc" data-i18n="theme_aniversare_desc">La mulți ani, dar personal</div>
+          </div>
+          <div class="theme-card" data-theme="declaratie">
+            <div class="theme-name" data-i18n="theme_declaratie_name">Te iubesc, pe note</div>
+            <div class="theme-desc" data-i18n="theme_declaratie_desc">Când mesajul nu ajunge</div>
+          </div>
+          <div class="theme-card" data-theme="nunta">
+            <div class="theme-name" data-i18n="theme_nunta_name">Nuntă</div>
+            <div class="theme-desc" data-i18n="theme_nunta_desc">Primul dans sau surpriză pentru miri</div>
+          </div>
+          <div class="theme-card" data-theme="pierdere">
+            <div class="theme-name" data-i18n="theme_pierdere_name">În memoria cuiva</div>
+            <div class="theme-desc" data-i18n="theme_pierdere_desc">Pentru cei care nu mai sunt aici</div>
+          </div>
+          <div class="theme-card" data-theme="pentru-mine">
+            <div class="theme-name" data-i18n="theme_pentrumine_name">Pentru mine</div>
+            <div class="theme-desc" data-i18n="theme_pentrumine_desc">Un cântec doar pentru tine</div>
+          </div>
+          <div class="theme-card" data-theme="altceva">
+            <div class="theme-name" data-i18n="theme_altceva_name">Orice altceva</div>
+            <div class="theme-desc" data-i18n="theme_altceva_desc">Fără ocazie. Descrie tu</div>
+          </div>
+        </div>
+        <input type="hidden" id="occasion" value="dor" required>
+      </div>
+      <div class="field">
+        <label for="recipient" data-i18n="label_recipient">Pentru cine e cântecul (nume)</label>
+        <input type="text" id="recipient" placeholder="ex: Maria" data-i18n-placeholder="ph_recipient" maxlength="60" required>
+      </div>
+      <div class="field">
+        <label for="sender" data-i18n="label_sender">Din partea cui e cântecul</label>
+        <input type="text" id="sender" placeholder="ex: Maria, sau Maria și Alexandra" data-i18n-placeholder="ph_sender" maxlength="100" required>
+      </div>
+      <div class="field">
+        <label for="relationship" data-i18n="label_relationship">Ce relație există între voi</label>
+        <input type="text" id="relationship" placeholder="ex: soție și soț, mamă și fiică, prieteni" data-i18n-placeholder="ph_relationship" maxlength="60" required>
+      </div>
+      <div class="field">
+        <label for="email" data-i18n="label_email">Emailul tău (primești melodia și aici)</label>
+        <input type="email" id="email" placeholder="nume@exemplu.com" required>
+      </div>
+      <div class="field">
+        <label for="phone" data-i18n="label_phone">Telefon WhatsApp (opțional — primești și acolo melodia)</label>
+        <input type="tel" id="phone" placeholder="+44 7xxx xxxxxx" data-i18n-placeholder="ph_phone">
+      </div>
+      <div class="field">
+        <label for="story" data-i18n="label_story">Povestea / detalii de inclus în versuri</label>
+        <textarea id="story" placeholder="Spune-ne ce vă leagă, ce momente importante ați trăit, ce îi iubești cel mai mult, ce vrei să îi transmiți și orice detaliu pe care vrei să îl auzi în melodie" data-i18n-placeholder="ph_story" required></textarea>
+        <div class="price-note" style="margin-top:6px;" data-i18n="story_hint">Poți scrie în orice limbă — versurile vor fi generate în limba aleasă mai sus</div>
+      </div>
+      <div class="field">
+        <label for="genre" data-i18n="label_genre">Gen muzical</label>
+        <select id="genre" required>
+          <option value="" data-i18n="genre_choose">Alege genul</option>
+          <option value="emotional" data-i18n="genre_emotional">Emoțional</option>
+          <option value="suflet" data-i18n="genre_suflet">De suflet</option>
+          <option value="pop">Pop</option>
+          <option value="acustic" data-i18n="genre_acustic">Acustic / Folk</option>
+          <option value="petrecere" data-i18n="genre_petrecere">Muzică de petrecere</option>
+          <option value="balada" data-i18n="genre_balada">Baladă</option>
+          <option value="manele" data-i18n="genre_manele">Manele</option>
+          <option value="copii" data-i18n="genre_copii">Pentru copii</option>
+        </select>
+      </div>
+      <div class="field">
+        <label data-i18n="voice_label">Ce voce să cânte?</label>
+        <div class="voice-grid" id="voice-grid">
+          <div class="voice-card" data-voice="female">
+            <div class="voice-name" data-i18n="voice_female">Voce feminină</div>
+          </div>
+          <div class="voice-card" data-voice="male">
+            <div class="voice-name" data-i18n="voice_male">Voce masculină</div>
+          </div>
+          <div class="voice-card" data-voice="duet">
+            <div class="voice-name" data-i18n="voice_duet">Duet feminin + masculin</div>
+          </div>
+          <div class="voice-card active" data-voice="auto">
+            <div class="voice-name" data-i18n="voice_auto">Alege automat</div>
+          </div>
+        </div>
+        <input type="hidden" id="voice-preference" value="auto">
+        <div class="price-note" style="margin-top:6px;" data-i18n="voice_note">Vom folosi această alegere ca preferință pentru generare</div>
+      </div>
+    </div>
+
+    <div>
+      <label style="margin-bottom:12px; display:block;" data-i18n="label_package">Alege pachetul</label>
+      <div class="plan-list" id="plan-list">
+        <div class="plan active" data-plan="standard" data-price="15">
+          <div>
+            <div class="plan-name" data-i18n="plan_standard_name">Standard</div>
+            <div class="plan-desc" data-i18n="plan_standard_desc">1 versiune, ~2 minute, livrare pe email</div>
+          </div>
+          <div class="plan-price">£15</div>
+        </div>
+        <div class="plan" data-plan="premium" data-price="25">
+          <div>
+            <div class="plan-name" data-i18n="plan_premium_name">Premium</div>
+            <div class="plan-desc" data-i18n="plan_premium_desc">2 versiuni la alegere + fișier WAV descărcabil</div>
+          </div>
+          <div class="plan-price">£25</div>
+        </div>
+        <div class="plan" data-plan="video" data-price="35">
+          <div>
+            <div class="plan-name" data-i18n="plan_video_name">Cadou video</div>
+            <div class="plan-desc" data-i18n="plan_video_desc">Melodie + video cu versuri pentru social/WhatsApp</div>
+          </div>
+          <div class="plan-price">£35</div>
+        </div>
+      </div>
+
+      <div class="order-summary">
+        <div class="row"><span data-i18n="sum_package">Pachet</span><span id="sum-plan">Standard</span></div>
+        <div class="row total"><span data-i18n="sum_total">Total</span><span id="sum-total">£15</span></div>
+      </div>
+
+      <button type="submit" class="btn btn-primary" id="generate-btn" style="width:100%; justify-content:center; margin-top:20px;">
+        <span data-i18n="btn_generate" id="generate-btn-label">Generează previzualizarea gratuit →</span>
+      </button>
+      <div class="price-note" style="margin-top:10px; text-align:center;" data-i18n="note_free">Nu plătești acum. Plătești doar dacă îți place rezultatul</div>
+      <div id="status-msg"></div>
+    </div>
+  </form>
+</div>
+
+<script>
+  const translations = {
+    ro: {
+      back_link: 'Înapoi la pagina principală',
+      order_eyebrow: 'Comanda',
+      order_title: 'Compune cântecul tău',
+      order_sub: 'Completează povestea, asculți gratuit un preview de 55 secunde, ceri editări dacă nu e exact ce vrei — plătești doar când ești mulțumit',
+      theme_label: 'Pentru ce moment vrei cântecul',
+      theme_dor_name: 'Mi-e dor de cineva',
+      theme_dor_desc: 'Fără ocazie. Doar dor',
+      theme_onomastica_name: 'Își serbează numele',
+      theme_onomastica_desc: 'Onomastică, sfinți, familie',
+      theme_aniversare_name: 'E ziua lui/ei',
+      theme_aniversare_desc: 'La mulți ani, dar personal',
+      theme_declaratie_name: 'Te iubesc, pe note',
+      theme_declaratie_desc: 'Când mesajul nu ajunge',
+      theme_nunta_name: 'Nunta',
+      theme_nunta_desc: 'Primul dans sau surpriză pentru miri',
+      theme_pierdere_name: 'În memoria cuiva',
+      theme_pierdere_desc: 'Pentru cei care nu mai sunt aici',
+      theme_pentrumine_name: 'Pentru mine',
+      theme_pentrumine_desc: 'Un cântec doar pentru tine',
+      theme_altceva_name: 'Orice altceva',
+      theme_altceva_desc: 'Fără ocazie. Descrie tu',
+      label_recipient: 'Pentru cine e cântecul (nume)',
+      ph_recipient: 'ex: Maria',
+      label_sender: 'Din partea cui e cântecul',
+      ph_sender: 'ex: Maria, sau Maria și Alexandra',
+      label_relationship: 'Ce relație există între voi',
+      ph_relationship: 'ex: soție și soț, mamă și fiică, prieteni',
+      label_email: 'Emailul tău (primești melodia și aici)',
+      label_phone: 'Telefon WhatsApp (opțional — primești și acolo melodia)',
+      ph_phone: '+44 7xxx xxxxxx',
+      label_story: 'Povestea / detalii de inclus în versuri',
+      ph_story: 'Spune-ne ce vă leagă, ce momente importante ați trăit, ce îi iubești cel mai mult, ce vrei să îi transmiți și orice detaliu pe care vrei să îl auzi în melodie',
+      story_hint: 'Poți scrie în orice limbă — versurile vor fi generate în limba aleasă mai sus',
+      label_genre: 'Gen muzical',
+      genre_choose: 'Alege genul',
+      genre_emotional: 'Emoțional',
+      genre_suflet: 'De suflet',
+      genre_acustic: 'Acustic / Folk',
+      genre_petrecere: 'Muzică de petrecere',
+      genre_balada: 'Baladă',
+      genre_manele: 'Manele',
+      genre_copii: 'Pentru copii',
+      voice_label: 'Ce voce să cânte?', voice_female: 'Voce feminină', voice_male: 'Voce masculină',
+      voice_duet: 'Duet feminin + masculin', voice_auto: 'Alege automat',
+      voice_note: 'Vom folosi această alegere ca preferință pentru generare',
+      label_package: 'Alege pachetul',
+      plan_standard_name: 'Standard',
+      plan_standard_desc: '1 versiune, ~2 minute, livrare pe email',
+      plan_premium_name: 'Premium',
+      plan_premium_desc: '2 versiuni la alegere + fișier WAV descărcabil',
+      plan_video_name: 'Cadou video',
+      plan_video_desc: 'Melodie + video cu versuri pentru social/WhatsApp',
+      sum_package: 'Pachet',
+      sum_total: 'Total',
+      btn_generate: 'Generează previzualizarea gratuit →',
+      btn_generate_starting: 'Pornim compunerea...',
+      note_free: 'Nu plătești acum. Plătești doar dacă îți place rezultatul',
+      msg_conn_error: 'Eroare de conexiune. Încearcă din nou',
+      msg_error_prefix: 'Eroare: ',
+      msg_try_again: 'încearcă din nou',
+    },
+    en: {
+      back_link: 'Back to homepage',
+      order_eyebrow: 'Order',
+      order_title: 'Compose your song',
+      order_sub: 'Fill in the story, listen to a free 55-second preview, ask for edits if it is not quite right — pay only when you are happy.',
+      theme_label: 'What moment is this song for',
+      theme_dor_name: 'I miss someone',
+      theme_dor_desc: 'No occasion. Just longing.',
+      theme_onomastica_name: 'Their name day',
+      theme_onomastica_desc: 'Name day, saints, family.',
+      theme_aniversare_name: 'It is their birthday',
+      theme_aniversare_desc: 'Happy birthday, made personal.',
+      theme_declaratie_name: 'I love you, in song',
+      theme_declaratie_desc: 'When words are not enough.',
+      theme_nunta_name: 'Wedding',
+      theme_nunta_desc: 'First dance or a surprise for the couple.',
+      theme_pierdere_name: 'In memory of someone',
+      theme_pierdere_desc: 'For those who are no longer here.',
+      theme_pentrumine_name: 'For myself',
+      theme_pentrumine_desc: 'A song just for you.',
+      theme_altceva_name: 'Something else',
+      theme_altceva_desc: 'No occasion. Describe it yourself.',
+      label_recipient: 'Who is the song for (name)',
+      ph_recipient: 'e.g. Maria',
+      label_sender: 'Who is the song from',
+      ph_sender: 'e.g. Maria, or Maria and Alexandra',
+      label_relationship: 'What is your relationship',
+      ph_relationship: 'e.g. wife and husband, mother and daughter, friends',
+      label_email: 'Your email (you\'ll also receive the song here)',
+      label_phone: 'WhatsApp phone (optional — you\'ll also get the song there)',
+      ph_phone: '+44 7xxx xxxxxx',
+      label_story: 'The story / details to include in the lyrics',
+      ph_story: 'Tell us what connects you, the important moments you have shared, what you love most about them, what you want to say to them, and anything else you would like to hear in the song',
+      story_hint: 'You can write in any language — the lyrics will be generated in the language selected above.',
+      label_genre: 'Musical genre',
+      genre_choose: 'Choose a genre',
+      genre_emotional: 'Emotional',
+      genre_suflet: 'Soulful',
+      genre_acustic: 'Acoustic / Folk',
+      genre_petrecere: 'Party music',
+      genre_balada: 'Ballad',
+      genre_manele: 'Manele',
+      genre_copii: 'For kids',
+      voice_label: 'Which voice should sing?', voice_female: 'Female voice', voice_male: 'Male voice',
+      voice_duet: 'Female + male duet', voice_auto: 'Choose automatically',
+      voice_note: "We'll use this choice as a preference for the generation",
+      label_package: 'Choose your package',
+      plan_standard_name: 'Standard',
+      plan_standard_desc: '1 version, ~2 minutes, delivered by email',
+      plan_premium_name: 'Premium',
+      plan_premium_desc: '2 versions to choose from + downloadable WAV file',
+      plan_video_name: 'Video gift',
+      plan_video_desc: 'Song + lyric video for social/WhatsApp',
+      sum_package: 'Package',
+      sum_total: 'Total',
+      btn_generate: 'Generate your free preview →',
+      btn_generate_starting: 'Starting composition...',
+      note_free: 'You don\'t pay now. You only pay if you like the result.',
+      msg_conn_error: 'Connection error. Please try again.',
+      msg_error_prefix: 'Error: ',
+      msg_try_again: 'please try again.',
+    },
+    de: {
+      back_link: 'Zurück zur Startseite',
+      order_eyebrow: 'Bestellung',
+      order_title: 'Komponiere dein Lied',
+      order_sub: 'Erzähle die Geschichte, höre eine kostenlose 55-Sekunden-Vorschau, fordere Änderungen an — zahle erst, wenn du zufrieden bist.',
+      theme_label: 'Für welchen Anlass ist das Lied',
+      theme_dor_name: 'Ich vermisse jemanden',
+      theme_dor_desc: 'Kein Anlass. Nur Sehnsucht.',
+      theme_onomastica_name: 'Namenstag',
+      theme_onomastica_desc: 'Namenstag, Feiertag, Familie.',
+      theme_aniversare_name: 'Geburtstag',
+      theme_aniversare_desc: 'Alles Gute, ganz persönlich.',
+      theme_declaratie_name: 'Ich liebe dich, in Liedform',
+      theme_declaratie_desc: 'Wenn Worte nicht reichen.',
+      theme_nunta_name: 'Hochzeit',
+      theme_nunta_desc: 'Erster Tanz oder Überraschung fürs Brautpaar.',
+      theme_pierdere_name: 'In Erinnerung an jemanden',
+      theme_pierdere_desc: 'Für die, die nicht mehr hier sind.',
+      theme_pentrumine_name: 'Für mich selbst',
+      theme_pentrumine_desc: 'Ein Lied nur für dich.',
+      theme_altceva_name: 'Etwas anderes',
+      theme_altceva_desc: 'Kein Anlass. Beschreibe es selbst.',
+      label_recipient: 'Für wen ist das Lied (Name)',
+      ph_recipient: 'z.B. Maria',
+      label_sender: 'Von wem ist das Lied',
+      ph_sender: 'z.B. Maria, oder Maria und Alexandra',
+      label_relationship: 'Welche Beziehung habt ihr',
+      ph_relationship: 'z.B. Ehefrau und Ehemann, Mutter und Tochter, Freunde',
+      label_email: 'Deine E-Mail (du erhältst das Lied auch hier)',
+      label_phone: 'WhatsApp-Nummer (optional — du erhältst das Lied auch dort)',
+      ph_phone: '+44 7xxx xxxxxx',
+      label_story: 'Die Geschichte / Details für den Text',
+      ph_story: 'Erzähl uns, was euch verbindet, welche wichtigen Momente ihr erlebt habt, was du an dieser Person am meisten liebst, was du ihr sagen möchtest, und alles andere, das im Lied vorkommen soll',
+      story_hint: 'Du kannst in jeder Sprache schreiben — der Text wird in der oben gewählten Sprache erstellt.',
+      label_genre: 'Musikrichtung',
+      genre_choose: 'Genre wählen',
+      genre_emotional: 'Emotional',
+      genre_suflet: 'Gefühlvoll',
+      genre_acustic: 'Akustik / Folk',
+      genre_petrecere: 'Partymusik',
+      genre_balada: 'Ballade',
+      genre_manele: 'Manele',
+      genre_copii: 'Für Kinder',
+      voice_label: 'Welche Stimme soll singen?', voice_female: 'Weibliche Stimme', voice_male: 'Männliche Stimme',
+      voice_duet: 'Duett weiblich + männlich', voice_auto: 'Automatisch auswählen',
+      voice_note: 'Wir verwenden diese Wahl als Präferenz für die Erstellung',
+      label_package: 'Paket wählen',
+      plan_standard_name: 'Standard',
+      plan_standard_desc: '1 Version, ca. 2 Minuten, per E-Mail geliefert',
+      plan_premium_name: 'Premium',
+      plan_premium_desc: '2 Versionen zur Wahl + herunterladbare WAV-Datei',
+      plan_video_name: 'Video-Geschenk',
+      plan_video_desc: 'Lied + Lyric-Video für Social Media/WhatsApp',
+      sum_package: 'Paket',
+      sum_total: 'Gesamt',
+      btn_generate: 'Kostenlose Vorschau erstellen →',
+      btn_generate_starting: 'Komposition wird gestartet...',
+      note_free: 'Du zahlst jetzt noch nicht. Nur wenn dir das Ergebnis gefällt.',
+      msg_conn_error: 'Verbindungsfehler. Bitte versuche es erneut.',
+      msg_error_prefix: 'Fehler: ',
+      msg_try_again: 'bitte versuche es erneut.',
+    },
+    es: {
+      back_link: 'Volver a la página principal',
+      order_eyebrow: 'Pedido',
+      order_title: 'Compón tu canción',
+      order_sub: 'Cuenta la historia, escucha una previsualización gratuita de 55 segundos, pide cambios si no es exactamente lo que quieres — paga solo cuando estés satisfecho.',
+      theme_label: 'Para qué momento quieres la canción',
+      theme_dor_name: 'Extraño a alguien',
+      theme_dor_desc: 'Sin ocasión especial. Solo nostalgia.',
+      theme_onomastica_name: 'Celebra su santo',
+      theme_onomastica_desc: 'Santo, festividad, familia.',
+      theme_aniversare_name: 'Es su cumpleaños',
+      theme_aniversare_desc: 'Feliz cumpleaños, muy personal.',
+      theme_declaratie_name: 'Te quiero, en canción',
+      theme_declaratie_desc: 'Cuando las palabras no bastan.',
+      theme_nunta_name: 'Boda',
+      theme_nunta_desc: 'Primer baile o sorpresa para los novios.',
+      theme_pierdere_name: 'En memoria de alguien',
+      theme_pierdere_desc: 'Para quienes ya no están.',
+      theme_pentrumine_name: 'Para mí mismo/a',
+      theme_pentrumine_desc: 'Una canción solo para ti.',
+      theme_altceva_name: 'Otra cosa',
+      theme_altceva_desc: 'Sin ocasión especial. Descríbelo tú.',
+      label_recipient: 'Para quién es la canción (nombre)',
+      ph_recipient: 'ej: María',
+      label_sender: 'De parte de quién es la canción',
+      ph_sender: 'ej: María, o María y Alejandra',
+      label_relationship: 'Qué relación tenéis',
+      ph_relationship: 'ej: esposa y esposo, madre e hija, amigos',
+      label_email: 'Tu email (también recibirás la canción aquí)',
+      label_phone: 'Teléfono WhatsApp (opcional — también recibirás la canción allí)',
+      ph_phone: '+44 7xxx xxxxxx',
+      label_story: 'La historia / detalles para la letra',
+      ph_story: 'Cuéntanos qué os une, los momentos importantes que habéis vivido, qué es lo que más amas de esa persona, qué quieres decirle, y cualquier detalle que quieras escuchar en la canción',
+      story_hint: 'Puedes escribir en cualquier idioma — la letra se generará en el idioma elegido arriba.',
+      label_genre: 'Género musical',
+      genre_choose: 'Elige un género',
+      genre_emotional: 'Emotivo',
+      genre_suflet: 'Con alma',
+      genre_acustic: 'Acústico / Folk',
+      genre_petrecere: 'Música de fiesta',
+      genre_balada: 'Balada',
+      genre_manele: 'Manele',
+      genre_copii: 'Para niños',
+      voice_label: '¿Qué voz debe cantar?', voice_female: 'Voz femenina', voice_male: 'Voz masculina',
+      voice_duet: 'Dúo femenino + masculino', voice_auto: 'Elegir automáticamente',
+      voice_note: 'Usaremos esta elección como preferencia para la generación',
+      label_package: 'Elige tu paquete',
+      plan_standard_name: 'Estándar',
+      plan_standard_desc: '1 versión, ~2 minutos, entrega por email',
+      plan_premium_name: 'Premium',
+      plan_premium_desc: '2 versiones a elegir + archivo WAV descargable',
+      plan_video_name: 'Regalo en video',
+      plan_video_desc: 'Canción + video lírico para redes/WhatsApp',
+      sum_package: 'Paquete',
+      sum_total: 'Total',
+      btn_generate: 'Generar previsualización gratis →',
+      btn_generate_starting: 'Iniciando la composición...',
+      note_free: 'No pagas ahora. Solo pagas si te gusta el resultado.',
+      msg_conn_error: 'Error de conexión. Inténtalo de nuevo.',
+      msg_error_prefix: 'Error: ',
+      msg_try_again: 'inténtalo de nuevo.',
+    },
+    it: {
+      back_link: 'Torna alla pagina principale',
+      order_eyebrow: 'Ordine',
+      order_title: 'Componi la tua canzone',
+      order_sub: 'Racconta la storia, ascolta un\'anteprima gratuita di 55 secondi, chiedi modifiche se non è esattamente quello che vuoi — paghi solo quando sei soddisfatto.',
+      theme_label: 'Per quale momento vuoi la canzone',
+      theme_dor_name: 'Mi manca qualcuno',
+      theme_dor_desc: 'Nessuna occasione. Solo nostalgia.',
+      theme_onomastica_name: 'Il suo onomastico',
+      theme_onomastica_desc: 'Onomastico, festività, famiglia.',
+      theme_aniversare_name: 'È il suo compleanno',
+      theme_aniversare_desc: 'Buon compleanno, in modo personale.',
+      theme_declaratie_name: 'Ti amo, in canzone',
+      theme_declaratie_desc: 'Quando le parole non bastano.',
+      theme_nunta_name: 'Matrimonio',
+      theme_nunta_desc: 'Primo ballo o sorpresa per gli sposi.',
+      theme_pierdere_name: 'In memoria di qualcuno',
+      theme_pierdere_desc: 'Per chi non c\'è più.',
+      theme_pentrumine_name: 'Per me stesso/a',
+      theme_pentrumine_desc: 'Una canzone solo per te.',
+      theme_altceva_name: 'Altro',
+      theme_altceva_desc: 'Nessuna occasione. Descrivilo tu.',
+      label_recipient: 'Per chi è la canzone (nome)',
+      ph_recipient: 'es: Maria',
+      label_sender: 'Da parte di chi è la canzone',
+      ph_sender: 'es: Maria, o Maria e Alessandra',
+      label_relationship: 'Che relazione avete',
+      ph_relationship: 'es: moglie e marito, madre e figlia, amici',
+      label_email: 'La tua email (riceverai la canzone anche qui)',
+      label_phone: 'Telefono WhatsApp (facoltativo — riceverai la canzone anche lì)',
+      ph_phone: '+44 7xxx xxxxxx',
+      label_story: 'La storia / dettagli per il testo',
+      ph_story: 'Raccontaci cosa vi lega, i momenti importanti che avete vissuto insieme, cosa ami di più di questa persona, cosa vuoi dirle, e qualsiasi dettaglio che vuoi sentire nella canzone',
+      story_hint: 'Puoi scrivere in qualsiasi lingua — il testo sarà generato nella lingua scelta sopra.',
+      label_genre: 'Genere musicale',
+      genre_choose: 'Scegli un genere',
+      genre_emotional: 'Emozionante',
+      genre_suflet: 'Con anima',
+      genre_acustic: 'Acustico / Folk',
+      genre_petrecere: 'Musica da festa',
+      genre_balada: 'Ballata',
+      genre_manele: 'Manele',
+      genre_copii: 'Per bambini',
+      voice_label: 'Quale voce deve cantare?', voice_female: 'Voce femminile', voice_male: 'Voce maschile',
+      voice_duet: 'Duetto femminile + maschile', voice_auto: 'Scegli automaticamente',
+      voice_note: 'Useremo questa scelta come preferenza per la generazione',
+      label_package: 'Scegli il pacchetto',
+      plan_standard_name: 'Standard',
+      plan_standard_desc: '1 versione, ~2 minuti, consegna via email',
+      plan_premium_name: 'Premium',
+      plan_premium_desc: '2 versioni a scelta + file WAV scaricabile',
+      plan_video_name: 'Regalo video',
+      plan_video_desc: 'Canzone + video con testo per social/WhatsApp',
+      sum_package: 'Pacchetto',
+      sum_total: 'Totale',
+      btn_generate: 'Genera l\'anteprima gratis →',
+      btn_generate_starting: 'Avvio della composizione...',
+      note_free: 'Non paghi ora. Paghi solo se ti piace il risultato.',
+      msg_conn_error: 'Errore di connessione. Riprova.',
+      msg_error_prefix: 'Errore: ',
+      msg_try_again: 'riprova.',
+    },
+    fr: {
+      back_link: 'Retour à la page d\'accueil',
+      order_eyebrow: 'Commande',
+      order_title: 'Composez votre chanson',
+      order_sub: 'Racontez l\'histoire, écoutez un aperçu gratuit de 55 secondes, demandez des modifications si besoin — payez seulement quand vous êtes satisfait.',
+      theme_label: 'Pour quel moment voulez-vous la chanson',
+      theme_dor_name: 'Quelqu\'un me manque',
+      theme_dor_desc: 'Sans occasion particulière. Juste le manque.',
+      theme_onomastica_name: 'Sa fête',
+      theme_onomastica_desc: 'Fête, saints, famille.',
+      theme_aniversare_name: 'C\'est son anniversaire',
+      theme_aniversare_desc: 'Joyeux anniversaire, en version personnelle.',
+      theme_declaratie_name: 'Je t\'aime, en chanson',
+      theme_declaratie_desc: 'Quand les mots ne suffisent pas.',
+      theme_nunta_name: 'Mariage',
+      theme_nunta_desc: 'Première danse ou surprise pour les mariés.',
+      theme_pierdere_name: 'À la mémoire de quelqu\'un',
+      theme_pierdere_desc: 'Pour ceux qui ne sont plus là.',
+      theme_pentrumine_name: 'Pour moi-même',
+      theme_pentrumine_desc: 'Une chanson juste pour vous.',
+      theme_altceva_name: 'Autre chose',
+      theme_altceva_desc: 'Sans occasion particulière. Décrivez-la vous-même.',
+      label_recipient: 'Pour qui est la chanson (prénom)',
+      ph_recipient: 'ex : Maria',
+      label_sender: 'De la part de qui est la chanson',
+      ph_sender: 'ex : Maria, ou Maria et Alexandra',
+      label_relationship: 'Quelle est votre relation',
+      ph_relationship: 'ex : épouse et mari, mère et fille, amis',
+      label_email: 'Votre email (vous recevrez aussi la chanson ici)',
+      label_phone: 'Téléphone WhatsApp (facultatif — vous recevrez aussi la chanson là-bas)',
+      ph_phone: '+44 7xxx xxxxxx',
+      label_story: 'L\'histoire / détails à inclure dans les paroles',
+      ph_story: 'Dites-nous ce qui vous unit, les moments importants que vous avez vécus, ce que vous aimez le plus chez cette personne, ce que vous voulez lui dire, et tout détail que vous aimeriez entendre dans la chanson',
+      story_hint: 'Vous pouvez écrire dans n\'importe quelle langue — les paroles seront générées dans la langue choisie ci-dessus.',
+      label_genre: 'Genre musical',
+      genre_choose: 'Choisissez un genre',
+      genre_emotional: 'Émouvant',
+      genre_suflet: 'Avec âme',
+      genre_acustic: 'Acoustique / Folk',
+      genre_petrecere: 'Musique de fête',
+      genre_balada: 'Ballade',
+      genre_manele: 'Manele',
+      genre_copii: 'Pour enfants',
+      voice_label: 'Quelle voix doit chanter ?', voice_female: 'Voix féminine', voice_male: 'Voix masculine',
+      voice_duet: 'Duo féminin + masculin', voice_auto: 'Choisir automatiquement',
+      voice_note: 'Nous utiliserons ce choix comme préférence pour la génération',
+      label_package: 'Choisissez votre pack',
+      plan_standard_name: 'Standard',
+      plan_standard_desc: '1 version, ~2 minutes, livrée par email',
+      plan_premium_name: 'Premium',
+      plan_premium_desc: '2 versions au choix + fichier WAV téléchargeable',
+      plan_video_name: 'Cadeau vidéo',
+      plan_video_desc: 'Chanson + vidéo lyrics pour réseaux sociaux/WhatsApp',
+      sum_package: 'Pack',
+      sum_total: 'Total',
+      btn_generate: 'Générer l\'aperçu gratuit →',
+      btn_generate_starting: 'Démarrage de la composition...',
+      note_free: 'Vous ne payez pas maintenant. Seulement si le résultat vous plaît.',
+      msg_conn_error: 'Erreur de connexion. Veuillez réessayer.',
+      msg_error_prefix: 'Erreur : ',
+      msg_try_again: 'veuillez réessayer.',
+    },
+    bg: {
+      back_link: 'Обратно към началната страница',
+      order_eyebrow: 'Поръчка',
+      order_title: 'Композирай своята песен',
+      order_sub: 'Разкажи историята, изслушай безплатен преглед от 55 секунди, поискай промени, ако не е точно както искаш — плащаш само когато си доволен.',
+      theme_label: 'За какъв момент искаш песента',
+      theme_dor_name: 'Липсва ми някой',
+      theme_dor_desc: 'Без повод. Просто копнеж.',
+      theme_onomastica_name: 'Има именен ден',
+      theme_onomastica_desc: 'Именен ден, празник, семейство.',
+      theme_aniversare_name: 'Има рожден ден',
+      theme_aniversare_desc: 'Честит рожден ден, съвсем лично.',
+      theme_declaratie_name: 'Обичам те, в песен',
+      theme_declaratie_desc: 'Когато думите не стигат.',
+      theme_nunta_name: 'Сватба',
+      theme_nunta_desc: 'Първи танц или изненада за младоженците.',
+      theme_pierdere_name: 'В памет на някого',
+      theme_pierdere_desc: 'За тези, които вече ги няма.',
+      theme_pentrumine_name: 'За самия мен',
+      theme_pentrumine_desc: 'Песен само за теб.',
+      theme_altceva_name: 'Нещо друго',
+      theme_altceva_desc: 'Без повод. Опиши сам.',
+      label_recipient: 'За кого е песента (име)',
+      ph_recipient: 'напр. Мария',
+      label_sender: 'От чие име е песента',
+      ph_sender: 'напр. Мария, или Мария и Александра',
+      label_relationship: 'Каква е връзката между вас',
+      ph_relationship: 'напр. съпруга и съпруг, майка и дъщеря, приятели',
+      label_email: 'Твоят имейл (ще получиш песента и тук)',
+      label_phone: 'WhatsApp телефон (по желание — ще получиш песента и там)',
+      ph_phone: '+44 7xxx xxxxxx',
+      label_story: 'Историята / детайли за текста',
+      ph_story: 'Разкажи ни какво ви свързва, важните моменти, които сте преживели заедно, какво обичаш най-много у този човек, какво искаш да му кажеш, и всеки детайл, който искаш да чуеш в песента',
+      story_hint: 'Можеш да пишеш на всеки език — текстът ще бъде генериран на избрания по-горе език.',
+      label_genre: 'Музикален жанр',
+      genre_choose: 'Избери жанр',
+      genre_emotional: 'Емоционално',
+      genre_suflet: 'Душевно',
+      genre_acustic: 'Акустика / Фолк',
+      genre_petrecere: 'Парти музика',
+      genre_balada: 'Балада',
+      genre_manele: 'Манеле',
+      genre_copii: 'За деца',
+      voice_label: 'Какъв глас да пее?', voice_female: 'Женски глас', voice_male: 'Мъжки глас',
+      voice_duet: 'Дует женски + мъжки глас', voice_auto: 'Избери автоматично',
+      voice_note: 'Ще използваме този избор като предпочитание за генерирането',
+      label_package: 'Избери пакет',
+      plan_standard_name: 'Стандартен',
+      plan_standard_desc: '1 версия, ~2 минути, доставка по имейл',
+      plan_premium_name: 'Премиум',
+      plan_premium_desc: '2 версии за избор + файл WAV за изтегляне',
+      plan_video_name: 'Видео подарък',
+      plan_video_desc: 'Песен + видео с текст за социални мрежи/WhatsApp',
+      sum_package: 'Пакет',
+      sum_total: 'Общо',
+      btn_generate: 'Генерирай безплатен преглед →',
+      btn_generate_starting: 'Стартираме композирането...',
+      note_free: 'Не плащаш сега. Плащаш само ако ти хареса резултатът.',
+      msg_conn_error: 'Грешка във връзката. Опитай отново.',
+      msg_error_prefix: 'Грешка: ',
+      msg_try_again: 'опитай отново.',
+    },
+    tr: {
+      back_link: 'Ana sayfaya dön',
+      order_eyebrow: 'Sipariş',
+      order_title: 'Şarkınızı besteleyin',
+      order_sub: 'Hikayeyi anlatın, 55 saniyelik ücretsiz bir ön izleme dinleyin, istediğiniz gibi değilse değişiklik isteyin — sadece memnun kaldığınızda ödeyin.',
+      theme_label: 'Şarkı hangi an için',
+      theme_dor_name: 'Birini özlüyorum',
+      theme_dor_desc: 'Özel bir sebep yok. Sadece özlem.',
+      theme_onomastica_name: 'İsim günü',
+      theme_onomastica_desc: 'İsim günü, bayram, aile.',
+      theme_aniversare_name: 'Doğum günü',
+      theme_aniversare_desc: 'Kişiye özel, doğum günü kutlaması.',
+      theme_declaratie_name: 'Seni seviyorum, şarkıyla',
+      theme_declaratie_desc: 'Kelimeler yetmediğinde.',
+      theme_nunta_name: 'Düğün',
+      theme_nunta_desc: 'İlk dans veya çift için sürpriz.',
+      theme_pierdere_name: 'Birinin anısına',
+      theme_pierdere_desc: 'Artık aramızda olmayanlar için.',
+      theme_pentrumine_name: 'Kendim için',
+      theme_pentrumine_desc: 'Sadece sizin için bir şarkı.',
+      theme_altceva_name: 'Başka bir şey',
+      theme_altceva_desc: 'Özel bir sebep yok. Kendiniz anlatın.',
+      label_recipient: 'Şarkı kimin için (isim)',
+      ph_recipient: 'örn: Ayşe',
+      label_sender: 'Şarkı kimden',
+      ph_sender: 'örn: Ayşe, veya Ayşe ve Zeynep',
+      label_relationship: 'Aranızdaki ilişki nedir',
+      ph_relationship: 'örn: eş ve eş, anne ve kız, arkadaşlar',
+      label_email: 'E-posta adresiniz (şarkıyı buraya da alacaksınız)',
+      label_phone: 'WhatsApp telefonu (isteğe bağlı — şarkıyı oradan da alacaksınız)',
+      ph_phone: '+44 7xxx xxxxxx',
+      label_story: 'Hikaye / sözlere eklenecek detaylar',
+      ph_story: 'Sizi birbirinize bağlayan şeyi, yaşadığınız önemli anları, bu kişide en çok neyi sevdiğinizi, ona ne söylemek istediğinizi ve şarkıda duymak istediğiniz her ayrıntıyı bize anlatın',
+      story_hint: 'Herhangi bir dilde yazabilirsiniz — sözler yukarıda seçilen dilde oluşturulacaktır.',
+      label_genre: 'Müzik türü',
+      genre_choose: 'Bir tür seçin',
+      genre_emotional: 'Duygusal',
+      genre_suflet: 'İçten',
+      genre_acustic: 'Akustik / Folk',
+      genre_petrecere: 'Parti müziği',
+      genre_balada: 'Balad',
+      genre_manele: 'Manele',
+      genre_copii: 'Çocuklar için',
+      voice_label: 'Hangi ses söylemeli?', voice_female: 'Kadın sesi', voice_male: 'Erkek sesi',
+      voice_duet: 'Kadın + erkek düeti', voice_auto: 'Otomatik seç',
+      voice_note: 'Bu seçimi oluşturma için bir tercih olarak kullanacağız',
+      label_package: 'Paketinizi seçin',
+      plan_standard_name: 'Standart',
+      plan_standard_desc: '1 versiyon, ~2 dakika, e-posta ile teslim',
+      plan_premium_name: 'Premium',
+      plan_premium_desc: 'Seçilecek 2 versiyon + indirilebilir WAV dosyası',
+      plan_video_name: 'Video hediye',
+      plan_video_desc: 'Şarkı + sosyal medya/WhatsApp için sözlü video',
+      sum_package: 'Paket',
+      sum_total: 'Toplam',
+      btn_generate: 'Ücretsiz ön izlemeyi oluştur →',
+      btn_generate_starting: 'Beste başlıyor...',
+      note_free: 'Şimdi ödemezsiniz. Sadece sonucu beğenirseniz ödersiniz.',
+      msg_conn_error: 'Bağlantı hatası. Lütfen tekrar deneyin.',
+      msg_error_prefix: 'Hata: ',
+      msg_try_again: 'lütfen tekrar deneyin.',
+    },
+  };
+
+  let currentLang = localStorage.getItem('nds_lang');
+  if (!currentLang) {
+    const supported = ['ro', 'en', 'de', 'es', 'it', 'fr', 'bg', 'tr'];
+    const browserLang = navigator.language.slice(0, 2).toLowerCase();
+    currentLang = supported.includes(browserLang) ? browserLang : 'en';
+  }
+
+  function t(key) {
+    return (translations[currentLang] && translations[currentLang][key]) || translations.ro[key] || key;
+  }
+
+  function applyLang(lang) {
+    document.documentElement.lang = lang;
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+      const key = el.getAttribute('data-i18n');
+      if (translations[lang][key] !== undefined) el.innerHTML = translations[lang][key];
+    });
+    document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+      const key = el.getAttribute('data-i18n-placeholder');
+      if (translations[lang][key] !== undefined) el.setAttribute('placeholder', translations[lang][key]);
+    });
+  }
+  applyLang(currentLang);
+
+  // -------- selectie tema --------
+  const themeCards = document.querySelectorAll('.theme-card');
+  const occasionInput = document.getElementById('occasion');
+  themeCards.forEach(c => {
+    c.addEventListener('click', () => {
+      themeCards.forEach(x => x.classList.remove('active'));
+      c.classList.add('active');
+      occasionInput.value = c.dataset.theme;
+      saveDraft();
+    });
+  });
+
+  // -------- selectie voce --------
+  const voiceCards = document.querySelectorAll('.voice-card');
+  const voiceInput = document.getElementById('voice-preference');
+  voiceCards.forEach(c => {
+    c.addEventListener('click', () => {
+      voiceCards.forEach(x => x.classList.remove('active'));
+      c.classList.add('active');
+      voiceInput.value = c.dataset.voice;
+      saveDraft();
+    });
+  });
+
+  // -------- selectie pachet --------
+  const plans = document.querySelectorAll('.plan');
+  const sumPlan = document.getElementById('sum-plan');
+  const sumTotal = document.getElementById('sum-total');
+  let selectedPlan = { id: 'standard', price: 15, label: 'Standard' };
+
+  plans.forEach(p => {
+    p.addEventListener('click', () => {
+      plans.forEach(x => x.classList.remove('active'));
+      p.classList.add('active');
+      selectedPlan = {
+        id: p.dataset.plan,
+        price: Number(p.dataset.price),
+        label: p.querySelector('.plan-name').textContent
+      };
+      sumPlan.textContent = selectedPlan.label;
+      sumTotal.textContent = '£' + selectedPlan.price;
+      saveDraft();
+    });
+  });
+
+  // -------- pastrare temporara a formularului in localStorage (DOAR campurile
+  // formularului — niciun token, nicio parola, nimic legat de Stripe). Restaurat daca
+  // utilizatorul reincarca accidental pagina; sters dupa crearea cu succes a comenzii. --------
+  const DRAFT_KEY = 'nds_form_draft';
+
+  function collectPayload() {
+    return {
+      occasion: document.getElementById('occasion').value,
+      recipient: document.getElementById('recipient').value,
+      senderName: document.getElementById('sender').value,
+      relationship: document.getElementById('relationship').value,
+      email: document.getElementById('email').value,
+      story: document.getElementById('story').value,
+      genre: document.getElementById('genre').value,
+      voicePreference: voiceInput.value,
+      plan: selectedPlan.id,
+      price: selectedPlan.price,
+      lang: currentLang
+    };
+  }
+
+  function saveDraft() {
+    try {
+      const draft = {
+        occasion: document.getElementById('occasion').value,
+        recipient: document.getElementById('recipient').value,
+        sender: document.getElementById('sender').value,
+        relationship: document.getElementById('relationship').value,
+        email: document.getElementById('email').value,
+        phone: document.getElementById('phone').value,
+        story: document.getElementById('story').value,
+        genre: document.getElementById('genre').value,
+        voicePreference: voiceInput.value,
+        plan: selectedPlan.id
+      };
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+    } catch (err) {
+      // localStorage indisponibil (mod privat foarte restrictiv etc.) — nu blocam formularul
+    }
+  }
+
+  function restoreDraft() {
+    let draft;
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      if (!raw) return;
+      draft = JSON.parse(raw);
+    } catch (err) {
+      return;
+    }
+    if (!draft) return;
+
+    if (draft.occasion) {
+      occasionInput.value = draft.occasion;
+      themeCards.forEach(c => c.classList.toggle('active', c.dataset.theme === draft.occasion));
+    }
+    if (draft.recipient) document.getElementById('recipient').value = draft.recipient;
+    if (draft.sender) document.getElementById('sender').value = draft.sender;
+    if (draft.relationship) document.getElementById('relationship').value = draft.relationship;
+    if (draft.email) document.getElementById('email').value = draft.email;
+    if (draft.phone) document.getElementById('phone').value = draft.phone;
+    if (draft.story) document.getElementById('story').value = draft.story;
+    if (draft.genre) document.getElementById('genre').value = draft.genre;
+    if (draft.voicePreference) {
+      voiceInput.value = draft.voicePreference;
+      voiceCards.forEach(c => c.classList.toggle('active', c.dataset.voice === draft.voicePreference));
+    }
+    if (draft.plan) {
+      const planEl = document.querySelector(`.plan[data-plan="${draft.plan}"]`);
+      if (planEl) {
+        plans.forEach(x => x.classList.remove('active'));
+        planEl.classList.add('active');
+        selectedPlan = {
+          id: planEl.dataset.plan,
+          price: Number(planEl.dataset.price),
+          label: planEl.querySelector('.plan-name').textContent
+        };
+        sumPlan.textContent = selectedPlan.label;
+        sumTotal.textContent = '£' + selectedPlan.price;
+      }
+    }
+  }
+  restoreDraft();
+
+  const form = document.getElementById('order-form');
+  form.addEventListener('input', saveDraft);
+
+  // -------- trimite comanda, porneste generarea GRATUITA a 2 variante, apoi redirectioneaza
+  // catre pagina dedicata de asteptare --------
+  const statusMsg = document.getElementById('status-msg');
+  const generateBtn = document.getElementById('generate-btn');
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    generateBtn.disabled = true;
+    const generateBtnLabel = document.getElementById('generate-btn-label');
+    const originalBtnText = generateBtnLabel.textContent;
+    generateBtnLabel.textContent = t('btn_generate_starting');
+    statusMsg.textContent = '';
+    statusMsg.className = '';
+
+    try {
+      const createRes = await fetch('/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(collectPayload())
+      });
+      const createData = await createRes.json();
+
+      if (!createData.orderId) {
+        statusMsg.textContent = t('msg_error_prefix') + (createData.error || t('msg_try_again'));
+        statusMsg.className = 'status-err';
+        generateBtn.disabled = false;
+        generateBtnLabel.textContent = originalBtnText;
+        return;
+      }
+
+      const currentOrderId = createData.orderId;
+      const currentAccessToken = createData.accessToken || '';
+
+      // pornim generarea (token obligatoriu), apoi redirectionam catre pagina dedicata
+      // de asteptare — nu mai facem polling inline pe formular
+      await fetch(`/api/orders/${currentOrderId}/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Access-Token': currentAccessToken },
+        body: JSON.stringify({ feedback: null })
+      });
+
+      // Comanda a fost creata cu succes — datele temporare ale formularului nu mai sunt
+      // necesare. NU stergem 'nds_lang' (preferinta de limba, valabila pe tot site-ul).
+      localStorage.removeItem(DRAFT_KEY);
+
+      const tokenParam = encodeURIComponent(currentAccessToken);
+      window.location.href = `/se-compune.html?id=${currentOrderId}&token=${tokenParam}`;
+    } catch (err) {
+      statusMsg.textContent = t('msg_conn_error');
+      statusMsg.className = 'status-err';
+      generateBtn.disabled = false;
+      generateBtnLabel.textContent = originalBtnText;
+    }
+  });
+</script>
+</body>
+</html>

@@ -458,7 +458,7 @@
     document.getElementById('p-subtitle').textContent = t.readySub;
 
     setTimeout(() => {
-      window.location.href = `/index.html?ready=${encodeURIComponent(orderId)}`;
+      window.location.href = `/melodia-mea.html?id=${encodeURIComponent(orderId)}&token=${encodeURIComponent(accessToken)}`;
     }, 1400);
   }
 
@@ -526,7 +526,7 @@
     try {
       const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}/generate`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-Access-Token': accessToken },
         body: JSON.stringify({ feedback: null })
       });
 

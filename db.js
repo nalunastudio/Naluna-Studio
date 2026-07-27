@@ -75,6 +75,33 @@ async function initDb() {
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS stripe_session_id TEXT;`);
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS stripe_payment_intent_id TEXT;`);
 
+  // Personalizare puternica a versurilor: cine ofera melodia si relatia cu destinatarul.
+  // Coloane NULLABLE (fara NOT NULL) — migrare sigura, comenzile vechi raman valide cu
+  // aceste campuri goale (NULL), buildPrompt() le trateaza ca optionale pentru compatibilitate.
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS sender_name TEXT;`);
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS relationship TEXT;`);
+
+  // Urmarire: din ce varianta (versuri editate de client) a pornit ultima regenerare —
+  // pentru transparenta/audit. Versurile originale/editate/data ultimei editari per
+  // varianta se salveaza in JSON-ul deja existent al coloanei `variants` (vezi
+  // buildVariantFromTrack() si endpoint-ul de salvare a versurilor din server.js) —
+  // nu au fost necesare coloane noi pentru acelea.
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS regenerate_source_variant_id TEXT;`);
+
+  // edit_reserved: TRUE cat timp o regenerare are o editare gratuita rezervata dar
+  // inca neconfirmata (generarea e in desfasurare). Permite diferentierea clara intre
+  // generarea INITIALA (niciodata nu seteaza acest flag, niciodata nu modifica edits_used)
+  // si o REGENERARE (seteaza flag-ul atomic la pornire, il curata la succes FARA sa
+  // atinga edits_used, sau declanseaza un refund atomic-idempotent la orice esec — vezi
+  // db.claimOrderForRegeneration() si db.refundEditIfReserved() mai jos).
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS edit_reserved BOOLEAN NOT NULL DEFAULT false;`);
+
+  // voice_preference: preferinta de voce pentru generare — 'female' | 'male' | 'duet' | 'auto'.
+  // NULL pentru comenzile existente (dinainte de aceasta coloana) — aplicatia trateaza
+  // NULL identic cu 'auto' peste tot (vezi rowToOrder mai jos si buildPrompt in server.js),
+  // deci comenzile vechi continua sa functioneze neschimbate, fara nicio migrare de date.
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS voice_preference TEXT;`);
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS testimonials (
       id UUID PRIMARY KEY,
@@ -123,20 +150,29 @@ function rowToOrder(row) {
     amountTotal: row.amount_total !== null && row.amount_total !== undefined ? Number(row.amount_total) : null,
     taxAmount: row.tax_amount !== null && row.tax_amount !== undefined ? Number(row.tax_amount) : null,
     stripeSessionId: row.stripe_session_id,
-    stripePaymentIntentId: row.stripe_payment_intent_id
+    stripePaymentIntentId: row.stripe_payment_intent_id,
+    senderName: row.sender_name,
+    relationship: row.relationship,
+    regenerateSourceVariantId: row.regenerate_source_variant_id,
+    editReserved: row.edit_reserved,
+    // NULL (comenzi vechi, dinainte de aceasta coloana) devine 'auto' aici, o singura
+    // data, central — restul aplicatiei (buildPrompt, API, comanda.html, melodia-mea.html)
+    // nu mai trebuie sa trateze separat cazul NULL.
+    voicePreference: row.voice_preference || 'auto'
   };
 }
 
 async function createOrder(order) {
   const result = await pool.query(
     `INSERT INTO orders
-      (id, access_token, occasion, recipient, email, story, genre, plan, price, lang, status, edits_used, variants, selected_variant_id)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+      (id, access_token, occasion, recipient, email, story, genre, plan, price, lang, status, edits_used, variants, selected_variant_id, sender_name, relationship, voice_preference)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
      RETURNING *`,
     [
       order.id, order.accessToken, order.occasion, order.recipient, order.email,
       order.story, order.genre, order.plan, order.price, order.lang,
-      order.status, order.editsUsed, JSON.stringify(order.variants || []), order.selectedVariantId
+      order.status, order.editsUsed, JSON.stringify(order.variants || []), order.selectedVariantId,
+      order.senderName || null, order.relationship || null, order.voicePreference || 'auto'
     ]
   );
   return rowToOrder(result.rows[0]);
@@ -183,6 +219,71 @@ async function claimOrderForProviderFinalization(orderId) {
   return rowToOrder(result.rows[0]); // null daca alta cerere a preluat-o deja (sau era deja finalizata)
 }
 
+// ==================================================================================
+// PRELUARE ATOMICA pentru o regenerare (editare gratuita). Rezerva ATOMIC, intr-o
+// singura instructiune SQL, statusul 'generating', incrementarea edits_used SI flag-ul
+// edit_reserved=true — previne TREI probleme simultan:
+//   1. doua cereri de regenerare in paralel pentru aceeasi comanda (dublu-click, retry) —
+//      doar una poate "castiga" tranzitia de status, cealalta gaseste deja 'generating'.
+//   2. depasirea celor 3 editari gratuite printr-o cursa intre citire si scriere — verificarea
+//      edits_used < $2 e parte din ACEEASI instructiune UPDATE, nu un pas separat inainte.
+//   3. o generare INITIALA (fara editare rezervata) sa fie confundata cu o regenerare —
+//      edit_reserved=true se seteaza DOAR aici, niciodata la /generate (generarea initiala).
+// Editarea e doar REZERVATA aici — daca generarea esueaza ulterior (in orice etapa: creare
+// task, polling, callback, descarcare, ffmpeg, durata, upload, salvare), apelantul TREBUIE
+// sa o restituie explicit prin refundEditIfReserved() (vezi mai jos), niciodata printr-un
+// simplu "edits_used - 1" manual.
+//
+// voicePreference (optional): daca clientul schimba preferinta de voce inainte de
+// regenerare, noua valoare se salveaza ATOMIC, in ACEEASI instructiune — deci NUMAI daca
+// regenerarea chiar e acceptata de server (nu doar incercata). Daca nu e trimisa
+// (null/undefined), COALESCE pastreaza valoarea existenta neschimbata.
+// ==================================================================================
+async function claimOrderForRegeneration(orderId, maxEdits, voicePreference) {
+  const result = await pool.query(
+    `UPDATE orders
+     SET status = 'generating',
+         edits_used = edits_used + 1,
+         edit_reserved = true,
+         voice_preference = COALESCE($3, voice_preference)
+     WHERE id = $1
+       AND status NOT IN ('generating', 'processing_provider_result', 'ready')
+       AND edits_used < $2
+     RETURNING *`,
+    [orderId, maxEdits, voicePreference || null]
+  );
+  return rowToOrder(result.rows[0]); // null daca deja in curs, deja platita, sau limita atinsa
+}
+
+// ==================================================================================
+// RESTITUIRE ATOMICA SI IDEMPOTENTA a unei editari rezervate. Se apeleaza la ORICE esec
+// al unei regenerari, indiferent de etapa (creare task Suno, polling, callback, download,
+// ffmpeg, verificare durata, upload, salvare in baza de date) si indiferent CINE detecteaza
+// esecul (ruta /regenerate, callback-ul SunoAPI, sau finalizeVariantsIfNeeded).
+//
+// Conditia "AND edit_reserved = true" din WHERE face restituirea sigura de apelat de
+// MAI MULTE ORI sau din MAI MULTE LOCURI pentru aceeasi comanda (ex. polling-ul si
+// callback-ul detecteaza acelasi esec aproape simultan): primul apel care ajunge la
+// Postgres gaseste edit_reserved=true, scade edits_used si seteaza edit_reserved=false,
+// intr-o singura operatie atomica; orice apel ulterior gaseste deja edit_reserved=false,
+// clauza WHERE nu se potriveste, UPDATE-ul nu afecteaza niciun rand — NU se scade
+// edits_used a doua oara. GREATEST(...,0) e o plasa de siguranta suplimentara, sa nu
+// scada niciodata sub zero chiar si intr-un scenariu neprevazut.
+//
+// O generare INITIALA (nu o regenerare) are intotdeauna edit_reserved=false, deci un
+// esec la generarea initiala nu are ce sa restituie — apelul e un no-op sigur.
+// ==================================================================================
+async function refundEditIfReserved(orderId) {
+  const result = await pool.query(
+    `UPDATE orders
+     SET edits_used = GREATEST(edits_used - 1, 0), edit_reserved = false
+     WHERE id = $1 AND edit_reserved = true
+     RETURNING *`,
+    [orderId]
+  );
+  return rowToOrder(result.rows[0]); // null daca nu era nimic de restituit (deja restituita, sau generare initiala)
+}
+
 // mapare camelCase (folosit in restul aplicatiei) -> nume coloana in DB,
 // ca sa putem construi un UPDATE dinamic dintr-un obiect partial (patch)
 const COLUMN_MAP = {
@@ -199,7 +300,10 @@ const COLUMN_MAP = {
   amountTotal: 'amount_total',
   taxAmount: 'tax_amount',
   stripeSessionId: 'stripe_session_id',
-  stripePaymentIntentId: 'stripe_payment_intent_id'
+  stripePaymentIntentId: 'stripe_payment_intent_id',
+  regenerateSourceVariantId: 'regenerate_source_variant_id',
+  editReserved: 'edit_reserved',
+  voicePreference: 'voice_preference'
 };
 
 async function updateOrder(id, patch) {
@@ -333,7 +437,7 @@ async function moveTestimonial(id, direction) {
 
 module.exports = {
   pool, initDb, createOrder, getOrderById, getOrderByToken, getOrderByMusicTaskId,
-  claimOrderForProviderFinalization,
+  claimOrderForProviderFinalization, claimOrderForRegeneration, refundEditIfReserved,
   updateOrder, listOrders, computeRevenue,
   createTestimonial, getTestimonialById, updateTestimonial, deleteTestimonial,
   listAllTestimonials, listPublishedTestimonials, moveTestimonial

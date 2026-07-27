@@ -83,6 +83,92 @@ const PLAN_PRICES = { standard: 15, premium: 25, video: 35 };
 const ALLOWED_OCCASIONS = ['dor', 'onomastica', 'aniversare', 'declaratie', 'nunta', 'pierdere', 'pentru-mine', 'altceva'];
 const ALLOWED_GENRES = ['emotional', 'suflet', 'pop', 'acustic', 'petrecere', 'balada', 'manele', 'copii'];
 const ALLOWED_LANGS = ['ro', 'en', 'de', 'es', 'it', 'fr', 'bg', 'tr'];
+
+// Mesaje de validare traduse pentru campurile obligatorii legate de personalizare
+// (destinatar, expeditor, relatie, poveste) — afisate clientului in limba aleasa de el,
+// nu doar in romana. Restul mesajelor de eroare din acest fisier raman in romana
+// (comportament existent, neschimbat), conform cerintei explicite doar pentru aceste 4.
+const MISSING_FIELD_MESSAGES = {
+  recipient: {
+    ro: 'Spune-ne pentru cine este melodia',
+    en: 'Tell us who the song is for',
+    de: 'Sag uns, für wen das Lied ist',
+    es: 'Dinos para quién es la canción',
+    it: 'Dicci per chi è la canzone',
+    fr: 'Dites-nous pour qui est la chanson',
+    bg: 'Кажи ни за кого е песента',
+    tr: 'Şarkının kimin için olduğunu söyleyin'
+  },
+  sender: {
+    ro: 'Spune-ne din partea cui este melodia',
+    en: 'Tell us who the song is from',
+    de: 'Sag uns, von wem das Lied ist',
+    es: 'Dinos de parte de quién es la canción',
+    it: 'Dicci da parte di chi è la canzone',
+    fr: 'Dites-nous de la part de qui est la chanson',
+    bg: 'Кажи ни от чие име е песента',
+    tr: 'Şarkının kimden geldiğini söyleyin'
+  },
+  relationship: {
+    ro: 'Selectează relația dintre voi',
+    en: 'Tell us your relationship',
+    de: 'Gib eure Beziehung an',
+    es: 'Indica vuestra relación',
+    it: 'Indica la vostra relazione',
+    fr: 'Indiquez votre relation',
+    bg: 'Посочи каква е връзката ви',
+    tr: 'Aranızdaki ilişkiyi belirtin'
+  },
+  story: {
+    ro: 'Adaugă câteva detalii despre povestea voastră',
+    en: 'Add a few details about your story',
+    de: 'Füge ein paar Details zu eurer Geschichte hinzu',
+    es: 'Añade algunos detalles sobre vuestra historia',
+    it: 'Aggiungi alcuni dettagli sulla vostra storia',
+    fr: 'Ajoutez quelques détails sur votre histoire',
+    bg: 'Добави няколко детайла за вашата история',
+    tr: 'Hikayeniz hakkında birkaç detay ekleyin'
+  }
+};
+function missingFieldMessage(field, lang) {
+  const safe = ALLOWED_LANGS.includes(lang) ? lang : 'ro';
+  return MISSING_FIELD_MESSAGES[field][safe];
+}
+
+// Valorile interne acceptate pentru preferinta de voce — orice altceva e respins.
+const VOICE_PREFERENCES = ['female', 'male', 'duet', 'auto'];
+
+// Mesaj de validare tradus — varianta sursa e OBLIGATORIE la regenerare (Partea 2).
+const SOURCE_VARIANT_REQUIRED_MESSAGES = {
+  ro: 'Selectează varianta pe care vrei să o modifici',
+  en: 'Select the version you want to change',
+  de: 'Wähle die Version aus, die du ändern möchtest',
+  es: 'Selecciona la versión que quieres cambiar',
+  it: 'Seleziona la versione che vuoi modificare',
+  fr: 'Sélectionnez la version que vous voulez modifier',
+  bg: 'Избери версията, която искаш да промениш',
+  tr: 'Değiştirmek istediğiniz versiyonu seçin'
+};
+function sourceVariantRequiredMessage(lang) {
+  const safe = ALLOWED_LANGS.includes(lang) ? lang : 'ro';
+  return SOURCE_VARIANT_REQUIRED_MESSAGES[safe];
+}
+
+// Mesaj de validare tradus — valoare de voce invalida (Partea 4).
+const INVALID_VOICE_MESSAGES = {
+  ro: 'Preferința de voce nu este validă',
+  en: 'Voice preference is not valid',
+  de: 'Die Stimmpräferenz ist ungültig',
+  es: 'La preferencia de voz no es válida',
+  it: 'La preferenza vocale non è valida',
+  fr: "La préférence de voix n'est pas valide",
+  bg: 'Предпочитанието за глас не е валидно',
+  tr: 'Ses tercihi geçerli değil'
+};
+function invalidVoiceMessage(lang) {
+  const safe = ALLOWED_LANGS.includes(lang) ? lang : 'ro';
+  return INVALID_VOICE_MESSAGES[safe];
+}
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // Token "fals", generat o singura data la pornire, cu exact aceeasi forma ca un accessToken
 // real (48 caractere hex). Nu corespunde niciunei comenzi reale — e folosit STRICT ca sa
@@ -484,19 +570,26 @@ app.use(express.static(path.join(__dirname, 'public')));
 // ==========================================================================================
 app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
   try {
-    const { occasion, recipient, email, story, genre, plan, lang } = req.body || {};
+    const { occasion, recipient, senderName, relationship, email, story, genre, plan, lang, voicePreference } = req.body || {};
+    const safeLang = ALLOWED_LANGS.includes(lang) ? lang : 'ro';
 
     if (!ALLOWED_OCCASIONS.includes(occasion)) {
       return res.status(400).json({ error: 'Ocazie invalidă.' });
     }
-    if (!isValidString(recipient, 1, 100)) {
-      return res.status(400).json({ error: 'Numele destinatarului este obligatoriu (max 100 caractere).' });
+    if (!isValidString(recipient, 1, 60)) {
+      return res.status(400).json({ error: missingFieldMessage('recipient', safeLang) });
+    }
+    if (!isValidString(senderName, 1, 100)) {
+      return res.status(400).json({ error: missingFieldMessage('sender', safeLang) });
+    }
+    if (!isValidString(relationship, 1, 60)) {
+      return res.status(400).json({ error: missingFieldMessage('relationship', safeLang) });
     }
     if (!isValidEmail(email)) {
       return res.status(400).json({ error: 'Adresa de email nu este validă.' });
     }
     if (!isValidString(story, 5, 2000)) {
-      return res.status(400).json({ error: 'Povestea trebuie să aibă între 5 și 2000 de caractere.' });
+      return res.status(400).json({ error: missingFieldMessage('story', safeLang) });
     }
     if (!ALLOWED_GENRES.includes(genre)) {
       return res.status(400).json({ error: 'Gen muzical invalid.' });
@@ -504,8 +597,15 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
     if (!PLAN_PRICES[plan]) {
       return res.status(400).json({ error: 'Pachet invalid.' });
     }
+    // Preferinta de voce e optionala la creare (implicit 'auto' daca lipseste), dar daca
+    // e trimisa, TREBUIE sa fie una din cele 4 valori acceptate — nu acceptam orice text.
+    const safeVoicePreference = (voicePreference === undefined || voicePreference === null || voicePreference === '')
+      ? 'auto'
+      : voicePreference;
+    if (!VOICE_PREFERENCES.includes(safeVoicePreference)) {
+      return res.status(400).json({ error: invalidVoiceMessage(safeLang) });
+    }
 
-    const safeLang = ALLOWED_LANGS.includes(lang) ? lang : 'ro';
     // IMPORTANT: pretul NU vine niciodata din req.body — se calculeaza aici, dupa pachetul
     // ales, indiferent ce a trimis clientul in payload. Asta previne manipularea pretului.
     const price = PLAN_PRICES[plan];
@@ -515,7 +615,9 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
       accessToken: randomBytes(24).toString('hex'),
       occasion, recipient: recipient.trim(), email: email.trim().toLowerCase(),
       story: story.trim(), genre, plan, price, lang: safeLang,
-      status: 'draft', editsUsed: 0, variants: [], selectedVariantId: null
+      status: 'draft', editsUsed: 0, variants: [], selectedVariantId: null,
+      senderName: senderName.trim(), relationship: relationship.trim(),
+      voicePreference: safeVoicePreference
     });
 
     res.json({ orderId: order.id, accessToken: order.accessToken });
@@ -525,13 +627,44 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
 });
 
 // ==========================================================================================
-// 2. Genereaza o PERECHE de variante — GRATUIT, inainte de plata
-// ==========================================================================================
-app.post('/api/orders/:orderId/generate', generationLimiter, async (req, res, next) => {
+// SECURITATE: toate rutele care MODIFICA o comanda (genereaza, regenereaza, salveaza versuri,
+// selecteaza varianta, initiaza plata) cer OBLIGATORIU accessToken-ul comenzii — nu doar
+// UUID-ul. Fara asta, oricine ar ghici/intercepta un orderId ar putea porni generari,
+// consuma editari gratuite sau initia plati pentru comanda altcuiva.
+//
+// Token-ul e acceptat fie din header-ul dedicat X-Access-Token, fie din body ({accessToken}),
+// pentru flexibilitate — dar e verificat mereu timing-safe (safeCompare) fata de
+// order.accessToken. Daca lipseste sau nu se potriveste, raspunsul e generic (404, "Comanda
+// nu exista"), identic cu cazul in care comanda chiar nu exista — nu se poate deduce daca
+// UUID-ul e valid doar din diferenta de raspuns.
+//
+// Comenzile vechi nu exista fara accessToken (campul e generat la fiecare creare de comanda,
+// dintotdeauna) — deci nu exista niciun caz real in care tokenul ar lipsi legitim; nu a fost
+// nevoie de nicio exceptie de compatibilitate.
+async function requireOrderToken(req, res, next) {
   try {
     if (!UUID_RE.test(req.params.orderId)) return res.status(400).json({ error: 'ID comandă invalid.' });
 
     const order = await db.getOrderById(req.params.orderId);
+    const token = req.get('X-Access-Token') || (req.body && req.body.accessToken) || null;
+
+    if (!order || !token || !safeCompare(token, order.accessToken)) {
+      return res.status(404).json({ error: 'Comanda nu există' });
+    }
+
+    req.order = order; // evita un al doilea SELECT in handler-ul care urmeaza
+    next();
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ==========================================================================================
+// 2. Genereaza o PERECHE de variante — GRATUIT, inainte de plata
+// ==========================================================================================
+app.post('/api/orders/:orderId/generate', generationLimiter, requireOrderToken, async (req, res, next) => {
+  try {
+    const order = req.order;
     if (!order) return res.status(404).json({ error: 'Comanda nu există.' });
     if (order.status === 'ready') return res.status(400).json({ error: 'Comanda e deja plătită și finalizată.' });
 
@@ -550,6 +683,10 @@ app.post('/api/orders/:orderId/generate', generationLimiter, async (req, res, ne
     runGeneration(order.id, feedback).catch(async (err) => {
       console.error('Eroare la generare pentru comanda', order.id, err.message);
       try {
+        // refundEditIfReserved e un no-op sigur aici — generarea INITIALA nu seteaza
+        // niciodata edit_reserved=true (doar regenerarea o face) — dar il apelam oricum,
+        // ca plasa de siguranta consistenta pe toate caile de esec ale generarii.
+        await db.refundEditIfReserved(order.id);
         await db.updateOrder(order.id, { status: 'generation_failed', error: String(err.message || err).slice(0, 500) });
       } catch (dbErr) {
         console.error('Eroare suplimentara la salvarea starii de esec:', dbErr.message);
@@ -563,31 +700,78 @@ app.post('/api/orders/:orderId/generate', generationLimiter, async (req, res, ne
 // ==========================================================================================
 // 3. Regenereaza (editare) — o noua pereche de variante, limitat la FREE_EDITS
 // ==========================================================================================
-app.post('/api/orders/:orderId/regenerate', generationLimiter, async (req, res, next) => {
+app.post('/api/orders/:orderId/regenerate', generationLimiter, requireOrderToken, async (req, res, next) => {
   try {
-    if (!UUID_RE.test(req.params.orderId)) return res.status(400).json({ error: 'ID comandă invalid.' });
-
-    const order = await db.getOrderById(req.params.orderId);
-    if (!order) return res.status(404).json({ error: 'Comanda nu există.' });
+    const order = req.order;
     if (order.status === 'ready') return res.status(400).json({ error: 'Comanda e deja plătită și finalizată.' });
-    if (order.editsUsed >= FREE_EDITS) {
-      return res.status(400).json({ error: `Ai folosit toate cele ${FREE_EDITS} editări gratuite.` });
-    }
-
-    // Acelasi blocaj ca la /generate — nu pornim o a doua generare in paralel pentru
-    // aceeasi comanda.
-    if (order.status === 'generating' || order.status === 'processing_provider_result') {
-      return res.status(409).json({ error: 'Generarea este deja în desfășurare.' });
-    }
 
     const feedback = typeof req.body?.feedback === 'string' ? req.body.feedback.slice(0, 500) : null;
 
-    await db.updateOrder(order.id, { status: 'generating', editsUsed: order.editsUsed + 1 });
+    // Varianta sursa e OBLIGATORIE (Partea 2) — clientul trebuie sa aleaga explicit
+    // varianta 1 sau 2 din melodia-mea.html. NU mai acceptam o regenerare fara variantId
+    // (nu mai deducem "ultima editata", "prima varianta" sau vreo alta varianta implicita).
+    const requestedVariantId = typeof req.body?.variantId === 'string' ? req.body.variantId : null;
+    if (!requestedVariantId) {
+      return res.status(400).json({ error: sourceVariantRequiredMessage(order.lang) });
+    }
+    const sourceVariant = (order.variants || []).find(v => v.id === requestedVariantId);
+    if (!sourceVariant) {
+      return res.status(400).json({ error: 'Varianta nu există.' });
+    }
+
+    // Preferinta de voce e OPTIONALA la regenerare (clientul o poate schimba sau o poate
+    // lasa neschimbata) — dar daca e trimisa, TREBUIE sa fie una din cele 4 valori
+    // acceptate. O valoare invalida respinge cererea INAINTE de a rezerva vreo editare.
+    const requestedVoice = typeof req.body?.voicePreference === 'string' ? req.body.voicePreference : null;
+    if (requestedVoice !== null && !VOICE_PREFERENCES.includes(requestedVoice)) {
+      return res.status(400).json({ error: invalidVoiceMessage(order.lang) });
+    }
+
+    // REZERVARE ATOMICA: status -> 'generating', edits_used + 1, edit_reserved = true,
+    // si (optional) noua preferinta de voce — toate intr-o singura instructiune SQL (vezi
+    // db.claimOrderForRegeneration). Previne doua regenerari simultane, depasirea celor 3
+    // editari gratuite, si salveaza noua preferinta de voce DOAR daca regenerarea chiar
+    // porneste (nu doar la o incercare respinsa).
+    const claimed = await db.claimOrderForRegeneration(order.id, FREE_EDITS, requestedVoice);
+    if (!claimed) {
+      // Recitim starea curenta doar ca sa dam mesajul de eroare potrivit clientului —
+      // rezervarea insasi a esuat deja atomic mai sus, deci nu exista nicio cursa aici.
+      const fresh = await db.getOrderById(order.id);
+      if (fresh && fresh.status === 'ready') {
+        return res.status(400).json({ error: 'Comanda e deja plătită și finalizată.' });
+      }
+      if (fresh && fresh.editsUsed >= FREE_EDITS) {
+        return res.status(400).json({ error: `Ai folosit toate cele ${FREE_EDITS} editări gratuite.` });
+      }
+      return res.status(409).json({ error: 'Generarea este deja în desfășurare.' });
+    }
+
+    // Daca varianta aleasa are versuri editate manual (melodia-mea.html), le folosim ca
+    // instructiune puternica pentru urmatoarea generare. IMPORTANT (vezi si comentariul
+    // din extractSunoTracks): SunoAPI, in configuratia confirmata (customMode:false), NU
+    // accepta versuri exacte trimise de noi — Suno scrie singur versurile, pornind de la
+    // un prompt descriptiv de max. 500 caractere. Nu putem deci garanta ca noua generare
+    // va reproduce exact textul editat — il folosim ca ghidaj, nu ca versuri impuse. Daca
+    // varianta aleasa NU are versuri editate, folosim doar feedback-ul general si datele
+    // comenzii (comportamentul implicit dinainte). Nu folosim niciodata versurile altei
+    // variante decat cea aleasa explicit.
+    const editedLyrics = typeof sourceVariant.editedLyrics === 'string' ? sourceVariant.editedLyrics.trim() : '';
+    let combinedFeedback = feedback;
+    if (editedLyrics) {
+      const lyricsInstruction = `Try to follow lyrics close to this rewritten version: ${editedLyrics}`;
+      combinedFeedback = feedback ? `${lyricsInstruction}. Also: ${feedback}` : lyricsInstruction;
+    }
+
+    await db.updateOrder(order.id, { regenerateSourceVariantId: requestedVariantId });
     res.json({ started: true });
 
-    runGeneration(order.id, feedback).catch(async (err) => {
+    runGeneration(order.id, combinedFeedback).catch(async (err) => {
       console.error('Eroare la regenerare pentru comanda', order.id, err.message);
       try {
+        // Generarea a esuat — restituim ATOMIC editarea gratuita rezervata mai sus, DOAR
+        // daca inca era marcata ca rezervata (vezi comentariul din db.refundEditIfReserved
+        // despre de ce e sigur sa fie apelata din mai multe locuri, chiar aproape simultan).
+        await db.refundEditIfReserved(order.id);
         await db.updateOrder(order.id, { status: 'generation_failed', error: String(err.message || err).slice(0, 500) });
       } catch (dbErr) {
         console.error('Eroare suplimentara la salvarea starii de esec:', dbErr.message);
@@ -599,14 +783,43 @@ app.post('/api/orders/:orderId/regenerate', generationLimiter, async (req, res, 
 });
 
 // ==========================================================================================
+// 3b. Salveaza versurile editate manual de client pentru o varianta (nu porneste nicio
+// regenerare — doar salveaza textul, cu marcaj de timp). Regenerarea efectiva ramane un
+// pas separat si explicit (POST .../regenerate), care poate folosi optional aceste
+// versuri editate ca ghidaj (vezi mai sus).
+// ==========================================================================================
+app.post('/api/orders/:orderId/variants/:variantId/lyrics', express.json(), requireOrderToken, async (req, res, next) => {
+  try {
+    const order = req.order;
+    if (order.status === 'ready') return res.status(400).json({ error: 'Comanda e deja plătită și finalizată.' });
+
+    const { variantId } = req.params;
+    const variants = order.variants || [];
+    const variantIndex = variants.findIndex(v => v.id === variantId);
+    if (variantIndex === -1) return res.status(400).json({ error: 'Varianta nu există.' });
+
+    const lyricsText = typeof req.body?.lyrics === 'string' ? req.body.lyrics.trim() : '';
+    if (!isValidString(lyricsText, 1, 4000)) {
+      return res.status(400).json({ error: 'Versurile nu pot fi goale (max 4000 caractere).' });
+    }
+
+    const updatedVariants = variants.map((v, i) => i === variantIndex
+      ? { ...v, editedLyrics: lyricsText, lyricsUpdatedAt: new Date().toISOString() }
+      : v);
+
+    await db.updateOrder(order.id, { variants: updatedVariants });
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ==========================================================================================
 // 4. Alege varianta preferata (inainte de plata)
 // ==========================================================================================
-app.post('/api/orders/:orderId/select', async (req, res, next) => {
+app.post('/api/orders/:orderId/select', requireOrderToken, async (req, res, next) => {
   try {
-    if (!UUID_RE.test(req.params.orderId)) return res.status(400).json({ error: 'ID comandă invalid.' });
-
-    const order = await db.getOrderById(req.params.orderId);
-    if (!order) return res.status(404).json({ error: 'Comanda nu există.' });
+    const order = req.order;
 
     const { variantId } = req.body || {};
     const exists = (order.variants || []).some(v => v.id === variantId);
@@ -622,6 +835,12 @@ app.post('/api/orders/:orderId/select', async (req, res, next) => {
 // ==========================================================================================
 // 5. Status comanda (polling din frontend) — accesul e implicit protejat de faptul ca
 // orderId e un UUID v4 (122 biti de entropie), nu e listat/ghicit nicaieri.
+//
+// TOKEN OPTIONAL: daca cererea include ?token=, acesta TREBUIE sa corespunda
+// order.accessToken (comparatie timing-safe), altfel raspundem 404 generic — foloseste
+// acelasi tipar de securitate ca /media/full. Pagina melodia-mea.html trimite intotdeauna
+// acest token. Paginile mai vechi (index.html/se-compune.html), care nu trimit token,
+// pastreaza comportamentul anterior neschimbat — nu se blocheaza nimic retroactiv.
 // ==========================================================================================
 app.get('/api/orders/:orderId', async (req, res, next) => {
   try {
@@ -630,23 +849,37 @@ app.get('/api/orders/:orderId', async (req, res, next) => {
     const order = await db.getOrderById(req.params.orderId);
     if (!order) return res.status(404).json({ error: 'Comanda nu există.' });
 
-    // niciodata nu trimitem calea fisierelor complete catre client inainte de plata
+    const providedToken = typeof req.query.token === 'string' ? req.query.token : null;
+    if (providedToken !== null && !safeCompare(providedToken, order.accessToken)) {
+      return res.status(404).json({ error: 'Comanda nu există.' });
+    }
+
+    // niciodata nu trimitem calea fisierelor complete catre client inainte de plata.
+    // Versurile (originale/editate) sunt continut text, nu fisiere audio — sigur de
+    // expus pre-plata, e nevoie de ele in melodia-mea.html pentru afisare si editare.
     const safeVariants = (order.variants || []).map(v => ({
-      id: v.id, previewUrl: v.previewUrl, durationSeconds: v.durationSeconds
+      id: v.id, previewUrl: v.previewUrl, durationSeconds: v.durationSeconds,
+      originalLyrics: v.originalLyrics || null,
+      editedLyrics: v.editedLyrics || null,
+      lyricsUpdatedAt: v.lyricsUpdatedAt || null
     }));
 
     // IMPORTANT: raspuns construit explicit, camp cu camp — NU facem spread pe `order`.
-    // Acest endpoint nu cere niciun token (orderId-ul singur e suficient, e folosit constant
-    // in timpul fluxului gratuit de preview, inainte sa existe vreun token de verificat).
-    // Un spread complet ar fi scurs accessToken, email si povestea clientului catre oricine
-    // stie/ghiceste UUID-ul comenzii — exact contrariul protectiei adaugate la /media/full.
+    // Un spread complet ar fi scurs accessToken si email-ul catre oricine stie/ghiceste
+    // UUID-ul comenzii (cand nu s-a trimis token). recipient/senderName/relationship NU
+    // sunt secrete (sunt afisate deja pe pagina publica de destinatie melodia-mea.html
+    // ca "Melodia pentru X, din partea Y"), dar email-ul si accessToken raman excluse.
     res.json({
       id: order.id,
       recipient: order.recipient,
+      senderName: order.senderName || null,
+      relationship: order.relationship || null,
+      voicePreference: order.voicePreference,
       plan: order.plan,
       lang: order.lang,
       status: order.status,
       editsUsed: order.editsUsed,
+      selectedVariantId: order.selectedVariantId || null,
       error: order.error,
       price: order.price,
       variants: safeVariants,
@@ -663,12 +896,9 @@ app.get('/api/orders/:orderId', async (req, res, next) => {
 // adresa de livrare (nu exista ce sa se livreze fizic). TVA ramane dezactivat implicit,
 // controlat explicit prin STRIPE_AUTOMATIC_TAX_ENABLED — vezi comentariul de mai jos.
 // ==========================================================================================
-app.post('/api/orders/:orderId/checkout', async (req, res, next) => {
+app.post('/api/orders/:orderId/checkout', requireOrderToken, async (req, res, next) => {
   try {
-    if (!UUID_RE.test(req.params.orderId)) return res.status(400).json({ error: 'ID comandă invalid.' });
-
-    const order = await db.getOrderById(req.params.orderId);
-    if (!order) return res.status(404).json({ error: 'Comanda nu există.' });
+    const order = req.order;
     if (order.status !== 'preview_ready') {
       return res.status(400).json({ error: 'Generează o previzualizare înainte de plată.' });
     }
@@ -707,8 +937,9 @@ app.post('/api/orders/:orderId/checkout', async (req, res, next) => {
       automatic_tax: { enabled: automaticTaxEnabled },
       metadata: { orderId: order.id },
       success_url: `${DOMAIN}/succes.html?order=${order.id}&token=${order.accessToken}`,
-      // plata abandonata sau esuata -> revine pe pagina principala cu comanda deja salvata
-      cancel_url: `${DOMAIN}/index.html?resume=${order.id}`
+      // plata abandonata sau esuata -> revine la pagina dedicata melodiei (nu la formular),
+      // cu comanda deja generata si token-ul de acces inclus
+      cancel_url: `${DOMAIN}/melodia-mea.html?id=${order.id}&token=${order.accessToken}&resume=1`
     });
 
     res.json({ url: session.url });
@@ -869,6 +1100,12 @@ app.post('/api/music/callback', async (req, res) => {
     } else if (SUNO_ERROR_STATUSES.includes(statusName)) {
       const current = await db.getOrderById(order.id);
       if (current && !['preview_ready', 'ready', 'generation_failed'].includes(current.status)) {
+        // Suno a raportat direct un status de eroare prin callback (fara sa treaca prin
+        // finalizeVariantsIfNeeded) — tot trebuie sa restituim atomic editarea rezervata,
+        // daca esecul a aparut in timpul unei regenerari.
+        await db.refundEditIfReserved(order.id).catch(refundErr => {
+          console.error(`Eroare la restituirea editarii pentru comanda ${order.id}:`, refundErr.message);
+        });
         await db.updateOrder(order.id, { status: 'generation_failed', error: `Suno: ${statusName}` });
       }
     }
@@ -942,15 +1179,28 @@ async function finalizeVariantsIfNeeded(orderId, tracks) {
       status: 'preview_ready',
       variants,
       selectedVariantId: variants[0]?.id || null,
-      generatedAt: new Date().toISOString()
+      generatedAt: new Date().toISOString(),
+      // succes: eliberam marcajul de rezervare a editarii (daca exista) FARA sa atingem
+      // edits_used — editarea a fost folosita legitim, ramane consumata definitiv. Pentru
+      // o generare INITIALA, editReserved era deja false — actualizarea e un no-op sigur.
+      editReserved: false
     });
     return true;
   } catch (err) {
     // Am apucat sa marcam comanda "processing_provider_result" (am preluat-o), dar
-    // procesarea a esuat la mijloc (descarcare, ffmpeg, upload etc). NU o lasam blocata
-    // acolo permanent — o marcam explicit esuata, cu un mesaj de eroare sigur (trunchiat,
-    // fara detalii interne sensibile).
+    // procesarea a esuat la mijloc (descarcare, ffmpeg, verificare durata, upload, salvare
+    // etc). NU o lasam blocata acolo permanent — o marcam explicit esuata, cu un mesaj de
+    // eroare sigur (trunchiat, fara detalii interne sensibile).
     console.error(`Eroare la finalizarea comenzii ${orderId} dupa preluare:`, err.message);
+    try {
+      // Restituire ATOMICA si IDEMPOTENTA a editarii gratuite, DOAR daca era rezervata
+      // (adica esecul a aparut in timpul unei regenerari, nu al generarii initiale).
+      // Acest cod ruleaza indiferent daca finalizarea a fost declansata de polling sau
+      // de callback-ul SunoAPI — acelasi mecanism acopera ambele cai.
+      await db.refundEditIfReserved(orderId);
+    } catch (refundErr) {
+      console.error(`Eroare suplimentara la restituirea editarii pentru comanda ${orderId}:`, refundErr.message);
+    }
     await db.updateOrder(orderId, {
       status: 'generation_failed',
       error: String(err.message || err).slice(0, 500)
@@ -1006,7 +1256,14 @@ async function buildVariantFromTrack(orderId, variantId, track) {
     previewUrl,
     durationSeconds,
     fullKey: storedFullKey,       // null in fallback local; folosit de /media/full cand storage.CLOUD_ENABLED
-    previewKey: storedPreviewKey  // null in fallback local; folosit de /media/preview cand storage.CLOUD_ENABLED
+    previewKey: storedPreviewKey, // null in fallback local; folosit de /media/preview cand storage.CLOUD_ENABLED
+    // Versurile ORIGINALE, asa cum au fost extrase din raspunsul Suno (vezi caveatul din
+    // extractSunoTracks — poate fi null daca providerul nu a inclus acest camp). editedLyrics
+    // ramane null pana cand clientul salveaza o editare explicita (vezi endpoint-ul dedicat
+    // POST /api/orders/:orderId/variants/:variantId/lyrics).
+    originalLyrics: track.lyrics || null,
+    editedLyrics: null,
+    lyricsUpdatedAt: null
   };
 }
 
@@ -1055,7 +1312,17 @@ function extractSunoTracks(payload) {
       id: t.id,
       audioUrl: t.audioUrl || t.audio_url,
       title: t.title,
-      duration: t.duration
+      duration: t.duration,
+      // VERSURI: sunoapi.org (customMode:false) NU primeste versuri exacte de la noi —
+      // Suno le scrie singur, pornind de la promptul descriptiv (vezi buildPrompt()).
+      // Raspunsul per-piesa contine de obicei textul generat efectiv in campul "prompt"
+      // (asa functioneaza acest tip de wrapper Suno, dupa cunostintele disponibile la
+      // momentul scrierii acestui cod) — NU am putut verifica acest camp cu un apel real,
+      // pentru ca acest mediu nu are acces la retea (vezi README, aceeasi limitare
+      // mentionata si la extractSunoTracks() in general). Verificam defensiv mai multe
+      // nume de camp posibile; daca niciunul nu exista in raspuns, versurile raman null,
+      // iar UI-ul din melodia-mea.html trateaza explicit acest caz (nu blocheaza pagina).
+      lyrics: t.prompt || t.lyric || t.lyrics || null
     }))
     .filter(t => !!t.audioUrl);
 }
@@ -1199,6 +1466,33 @@ function truncateSafely(str, maxLen) {
   return chars.slice(0, maxLen).join('').trimEnd();
 }
 
+// Mapare ocazie -> descriere semantica scurta, in engleza (trimisa catre SunoAPI). Valorile
+// interne (dor, onomastica, pentru-mine etc.) sunt identificatori tehnici din UI, fara niciun
+// inteles pentru model daca sunt trimise ca atare — inlocuite aici cu o eticheta clara si
+// deliberat compacta (fiecare caracter conteaza in bugetul de 500).
+const OCCASION_LABELS = {
+  dor: 'missing someone',
+  onomastica: 'name day',
+  aniversare: 'birthday',
+  declaratie: 'declaration of love',
+  nunta: 'wedding',
+  pierdere: 'in loving memory',
+  'pentru-mine': 'a song for oneself',
+  altceva: 'a personal occasion'
+};
+
+// Lungimi maxime pentru campurile de personalizare — validate deja la creare (vezi POST
+// /api/orders), dar re-aplicate defensiv aici si pentru comenzi mai vechi care ar putea
+// avea valori mai lungi salvate sub reguli anterioare.
+const RECIPIENT_MAX_LEN = 60;
+const SENDER_MAX_LEN = 100;
+const RELATIONSHIP_MAX_LEN = 60;
+
+// Garantam intotdeauna cel putin acest spatiu pentru poveste — partea cea mai importanta
+// pentru personalizare (Partea 4) nu trebuie sa poata fi eliminata complet de un nume,
+// expeditor sau relatie foarte lungi, sau de instructiuni repetitive.
+const STORY_MIN_RESERVE = 200;
+
 function buildPrompt(order, feedback) {
   const genreMap = {
     emotional: 'emotional ballad-pop, tender vocals, heartfelt',
@@ -1217,9 +1511,92 @@ function buildPrompt(order, feedback) {
   };
   const lyricsLanguage = languageNames[order.lang] || 'Romanian';
   const styleTags = genreMap[order.genre] || 'pop, warm vocals';
+  const occasionLabel = OCCASION_LABELS[order.occasion] || order.occasion;
 
-  // partea FIXA — limba, stilul, ocazia, destinatarul — niciodata trunchiata
-  const head = `${styleTags}. Write the song lyrics entirely in ${lyricsLanguage}. Occasion: ${order.occasion}. Dedicated to ${order.recipient}.`;
+  // Comenzile vechi (dinainte de sender/relationship) nu au aceste campuri — tratate optional.
+  const hasSender = typeof order.senderName === 'string' && order.senderName.trim().length > 0;
+  const hasRelationship = hasSender && typeof order.relationship === 'string' && order.relationship.trim().length > 0;
+
+  // Trunchiere defensiva — chiar daca validarea la creare limiteaza deja lungimea, aplicam
+  // din nou aici, sigur, pe caractere Unicode complete.
+  let recipient = truncateSafely(String(order.recipient || '').trim(), RECIPIENT_MAX_LEN);
+  let sender = hasSender ? truncateSafely(order.senderName.trim(), SENDER_MAX_LEN) : '';
+  let relationship = hasRelationship ? truncateSafely(order.relationship.trim(), RELATIONSHIP_MAX_LEN) : '';
+
+  // Instructiunea de voce e SEPARATA de personalizare (nume, relatie, poveste) — o propozitie
+  // proprie, scurta, niciodata amestecata in aceeasi fraza cu destinatarul/expeditorul/relatia.
+  // 'auto' inseamna explicit "nicio instructiune" — lasam serviciul sa aleaga liber.
+  const VOICE_INSTRUCTIONS = {
+    female: ' Use a female lead vocal.',
+    male: ' Use a male lead vocal.',
+    duet: ' Use a male and female duet, with both voices clearly present.',
+    auto: ''
+  };
+  const requestedVoicePref = VOICE_PREFERENCES.includes(order.voicePreference) ? order.voicePreference : 'auto';
+  let includeVoiceInstruction = requestedVoicePref !== 'auto';
+  function currentVoiceInstruction() {
+    return includeVoiceInstruction ? VOICE_INSTRUCTIONS[requestedVoicePref] : '';
+  }
+
+  // Doua variante de instructiune: completa (calitate mai buna a personalizarii) si una
+  // scurta, folosita DOAR daca partea fixa tot nu incape in buget dupa scurtarea campurilor
+  // — evita ca instructiunile repetitive sa manance tot spatiul (cerinta explicita), fara sa
+  // renunte la cele doua cerinte esentiale: numele destinatarului de 2 ori, expeditorul o data.
+  const instructionWithSenderFull = ' Write this as a personal song from the sender to the recipient. Name the recipient early and again in the chorus. Mention the sender once. Use only real details from the story — invent nothing.';
+  const instructionWithSenderShort = ' Name the recipient early and again in the chorus; mention the sender once. Use real story details only.';
+  const instructionNoSenderFull = ' Address the recipient by name naturally in the lyrics. Use only real details from the story — invent nothing.';
+  const instructionNoSenderShort = ' Address the recipient by name naturally. Use real story details only.';
+
+  let useShortInstruction = false;
+  function currentInstruction() {
+    if (hasSender) return useShortInstruction ? instructionWithSenderShort : instructionWithSenderFull;
+    return useShortInstruction ? instructionNoSenderShort : instructionNoSenderFull;
+  }
+
+  // Structura NEUTRA, tip "eticheta: valoare" — nu mai construim propozitii posesive in
+  // engleza (ex. "Andrei's sotie") care amestecau gramatica engleza cu textul relatiei
+  // introdus de client, uneori intr-o alta limba. O lista de etichete e neutra fata de
+  // limba textului din campurile recipient/sender/relationship. Instructiunea de voce
+  // vine ULTIMA, dupa personalizare — separata clar, propria ei propozitie.
+  function buildFixedPart(rec, snd, rel) {
+    let lines = `Recipient: ${rec}.`;
+    if (hasSender) lines += ` Sender: ${snd}.`;
+    if (hasRelationship) lines += ` Relationship: ${rel}.`;
+    return `${styleTags}. Write the song lyrics entirely in ${lyricsLanguage}. Occasion: ${occasionLabel}. ${lines}${currentInstruction()}${currentVoiceInstruction()}`;
+  }
+
+  let head = buildFixedPart(recipient, sender, relationship);
+
+  // Daca partea fixa tot nu lasa spatiul minim garantat pentru poveste (campuri foarte lungi
+  // combinate cu un gen muzical/ocazie cu descriere mai lunga), scurtam progresiv. Prima
+  // incercare e mereu sa trecem pe instructiunea de personalizare SCURTA — elibereaza mult
+  // spatiu fara sa sacrifice nimic ales explicit de client. DOAR daca tot nu ajunge, eliminam
+  // instructiunea de voce (cerinta explicita: vocea nu e in lista de prioritati — poveste >
+  // destinatar > expeditor > relatie > limba > gen muzical — deci cade inaintea acestora).
+  // Fiecare pas se aplica DOAR daca cel anterior n-a fost suficient.
+  const budgetForFixedPart = SUNO_PROMPT_MAX_LEN - STORY_MIN_RESERVE;
+  const shrinkSteps = [
+    () => { useShortInstruction = true; },
+    () => { relationship = truncateSafely(relationship, 20); },
+    () => { sender = truncateSafely(sender, 30); },
+    () => { recipient = truncateSafely(recipient, 30); },
+    () => { includeVoiceInstruction = false; },
+    () => { relationship = truncateSafely(relationship, 10); },
+    () => { sender = truncateSafely(sender, 15); },
+    () => { recipient = truncateSafely(recipient, 15); },
+    () => { relationship = ''; },
+    () => { sender = truncateSafely(sender, 8); },
+    () => { recipient = truncateSafely(recipient, 10); }
+  ];
+  for (const step of shrinkSteps) {
+    if (head.length <= budgetForFixedPart) break;
+    step();
+    head = buildFixedPart(recipient, sender, relationship);
+  }
+  // In cazuri extreme (foarte rare — necesita simultan campuri la lungime maxima SI cel mai
+  // lung gen muzical SI cea mai lunga ocazie), pasii de mai sus pot sa nu ajunga exact la
+  // budgetForFixedPart — dar il aduc suficient de aproape incat povestea tot primeste in
+  // jur de 180+ caractere (calculat mai jos din spatiul chiar ramas, nu presupus).
 
   const storyLabel = ' Story/details to include: ';
   const feedbackLabel = ' Client-requested adjustment: ';
@@ -1228,11 +1605,14 @@ function buildPrompt(order, feedback) {
   let remaining = SUNO_PROMPT_MAX_LEN - head.length;
   if (remaining < 0) remaining = 0;
 
-  // rezervam spatiu pentru feedback (max 40% din ce a ramas dupa partea fixa),
-  // ca sa nu consume tot bugetul si sa nu mai ramana loc deloc pentru poveste
+  // Feedback-ul (editari cerute de client, inclusiv versuri editate manual — vezi
+  // /api/orders/:id/regenerate) poate consuma DOAR spatiul care depaseste rezerva minima
+  // garantata pentru poveste — niciodata rezerva insasi. Povestea are prioritate mai mare
+  // decat orice formulare repetitiva (cerinta explicita).
   let feedbackFull = '';
   if (feedbackText) {
-    const feedbackBudget = Math.max(0, Math.floor(remaining * 0.4) - feedbackLabel.length);
+    const extraSpace = Math.max(0, remaining - STORY_MIN_RESERVE);
+    const feedbackBudget = Math.max(0, Math.floor(extraSpace * 0.6) - feedbackLabel.length);
     const feedbackTrimmed = truncateSafely(feedbackText, feedbackBudget);
     if (feedbackTrimmed) {
       feedbackFull = `${feedbackLabel}${feedbackTrimmed}`;
@@ -1241,7 +1621,9 @@ function buildPrompt(order, feedback) {
   }
   if (remaining < 0) remaining = 0;
 
-  // povestea umple spatiul ramas
+  // povestea umple spatiul ramas (cel putin STORY_MIN_RESERVE, cu exceptia cazului extrem
+  // in care head-ul singur ar depasi deja limita totala — practic imposibil dupa scurtarile
+  // de mai sus, dar tratat sigur oricum)
   let storyFull = '';
   const storyBudget = remaining - storyLabel.length;
   if (storyBudget > 0) {

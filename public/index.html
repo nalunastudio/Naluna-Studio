@@ -285,6 +285,10 @@
   .status-ok{ color:var(--success); }
   .status-err{ color:var(--error); }
 
+  /* Bara fixa "Comanda acum", doar pe mobil, doar pe index.html — ascunsa pe desktop,
+     nu apare pe comanda.html/se-compune.html/melodia-mea.html (nu exista in acele fisiere) */
+  .mobile-sticky-cta{ display:none; }
+
   @media (max-width: 860px){
     .hero{ grid-template-columns:1fr; }
     .moon-stage{ height:280px; }
@@ -292,10 +296,24 @@
     .steps{ grid-template-columns:1fr 1fr; }
     .order-panel{ grid-template-columns:1fr; padding:26px; }
     .nav-links{ display:none; }
+
+    body{ padding-bottom:84px; }
+    .mobile-sticky-cta{
+      display:block; position:fixed; left:0; right:0; bottom:0; z-index:40;
+      padding:12px 16px calc(12px + env(safe-area-inset-bottom));
+      background:rgba(250,248,245,.92);
+      backdrop-filter:blur(14px) saturate(140%); -webkit-backdrop-filter:blur(14px) saturate(140%);
+      border-top:1px solid var(--line);
+    }
+    .mobile-sticky-cta .btn{ width:100%; justify-content:center; padding:15px; font-size:15px; }
   }
 </style>
 </head>
 <body>
+
+<div class="mobile-sticky-cta">
+  <a href="/comanda.html" class="btn btn-primary" data-i18n="order_now_btn">Comandă acum</a>
+</div>
 
 <div class="wrap">
   <nav>
@@ -305,7 +323,7 @@
     </div>
     <div class="nav-links">
       <a href="#cum-functioneaza" data-i18n="nav_how">Cum funcționează</a>
-      <a href="#comanda" data-i18n="nav_order">Comanda</a>
+      <a href="/comanda.html" data-i18n="nav_order">Comanda</a>
       <a href="/comanda-mea.html" data-i18n="nav_myorder">Comanda mea</a>
     </div>
     <div class="lang-switch" style="margin-right:12px;">
@@ -320,7 +338,7 @@
         <option value="tr">🇹🇷 TR</option>
       </select>
     </div>
-    <a href="#comanda" class="btn btn-ghost" data-i18n="nav_cta">Compune acum</a>
+    <a href="/comanda.html" class="btn btn-ghost" data-i18n="nav_cta">Compune acum</a>
   </nav>
 
   <section class="hero" style="border:none; padding-top:24px;">
@@ -329,7 +347,7 @@
       <h1 data-i18n="hero_title">Un cântec cu <em>numele lui</em>, nu o piesă generică</h1>
       <p class="sub" data-i18n="hero_sub">Spui povestea. Noi scriem versurile și compunem melodia, cu voce, în stilul muzical pe care îl alegi. Livrare în cont, gata de trimis sau descărcat.</p>
       <div class="hero-cta-row">
-        <a href="#comanda" class="btn btn-primary" data-i18n="hero_cta">Începe — de la £15</a>
+        <a href="/comanda.html" class="btn btn-primary" data-i18n="hero_cta">Comandă acum</a>
         <span class="price-note" data-i18n="hero_note">Plată securizată · fără abonament</span>
         <span class="price-note" data-i18n="intl_note" style="display:block; margin-top:4px;">Livrare internațională, prin email</span>
       </div>
@@ -379,6 +397,9 @@
         <p data-i18n="step4_desc">Plătești doar când ești mulțumit. Primești melodia pe email imediat</p>
       </div>
     </div>
+    <div style="text-align:center; margin-top:44px;">
+      <a href="/comanda.html" class="btn btn-primary" data-i18n="order_now_btn">Comandă acum</a>
+    </div>
   </section>
 
   <section id="reactii" style="display:none;">
@@ -390,164 +411,8 @@
     <div class="testimonial-grid" id="testimonial-grid"></div>
   </section>
 
-  <section id="comanda">
-    <div class="section-head">
-      <div class="eyebrow" data-i18n="order_eyebrow">Comanda</div>
-      <h2 data-i18n="order_title">Compune cântecul tău</h2>
-      <p data-i18n="order_sub">Completează povestea, asculți gratuit un preview de 55 secunde, ceri editări dacă nu e exact ce vrei — plătești doar când ești mulțumit</p>
-    </div>
-
-    <form class="order-panel" id="order-form">
-      <div>
-        <div class="field">
-          <label data-i18n="theme_label">Pentru ce moment vrei cântecul</label>
-          <div class="theme-grid" id="theme-grid">
-            <div class="theme-card active" data-theme="dor">
-              <div class="theme-name" data-i18n="theme_dor_name">Mi-e dor de cineva</div>
-              <div class="theme-desc" data-i18n="theme_dor_desc">Fără ocazie. Doar dor</div>
-            </div>
-            <div class="theme-card" data-theme="onomastica">
-              <div class="theme-name" data-i18n="theme_onomastica_name">Își serbează numele</div>
-              <div class="theme-desc" data-i18n="theme_onomastica_desc">Onomastică, sfinți, familie</div>
-            </div>
-            <div class="theme-card" data-theme="aniversare">
-              <div class="theme-name" data-i18n="theme_aniversare_name">E ziua lui/ei</div>
-              <div class="theme-desc" data-i18n="theme_aniversare_desc">La mulți ani, dar personal</div>
-            </div>
-            <div class="theme-card" data-theme="declaratie">
-              <div class="theme-name" data-i18n="theme_declaratie_name">Te iubesc, pe note</div>
-              <div class="theme-desc" data-i18n="theme_declaratie_desc">Când mesajul nu ajunge</div>
-            </div>
-            <div class="theme-card" data-theme="nunta">
-              <div class="theme-name" data-i18n="theme_nunta_name">Nuntă</div>
-              <div class="theme-desc" data-i18n="theme_nunta_desc">Primul dans sau surpriză pentru miri</div>
-            </div>
-            <div class="theme-card" data-theme="pierdere">
-              <div class="theme-name" data-i18n="theme_pierdere_name">În memoria cuiva</div>
-              <div class="theme-desc" data-i18n="theme_pierdere_desc">Pentru cei care nu mai sunt aici</div>
-            </div>
-            <div class="theme-card" data-theme="pentru-mine">
-              <div class="theme-name" data-i18n="theme_pentrumine_name">Pentru mine</div>
-              <div class="theme-desc" data-i18n="theme_pentrumine_desc">Un cântec doar pentru tine</div>
-            </div>
-            <div class="theme-card" data-theme="altceva">
-              <div class="theme-name" data-i18n="theme_altceva_name">Orice altceva</div>
-              <div class="theme-desc" data-i18n="theme_altceva_desc">Fără ocazie. Descrie tu</div>
-            </div>
-          </div>
-          <input type="hidden" id="occasion" value="dor" required>
-        </div>
-        <div class="field">
-          <label for="recipient" data-i18n="label_recipient">Pentru cine e cântecul (nume)</label>
-          <input type="text" id="recipient" placeholder="ex: Maria" data-i18n-placeholder="ph_recipient" required>
-        </div>
-        <div class="field">
-          <label for="email" data-i18n="label_email">Emailul tău (primești melodia și aici)</label>
-          <input type="email" id="email" placeholder="nume@exemplu.com" required>
-        </div>
-        <div class="field">
-          <label for="phone" data-i18n="label_phone">Telefon WhatsApp (opțional — primești și acolo melodia)</label>
-          <input type="tel" id="phone" placeholder="+44 7xxx xxxxxx" data-i18n-placeholder="ph_phone">
-        </div>
-        <div class="field">
-          <label for="story" data-i18n="label_story">Povestea / detalii de inclus în versuri</label>
-          <textarea id="story" placeholder="Cine sunteți, ce s-a întâmplat, ce vrei să spună cântecul..." data-i18n-placeholder="ph_story" required></textarea>
-          <div class="price-note" style="margin-top:6px;" data-i18n="story_hint">Poți scrie în orice limbă — versurile vor fi generate în limba aleasă mai sus</div>
-        </div>
-        <div class="field">
-          <label for="genre" data-i18n="label_genre">Gen muzical</label>
-          <select id="genre" required>
-            <option value="" data-i18n="genre_choose">Alege genul</option>
-            <option value="emotional" data-i18n="genre_emotional">Emoțional</option>
-            <option value="suflet" data-i18n="genre_suflet">De suflet</option>
-            <option value="pop">Pop</option>
-            <option value="acustic" data-i18n="genre_acustic">Acustic / Folk</option>
-            <option value="petrecere" data-i18n="genre_petrecere">Muzică de petrecere</option>
-            <option value="balada" data-i18n="genre_balada">Baladă</option>
-            <option value="manele" data-i18n="genre_manele">Manele</option>
-            <option value="copii" data-i18n="genre_copii">Pentru copii</option>
-          </select>
-        </div>
-      </div>
-
-      <div>
-        <label style="margin-bottom:12px; display:block;" data-i18n="label_package">Alege pachetul</label>
-        <div class="plan-list" id="plan-list">
-          <div class="plan active" data-plan="standard" data-price="15">
-            <div>
-              <div class="plan-name" data-i18n="plan_standard_name">Standard</div>
-              <div class="plan-desc" data-i18n="plan_standard_desc">1 versiune, ~2 minute, livrare pe email</div>
-            </div>
-            <div class="plan-price">£15</div>
-          </div>
-          <div class="plan" data-plan="premium" data-price="25">
-            <div>
-              <div class="plan-name" data-i18n="plan_premium_name">Premium</div>
-              <div class="plan-desc" data-i18n="plan_premium_desc">2 versiuni la alegere + fișier WAV descărcabil</div>
-            </div>
-            <div class="plan-price">£25</div>
-          </div>
-          <div class="plan" data-plan="video" data-price="35">
-            <div>
-              <div class="plan-name" data-i18n="plan_video_name">Cadou video</div>
-              <div class="plan-desc" data-i18n="plan_video_desc">Melodie + video cu versuri pentru social/WhatsApp</div>
-            </div>
-            <div class="plan-price">£35</div>
-          </div>
-        </div>
-
-        <div class="order-summary">
-          <div class="row"><span data-i18n="sum_package">Pachet</span><span id="sum-plan">Standard</span></div>
-          <div class="row total"><span data-i18n="sum_total">Total</span><span id="sum-total">£15</span></div>
-        </div>
-
-        <button type="submit" class="btn btn-primary" id="generate-btn" style="width:100%; justify-content:center; margin-top:20px;">
-          <span data-i18n="btn_generate" id="generate-btn-label">Generează previzualizarea gratuit →</span>
-        </button>
-        <div class="price-note" style="margin-top:10px; text-align:center;" data-i18n="note_free">Nu plătești acum. Plătești doar dacă îți place rezultatul</div>
-        <div id="status-msg"></div>
-      </div>
-    </form>
-
-    <!-- Banner recuperare plata abandonata -->
-    <div id="resume-banner" style="display:none; background:var(--card); border:1px solid var(--gold); border-radius:16px; padding:24px; margin-bottom:24px;">
-      <p style="font-weight:600; margin-bottom:14px;" data-i18n="resume_msg">Plata nu s-a finalizat 💛 Nicio grijă — cântecul e salvat și te așteaptă</p>
-      <button type="button" class="btn btn-primary" id="resume-checkout-btn" data-i18n="resume_btn">Încearcă plata din nou</button>
-    </div>
-
-    <!-- Panou preview, ascuns pana se genereaza o melodie -->
-    <div class="order-panel" id="preview-panel" style="display:none; grid-template-columns:1fr; margin-top:24px;">
-      <div>
-        <label style="margin-bottom:12px; display:block;" data-i18n="preview_label">Previzualizarea ta (55 sec din fiecare variantă)</label>
-
-        <div class="variant-card active" id="variant-card-0" data-index="0">
-          <div class="variant-head">
-            <span class="variant-label" data-i18n="variant1_label">Varianta 1</span>
-          </div>
-          <audio class="variant-audio" id="variant-audio-0" controls style="width:100%;"></audio>
-          <div class="variant-progress" id="variant-progress-0" data-i18n="listened_placeholder">Ai ascultat 0:00 din —</div>
-        </div>
-
-        <div class="variant-card" id="variant-card-1" data-index="1" style="margin-top:14px;">
-          <div class="variant-head">
-            <span class="variant-label" data-i18n="variant2_label">🎁 A doua variantă, și ea a ta</span>
-          </div>
-          <audio class="variant-audio" id="variant-audio-1" controls style="width:100%;"></audio>
-          <div class="variant-progress" id="variant-progress-1" data-i18n="listened_placeholder">Ai ascultat 0:00 din —</div>
-        </div>
-
-        <div class="field" style="margin-top:20px;">
-          <label for="feedback" data-i18n="label_feedback">Nu e exact cum vrei? Descrie ce să schimbăm</label>
-          <textarea id="feedback" placeholder="ex: mai vesel, mai lent, alt inceput..." data-i18n-placeholder="ph_feedback"></textarea>
-        </div>
-
-        <div style="display:flex; gap:12px; margin-top:12px; flex-wrap:wrap;">
-          <button type="button" class="btn btn-ghost" id="regenerate-btn"><span data-i18n="btn_regenerate">Editează cântecul</span> (<span id="edits-left">3</span> <span data-i18n="edits_left_label">editări gratuite rămase</span>)</button>
-          <button type="button" class="btn btn-primary" id="checkout-btn" style="flex:1; justify-content:center;"><span data-i18n="btn_checkout">Finalizează cadoul</span> — <span data-i18n="variant_word">varianta</span> <span id="selected-variant-label">1</span> (<span id="checkout-price">£15</span>) →</button>
-        </div>
-        <div id="preview-status-msg"></div>
-      </div>
-    </div>
+  <section style="border-top:none; padding-top:0; padding-bottom:64px; text-align:center;">
+    <a href="/comanda.html" class="btn btn-primary" data-i18n="order_now_btn" style="font-size:16px; padding:18px 44px;">Comandă acum</a>
   </section>
 
   <footer>
@@ -567,7 +432,8 @@
       hero_eyebrow: 'Compus în aprox. 3 minute',
       hero_title: 'Un cântec cu <em>numele lui</em>, nu o piesă generică',
       hero_sub: 'Spui povestea. Noi scriem versurile și compunem melodia, cu voce, în stilul muzical pe care îl alegi. Livrare pe email, gata de trimis sau descărcat.',
-      hero_cta: 'Începe — de la £15',
+      hero_cta: 'Comandă acum',
+      order_now_btn: 'Comandă acum',
       hero_note: 'Plată securizată · fără abonament',
       intl_note: 'Livrare internațională, prin email',
       disc_label: 'SE COMPUNE',
@@ -591,9 +457,11 @@
       theme_pentrumine_name: 'Pentru mine', theme_pentrumine_desc: 'Un cântec doar pentru tine',
       theme_altceva_name: 'Orice altceva', theme_altceva_desc: 'Fără ocazie. Descrie tu',
       label_recipient: 'Pentru cine e cântecul (nume)', ph_recipient: 'ex: Maria',
+      label_sender: 'Din partea cui e cântecul', ph_sender: 'ex: Maria, sau Maria și Alexandra',
+      label_relationship: 'Ce relație există între voi', ph_relationship: 'ex: soție și soț, mamă și fiică, prieteni',
       label_email: 'Emailul tău (primești melodia și aici)',
       label_phone: 'Telefon WhatsApp (opțional — primești și acolo melodia)', ph_phone: '+44 7xxx xxxxxx',
-      label_story: 'Povestea / detalii de inclus în versuri', ph_story: 'Cine sunteți, ce s-a întâmplat, ce vrei să spună cântecul...',
+      label_story: 'Povestea / detalii de inclus în versuri', ph_story: 'Spune-ne ce vă leagă, ce momente importante ați trăit, ce îi iubești cel mai mult, ce vrei să îi transmiți și orice detaliu pe care vrei să îl auzi în melodie',
       story_hint: 'Poți scrie în orice limbă — versurile vor fi generate în limba aleasă mai sus',
       label_genre: 'Gen muzical', genre_choose: 'Alege genul',
       genre_emotional: 'Emoțional', genre_suflet: 'De suflet', genre_acustic: 'Acustic / Folk',
@@ -630,7 +498,8 @@
       hero_eyebrow: 'Composed in about 3 minutes',
       hero_title: 'A song with <em>their name</em>, not a generic track.',
       hero_sub: 'You tell the story. We write the lyrics and compose the song, with vocals, in the musical style you choose. Delivered by email, ready to send or download.',
-      hero_cta: 'Start — from £15',
+      hero_cta: 'Order now',
+      order_now_btn: 'Order now',
       hero_note: 'Secure payment · no subscription',
       intl_note: 'Delivered internationally, by email',
       disc_label: 'COMPOSING',
@@ -654,9 +523,11 @@
       theme_pentrumine_name: 'For myself', theme_pentrumine_desc: 'A song just for you.',
       theme_altceva_name: 'Something else', theme_altceva_desc: 'No occasion. Describe it yourself.',
       label_recipient: 'Who is the song for (name)', ph_recipient: 'e.g. Maria',
+      label_sender: 'Who is the song from', ph_sender: 'e.g. Maria, or Maria and Alexandra',
+      label_relationship: 'What is your relationship', ph_relationship: 'e.g. wife and husband, mother and daughter, friends',
       label_email: 'Your email (you\'ll also receive the song here)',
       label_phone: 'WhatsApp phone (optional — you\'ll also get the song there)', ph_phone: '+44 7xxx xxxxxx',
-      label_story: 'The story / details to include in the lyrics', ph_story: 'Who you are, what happened, what you want the song to say...',
+      label_story: 'The story / details to include in the lyrics', ph_story: 'Tell us what connects you, the important moments you have shared, what you love most about them, what you want to say to them, and anything else you would like to hear in the song',
       story_hint: 'You can write in any language — the lyrics will be generated in the language selected above.',
       label_genre: 'Musical genre', genre_choose: 'Choose a genre',
       genre_emotional: 'Emotional', genre_suflet: 'Soulful', genre_acustic: 'Acoustic / Folk',
@@ -693,7 +564,8 @@
       hero_eyebrow: 'In etwa 3 Minuten komponiert',
       hero_title: 'Ein Lied mit <em>seinem Namen</em>, kein generischer Song.',
       hero_sub: 'Du erzählst die Geschichte. Wir schreiben den Text und komponieren das Lied, mit Gesang, im Musikstil deiner Wahl. Lieferung per E-Mail, bereit zum Versenden oder Herunterladen.',
-      hero_cta: 'Loslegen — ab £15',
+      hero_cta: 'Jetzt bestellen',
+      order_now_btn: 'Jetzt bestellen',
       hero_note: 'Sichere Zahlung · kein Abo',
       intl_note: 'Weltweiter Versand, per E-Mail',
       disc_label: 'WIRD KOMPONIERT',
@@ -717,9 +589,11 @@
       theme_pentrumine_name: 'Für mich selbst', theme_pentrumine_desc: 'Ein Lied nur für dich.',
       theme_altceva_name: 'Etwas anderes', theme_altceva_desc: 'Kein Anlass. Beschreibe es selbst.',
       label_recipient: 'Für wen ist das Lied (Name)', ph_recipient: 'z.B. Maria',
+      label_sender: 'Von wem ist das Lied', ph_sender: 'z.B. Maria, oder Maria und Alexandra',
+      label_relationship: 'Welche Beziehung habt ihr', ph_relationship: 'z.B. Ehefrau und Ehemann, Mutter und Tochter, Freunde',
       label_email: 'Deine E-Mail (du erhältst das Lied auch hier)',
       label_phone: 'WhatsApp-Nummer (optional — du erhältst das Lied auch dort)', ph_phone: '+44 7xxx xxxxxx',
-      label_story: 'Die Geschichte / Details für den Text', ph_story: 'Wer ihr seid, was passiert ist, was das Lied sagen soll...',
+      label_story: 'Die Geschichte / Details für den Text', ph_story: 'Erzähl uns, was euch verbindet, welche wichtigen Momente ihr erlebt habt, was du an dieser Person am meisten liebst, was du ihr sagen möchtest, und alles andere, das im Lied vorkommen soll',
       story_hint: 'Du kannst in jeder Sprache schreiben — der Text wird in der oben gewählten Sprache erstellt.',
       label_genre: 'Musikrichtung', genre_choose: 'Genre wählen',
       genre_emotional: 'Emotional', genre_suflet: 'Gefühlvoll', genre_acustic: 'Akustik / Folk',
@@ -756,7 +630,8 @@
       hero_eyebrow: 'Compuesta en unos 3 minutos',
       hero_title: 'Una canción con <em>su nombre</em>, no un tema genérico.',
       hero_sub: 'Cuentas la historia. Nosotros escribimos la letra y componemos la canción, con voz, en el estilo musical que elijas. Entrega por email, lista para enviar o descargar.',
-      hero_cta: 'Empieza — desde £15',
+      hero_cta: 'Pedir ahora',
+      order_now_btn: 'Pedir ahora',
       hero_note: 'Pago seguro · sin suscripción',
       intl_note: 'Entrega internacional, por email',
       disc_label: 'COMPONIENDO',
@@ -780,9 +655,11 @@
       theme_pentrumine_name: 'Para mí mismo/a', theme_pentrumine_desc: 'Una canción solo para ti.',
       theme_altceva_name: 'Otra cosa', theme_altceva_desc: 'Sin ocasión especial. Descríbelo tú.',
       label_recipient: 'Para quién es la canción (nombre)', ph_recipient: 'ej: María',
+      label_sender: 'De parte de quién es la canción', ph_sender: 'ej: María, o María y Alejandra',
+      label_relationship: 'Qué relación tenéis', ph_relationship: 'ej: esposa y esposo, madre e hija, amigos',
       label_email: 'Tu email (también recibirás la canción aquí)',
       label_phone: 'Teléfono WhatsApp (opcional — también recibirás la canción allí)', ph_phone: '+44 7xxx xxxxxx',
-      label_story: 'La historia / detalles para la letra', ph_story: 'Quiénes sois, qué pasó, qué quieres que diga la canción...',
+      label_story: 'La historia / detalles para la letra', ph_story: 'Cuéntanos qué os une, los momentos importantes que habéis vivido, qué es lo que más amas de esa persona, qué quieres decirle, y cualquier detalle que quieras escuchar en la canción',
       story_hint: 'Puedes escribir en cualquier idioma — la letra se generará en el idioma elegido arriba.',
       label_genre: 'Género musical', genre_choose: 'Elige un género',
       genre_emotional: 'Emotivo', genre_suflet: 'Con alma', genre_acustic: 'Acústico / Folk',
@@ -819,7 +696,8 @@
       hero_eyebrow: 'Composta in circa 3 minuti',
       hero_title: 'Una canzone con <em>il suo nome</em>, non un brano generico.',
       hero_sub: 'Racconti la storia. Noi scriviamo il testo e componiamo la canzone, con voce, nello stile musicale che scegli. Consegna via email, pronta da inviare o scaricare.',
-      hero_cta: 'Inizia — da £15',
+      hero_cta: 'Ordina ora',
+      order_now_btn: 'Ordina ora',
       hero_note: 'Pagamento sicuro · nessun abbonamento',
       intl_note: 'Consegna internazionale, via email',
       disc_label: 'IN COMPOSIZIONE',
@@ -843,9 +721,11 @@
       theme_pentrumine_name: 'Per me stesso/a', theme_pentrumine_desc: 'Una canzone solo per te.',
       theme_altceva_name: 'Altro', theme_altceva_desc: 'Nessuna occasione. Descrivilo tu.',
       label_recipient: 'Per chi è la canzone (nome)', ph_recipient: 'es: Maria',
+      label_sender: 'Da parte di chi è la canzone', ph_sender: 'es: Maria, o Maria e Alessandra',
+      label_relationship: 'Che relazione avete', ph_relationship: 'es: moglie e marito, madre e figlia, amici',
       label_email: 'La tua email (riceverai la canzone anche qui)',
       label_phone: 'Telefono WhatsApp (facoltativo — riceverai la canzone anche lì)', ph_phone: '+44 7xxx xxxxxx',
-      label_story: 'La storia / dettagli per il testo', ph_story: 'Chi siete, cosa è successo, cosa vuoi che dica la canzone...',
+      label_story: 'La storia / dettagli per il testo', ph_story: 'Raccontaci cosa vi lega, i momenti importanti che avete vissuto insieme, cosa ami di più di questa persona, cosa vuoi dirle, e qualsiasi dettaglio che vuoi sentire nella canzone',
       story_hint: 'Puoi scrivere in qualsiasi lingua — il testo sarà generato nella lingua scelta sopra.',
       label_genre: 'Genere musicale', genre_choose: 'Scegli un genere',
       genre_emotional: 'Emozionante', genre_suflet: 'Con anima', genre_acustic: 'Acustico / Folk',
@@ -882,7 +762,8 @@
       hero_eyebrow: 'Composée en environ 3 minutes',
       hero_title: 'Une chanson avec <em>son prénom</em>, pas un titre générique.',
       hero_sub: 'Vous racontez l\'histoire. Nous écrivons les paroles et composons la chanson, avec voix, dans le style musical de votre choix. Livrée par email, prête à envoyer ou télécharger.',
-      hero_cta: 'Commencer — à partir de £15',
+      hero_cta: 'Commander maintenant',
+      order_now_btn: 'Commander maintenant',
       hero_note: 'Paiement sécurisé · sans abonnement',
       intl_note: 'Livraison internationale, par email',
       disc_label: 'EN COMPOSITION',
@@ -906,9 +787,11 @@
       theme_pentrumine_name: 'Pour moi-même', theme_pentrumine_desc: 'Une chanson juste pour vous.',
       theme_altceva_name: 'Autre chose', theme_altceva_desc: 'Sans occasion particulière. Décrivez-la vous-même.',
       label_recipient: 'Pour qui est la chanson (prénom)', ph_recipient: 'ex : Maria',
+      label_sender: 'De la part de qui est la chanson', ph_sender: 'ex : Maria, ou Maria et Alexandra',
+      label_relationship: 'Quelle est votre relation', ph_relationship: 'ex : épouse et mari, mère et fille, amis',
       label_email: 'Votre email (vous recevrez aussi la chanson ici)',
       label_phone: 'Téléphone WhatsApp (facultatif — vous recevrez aussi la chanson là-bas)', ph_phone: '+44 7xxx xxxxxx',
-      label_story: 'L\'histoire / détails à inclure dans les paroles', ph_story: 'Qui vous êtes, ce qui s\'est passé, ce que la chanson doit dire...',
+      label_story: 'L\'histoire / détails à inclure dans les paroles', ph_story: 'Dites-nous ce qui vous unit, les moments importants que vous avez vécus, ce que vous aimez le plus chez cette personne, ce que vous voulez lui dire, et tout détail que vous aimeriez entendre dans la chanson',
       story_hint: 'Vous pouvez écrire dans n\'importe quelle langue — les paroles seront générées dans la langue choisie ci-dessus.',
       label_genre: 'Genre musical', genre_choose: 'Choisissez un genre',
       genre_emotional: 'Émouvant', genre_suflet: 'Avec âme', genre_acustic: 'Acoustique / Folk',
@@ -945,7 +828,8 @@
       hero_eyebrow: 'Композирана за около 3 минути',
       hero_title: 'Песен с <em>неговото име</em>, не общ запис.',
       hero_sub: 'Разказваш историята. Ние пишем текста и композираме песента, с вокал, в избрания от теб музикален стил. Доставка по имейл, готова за изпращане или изтегляне.',
-      hero_cta: 'Започни — от £15',
+      hero_cta: 'Поръчай сега',
+      order_now_btn: 'Поръчай сега',
       hero_note: 'Сигурно плащане · без абонамент',
       intl_note: 'Международна доставка, по имейл',
       disc_label: 'СЕ КОМПОЗИРА',
@@ -969,9 +853,11 @@
       theme_pentrumine_name: 'За самия мен', theme_pentrumine_desc: 'Песен само за теб.',
       theme_altceva_name: 'Нещо друго', theme_altceva_desc: 'Без повод. Опиши сам.',
       label_recipient: 'За кого е песента (име)', ph_recipient: 'напр. Мария',
+      label_sender: 'От чие име е песента', ph_sender: 'напр. Мария, или Мария и Александра',
+      label_relationship: 'Каква е връзката между вас', ph_relationship: 'напр. съпруга и съпруг, майка и дъщеря, приятели',
       label_email: 'Твоят имейл (ще получиш песента и тук)',
       label_phone: 'WhatsApp телефон (по желание — ще получиш песента и там)', ph_phone: '+44 7xxx xxxxxx',
-      label_story: 'Историята / детайли за текста', ph_story: 'Кои сте вие, какво се случи, какво искаш да казва песента...',
+      label_story: 'Историята / детайли за текста', ph_story: 'Разкажи ни какво ви свързва, важните моменти, които сте преживели заедно, какво обичаш най-много у този човек, какво искаш да му кажеш, и всеки детайл, който искаш да чуеш в песента',
       story_hint: 'Можеш да пишеш на всеки език — текстът ще бъде генериран на избрания по-горе език.',
       label_genre: 'Музикален жанр', genre_choose: 'Избери жанр',
       genre_emotional: 'Емоционално', genre_suflet: 'Душевно', genre_acustic: 'Акустика / Фолк',
@@ -1008,7 +894,8 @@
       hero_eyebrow: 'Yaklaşık 3 dakikada bestelenir',
       hero_title: 'Jenerik bir parça değil, <em>onun adıyla</em> bir şarkı.',
       hero_sub: 'Hikayeyi siz anlatın. Biz sözleri yazıp seçtiğiniz müzik tarzında, vokalli olarak şarkıyı besteleriz. E-posta ile teslim edilir, göndermeye veya indirmeye hazır.',
-      hero_cta: 'Başlayın — £15\'ten itibaren',
+      hero_cta: 'Şimdi sipariş ver',
+      order_now_btn: 'Şimdi sipariş ver',
       hero_note: 'Güvenli ödeme · abonelik yok',
       intl_note: 'Uluslararası teslimat, e-posta ile',
       disc_label: 'BESTELENİYOR',
@@ -1032,9 +919,11 @@
       theme_pentrumine_name: 'Kendim için', theme_pentrumine_desc: 'Sadece sizin için bir şarkı.',
       theme_altceva_name: 'Başka bir şey', theme_altceva_desc: 'Özel bir sebep yok. Kendiniz anlatın.',
       label_recipient: 'Şarkı kimin için (isim)', ph_recipient: 'örn: Ayşe',
+      label_sender: 'Şarkı kimden', ph_sender: 'örn: Ayşe, veya Ayşe ve Zeynep',
+      label_relationship: 'Aranızdaki ilişki nedir', ph_relationship: 'örn: eş ve eş, anne ve kız, arkadaşlar',
       label_email: 'E-posta adresiniz (şarkıyı buraya da alacaksınız)',
       label_phone: 'WhatsApp telefonu (isteğe bağlı — şarkıyı oradan da alacaksınız)', ph_phone: '+44 7xxx xxxxxx',
-      label_story: 'Hikaye / sözlere eklenecek detaylar', ph_story: 'Kim olduğunuz, ne olduğu, şarkının ne söylemesini istediğiniz...',
+      label_story: 'Hikaye / sözlere eklenecek detaylar', ph_story: 'Sizi birbirinize bağlayan şeyi, yaşadığınız önemli anları, bu kişide en çok neyi sevdiğinizi, ona ne söylemek istediğinizi ve şarkıda duymak istediğiniz her ayrıntıyı bize anlatın',
       story_hint: 'Herhangi bir dilde yazabilirsiniz — sözler yukarıda seçilen dilde oluşturulacaktır.',
       label_genre: 'Müzik türü', genre_choose: 'Bir tür seçin',
       genre_emotional: 'Duygusal', genre_suflet: 'İçten', genre_acustic: 'Akustik / Folk',
@@ -1169,284 +1058,6 @@
   }
 
   loadTestimonialsSection();
-
-
-  // selectie tema
-  const themeCards = document.querySelectorAll('.theme-card');
-  const occasionInput = document.getElementById('occasion');
-  themeCards.forEach(c => {
-    c.addEventListener('click', () => {
-      themeCards.forEach(x => x.classList.remove('active'));
-      c.classList.add('active');
-      occasionInput.value = c.dataset.theme;
-    });
-  });
-
-  // plan selection
-  const plans = document.querySelectorAll('.plan');
-  const sumPlan = document.getElementById('sum-plan');
-  const sumTotal = document.getElementById('sum-total');
-  let selectedPlan = { id:'standard', price:15, label:'Standard' };
-
-  plans.forEach(p => {
-    p.addEventListener('click', () => {
-      plans.forEach(x => x.classList.remove('active'));
-      p.classList.add('active');
-      selectedPlan = {
-        id: p.dataset.plan,
-        price: Number(p.dataset.price),
-        label: p.querySelector('.plan-name').textContent
-      };
-      sumPlan.textContent = selectedPlan.label;
-      sumTotal.textContent = '£' + selectedPlan.price;
-    });
-  });
-
-  // order submit -> creeaza comanda si porneste generarea a 2 variante (GRATUIT)
-  const form = document.getElementById('order-form');
-  const statusMsg = document.getElementById('status-msg');
-  const generateBtn = document.getElementById('generate-btn');
-  const previewPanel = document.getElementById('preview-panel');
-  const regenerateBtn = document.getElementById('regenerate-btn');
-  const checkoutBtn = document.getElementById('checkout-btn');
-  const editsLeftEl = document.getElementById('edits-left');
-  const checkoutPriceEl = document.getElementById('checkout-price');
-  const selectedVariantLabelEl = document.getElementById('selected-variant-label');
-  const previewStatusMsg = document.getElementById('preview-status-msg');
-  const resumeBanner = document.getElementById('resume-banner');
-  const resumeCheckoutBtn = document.getElementById('resume-checkout-btn');
-
-  const variantCards = [document.getElementById('variant-card-0'), document.getElementById('variant-card-1')];
-  const variantAudios = [document.getElementById('variant-audio-0'), document.getElementById('variant-audio-1')];
-  const variantProgress = [document.getElementById('variant-progress-0'), document.getElementById('variant-progress-1')];
-
-  let currentOrderId = null;
-  let selectedVariantIndex = 0;
-
-  function formatTime(sec) {
-    if (!sec && sec !== 0) return '—';
-    const m = Math.floor(sec / 60);
-    const s = Math.floor(sec % 60).toString().padStart(2, '0');
-    return `${m}:${s}`;
-  }
-
-  function collectPayload() {
-    return {
-      occasion: document.getElementById('occasion').value,
-      recipient: document.getElementById('recipient').value,
-      email: document.getElementById('email').value,
-      story: document.getElementById('story').value,
-      genre: document.getElementById('genre').value,
-      plan: selectedPlan.id,
-      price: selectedPlan.price,
-      lang: currentLang
-    };
-  }
-
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    generateBtn.disabled = true;
-    const generateBtnLabel = document.getElementById('generate-btn-label');
-    const originalBtnText = generateBtnLabel.textContent;
-    generateBtnLabel.textContent = t('btn_generate_starting');
-    statusMsg.textContent = '';
-    statusMsg.className = '';
-
-    try {
-      const createRes = await fetch('/api/orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(collectPayload())
-      });
-      const createData = await createRes.json();
-
-      if (!createData.orderId) {
-        statusMsg.textContent = t('msg_error_prefix') + (createData.error || t('msg_try_again'));
-        statusMsg.className = 'status-err';
-        generateBtn.disabled = false;
-        generateBtnLabel.textContent = originalBtnText;
-        return;
-      }
-
-      currentOrderId = createData.orderId;
-      localStorage.setItem('nds_order_id', currentOrderId);
-      if (createData.accessToken) localStorage.setItem('nds_access_token', createData.accessToken);
-      checkoutPriceEl.textContent = '£' + selectedPlan.price;
-
-      // pornim generarea, apoi redirectionam imediat catre pagina dedicata de asteptare —
-      // nu mai facem polling inline pe formular, ca sa nu para ca site-ul s-a blocat
-      await fetch(`/api/orders/${currentOrderId}/generate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ feedback: null })
-      });
-
-      const tokenParam = encodeURIComponent(createData.accessToken || '');
-      window.location.href = `/se-compune.html?id=${currentOrderId}&token=${tokenParam}`;
-    } catch (err) {
-      statusMsg.textContent = t('msg_conn_error');
-      statusMsg.className = 'status-err';
-      generateBtn.disabled = false;
-      generateBtnLabel.textContent = originalBtnText;
-    }
-  });
-
-  function wireVariantProgress(index, durationSeconds) {
-    const audio = variantAudios[index];
-    const progressEl = variantProgress[index];
-    audio.addEventListener('timeupdate', () => {
-      progressEl.textContent = t('msg_listened').replace('{t}', formatTime(audio.currentTime)).replace('{d}', formatTime(durationSeconds));
-    });
-  }
-
-  function selectVariant(index) {
-    selectedVariantIndex = index;
-    variantCards.forEach((card, i) => card.classList.toggle('selected', i === index));
-    selectedVariantLabelEl.textContent = index + 1;
-
-    if (currentOrderId) {
-      const order = window.__ndsCurrentOrder;
-      if (order && order.variants && order.variants[index]) {
-        fetch(`/api/orders/${currentOrderId}/select`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ variantId: order.variants[index].id })
-        });
-      }
-    }
-  }
-
-  variantCards.forEach((card, i) => card.addEventListener('click', () => selectVariant(i)));
-
-  async function pollOrderStatus(orderId, isResume) {
-    try {
-      const res = await fetch(`/api/orders/${orderId}`);
-      const order = await res.json();
-
-      if (order.status === 'preview_ready') {
-        window.__ndsCurrentOrder = order;
-        statusMsg.textContent = '';
-        generateBtn.disabled = false;
-        previewPanel.style.display = 'grid';
-
-        order.variants.forEach((v, i) => {
-          if (!variantAudios[i]) return;
-          variantAudios[i].src = v.previewUrl + '?t=' + Date.now();
-          variantProgress[i].textContent = t('msg_listened').replace('{t}', '0:00').replace('{d}', formatTime(v.durationSeconds));
-          wireVariantProgress(i, v.durationSeconds);
-        });
-
-        selectVariant(0);
-
-        const editsLeft = Math.max(0, 3 - (order.editsUsed || 0));
-        editsLeftEl.textContent = editsLeft;
-        regenerateBtn.disabled = editsLeft === 0;
-        regenerateBtn.style.opacity = editsLeft === 0 ? '.5' : '1';
-
-        if (isResume) {
-          resumeBanner.style.display = 'block';
-        }
-
-        previewPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      } else if (order.status === 'generation_failed') {
-        statusMsg.textContent = t('msg_error_prefix') + (order.error || t('msg_try_again'));
-        statusMsg.className = 'status-err';
-        generateBtn.disabled = false;
-      } else if (order.status === 'ready') {
-        // comanda deja platita — nu mai are sens sa reia fluxul de preview
-        statusMsg.textContent = t('msg_already_paid');
-      } else {
-        setTimeout(() => pollOrderStatus(orderId, isResume), 5000);
-      }
-    } catch (err) {
-      setTimeout(() => pollOrderStatus(orderId, isResume), 5000);
-    }
-  }
-
-  regenerateBtn.addEventListener('click', async () => {
-    if (!currentOrderId) return;
-    const feedback = document.getElementById('feedback').value;
-    regenerateBtn.disabled = true;
-    previewStatusMsg.textContent = t('msg_regenerating');
-    previewStatusMsg.className = '';
-    resumeBanner.style.display = 'none';
-
-    const res = await fetch(`/api/orders/${currentOrderId}/regenerate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ feedback: feedback || null })
-    });
-    const data = await res.json();
-
-    if (data.error) {
-      previewStatusMsg.textContent = data.error;
-      previewStatusMsg.className = 'status-err';
-      regenerateBtn.disabled = false;
-      return;
-    }
-
-    pollOrderStatus(currentOrderId);
-  });
-
-  async function goToCheckout(orderId, btn, msgEl) {
-    btn.disabled = true;
-    msgEl.textContent = t('msg_preparing_payment');
-    msgEl.className = '';
-
-    try {
-      const res = await fetch(`/api/orders/${orderId}/checkout`, { method: 'POST' });
-      const data = await res.json();
-
-      if (data.url) {
-        window.location.href = data.url;
-      } else {
-        msgEl.textContent = t('msg_error_prefix') + (data.error || t('msg_try_again'));
-        msgEl.className = 'status-err';
-        btn.disabled = false;
-      }
-    } catch (err) {
-      msgEl.textContent = t('msg_conn_error');
-      msgEl.className = 'status-err';
-      btn.disabled = false;
-    }
-  }
-
-  checkoutBtn.addEventListener('click', () => goToCheckout(currentOrderId, checkoutBtn, previewStatusMsg));
-  resumeCheckoutBtn.addEventListener('click', () => goToCheckout(currentOrderId, resumeCheckoutBtn, previewStatusMsg));
-
-  // -------- Revenire pe formular, dupa ce previzualizarea e gata sau plata a fost abandonata --------
-  // Cazul 1: ?ready=<orderId> — tocmai a terminat de generat pe /se-compune.html, prima
-  //          data cand vede previzualizarea. NU arata bannerul de "plata neterminata".
-  // Cazul 2: ?resume=<orderId> — a anulat plata pe Stripe (cancel_url), revine la un
-  //          preview deja generat anterior. Arata bannerul de recuperare.
-  // Cazul 3: fara parametru in URL, dar exista o comanda nefinalizata in localStorage —
-  //          tratat identic cu cazul 2 (comportamentul de dinainte, neschimbat).
-  (async function checkResume() {
-    const params = new URLSearchParams(window.location.search);
-    const readyId = params.get('ready');
-    const resumeId = params.get('resume') || localStorage.getItem('nds_order_id');
-
-    const targetId = readyId || resumeId;
-    if (!targetId) return;
-
-    const showBanner = !readyId; // doar pentru cazurile 2 si 3, nu pentru cazul 1
-
-    try {
-      const res = await fetch(`/api/orders/${targetId}`);
-      if (!res.ok) { localStorage.removeItem('nds_order_id'); return; }
-      const order = await res.json();
-
-      if (order.status === 'preview_ready') {
-        currentOrderId = targetId;
-        checkoutPriceEl.textContent = '£' + order.price;
-        pollOrderStatus(targetId, showBanner);
-      } else if (order.status === 'ready') {
-        localStorage.removeItem('nds_order_id');
-      }
-    } catch (err) {
-      // fara conexiune la incarcare — ignoram, nu blocam pagina
-    }
-  })();
 </script>
 
 </body>

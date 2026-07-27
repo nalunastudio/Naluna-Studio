@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Melodia mea — NALUNA</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;1,9..144,400&family=Sora:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#FAF8F5; --bg-secondary:#F8F6F2; --surface:#FDFCFA;
+    --text:#2B2B2B; --text-secondary:#6B6B6B;
+    --gold:#A8834B; --gold-soft:#C9A876; --gold-deep:#8B6D3F; --line:#E8E2D6;
+    --success:#5F8F6E; --error:#B3574A;
+  }
+  *{box-sizing:border-box;}
+  html, body{ min-height:100%; }
+  body{
+    background:var(--bg); color:var(--text); font-family:'Sora', sans-serif;
+    min-height:100vh; margin:0; padding:48px 20px; position:relative; overflow-x:hidden;
+    line-height:1.6;
+  }
+  @media (prefers-reduced-motion: reduce){
+    *{ animation-duration:0.01ms !important; animation-iteration-count:1 !important; transition-duration:0.01ms !important; }
+  }
+
+  .ambient-wash{
+    position:fixed; inset:0; z-index:0; pointer-events:none;
+    background:
+      radial-gradient(circle at 18% 20%, rgba(168,131,75,.08), transparent 45%),
+      radial-gradient(circle at 85% 80%, rgba(168,131,75,.07), transparent 50%);
+  }
+  .ambient-blob{
+    position:fixed; border-radius:50%; filter:blur(60px); pointer-events:none; z-index:0;
+    background:radial-gradient(circle, rgba(201,168,118,.16), transparent 70%);
+  }
+  .blob-1{ width:340px; height:340px; top:-80px; left:-100px; animation:driftA 22s ease-in-out infinite; }
+  .blob-2{ width:280px; height:280px; bottom:-100px; right:-80px; animation:driftB 26s ease-in-out infinite; }
+  @keyframes driftA{ 0%,100%{ transform:translate(0,0); } 50%{ transform:translate(40px,30px); } }
+  @keyframes driftB{ 0%,100%{ transform:translate(0,0); } 50%{ transform:translate(-30px,-40px); } }
+
+  .page-wrap{ max-width:680px; margin:0 auto; position:relative; z-index:1; }
+  .card{
+    background:rgba(253,252,250,.68);
+    backdrop-filter:blur(18px) saturate(140%);
+    -webkit-backdrop-filter:blur(18px) saturate(140%);
+    border:1px solid rgba(255,255,255,.5);
+    border-radius:26px;
+    padding:48px 40px;
+    box-shadow:0 24px 60px -20px rgba(139,109,63,.18), 0 2px 8px rgba(43,43,43,.05);
+  }
+  .logo-mark{ width:44px; margin:0 auto 24px; display:block; opacity:.92; }
+
+  h1.display{ font-family:'Fraunces', serif; font-weight:400; font-size:26px; text-align:center; letter-spacing:-.01em; margin-bottom:6px; }
+  p.sub{ color:var(--text-secondary); font-size:14px; text-align:center; margin-bottom:26px; }
+  p.dedication{ text-align:center; color:var(--gold-deep); font-family:'Fraunces', serif; font-style:italic; font-size:16px; margin-bottom:30px; }
+
+  .spinner-wrap{ position:relative; width:64px; height:64px; margin:0 auto 22px; }
+  .spinner-glow{
+    position:absolute; inset:-14px; border-radius:50%;
+    background:radial-gradient(circle, rgba(168,131,75,.2), rgba(168,131,75,0) 70%);
+    animation:glow 3.4s ease-in-out infinite;
+  }
+  @keyframes glow{ 0%,100%{ opacity:.55; transform:scale(1); } 50%{ opacity:1; transform:scale(1.1); } }
+  .spinner{
+    position:absolute; inset:0; border-radius:50%;
+    border:2px solid var(--line); border-top-color:var(--gold); border-right-color:var(--gold-soft);
+    animation:spin 2.6s linear infinite;
+  }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+
+  .field{ margin-bottom:20px; }
+  label{ display:block; font-size:13px; color:var(--text-secondary); margin-bottom:9px; }
+  input, textarea{
+    width:100%; background:var(--surface); border:1px solid var(--line); border-radius:10px;
+    padding:13px 15px; color:var(--text); font-family:'Sora', sans-serif; font-size:14px;
+    transition:border-color .2s ease;
+  }
+  textarea{ min-height:100px; resize:vertical; }
+  input:focus, textarea:focus{ outline:2px solid var(--gold); outline-offset:1px; border-color:var(--gold); }
+
+  .btn{
+    display:inline-flex; align-items:center; justify-content:center; gap:8px;
+    padding:13px 24px; border-radius:999px; font-size:14px; font-weight:500;
+    border:1px solid transparent; cursor:pointer; text-decoration:none;
+    transition:transform .2s ease, box-shadow .2s ease, background-color .2s ease, border-color .2s ease;
+  }
+  .btn:hover{ transform:translateY(-1px); }
+  .btn:disabled{ opacity:.55; cursor:default; transform:none; }
+  .btn-primary{ background:var(--text); color:var(--bg); }
+  .btn-primary:hover{ background:var(--gold-deep); box-shadow:0 12px 28px -10px rgba(139,109,63,.45); }
+  .btn-ghost{ border-color:var(--line); color:var(--text); background:transparent; }
+  .btn-ghost:hover{ border-color:var(--gold); color:var(--gold-deep); }
+  .btn-small{ padding:9px 16px; font-size:13px; }
+
+  .variant-card{
+    border:1px solid var(--line); border-radius:16px; padding:20px 22px;
+    background:var(--surface); cursor:pointer; margin-bottom:16px;
+    transition:border-color .2s ease, background-color .2s ease;
+  }
+  .variant-card.selected{ border-color:var(--gold); background:rgba(168,131,75,.07); }
+  .variant-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+  .variant-label{ font-weight:600; font-size:14px; }
+  .variant-progress{ font-size:12px; color:var(--text-secondary); margin-top:8px; letter-spacing:.02em; }
+
+  .voice-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:4px; }
+  .voice-card{
+    border:1px solid var(--line); border-radius:12px; padding:15px 17px; cursor:pointer;
+    background:var(--surface); text-align:center; transition:border-color .2s ease, background-color .2s ease, transform .15s ease;
+  }
+  .voice-card:hover{ transform:translateY(-1px); }
+  .voice-card.active{ border-color:var(--gold); background:rgba(168,131,75,.07); }
+  .voice-name{ font-weight:600; font-size:14px; }
+  @media (max-width: 480px){
+    .voice-grid{ grid-template-columns:1fr; }
+  }
+  .variant-audio{ width:100%; }
+
+  .lyrics-box{
+    margin-top:14px; background:rgba(255,255,255,.5); border:1px solid var(--line); border-radius:12px;
+    padding:16px 18px; font-family:'Fraunces', serif; font-style:italic; font-size:14px; line-height:1.75;
+    white-space:pre-wrap; color:var(--text); max-height:220px; overflow-y:auto;
+  }
+  .lyrics-empty{ color:var(--text-secondary); font-size:13px; font-style:normal; font-family:'Sora', sans-serif; }
+  .lyrics-edited-tag{
+    display:inline-block; font-size:11px; letter-spacing:.04em; text-transform:uppercase;
+    color:var(--gold-deep); background:rgba(168,131,75,.1); border-radius:999px; padding:3px 10px;
+    margin-bottom:8px; font-family:'Sora', sans-serif; font-style:normal;
+  }
+  .edit-lyrics-btn{ margin-top:12px; }
+
+  .order-summary{ margin-top:10px; padding-top:18px; border-top:1px solid var(--line); margin-bottom:10px; }
+  .order-summary .row{ display:flex; justify-content:space-between; font-size:14px; margin-bottom:8px; color:var(--text-secondary); }
+  .order-summary .total{ color:var(--text); font-weight:700; font-size:17px; }
+
+  #status-msg{ margin-top:14px; font-size:13px; text-align:center; }
+  .status-ok{ color:var(--success); }
+  .status-err{ color:var(--error); }
+
+  .char-counter{ font-size:12px; color:var(--text-secondary); text-align:right; margin-top:6px; }
+  .char-counter.limit{ color:var(--error); }
+
+  #resume-banner{
+    background:var(--surface); border:1px solid var(--gold); border-radius:16px;
+    padding:20px; margin-bottom:26px; text-align:center;
+  }
+
+  #confirm-row{ align-items:center; }
+
+  @media (max-width: 560px){
+    body{ padding:24px 14px; }
+    .card{ padding:34px 22px; }
+    .blob-1, .blob-2{ display:none; }
+  }
+</style>
+</head>
+<body>
+  <div class="ambient-wash"></div>
+  <div class="ambient-blob blob-1"></div>
+  <div class="ambient-blob blob-2"></div>
+
+  <div class="page-wrap">
+    <div class="card" id="main-card">
+      <img class="logo-mark" src="/logo.svg" alt="NALUNA">
+
+      <div id="loading-state">
+        <div class="spinner-wrap"><div class="spinner-glow"></div><div class="spinner"></div></div>
+        <p class="sub" id="loading-msg">Se încarcă melodia ta...</p>
+      </div>
+
+      <div id="notfound-state" style="display:none; text-align:center;">
+        <h1 class="display" id="notfound-title">Nu am găsit această melodie</h1>
+        <p class="sub" id="notfound-sub">Linkul poate fi incorect sau incomplet.</p>
+        <a class="btn btn-primary" href="/index.html" id="notfound-link">Începe o comandă nouă</a>
+      </div>
+
+      <div id="error-state" style="display:none; text-align:center;">
+        <h1 class="display" id="error-title" style="color:var(--error);">Nu am putut finaliza melodia de această dată</h1>
+        <p class="sub" id="error-sub">Nu ai fost taxat.</p>
+        <button type="button" class="btn btn-primary" id="retry-btn">Încearcă din nou</button>
+      </div>
+
+      <div id="paid-state" style="display:none; text-align:center;">
+        <h1 class="display" id="paid-title">Melodia ta a fost livrată deja</h1>
+        <p class="sub" id="paid-sub">Ai primit deja un email cu linkul de descărcare.</p>
+      </div>
+
+      <div id="content-state" style="display:none;">
+        <div id="resume-banner" style="display:none;">
+          <p style="font-weight:600; margin-bottom:14px;" id="resume-msg">Plata nu s-a finalizat 💛 Nicio grijă — cântecul e salvat și te așteaptă.</p>
+        </div>
+
+        <h1 class="display" id="song-heading">Melodia pentru cineva drag</h1>
+        <p class="dedication" id="dedication-line" style="display:none;"></p>
+
+        <div id="variants-wrap"></div>
+
+        <div class="field" style="margin-top:8px;">
+          <label id="voice-current-label">Voce selectată: automat</label>
+          <div class="voice-grid" id="voice-grid">
+            <div class="voice-card" data-voice="female"><div class="voice-name" id="voice-name-female">Voce feminină</div></div>
+            <div class="voice-card" data-voice="male"><div class="voice-name" id="voice-name-male">Voce masculină</div></div>
+            <div class="voice-card" data-voice="duet"><div class="voice-name" id="voice-name-duet">Duet feminin + masculin</div></div>
+            <div class="voice-card" data-voice="auto"><div class="voice-name" id="voice-name-auto">Alege automat</div></div>
+          </div>
+          <div class="price-note" style="margin-top:6px;" id="voice-change-hint">Se aplică doar la următoarea regenerare</div>
+        </div>
+
+        <div class="field" style="margin-top:8px;">
+          <label for="feedback" id="feedback-label">Nu e exact cum vrei? Descrie ce să schimbăm</label>
+          <textarea id="feedback" placeholder="ex: mai vesel, mai lent, alt început..."></textarea>
+        </div>
+
+        <div id="regenerate-row" style="display:flex; gap:12px; flex-wrap:wrap; margin-top:6px;">
+          <button type="button" class="btn btn-ghost" id="regenerate-btn">Editează cântecul (<span id="edits-left">3</span> editări gratuite rămase)</button>
+          <button type="button" class="btn btn-primary" id="checkout-btn" style="flex:1; justify-content:center;">Finalizează cadoul — varianta <span id="selected-variant-label">1</span> (<span id="checkout-price">£15</span>) →</button>
+        </div>
+
+        <div id="confirm-row" style="display:none; gap:10px; margin-top:16px; flex-wrap:wrap;">
+          <span id="confirm-msg" style="flex:1 1 220px; font-size:13px; color:var(--text-secondary);"></span>
+          <button type="button" class="btn btn-ghost btn-small" id="confirm-cancel">Renunță</button>
+          <button type="button" class="btn btn-primary btn-small" id="confirm-yes">Da, regenerează</button>
+        </div>
+
+        <div id="status-msg"></div>
+      </div>
+
+      <div id="lyrics-editor-state" style="display:none;">
+        <h1 class="display" id="editor-title" style="font-size:21px;">Editează versurile</h1>
+        <p class="sub" id="editor-hint" style="text-align:left;">Modifică un cuvânt, un vers sau o strofă. Formatarea pe strofe rămâne neschimbată.</p>
+        <textarea id="lyrics-textarea" style="min-height:260px; font-family:'Fraunces', serif; font-style:italic; line-height:1.75;" maxlength="4000"></textarea>
+        <div class="char-counter" id="char-counter">0 / 4000</div>
+        <div class="status-err" id="lyrics-validation" style="font-size:13px; margin-top:6px; min-height:16px;"></div>
+        <div style="display:flex; gap:12px; margin-top:16px;">
+          <button type="button" class="btn btn-ghost" id="editor-cancel-btn" style="flex:1; justify-content:center;">Renunță</button>
+          <button type="button" class="btn btn-primary" id="editor-save-btn" style="flex:1; justify-content:center;">Salvează modificările</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+  const T = {
+    ro: {
+      loading: 'Se încarcă melodia ta...',
+      notfound_title: 'Nu am găsit această melodie', notfound_sub: 'Linkul poate fi incorect sau incomplet.', notfound_cta: 'Începe o comandă nouă',
+      error_title: 'Nu am putut finaliza melodia de această dată', error_sub: 'Nu ai fost taxat.', retry_btn: 'Încearcă din nou', retrying: 'Se reîncearcă...',
+      paid_title: 'Melodia ta a fost livrată deja', paid_sub: 'Ai primit deja un email cu linkul de descărcare.',
+      heading: (r) => `Melodia pentru ${r}`, dedication: (s) => `Din partea ${s}`,
+      variant1_label: 'Varianta 1', variant2_label: '🎁 A doua variantă, și ea a ta',
+      listened: (t, d) => `Ai ascultat ${t} din ${d}`,
+      lyrics_empty: 'Versurile nu sunt încă disponibile pentru afișare.',
+      lyrics_edited_tag: 'Versuri editate de tine',
+      edit_lyrics_btn: 'Editează versurile',
+      editor_title: 'Editează versurile', editor_hint: 'Modifică un cuvânt, un vers sau o strofă. Formatarea pe strofe rămâne neschimbată.',
+      save_btn: 'Salvează modificările', cancel_btn: 'Renunță',
+      lyrics_saved_msg: 'Versurile au fost salvate. Pentru a auzi modificările, regenerează melodia',
+      lyrics_empty_error: 'Versurile nu pot fi goale',
+      feedback_label: 'Nu e exact cum vrei? Descrie ce să schimbăm', feedback_ph: 'ex: mai vesel, mai lent, alt început...',
+      regenerate_btn: 'Editează cântecul', edits_left_label: 'editări gratuite rămase',
+      confirm_msg: (n) => `Sigur? Se consumă 1 editare gratuită (mai ai ${n}).`,
+      lyrics_guidance_notice: 'Versurile editate vor fi folosite ca ghid. Generarea poate modifica și alte versuri, vocea sau linia melodică.',
+      voice_female: 'feminină', voice_male: 'masculină', voice_duet: 'duet', voice_auto: 'automat',
+      voice_change_hint: 'Se aplică doar la următoarea regenerare',
+      voice_selected_label: (v) => `Voce selectată: ${v}`,
+      confirm_yes: 'Da, regenerează', confirm_no: 'Renunță',
+      checkout_btn: 'Finalizează cadoul', variant_word: 'varianta',
+      msg_regenerating: 'Se regenerează 2 variante noi...', msg_conn_error: 'Eroare de conexiune. Încearcă din nou',
+      msg_try_again: 'încearcă din nou', msg_error_prefix: 'Eroare: ', msg_already_paid: 'Această comandă a fost deja plătită și finalizată',
+      msg_preparing_payment: 'Se pregătește plata...',
+      resume_msg: 'Plata nu s-a finalizat 💛 Nicio grijă — cântecul e salvat și te așteaptă.'
+    },
+    en: {
+      loading: 'Loading your song...',
+      notfound_title: 'We could not find this song', notfound_sub: 'The link may be incorrect or incomplete.', notfound_cta: 'Start a new order',
+      error_title: 'We could not finish your song this time', error_sub: "You haven't been charged.", retry_btn: 'Try again', retrying: 'Retrying...',
+      paid_title: 'Your song has already been delivered', paid_sub: "You've already received an email with the download link.",
+      heading: (r) => `The song for ${r}`, dedication: (s) => `From ${s}`,
+      variant1_label: 'Version 1', variant2_label: '🎁 A second version, also yours',
+      listened: (t, d) => `You've listened to ${t} of ${d}`,
+      lyrics_empty: 'Lyrics are not available to display yet.',
+      lyrics_edited_tag: 'Lyrics edited by you',
+      edit_lyrics_btn: 'Edit the lyrics',
+      editor_title: 'Edit the lyrics', editor_hint: 'Change a word, a line, or a verse. The verse formatting stays the same.',
+      save_btn: 'Save changes', cancel_btn: 'Cancel',
+      lyrics_saved_msg: 'Lyrics saved. Regenerate the song to hear the changes',
+      lyrics_empty_error: 'Lyrics cannot be empty',
+      feedback_label: 'Not quite right? Describe what to change', feedback_ph: 'e.g. more upbeat, slower, different intro...',
+      regenerate_btn: 'Edit the song', edits_left_label: 'free edits left',
+      confirm_msg: (n) => `Are you sure? This uses 1 free edit (${n} left).`,
+      lyrics_guidance_notice: 'The edited lyrics will be used as a guide. The generation may change other lyrics, the voice, or the melody.',
+      voice_female: 'female', voice_male: 'male', voice_duet: 'duet', voice_auto: 'automatic',
+      voice_change_hint: 'Applies only to the next regeneration',
+      voice_selected_label: (v) => `Selected voice: ${v}`,
+      confirm_yes: 'Yes, regenerate', confirm_no: 'Cancel',
+      checkout_btn: 'Finish the gift', variant_word: 'version',
+      msg_regenerating: 'Regenerating 2 new versions...', msg_conn_error: 'Connection error. Please try again.',
+      msg_try_again: 'please try again.', msg_error_prefix: 'Error: ', msg_already_paid: 'This order has already been paid and completed.',
+      msg_preparing_payment: 'Preparing payment...',
+      resume_msg: "Payment wasn't completed 💛 No worries — your song is saved and waiting for you."
+    },
+    de: {
+      loading: 'Dein Lied wird geladen...',
+      notfound_title: 'Wir konnten dieses Lied nicht finden', notfound_sub: 'Der Link ist möglicherweise falsch oder unvollständig.', notfound_cta: 'Neue Bestellung starten',
+      error_title: 'Wir konnten dein Lied dieses Mal nicht fertigstellen', error_sub: 'Du wurdest nicht belastet.', retry_btn: 'Erneut versuchen', retrying: 'Erneuter Versuch...',
+      paid_title: 'Dein Lied wurde bereits geliefert', paid_sub: 'Du hast bereits eine E-Mail mit dem Download-Link erhalten.',
+      heading: (r) => `Das Lied für ${r}`, dedication: (s) => `Von ${s}`,
+      variant1_label: 'Version 1', variant2_label: '🎁 Eine zweite Version, auch deine',
+      listened: (t, d) => `Du hast ${t} von ${d} gehört`,
+      lyrics_empty: 'Der Text steht noch nicht zur Anzeige zur Verfügung.',
+      lyrics_edited_tag: 'Von dir bearbeiteter Text',
+      edit_lyrics_btn: 'Text bearbeiten',
+      editor_title: 'Text bearbeiten', editor_hint: 'Ändere ein Wort, eine Zeile oder eine Strophe. Die Strophenformatierung bleibt gleich.',
+      save_btn: 'Änderungen speichern', cancel_btn: 'Abbrechen',
+      lyrics_saved_msg: 'Text gespeichert. Regeneriere das Lied, um die Änderungen zu hören',
+      lyrics_empty_error: 'Der Text darf nicht leer sein',
+      feedback_label: 'Nicht ganz richtig? Beschreibe, was geändert werden soll', feedback_ph: 'z.B. fröhlicher, langsamer, anderer Anfang...',
+      regenerate_btn: 'Lied bearbeiten', edits_left_label: 'kostenlose Änderungen übrig',
+      confirm_msg: (n) => `Sicher? Das verbraucht 1 kostenlose Änderung (noch ${n} übrig).`,
+      lyrics_guidance_notice: 'Der bearbeitete Text wird als Orientierung verwendet. Die Generierung kann andere Textzeilen, die Stimme oder die Melodie verändern.',
+      voice_female: 'weiblich', voice_male: 'männlich', voice_duet: 'Duett', voice_auto: 'automatisch',
+      voice_change_hint: 'Gilt nur für die nächste Regenerierung',
+      voice_selected_label: (v) => `Ausgewählte Stimme: ${v}`,
+      confirm_yes: 'Ja, regenerieren', confirm_no: 'Abbrechen',
+      checkout_btn: 'Geschenk abschließen', variant_word: 'Version',
+      msg_regenerating: '2 neue Versionen werden erstellt...', msg_conn_error: 'Verbindungsfehler. Bitte versuche es erneut.',
+      msg_try_again: 'bitte versuche es erneut.', msg_error_prefix: 'Fehler: ', msg_already_paid: 'Diese Bestellung wurde bereits bezahlt und abgeschlossen.',
+      msg_preparing_payment: 'Zahlung wird vorbereitet...',
+      resume_msg: 'Zahlung wurde nicht abgeschlossen 💛 Kein Problem — dein Lied ist gespeichert und wartet auf dich.'
+    },
+    es: {
+      loading: 'Cargando tu canción...',
+      notfound_title: 'No encontramos esta canción', notfound_sub: 'El enlace puede ser incorrecto o incompleto.', notfound_cta: 'Empezar un nuevo pedido',
+      error_title: 'No pudimos terminar tu canción esta vez', error_sub: 'No se te ha cobrado.', retry_btn: 'Intentar de nuevo', retrying: 'Reintentando...',
+      paid_title: 'Tu canción ya ha sido entregada', paid_sub: 'Ya has recibido un email con el enlace de descarga.',
+      heading: (r) => `La canción para ${r}`, dedication: (s) => `De parte de ${s}`,
+      variant1_label: 'Versión 1', variant2_label: '🎁 Una segunda versión, también tuya',
+      listened: (t, d) => `Has escuchado ${t} de ${d}`,
+      lyrics_empty: 'La letra todavía no está disponible para mostrar.',
+      lyrics_edited_tag: 'Letra editada por ti',
+      edit_lyrics_btn: 'Editar la letra',
+      editor_title: 'Editar la letra', editor_hint: 'Cambia una palabra, un verso o una estrofa. El formato de las estrofas no cambia.',
+      save_btn: 'Guardar cambios', cancel_btn: 'Cancelar',
+      lyrics_saved_msg: 'Letra guardada. Regenera la canción para escuchar los cambios',
+      lyrics_empty_error: 'La letra no puede estar vacía',
+      feedback_label: '¿No es exactamente lo que quieres? Describe qué cambiar', feedback_ph: 'ej: más alegre, más lenta, otro inicio...',
+      regenerate_btn: 'Editar la canción', edits_left_label: 'ediciones gratuitas restantes',
+      confirm_msg: (n) => `¿Seguro? Esto consume 1 edición gratuita (te quedan ${n}).`,
+      lyrics_guidance_notice: 'La letra editada se usará como guía. La generación puede cambiar otras partes de la letra, la voz o la melodía.',
+      voice_female: 'femenina', voice_male: 'masculina', voice_duet: 'dúo', voice_auto: 'automática',
+      voice_change_hint: 'Se aplica solo a la próxima regeneración',
+      voice_selected_label: (v) => `Voz seleccionada: ${v}`,
+      confirm_yes: 'Sí, regenerar', confirm_no: 'Cancelar',
+      checkout_btn: 'Finalizar el regalo', variant_word: 'versión',
+      msg_regenerating: 'Regenerando 2 versiones nuevas...', msg_conn_error: 'Error de conexión. Inténtalo de nuevo.',
+      msg_try_again: 'inténtalo de nuevo.', msg_error_prefix: 'Error: ', msg_already_paid: 'Este pedido ya ha sido pagado y completado.',
+      msg_preparing_payment: 'Preparando el pago...',
+      resume_msg: 'El pago no se completó 💛 No te preocupes — tu canción está guardada y te espera.'
+    },
+    it: {
+      loading: 'Caricamento della tua canzone...',
+      notfound_title: 'Non abbiamo trovato questa canzone', notfound_sub: 'Il link potrebbe essere errato o incompleto.', notfound_cta: 'Inizia un nuovo ordine',
+      error_title: 'Questa volta non siamo riusciti a completare la tua canzone', error_sub: 'Non ti è stato addebitato nulla.', retry_btn: 'Riprova', retrying: 'Nuovo tentativo...',
+      paid_title: 'La tua canzone è già stata consegnata', paid_sub: "Hai già ricevuto un'email con il link per il download.",
+      heading: (r) => `La canzone per ${r}`, dedication: (s) => `Da parte di ${s}`,
+      variant1_label: 'Versione 1', variant2_label: '🎁 Una seconda versione, anche questa tua',
+      listened: (t, d) => `Hai ascoltato ${t} di ${d}`,
+      lyrics_empty: 'Il testo non è ancora disponibile per la visualizzazione.',
+      lyrics_edited_tag: 'Testo modificato da te',
+      edit_lyrics_btn: 'Modifica il testo',
+      editor_title: 'Modifica il testo', editor_hint: 'Cambia una parola, un verso o una strofa. La formattazione delle strofe resta invariata.',
+      save_btn: 'Salva le modifiche', cancel_btn: 'Annulla',
+      lyrics_saved_msg: 'Testo salvato. Rigenera la canzone per ascoltare le modifiche',
+      lyrics_empty_error: 'Il testo non può essere vuoto',
+      feedback_label: 'Non è esattamente come vuoi? Descrivi cosa cambiare', feedback_ph: 'es: più allegra, più lenta, inizio diverso...',
+      regenerate_btn: 'Modifica la canzone', edits_left_label: 'modifiche gratuite rimaste',
+      confirm_msg: (n) => `Sicuro? Verrà usata 1 modifica gratuita (te ne restano ${n}).`,
+      lyrics_guidance_notice: 'Il testo modificato sarà usato come guida. La generazione potrebbe cambiare altre parti del testo, la voce o la melodia.',
+      voice_female: 'femminile', voice_male: 'maschile', voice_duet: 'duetto', voice_auto: 'automatica',
+      voice_change_hint: 'Si applica solo alla prossima rigenerazione',
+      voice_selected_label: (v) => `Voce selezionata: ${v}`,
+      confirm_yes: 'Sì, rigenera', confirm_no: 'Annulla',
+      checkout_btn: 'Completa il regalo', variant_word: 'versione',
+      msg_regenerating: 'Rigenerazione di 2 nuove versioni...', msg_conn_error: 'Errore di connessione. Riprova.',
+      msg_try_again: 'riprova.', msg_error_prefix: 'Errore: ', msg_already_paid: 'Questo ordine è già stato pagato e completato.',
+      msg_preparing_payment: 'Preparazione del pagamento...',
+      resume_msg: 'Il pagamento non è stato completato 💛 Nessun problema — la tua canzone è salvata e ti aspetta.'
+    },
+    fr: {
+      loading: 'Chargement de votre chanson...',
+      notfound_title: "Nous n'avons pas trouvé cette chanson", notfound_sub: 'Le lien est peut-être incorrect ou incomplet.', notfound_cta: 'Commencer une nouvelle commande',
+      error_title: "Nous n'avons pas pu terminer votre chanson cette fois-ci", error_sub: "Vous n'avez pas été débité.", retry_btn: 'Réessayer', retrying: 'Nouvelle tentative...',
+      paid_title: 'Votre chanson a déjà été livrée', paid_sub: 'Vous avez déjà reçu un email avec le lien de téléchargement.',
+      heading: (r) => `La chanson pour ${r}`, dedication: (s) => `De la part de ${s}`,
+      variant1_label: 'Version 1', variant2_label: '🎁 Une deuxième version, aussi à vous',
+      listened: (t, d) => `Vous avez écouté ${t} sur ${d}`,
+      lyrics_empty: "Les paroles ne sont pas encore disponibles à l'affichage.",
+      lyrics_edited_tag: 'Paroles modifiées par vous',
+      edit_lyrics_btn: 'Modifier les paroles',
+      editor_title: 'Modifier les paroles', editor_hint: 'Modifiez un mot, un vers ou un couplet. La mise en forme des couplets reste identique.',
+      save_btn: 'Enregistrer les modifications', cancel_btn: 'Annuler',
+      lyrics_saved_msg: 'Paroles enregistrées. Régénérez la chanson pour entendre les changements',
+      lyrics_empty_error: 'Les paroles ne peuvent pas être vides',
+      feedback_label: "Pas tout à fait ce que vous voulez ? Décrivez ce qu'il faut changer", feedback_ph: 'ex : plus joyeux, plus lent, autre intro...',
+      regenerate_btn: 'Modifier la chanson', edits_left_label: 'modifications gratuites restantes',
+      confirm_msg: (n) => `Confirmer ? Cela utilise 1 modification gratuite (il en reste ${n}).`,
+      lyrics_guidance_notice: 'Les paroles modifiées serviront de guide. La génération peut modifier d\'autres paroles, la voix ou la mélodie.',
+      voice_female: 'féminine', voice_male: 'masculine', voice_duet: 'duo', voice_auto: 'automatique',
+      voice_change_hint: 'Ne s\'applique qu\'à la prochaine régénération',
+      voice_selected_label: (v) => `Voix sélectionnée : ${v}`,
+      confirm_yes: 'Oui, régénérer', confirm_no: 'Annuler',
+      checkout_btn: 'Finaliser le cadeau', variant_word: 'version',
+      msg_regenerating: 'Régénération de 2 nouvelles versions...', msg_conn_error: 'Erreur de connexion. Veuillez réessayer.',
+      msg_try_again: 'veuillez réessayer.', msg_error_prefix: 'Erreur : ', msg_already_paid: 'Cette commande a déjà été payée et finalisée.',
+      msg_preparing_payment: 'Préparation du paiement...',
+      resume_msg: "Le paiement n'a pas abouti 💛 Pas d'inquiétude — votre chanson est enregistrée et vous attend."
+    },
+    bg: {
+      loading: 'Твоята песен се зарежда...',
+      notfound_title: 'Не открихме тази песен', notfound_sub: 'Връзката може да е грешна или непълна.', notfound_cta: 'Започни нова поръчка',
+      error_title: 'Този път не успяхме да завършим песента ти', error_sub: 'Не си таксуван.', retry_btn: 'Опитай отново', retrying: 'Нов опит...',
+      paid_title: 'Песента ти вече е доставена', paid_sub: 'Вече си получил имейл с линк за изтегляне.',
+      heading: (r) => `Песента за ${r}`, dedication: (s) => `От ${s}`,
+      variant1_label: 'Версия 1', variant2_label: '🎁 Втора версия, и тя е твоя',
+      listened: (t, d) => `Изслуша ${t} от ${d}`,
+      lyrics_empty: 'Текстът все още не е наличен за показване.',
+      lyrics_edited_tag: 'Текст, редактиран от теб',
+      edit_lyrics_btn: 'Редактирай текста',
+      editor_title: 'Редактирай текста', editor_hint: 'Промени дума, стих или куплет. Форматирането на куплетите остава същото.',
+      save_btn: 'Запази промените', cancel_btn: 'Откажи',
+      lyrics_saved_msg: 'Текстът е запазен. Регенерирай песента, за да чуеш промените',
+      lyrics_empty_error: 'Текстът не може да бъде празен',
+      feedback_label: 'Не е точно както искаш? Опиши какво да променим', feedback_ph: 'напр. по-весело, по-бавно, друго начало...',
+      regenerate_btn: 'Редактирай песента', edits_left_label: 'безплатни редакции остават',
+      confirm_msg: (n) => `Сигурен ли си? Това ще използва 1 безплатна редакция (остават ${n}).`,
+      lyrics_guidance_notice: 'Редактираният текст ще бъде използван като насока. Генерирането може да промени други части от текста, гласа или мелодията.',
+      voice_female: 'женски', voice_male: 'мъжки', voice_duet: 'дует', voice_auto: 'автоматично',
+      voice_change_hint: 'Важи само за следващото регенериране',
+      voice_selected_label: (v) => `Избран глас: ${v}`,
+      confirm_yes: 'Да, регенерирай', confirm_no: 'Откажи',
+      checkout_btn: 'Завърши подаръка', variant_word: 'версия',
+      msg_regenerating: 'Генерират се 2 нови версии...', msg_conn_error: 'Грешка във връзката. Опитай отново.',
+      msg_try_again: 'опитай отново.', msg_error_prefix: 'Грешка: ', msg_already_paid: 'Тази поръчка вече е платена и завършена.',
+      msg_preparing_payment: 'Подготвя се плащането...',
+      resume_msg: 'Плащането не завърши 💛 Няма проблем — песента ти е запазена и те чака.'
+    },
+    tr: {
+      loading: 'Şarkınız yükleniyor...',
+      notfound_title: 'Bu şarkıyı bulamadık', notfound_sub: 'Bağlantı hatalı veya eksik olabilir.', notfound_cta: 'Yeni bir sipariş başlat',
+      error_title: 'Bu sefer şarkınızı tamamlayamadık', error_sub: 'Ücretlendirilmediniz.', retry_btn: 'Tekrar dene', retrying: 'Tekrar deneniyor...',
+      paid_title: 'Şarkınız zaten teslim edildi', paid_sub: 'İndirme bağlantısını içeren e-postayı zaten aldınız.',
+      heading: (r) => `${r} için şarkı`, dedication: (s) => `${s} tarafından`,
+      variant1_label: 'Versiyon 1', variant2_label: '🎁 İkinci bir versiyon, o da sizin',
+      listened: (t, d) => `${d} şarkının ${t} kadarını dinlediniz`,
+      lyrics_empty: 'Sözler henüz görüntülenmeye hazır değil.',
+      lyrics_edited_tag: 'Sizin tarafınızdan düzenlenen sözler',
+      edit_lyrics_btn: 'Sözleri düzenle',
+      editor_title: 'Sözleri düzenle', editor_hint: 'Bir kelimeyi, bir dizeyi veya bir kıtayı değiştirin. Kıta biçimlendirmesi aynı kalır.',
+      save_btn: 'Değişiklikleri kaydet', cancel_btn: 'Vazgeç',
+      lyrics_saved_msg: 'Sözler kaydedildi. Değişiklikleri duymak için şarkıyı yeniden oluşturun',
+      lyrics_empty_error: 'Sözler boş olamaz',
+      feedback_label: 'Tam istediğiniz gibi değil mi? Neyin değişmesini istediğinizi yazın', feedback_ph: 'örn: daha neşeli, daha yavaş, farklı bir giriş...',
+      regenerate_btn: 'Şarkıyı düzenle', edits_left_label: 'ücretsiz düzenleme hakkı kaldı',
+      confirm_msg: (n) => `Emin misiniz? Bu, 1 ücretsiz düzenlemeyi kullanır (${n} kaldı).`,
+      lyrics_guidance_notice: 'Düzenlenen sözler rehber olarak kullanılacaktır. Oluşturma işlemi diğer sözleri, sesi veya melodiyi değiştirebilir.',
+      voice_female: 'kadın', voice_male: 'erkek', voice_duet: 'düet', voice_auto: 'otomatik',
+      voice_change_hint: 'Yalnızca bir sonraki yeniden oluşturmaya uygulanır',
+      voice_selected_label: (v) => `Seçilen ses: ${v}`,
+      confirm_yes: 'Evet, yeniden oluştur', confirm_no: 'Vazgeç',
+      checkout_btn: 'Hediyeyi tamamla', variant_word: 'versiyon',
+      msg_regenerating: '2 yeni versiyon yeniden oluşturuluyor...', msg_conn_error: 'Bağlantı hatası. Lütfen tekrar deneyin.',
+      msg_try_again: 'lütfen tekrar deneyin.', msg_error_prefix: 'Hata: ', msg_already_paid: 'Bu sipariş zaten ödendi ve tamamlandı.',
+      msg_preparing_payment: 'Ödeme hazırlanıyor...',
+      resume_msg: 'Ödeme tamamlanmadı 💛 Endişelenmeyin — şarkınız kaydedildi ve sizi bekliyor.'
+    }
+  };
+
+  const supportedLangs = ['ro', 'en', 'de', 'es', 'it', 'fr', 'bg', 'tr'];
+  let lang = 'ro';
+  let t = T.ro;
+
+  function applyStaticTexts() {
+    document.documentElement.lang = lang;
+    document.getElementById('loading-msg').textContent = t.loading;
+    document.getElementById('notfound-title').textContent = t.notfound_title;
+    document.getElementById('notfound-sub').textContent = t.notfound_sub;
+    document.getElementById('notfound-link').textContent = t.notfound_cta;
+    document.getElementById('error-title').textContent = t.error_title;
+    document.getElementById('error-sub').textContent = t.error_sub;
+    document.getElementById('retry-btn').textContent = t.retry_btn;
+    document.getElementById('paid-title').textContent = t.paid_title;
+    document.getElementById('paid-sub').textContent = t.paid_sub;
+    document.getElementById('resume-msg').textContent = t.resume_msg;
+    document.getElementById('feedback-label').textContent = t.feedback_label;
+    document.getElementById('feedback').placeholder = t.feedback_ph;
+    document.getElementById('confirm-cancel').textContent = t.confirm_no;
+    document.getElementById('confirm-yes').textContent = t.confirm_yes;
+    document.getElementById('editor-title').textContent = t.editor_title;
+    document.getElementById('editor-hint').textContent = t.editor_hint;
+    document.getElementById('editor-cancel-btn').textContent = t.cancel_btn;
+    document.getElementById('editor-save-btn').textContent = t.save_btn;
+    document.getElementById('voice-name-female').textContent = t.voice_female;
+    document.getElementById('voice-name-male').textContent = t.voice_male;
+    document.getElementById('voice-name-duet').textContent = t.voice_duet;
+    document.getElementById('voice-name-auto').textContent = t.voice_auto;
+    document.getElementById('voice-change-hint').textContent = t.voice_change_hint;
+  }
+
+  // -------- afiseaza si permite schimbarea preferintei de voce (Partea 4) — schimbarea
+  // NU modifica fisierul audio existent, NU porneste regenerarea automat, se trimite
+  // impreuna cu variantId doar la urmatoarea regenerare acceptata de server. --------
+  const voiceCards = document.querySelectorAll('.voice-card');
+  function setVoiceCardActive(pref) {
+    voiceCards.forEach(c => c.classList.toggle('active', c.dataset.voice === pref));
+    document.getElementById('voice-current-label').textContent = t.voice_selected_label(t[`voice_${pref}`] || t.voice_auto);
+  }
+  voiceCards.forEach(c => {
+    c.addEventListener('click', () => {
+      selectedVoicePreference = c.dataset.voice;
+      setVoiceCardActive(selectedVoicePreference);
+    });
+  });
+
+  const params = new URLSearchParams(window.location.search);
+  const orderId = params.get('id');
+  const accessToken = params.get('token') || localStorage.getItem('nds_access_token') || '';
+  const isResume = params.get('resume') === '1';
+
+  if (!orderId) {
+    window.location.href = '/index.html';
+  }
+
+  const states = ['loading-state', 'notfound-state', 'error-state', 'paid-state', 'content-state', 'lyrics-editor-state'];
+  function showState(name) {
+    states.forEach(s => { document.getElementById(s).style.display = (s === name) ? 'block' : 'none'; });
+  }
+
+  const statusMsgEl = document.getElementById('status-msg');
+  const feedbackEl = document.getElementById('feedback');
+  const regenerateBtn = document.getElementById('regenerate-btn');
+  const checkoutBtn = document.getElementById('checkout-btn');
+  const editsLeftEl = document.getElementById('edits-left');
+  const checkoutPriceEl = document.getElementById('checkout-price');
+  const selectedVariantLabelEl = document.getElementById('selected-variant-label');
+  const confirmRow = document.getElementById('confirm-row');
+  const regenerateRow = document.getElementById('regenerate-row');
+  const confirmMsgEl = document.getElementById('confirm-msg');
+  const confirmYesBtn = document.getElementById('confirm-yes');
+  const confirmCancelBtn = document.getElementById('confirm-cancel');
+  const variantsWrap = document.getElementById('variants-wrap');
+
+  const lyricsEditorState = document.getElementById('lyrics-editor-state');
+  const contentState = document.getElementById('content-state');
+  const lyricsTextarea = document.getElementById('lyrics-textarea');
+  const charCounterEl = document.getElementById('char-counter');
+  const lyricsValidationEl = document.getElementById('lyrics-validation');
+  const editorSaveBtn = document.getElementById('editor-save-btn');
+  const editorCancelBtn = document.getElementById('editor-cancel-btn');
+
+  let currentOrder = null;
+  let selectedVariantIndex = 0;
+  let selectedVoicePreference = 'auto';
+  let editingVariantId = null;
+
+  function formatTime(sec) {
+    if (!sec && sec !== 0) return '—';
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+  }
+
+  function renderVariants(order) {
+    variantsWrap.innerHTML = '';
+    (order.variants || []).forEach((v, i) => {
+      const card = document.createElement('div');
+      card.className = 'variant-card' + (i === selectedVariantIndex ? ' selected' : '');
+      card.dataset.index = i;
+
+      const label = i === 0 ? t.variant1_label : t.variant2_label;
+      const lyricsText = (v.editedLyrics && v.editedLyrics.trim()) ? v.editedLyrics : v.originalLyrics;
+      const wasEdited = !!(v.editedLyrics && v.editedLyrics.trim());
+
+      let lyricsHtml;
+      if (lyricsText && lyricsText.trim()) {
+        lyricsHtml = `<div class="lyrics-box">${wasEdited ? `<span class="lyrics-edited-tag">${t.lyrics_edited_tag}</span><br>` : ''}${escapeHtml(lyricsText)}</div>`;
+      } else {
+        lyricsHtml = `<div class="lyrics-box"><span class="lyrics-empty">${t.lyrics_empty}</span></div>`;
+      }
+
+      card.innerHTML = `
+        <div class="variant-head"><span class="variant-label">${label}</span></div>
+        <audio class="variant-audio" controls style="width:100%;" src="${v.previewUrl}?t=${Date.now()}"></audio>
+        <div class="variant-progress">${t.listened('0:00', formatTime(v.durationSeconds))}</div>
+        ${lyricsHtml}
+        <button type="button" class="btn btn-ghost btn-small edit-lyrics-btn" data-variant-id="${v.id}">${t.edit_lyrics_btn}</button>
+      `;
+
+      card.addEventListener('click', (e) => {
+        if (e.target.closest('.edit-lyrics-btn') || e.target.closest('audio')) return;
+        selectVariant(i);
+      });
+
+      const audioEl = card.querySelector('audio');
+      const progressEl = card.querySelector('.variant-progress');
+      audioEl.addEventListener('timeupdate', () => {
+        progressEl.textContent = t.listened(formatTime(audioEl.currentTime), formatTime(v.durationSeconds));
+      });
+
+      card.querySelector('.edit-lyrics-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        openLyricsEditor(v);
+      });
+
+      variantsWrap.appendChild(card);
+    });
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  function selectVariant(index) {
+    selectedVariantIndex = index;
+    document.querySelectorAll('.variant-card').forEach((card, i) => card.classList.toggle('selected', i === index));
+    selectedVariantLabelEl.textContent = index + 1;
+
+    const v = currentOrder && currentOrder.variants && currentOrder.variants[index];
+    if (v) {
+      fetch(`/api/orders/${orderId}/select`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Access-Token': accessToken },
+        body: JSON.stringify({ variantId: v.id })
+      });
+    }
+  }
+
+  function openLyricsEditor(variant) {
+    editingVariantId = variant.id;
+    const existing = (variant.editedLyrics && variant.editedLyrics.trim()) ? variant.editedLyrics : (variant.originalLyrics || '');
+    lyricsTextarea.value = existing;
+    updateCharCounter();
+    lyricsValidationEl.textContent = '';
+    contentState.style.display = 'none';
+    lyricsEditorState.style.display = 'block';
+    lyricsTextarea.focus();
+  }
+
+  function closeLyricsEditor() {
+    editingVariantId = null;
+    lyricsEditorState.style.display = 'none';
+    contentState.style.display = 'block';
+  }
+
+  function updateCharCounter() {
+    const len = lyricsTextarea.value.length;
+    charCounterEl.textContent = `${len} / 4000`;
+    charCounterEl.classList.toggle('limit', len >= 4000);
+  }
+  lyricsTextarea.addEventListener('input', updateCharCounter);
+
+  editorCancelBtn.addEventListener('click', closeLyricsEditor);
+
+  editorSaveBtn.addEventListener('click', async () => {
+    const text = lyricsTextarea.value.trim();
+    if (!text) {
+      lyricsValidationEl.textContent = t.lyrics_empty_error;
+      return;
+    }
+    lyricsValidationEl.textContent = '';
+    editorSaveBtn.disabled = true;
+
+    try {
+      const res = await fetch(`/api/orders/${orderId}/variants/${editingVariantId}/lyrics`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Access-Token': accessToken },
+        body: JSON.stringify({ lyrics: text })
+      });
+      const data = await res.json();
+      editorSaveBtn.disabled = false;
+
+      if (data.error) {
+        lyricsValidationEl.textContent = data.error;
+        return;
+      }
+
+      // reflectam local editarea, fara sa mai asteptam un nou fetch complet
+      const variant = currentOrder.variants.find(v => v.id === editingVariantId);
+      if (variant) {
+        variant.editedLyrics = text;
+        variant.lyricsUpdatedAt = new Date().toISOString();
+      }
+      renderVariants(currentOrder);
+      closeLyricsEditor();
+      statusMsgEl.textContent = t.lyrics_saved_msg;
+      statusMsgEl.className = 'status-ok';
+    } catch (err) {
+      editorSaveBtn.disabled = false;
+      lyricsValidationEl.textContent = t.msg_conn_error;
+    }
+  });
+
+  // -------- Regenerare: varianta sursa e ÎNTOTDEAUNA cea aleasa explicit de client (cardul
+  // selectat, acelasi mecanism ca la alegerea variantei finale) — NU mai deducem automat
+  // "ultima varianta editata". Daca acea varianta are versuri editate, le folosim ca ghidaj;
+  // daca nu, folosim doar feedback-ul general si datele comenzii. --------
+  regenerateBtn.addEventListener('click', () => {
+    const editsLeft = Math.max(0, 3 - (currentOrder.editsUsed || 0));
+    const selected = currentOrder.variants && currentOrder.variants[selectedVariantIndex];
+    const hasEditedLyrics = !!(selected && selected.editedLyrics && selected.editedLyrics.trim());
+
+    confirmMsgEl.innerHTML = hasEditedLyrics
+      ? `${escapeHtml(t.lyrics_guidance_notice)}<br><br>${escapeHtml(t.confirm_msg(editsLeft))}`
+      : escapeHtml(t.confirm_msg(editsLeft));
+    regenerateRow.style.display = 'none';
+    confirmRow.style.display = 'flex';
+  });
+
+  confirmCancelBtn.addEventListener('click', () => {
+    confirmRow.style.display = 'none';
+    regenerateRow.style.display = 'flex';
+  });
+
+  confirmYesBtn.addEventListener('click', async () => {
+    confirmYesBtn.disabled = true;
+    confirmCancelBtn.disabled = true;
+    statusMsgEl.textContent = t.msg_regenerating;
+    statusMsgEl.className = '';
+
+    const feedback = feedbackEl.value || null;
+    // varianta sursa = varianta selectata explicit (cardul evidentiat), niciodata dedusa
+    const selected = currentOrder.variants && currentOrder.variants[selectedVariantIndex];
+    const sourceVariantId = selected ? selected.id : null;
+
+    try {
+      const res = await fetch(`/api/orders/${orderId}/regenerate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Access-Token': accessToken },
+        body: JSON.stringify({ feedback, variantId: sourceVariantId, voicePreference: selectedVoicePreference })
+      });
+      const data = await res.json();
+
+      if (data.error) {
+        statusMsgEl.textContent = data.error;
+        statusMsgEl.className = 'status-err';
+        confirmYesBtn.disabled = false;
+        confirmCancelBtn.disabled = false;
+        return;
+      }
+
+      // regenerarea a pornit — reutilizam pagina de asteptare deja construita (progres,
+      // praguri, reincercare manuala), care revine automat aici cand e gata
+      window.location.href = `/se-compune.html?id=${encodeURIComponent(orderId)}&token=${encodeURIComponent(accessToken)}`;
+    } catch (err) {
+      statusMsgEl.textContent = t.msg_conn_error;
+      statusMsgEl.className = 'status-err';
+      confirmYesBtn.disabled = false;
+      confirmCancelBtn.disabled = false;
+    }
+  });
+
+  async function goToCheckout() {
+    checkoutBtn.disabled = true;
+    statusMsgEl.textContent = t.msg_preparing_payment;
+    statusMsgEl.className = '';
+
+    try {
+      const res = await fetch(`/api/orders/${orderId}/checkout`, {
+        method: 'POST',
+        headers: { 'X-Access-Token': accessToken }
+      });
+      const data = await res.json();
+
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        statusMsgEl.textContent = t.msg_error_prefix + (data.error || t.msg_try_again);
+        statusMsgEl.className = 'status-err';
+        checkoutBtn.disabled = false;
+      }
+    } catch (err) {
+      statusMsgEl.textContent = t.msg_conn_error;
+      statusMsgEl.className = 'status-err';
+      checkoutBtn.disabled = false;
+    }
+  }
+  checkoutBtn.addEventListener('click', goToCheckout);
+
+  document.getElementById('retry-btn').addEventListener('click', async () => {
+    const retryBtn = document.getElementById('retry-btn');
+    retryBtn.disabled = true;
+    retryBtn.textContent = t.retrying;
+    try {
+      const res = await fetch(`/api/orders/${orderId}/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Access-Token': accessToken },
+        body: JSON.stringify({ feedback: null })
+      });
+      if (!res.ok && res.status !== 409) {
+        retryBtn.disabled = false;
+        retryBtn.textContent = t.retry_btn;
+        return;
+      }
+      window.location.href = `/se-compune.html?id=${encodeURIComponent(orderId)}&token=${encodeURIComponent(accessToken)}`;
+    } catch (err) {
+      retryBtn.disabled = false;
+      retryBtn.textContent = t.retry_btn;
+    }
+  });
+
+  function renderContent(order) {
+    currentOrder = order;
+
+    document.getElementById('song-heading').textContent = t.heading(order.recipient || '');
+    const dedicationEl = document.getElementById('dedication-line');
+    if (order.senderName) {
+      dedicationEl.textContent = t.dedication(order.senderName);
+      dedicationEl.style.display = 'block';
+    } else {
+      dedicationEl.style.display = 'none';
+    }
+
+    selectedVariantIndex = 0;
+    if (order.selectedVariantId && order.variants) {
+      const idx = order.variants.findIndex(v => v.id === order.selectedVariantId);
+      if (idx !== -1) selectedVariantIndex = idx;
+    }
+
+    renderVariants(order);
+    selectVariant(selectedVariantIndex);
+
+    selectedVoicePreference = order.voicePreference || 'auto';
+    setVoiceCardActive(selectedVoicePreference);
+
+    const editsLeft = Math.max(0, 3 - (order.editsUsed || 0));
+    editsLeftEl.textContent = editsLeft;
+    regenerateBtn.disabled = editsLeft === 0;
+    regenerateBtn.style.opacity = editsLeft === 0 ? '.5' : '1';
+    regenerateBtn.innerHTML = `${t.regenerate_btn} (<span id="edits-left">${editsLeft}</span> ${t.edits_left_label})`;
+
+    checkoutPriceEl.textContent = '£' + order.price;
+    checkoutBtn.innerHTML = `${t.checkout_btn} — ${t.variant_word} <span id="selected-variant-label">${selectedVariantIndex + 1}</span> (<span id="checkout-price">£${order.price}</span>) →`;
+
+    if (isResume) {
+      document.getElementById('resume-banner').style.display = 'block';
+    }
+
+    showState('content-state');
+  }
+
+  async function loadOrder() {
+    try {
+      const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}?token=${encodeURIComponent(accessToken)}`);
+      if (!res.ok) {
+        showState('notfound-state');
+        return;
+      }
+      const order = await res.json();
+
+      lang = supportedLangs.includes(order.lang) ? order.lang : 'ro';
+      t = T[lang];
+      applyStaticTexts();
+
+      if (order.status === 'preview_ready') {
+        renderContent(order);
+      } else if (order.status === 'ready') {
+        showState('paid-state');
+      } else if (order.status === 'generation_failed') {
+        document.getElementById('error-sub').textContent = order.error || t.error_sub;
+        showState('error-state');
+      } else if (order.status === 'generating' || order.status === 'processing_provider_result' || order.status === 'draft') {
+        // comanda e inca in procesare (reincarcare de pagina in timpul generarii) — pagina
+        // dedicata de asteptare, cu progres si reincercare, gestioneaza deja acest caz
+        window.location.href = `/se-compune.html?id=${encodeURIComponent(orderId)}&token=${encodeURIComponent(accessToken)}`;
+      } else {
+        showState('notfound-state');
+      }
+    } catch (err) {
+      applyStaticTexts();
+      showState('notfound-state');
+    }
+  }
+
+  applyStaticTexts();
+  loadOrder();
+</script>
+</body>
+</html>
