@@ -81,7 +81,7 @@ const FETCH_TIMEOUT_MS = 25000;
 // nu poate plati mai putin decat pretul real al pachetului ales.
 const PLAN_PRICES = { standard: 15, premium: 25, video: 35 };
 const ALLOWED_OCCASIONS = ['dor', 'onomastica', 'aniversare', 'declaratie', 'nunta', 'pierdere', 'pentru-mine', 'altceva'];
-const ALLOWED_GENRES = ['emotional', 'suflet', 'pop', 'acustic', 'petrecere', 'balada', 'manele', 'copii', 'populara', 'rock', 'colind', 'modern', 'hiphop', 'lautareasca', 'motivational'];
+const ALLOWED_GENRES = ['emotional', 'suflet', 'pop', 'acustic', 'petrecere', 'balada', 'manele', 'copii', 'populara', 'rock', 'colind', 'modern', 'hiphop', 'manele_suflet', 'motivational'];
 const ALLOWED_LANGS = ['ro', 'en', 'de', 'es', 'it', 'fr', 'bg', 'tr'];
 
 // Mesaje de validare traduse pentru campurile obligatorii legate de personalizare
@@ -1661,10 +1661,10 @@ function buildPrompt(order, feedback) {
     copii: 'children\'s song, playful, simple melody, cheerful upbeat tempo, friendly vocals',
     populara: 'romanian popular folk-pop, traditional instruments blended with modern production, upbeat',
     rock: 'rock, driving electric guitars, powerful vocals, energetic',
-    colind: 'christmas carol style, festive, warm choir-like harmonies, traditional',
+    colind: 'modern christmas song, clear natural vocal, warm delivery, piano, bells, no choir, no robotic vocals',
     modern: 'modern pop-electronic, contemporary production, catchy synths',
     hiphop: 'hip-hop, rhythmic vocal delivery, modern beat, confident',
-    lautareasca: 'romanian lautareasca style, virtuosic violin and accordion, lively traditional folk instruments',
+    manele_suflet: 'modern romanian manele, style of leading manele artists, expressive vocals, themes of family, love, longing',
     motivational: 'motivational anthem, uplifting and empowering, building energy, inspiring vocals'
   };
 
@@ -1734,10 +1734,10 @@ function buildPrompt(order, feedback) {
   // existente (nu adaugata separat, ca sa nu duplicam si sa nu umflam bugetul de 500 caractere
   // mai mult decat strict necesar). Se aplica identic la generarea initiala SI la regenerari,
   // pentru ca ambele folosesc aceeasi functie buildPrompt() -> currentInstruction() de mai jos.
-  const instructionWithSenderFull = ' Write this as a personal song from the sender to the recipient, with a very short instrumental intro so the vocal starts almost immediately. Name the recipient early and again in the chorus. Mention the sender once. Use only real details from the story — invent nothing.';
-  const instructionWithSenderShort = ' Sing within seconds; name the recipient early and again in the chorus; mention the sender once. Use real story details only.';
-  const instructionNoSenderFull = ' Keep the instrumental intro very short so the vocal starts almost immediately. Address the recipient by name naturally in the lyrics. Use only real details from the story — invent nothing.';
-  const instructionNoSenderShort = ' Sing within seconds. Address the recipient by name naturally. Use real story details only.';
+  const instructionWithSenderFull = ' Write this as a personal song from the sender to the recipient. Vocals must start within the first 3-5 seconds — an extremely short instrumental intro, never a long instrumental opening. Name the recipient early and again in the chorus. Mention the sender once. Use only real details from the story — invent nothing.';
+  const instructionWithSenderShort = ' Start vocals in the first 3-5 seconds, minimal intro; name the recipient early and again in the chorus; mention the sender once. Use real story details only.';
+  const instructionNoSenderFull = ' Vocals must start within the first 3-5 seconds — an extremely short instrumental intro, never a long instrumental opening. Address the recipient by name naturally in the lyrics. Use only real details from the story — invent nothing.';
+  const instructionNoSenderShort = ' Start vocals in the first 3-5 seconds, minimal intro. Address the recipient by name naturally. Use real story details only.';
 
   let useShortInstruction = false;
   function currentInstruction() {

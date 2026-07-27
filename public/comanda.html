@@ -102,6 +102,26 @@
   .voice-card.active{ border-color:var(--gold); background:rgba(168,131,75,.07); }
   .voice-name{ font-weight:600; font-size:14px; }
 
+  /* Grila de genuri muzicale — toate cele 15 vizibile deodata, fara dropdown si fara
+     scroll intern. 2 coloane implicit (mobil si tablet), 3 coloane pe ecrane mai late
+     (spatiu suficient in interiorul cardului de 640px), 1 coloana DOAR pe ecrane foarte
+     inguste, unde 2 coloane ar deveni ilizibile. */
+  .genre-grid{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:4px; }
+  .genre-card{
+    border:1px solid var(--line); border-radius:12px; padding:12px 10px; cursor:pointer;
+    background:var(--surface); text-align:center; font-size:13px; font-weight:600;
+    display:flex; align-items:center; justify-content:center; min-height:44px; line-height:1.25;
+    transition:border-color .2s ease, background-color .2s ease, transform .15s ease;
+  }
+  .genre-card:hover{ transform:translateY(-1px); }
+  .genre-card.active{ border-color:var(--gold); background:rgba(168,131,75,.07); }
+  @media (min-width: 600px){
+    .genre-grid{ grid-template-columns:1fr 1fr 1fr; }
+  }
+  @media (max-width: 340px){
+    .genre-grid{ grid-template-columns:1fr; }
+  }
+
   .plan-list{ display:flex; flex-direction:column; gap:12px; }
   .plan{
     border:1px solid var(--line); border-radius:14px; padding:19px 21px;
@@ -254,25 +274,25 @@
       <h1 data-i18n="wizard_step3_title">Alege stilul și vocea</h1>
 
       <div class="field">
-        <label for="genre" data-i18n="label_genre">Gen muzical</label>
-        <select id="genre">
-          <option value="" data-i18n="genre_choose">Alege genul</option>
-          <option value="emotional" data-i18n="genre_emotional">Emoțional</option>
-          <option value="suflet" data-i18n="genre_suflet">De suflet</option>
-          <option value="pop">Pop</option>
-          <option value="acustic" data-i18n="genre_acustic">Acustic / Folk</option>
-          <option value="petrecere" data-i18n="genre_petrecere">Muzică de petrecere</option>
-          <option value="balada" data-i18n="genre_balada">Baladă</option>
-          <option value="manele" data-i18n="genre_manele">Manele</option>
-          <option value="copii" data-i18n="genre_copii">Pentru copii</option>
-          <option value="populara" data-i18n="genre_populara">Populară</option>
-          <option value="rock" data-i18n="genre_rock">Rock</option>
-          <option value="colind" data-i18n="genre_colind">Colind</option>
-          <option value="modern" data-i18n="genre_modern">Modern</option>
-          <option value="hiphop" data-i18n="genre_hiphop">Hip-hop</option>
-          <option value="lautareasca" data-i18n="genre_lautareasca">Lăutărească</option>
-          <option value="motivational" data-i18n="genre_motivational">Motivațional</option>
-        </select>
+        <label data-i18n="label_genre">Gen muzical</label>
+        <div class="genre-grid" id="genre-grid">
+          <div class="genre-card" data-genre="emotional"><span data-i18n="genre_emotional">Emoțional</span></div>
+          <div class="genre-card" data-genre="suflet"><span data-i18n="genre_suflet">De suflet</span></div>
+          <div class="genre-card" data-genre="pop"><span>Pop</span></div>
+          <div class="genre-card" data-genre="acustic"><span data-i18n="genre_acustic">Acustic / Folk</span></div>
+          <div class="genre-card" data-genre="petrecere"><span data-i18n="genre_petrecere">Muzică de petrecere</span></div>
+          <div class="genre-card" data-genre="balada"><span data-i18n="genre_balada">Baladă</span></div>
+          <div class="genre-card" data-genre="manele"><span data-i18n="genre_manele">Manele</span></div>
+          <div class="genre-card" data-genre="copii"><span data-i18n="genre_copii">Pentru copii</span></div>
+          <div class="genre-card" data-genre="populara"><span data-i18n="genre_populara">Populară</span></div>
+          <div class="genre-card" data-genre="rock"><span data-i18n="genre_rock">Rock</span></div>
+          <div class="genre-card" data-genre="colind"><span data-i18n="genre_colind">Colind</span></div>
+          <div class="genre-card" data-genre="modern"><span data-i18n="genre_modern">Modern</span></div>
+          <div class="genre-card" data-genre="hiphop"><span data-i18n="genre_hiphop">Hip-hop</span></div>
+          <div class="genre-card" data-genre="manele_suflet"><span data-i18n="genre_manele_suflet">Manele de suflet</span></div>
+          <div class="genre-card" data-genre="motivational"><span data-i18n="genre_motivational">Motivațional</span></div>
+        </div>
+        <input type="hidden" id="genre" value="">
         <div class="field-error" id="err-genre"></div>
       </div>
 
@@ -298,7 +318,7 @@
 
       <div class="wizard-nav">
         <button type="button" class="btn btn-ghost btn-back" data-prev="2" data-i18n="btn_back">Înapoi</button>
-        <button type="button" class="btn btn-primary btn-continue" data-next="4" data-validate="3" data-i18n="btn_continue">Continuă</button>
+        <button type="button" class="btn btn-primary btn-continue" id="step3-continue-btn" data-next="4" data-validate="3" data-i18n="btn_continue" disabled>Continuă</button>
       </div>
     </div>
 
@@ -396,7 +416,7 @@
       genre_manele: 'Manele',
       genre_copii: 'Pentru copii',
       genre_populara: 'Populară', genre_rock: 'Rock', genre_colind: 'Colind', genre_modern: 'Modern', genre_hiphop: 'Hip-hop',
-      genre_lautareasca: 'Lăutărească', genre_motivational: 'Motivațional',
+      genre_manele_suflet: 'Manele de suflet', genre_motivational: 'Motivațional',
       voice_label: 'Ce voce să cânte?',
       voice_female: 'Voce feminină',
       voice_male: 'Voce masculină',
@@ -477,7 +497,7 @@
       genre_manele: 'Manele',
       genre_copii: 'For kids',
       genre_populara: 'Folk-pop', genre_rock: 'Rock', genre_colind: 'Christmas carol', genre_modern: 'Modern', genre_hiphop: 'Hip-hop',
-      genre_lautareasca: 'Romanian fiddle folk', genre_motivational: 'Motivational',
+      genre_manele_suflet: 'Soulful manele', genre_motivational: 'Motivational',
       voice_label: 'Which voice should sing?',
       voice_female: 'Female voice',
       voice_male: 'Male voice',
@@ -558,7 +578,7 @@
       genre_manele: 'Manele',
       genre_copii: 'Für Kinder',
       genre_populara: 'Volkstümlich', genre_rock: 'Rock', genre_colind: 'Weihnachtslied', genre_modern: 'Modern', genre_hiphop: 'Hip-Hop',
-      genre_lautareasca: 'Rumänische Fiedelmusik', genre_motivational: 'Motivierend',
+      genre_manele_suflet: 'Manele mit Seele', genre_motivational: 'Motivierend',
       voice_label: 'Welche Stimme soll singen?',
       voice_female: 'Weibliche Stimme',
       voice_male: 'Männliche Stimme',
@@ -639,7 +659,7 @@
       genre_manele: 'Manele',
       genre_copii: 'Para niños',
       genre_populara: 'Popular', genre_rock: 'Rock', genre_colind: 'Villancico', genre_modern: 'Moderno', genre_hiphop: 'Hip-hop',
-      genre_lautareasca: 'Folk rumano con violín', genre_motivational: 'Motivacional',
+      genre_manele_suflet: 'Manele con sentimiento', genre_motivational: 'Motivacional',
       voice_label: '¿Qué voz debe cantar?',
       voice_female: 'Voz femenina',
       voice_male: 'Voz masculina',
@@ -720,7 +740,7 @@
       genre_manele: 'Manele',
       genre_copii: 'Per bambini',
       genre_populara: 'Popolare', genre_rock: 'Rock', genre_colind: 'Canto natalizio', genre_modern: 'Moderno', genre_hiphop: 'Hip-hop',
-      genre_lautareasca: 'Folk rumeno con violino', genre_motivational: 'Motivazionale',
+      genre_manele_suflet: 'Manele con anima', genre_motivational: 'Motivazionale',
       voice_label: 'Quale voce deve cantare?',
       voice_female: 'Voce femminile',
       voice_male: 'Voce maschile',
@@ -801,7 +821,7 @@
       genre_manele: 'Manele',
       genre_copii: 'Pour enfants',
       genre_populara: 'Populaire', genre_rock: 'Rock', genre_colind: 'Chant de Noël', genre_modern: 'Moderne', genre_hiphop: 'Hip-hop',
-      genre_lautareasca: 'Folk roumain au violon', genre_motivational: 'Motivant',
+      genre_manele_suflet: 'Manele avec âme', genre_motivational: 'Motivant',
       voice_label: 'Quelle voix doit chanter ?',
       voice_female: 'Voix féminine',
       voice_male: 'Voix masculine',
@@ -882,7 +902,7 @@
       genre_manele: 'Манеле',
       genre_copii: 'За деца',
       genre_populara: 'Народна', genre_rock: 'Рок', genre_colind: 'Коледна песен', genre_modern: 'Модерна', genre_hiphop: 'Хип-хоп',
-      genre_lautareasca: 'Лъутарска музика', genre_motivational: 'Мотивационна',
+      genre_manele_suflet: 'Задушевни манеле', genre_motivational: 'Мотивационна',
       voice_label: 'Какъв глас да пее?',
       voice_female: 'Женски глас',
       voice_male: 'Мъжки глас',
@@ -963,7 +983,7 @@
       genre_manele: 'Manele',
       genre_copii: 'Çocuklar için',
       genre_populara: 'Popüler', genre_rock: 'Rock', genre_colind: 'Noel ilahisi', genre_modern: 'Modern', genre_hiphop: 'Hip-hop',
-      genre_lautareasca: 'Rumen keman müziği', genre_motivational: 'Motivasyonel',
+      genre_manele_suflet: 'Duygusal manele', genre_motivational: 'Motivasyonel',
       voice_label: 'Hangi ses söylemeli?',
       voice_female: 'Kadın sesi',
       voice_male: 'Erkek sesi',
@@ -1200,11 +1220,37 @@
 
   const voiceCards = document.querySelectorAll('.voice-card');
   const voiceInput = document.getElementById('voice-preference');
+  const genreCards = document.querySelectorAll('.genre-card');
+  const genreInput = document.getElementById('genre');
+  const step3ContinueBtn = document.getElementById('step3-continue-btn');
+
+  // Butonul "Continua" de pe pasul 3 ramane dezactivat pana cand exista atat un gen CAT
+  // si o voce selectate. Vocea are mereu o valoare implicita ('auto'), deci in practica
+  // singura conditie reala e alegerea unui gen — dar verificam explicit ambele, cerinta
+  // explicita.
+  function updateStep3ContinueState() {
+    const hasGenre = !!genreInput.value;
+    const hasVoice = !!voiceInput.value;
+    step3ContinueBtn.disabled = !(hasGenre && hasVoice);
+  }
+
+  genreCards.forEach(c => {
+    c.addEventListener('click', () => {
+      genreCards.forEach(x => x.classList.remove('active'));
+      c.classList.add('active');
+      genreInput.value = c.dataset.genre;
+      setFieldError('genre', '');
+      updateStep3ContinueState();
+      saveDraft();
+    });
+  });
+
   voiceCards.forEach(c => {
     c.addEventListener('click', () => {
       voiceCards.forEach(x => x.classList.remove('active'));
       c.classList.add('active');
       voiceInput.value = c.dataset.voice;
+      updateStep3ContinueState();
       saveDraft();
     });
   });
@@ -1289,7 +1335,10 @@
     if (draft.email) document.getElementById('email').value = draft.email;
     if (draft.phone) setPhoneValue(draft.phone);
     if (draft.story) document.getElementById('story').value = draft.story;
-    if (draft.genre) document.getElementById('genre').value = draft.genre;
+    if (draft.genre) {
+      genreInput.value = draft.genre;
+      genreCards.forEach(c => c.classList.toggle('active', c.dataset.genre === draft.genre));
+    }
     if (draft.voicePreference) {
       voiceInput.value = draft.voicePreference;
       voiceCards.forEach(c => c.classList.toggle('active', c.dataset.voice === draft.voicePreference));
@@ -1310,6 +1359,7 @@
     }
   }
   restoreDraft();
+  updateStep3ContinueState();
 
   let restoredStep = 1;
   try {
