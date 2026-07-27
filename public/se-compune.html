@@ -168,6 +168,10 @@
       <p class="keep-open" id="p-keepopen">Nu închide această pagină. Rezultatul va apărea automat când este gata.</p>
 
       <div class="soft-notice" id="soft-notice"></div>
+      <div class="soft-notice" id="long-notice" style="text-align:center;">
+        <strong id="long-notice-title"></strong><br>
+        <span id="long-notice-sub"></span>
+      </div>
     </div>
 
     <div class="error-state" id="error-state">
@@ -196,6 +200,7 @@
       readySub: 'Pregătim playerul...',
       estimate: (m) => m <= 0 ? 'Aproape gata' : `Timp estimat rămas: aproximativ ${m} ${m === 1 ? 'minut' : 'minute'}`,
       softNotice: 'Conexiunea durează puțin mai mult. Verificăm în continuare',
+      longTitle: 'Melodia durează puțin mai mult decât de obicei', longSub: 'Nu închide pagina. Continuăm să verificăm automat.',
       errTitle: 'Nu am putut finaliza melodia de această dată',
       errSub: 'Nu ai fost taxat. Poți încerca din nou',
       retryBtn: 'Încearcă din nou', retrying: 'Se reîncearcă...'
@@ -217,6 +222,7 @@
       readySub: 'Preparing the player...',
       estimate: (m) => m <= 0 ? 'Almost there' : `Estimated time left: about ${m} ${m === 1 ? 'minute' : 'minutes'}`,
       softNotice: 'The connection is taking a little longer. We\'re still checking.',
+      longTitle: 'Your song is taking a little longer than usual', longSub: "Don't close this page. We'll keep checking automatically.",
       errTitle: 'We couldn\'t finish your song this time.',
       errSub: 'You haven\'t been charged. You can try again.',
       retryBtn: 'Try again', retrying: 'Retrying...'
@@ -238,6 +244,7 @@
       readySub: 'Der Player wird vorbereitet...',
       estimate: (m) => m <= 0 ? 'Gleich fertig' : `Geschätzte verbleibende Zeit: ca. ${m} ${m === 1 ? 'Minute' : 'Minuten'}`,
       softNotice: 'Die Verbindung dauert etwas länger. Wir prüfen weiterhin.',
+      longTitle: 'Dein Lied braucht etwas länger als sonst', longSub: 'Schließe diese Seite nicht. Wir prüfen automatisch weiter.',
       errTitle: 'Wir konnten dein Lied dieses Mal nicht fertigstellen.',
       errSub: 'Du wurdest nicht belastet. Du kannst es erneut versuchen.',
       retryBtn: 'Erneut versuchen', retrying: 'Erneuter Versuch...'
@@ -259,6 +266,7 @@
       readySub: 'Preparando el reproductor...',
       estimate: (m) => m <= 0 ? 'Casi listo' : `Tiempo estimado restante: unos ${m} ${m === 1 ? 'minuto' : 'minutos'}`,
       softNotice: 'La conexión está tardando un poco más. Seguimos comprobando.',
+      longTitle: 'Tu canción está tardando un poco más de lo habitual', longSub: 'No cierres esta página. Seguimos comprobando automáticamente.',
       errTitle: 'No pudimos terminar tu canción esta vez.',
       errSub: 'No se te ha cobrado. Puedes intentarlo de nuevo.',
       retryBtn: 'Intentar de nuevo', retrying: 'Reintentando...'
@@ -280,6 +288,7 @@
       readySub: 'Preparazione del player...',
       estimate: (m) => m <= 0 ? 'Quasi pronto' : `Tempo stimato rimanente: circa ${m} ${m === 1 ? 'minuto' : 'minuti'}`,
       softNotice: 'La connessione sta impiegando un po\' più di tempo. Stiamo ancora verificando.',
+      longTitle: 'La tua canzone sta impiegando un po\' più del solito', longSub: 'Non chiudere questa pagina. Continuiamo a verificare automaticamente.',
       errTitle: 'Questa volta non siamo riusciti a completare la tua canzone.',
       errSub: 'Non ti è stato addebitato nulla. Puoi riprovare.',
       retryBtn: 'Riprova', retrying: 'Nuovo tentativo...'
@@ -301,6 +310,7 @@
       readySub: 'Préparation du lecteur...',
       estimate: (m) => m <= 0 ? 'Presque prêt' : `Temps restant estimé : environ ${m} ${m === 1 ? 'minute' : 'minutes'}`,
       softNotice: 'La connexion prend un peu plus de temps. Nous continuons à vérifier.',
+      longTitle: 'Votre chanson prend un peu plus de temps que d\'habitude', longSub: 'Ne fermez pas cette page. Nous continuons à vérifier automatiquement.',
       errTitle: 'Nous n\'avons pas pu terminer votre chanson cette fois-ci.',
       errSub: 'Vous n\'avez pas été débité. Vous pouvez réessayer.',
       retryBtn: 'Réessayer', retrying: 'Nouvelle tentative...'
@@ -322,6 +332,7 @@
       readySub: 'Подготвяме плейъра...',
       estimate: (m) => m <= 0 ? 'Почти готово' : `Оставащо време: около ${m} ${m === 1 ? 'минута' : 'минути'}`,
       softNotice: 'Връзката отнема малко повече време. Продължаваме да проверяваме.',
+      longTitle: 'Песента отнема малко повече време от обичайното', longSub: 'Не затваряй тази страница. Продължаваме да проверяваме автоматично.',
       errTitle: 'Този път не успяхме да завършим песента ти.',
       errSub: 'Не си таксуван. Можеш да опиташ отново.',
       retryBtn: 'Опитай отново', retrying: 'Нов опит...'
@@ -343,6 +354,7 @@
       readySub: 'Oynatıcı hazırlanıyor...',
       estimate: (m) => m <= 0 ? 'Neredeyse hazır' : `Tahmini kalan süre: yaklaşık ${m} dakika`,
       softNotice: 'Bağlantı biraz daha uzun sürüyor. Kontrol etmeye devam ediyoruz.',
+      longTitle: 'Şarkınız her zamankinden biraz daha uzun sürüyor', longSub: 'Bu sayfayı kapatmayın. Otomatik olarak kontrol etmeye devam ediyoruz.',
       errTitle: 'Bu sefer şarkınızı tamamlayamadık.',
       errSub: 'Ücretlendirilmediniz. Tekrar deneyebilirsiniz.',
       retryBtn: 'Tekrar dene', retrying: 'Tekrar deneniyor...'
@@ -362,6 +374,8 @@
   document.getElementById('err-sub').textContent = t.errSub;
   document.getElementById('retry-btn').textContent = t.retryBtn;
   document.getElementById('soft-notice').textContent = t.softNotice;
+  document.getElementById('long-notice-title').textContent = t.longTitle;
+  document.getElementById('long-notice-sub').textContent = t.longSub;
 
   const soundwaveEl = document.getElementById('soundwave');
   for (let i = 0; i < 18; i++) {
@@ -452,6 +466,7 @@
     progressFill.style.width = '100%';
     progressPercentEl.textContent = '100%';
     estimatePillEl.classList.add('hidden');
+    hideLongNotice();
     setStatusMessage(t.readyMsg);
     spinnerEl.style.opacity = '0';
     spinnerCheckEl.classList.add('show');
@@ -471,6 +486,22 @@
     softNoticeEl.style.display = 'none';
   }
 
+  // Notificare SEPARATA de softNotice (care e strict despre probleme de retea/conexiune) —
+  // aceasta apare cand SERVERUL confirma ca statusul e inca 'generating' dupa ce a trecut
+  // timpul estimat normal, nu din cauza unei erori de conexiune. Nu inlocuieste starea de
+  // eroare — apare DOAR cat timp comanda e confirmat inca in lucru.
+  const longNoticeEl = document.getElementById('long-notice');
+  let longNoticeShown = false;
+  function showLongNotice() {
+    if (longNoticeShown) return;
+    longNoticeShown = true;
+    longNoticeEl.style.display = 'block';
+  }
+  function hideLongNotice() {
+    longNoticeShown = false;
+    longNoticeEl.style.display = 'none';
+  }
+
   // Statusul "generation_failed" e final — NU pornim automat o noua generare.
   // Un task Suno esuat nu se repara singur reincercand orbeste (si ar consuma credite
   // pentru fiecare incercare automata); clientul decide explicit daca vrea sa reincerce.
@@ -479,6 +510,7 @@
     if (pollTimer) clearTimeout(pollTimer);
     clearInterval(progressTimer);
     hideSoftNotice();
+    hideLongNotice();
     progressState.style.display = 'none';
     errorState.style.display = 'block';
   }
@@ -502,6 +534,12 @@
       } else if (order.status === 'generation_failed') {
         handleGenerationFailed();
       } else {
+        // Comanda e confirmata inca 'generating' de catre server (nu o eroare de retea) —
+        // daca a trecut deja timpul estimat normal, aratam mesajul linistitor specific,
+        // NU mesajul de esec (care apare doar la generation_failed confirmat de server).
+        if (Date.now() - startTime > ESTIMATE_MS) {
+          showLongNotice();
+        }
         pollTimer = setTimeout(pollStatus, 4000);
       }
     } catch (err) {

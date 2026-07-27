@@ -671,7 +671,13 @@ app.post('/api/orders/:orderId/generate', generationLimiter, requireOrderToken, 
     // Blocaj impotriva a doua generari in paralel pentru aceeasi comanda — fara asta,
     // un dublu-click sau un retry de pe client ar putea porni un al doilea task SunoAPI
     // in timp ce primul e inca activ, consumand credite degeaba pentru aceeasi comanda.
+    // NU pornim un task nou — in schimb, daca exista deja un music_task_id valid, relansam
+    // (in fundal, garda impotriva suprapunerii) o verificare a task-ului existent, ca
+    // "plasa de siguranta" suplimentara fata de callback-ul SunoAPI.
     if (order.status === 'generating' || order.status === 'processing_provider_result') {
+      if (order.musicTaskId) {
+        resumeExistingTaskPolling(order.id, order.musicTaskId);
+      }
       return res.status(409).json({ error: 'Generarea este deja în desfășurare.' });
     }
 
@@ -742,6 +748,9 @@ app.post('/api/orders/:orderId/regenerate', generationLimiter, requireOrderToken
       }
       if (fresh && fresh.editsUsed >= FREE_EDITS) {
         return res.status(400).json({ error: `Ai folosit toate cele ${FREE_EDITS} editări gratuite.` });
+      }
+      if (fresh && (fresh.status === 'generating' || fresh.status === 'processing_provider_result') && fresh.musicTaskId) {
+        resumeExistingTaskPolling(order.id, fresh.musicTaskId);
       }
       return res.status(409).json({ error: 'Generarea este deja în desfășurare.' });
     }
@@ -1131,6 +1140,45 @@ const SUNO_SUCCESS_STATUS = 'SUCCESS';
 const SUNO_ERROR_STATUSES = ['CREATE_TASK_FAILED', 'GENERATE_AUDIO_FAILED', 'CALLBACK_EXCEPTION', 'SENSITIVE_WORD_ERROR'];
 const SUNO_CONTINUE_STATUSES = ['PENDING', 'TEXT_SUCCESS', 'FIRST_SUCCESS'];
 
+// Garda in-memory (per proces) impotriva reluarii de mai multe ori in paralel a
+// polling-ului pentru ACEEASI comanda — daca utilizatorul apasa "Incearca din nou" de
+// mai multe ori rapid cat timp comanda e deja 'generating', nu vrem sa lansam mai multe
+// bucle de polling concurente pentru acelasi taskId (inofensiv, dar risipa de cereri).
+const activePollResumptions = new Set();
+
+// Reia verificarea unui task Suno DEJA EXISTENT (nu creeaza un task nou — asta previne
+// generarile duplicate, cerinta explicita). Folosita cand clientul reincearca ("Incearca
+// din nou") sau reincarca pagina cat timp comanda e deja 'generating' cu un music_task_id
+// valid — ofera o "verificare ulterioara" activa, in completarea callback-ului SunoAPI
+// (care poate sau nu sa ajunga, de exemplu daca reteaua Railway->noi are o problema
+// tranzitorie chiar in acel moment).
+async function resumeExistingTaskPolling(orderId, taskId) {
+  if (activePollResumptions.has(orderId)) return; // deja se verifica in alta parte
+  activePollResumptions.add(orderId);
+  try {
+    const { status: finalStatus, tracks } = await pollForResult(taskId);
+
+    if (finalStatus === 'LOCAL_POLL_TIMEOUT') {
+      // Tot in lucru — nu schimbam nimic, ramane 'generating' pentru o viitoare reluare
+      // sau pentru callback-ul SunoAPI.
+      return;
+    }
+    if (finalStatus === SUNO_SUCCESS_STATUS) {
+      await finalizeVariantsIfNeeded(orderId, tracks);
+      return;
+    }
+    if (SUNO_ERROR_STATUSES.includes(finalStatus)) {
+      console.error(`Reluare polling: task ${taskId} (comanda ${orderId}) a esuat cu status "${finalStatus}".`);
+      await db.refundEditIfReserved(orderId);
+      await db.updateOrder(orderId, { status: 'generation_failed', error: `Suno: ${finalStatus}` });
+    }
+  } catch (err) {
+    console.error(`Eroare la reluarea polling-ului pentru comanda ${orderId}, taskId ${taskId}:`, err.message);
+  } finally {
+    activePollResumptions.delete(orderId);
+  }
+}
+
 async function runGeneration(orderId, feedback) {
   const order = await db.getOrderById(orderId);
   if (!order) throw new Error('Comanda a dispărut în timpul generării');
@@ -1139,6 +1187,15 @@ async function runGeneration(orderId, feedback) {
 
   const taskId = await callMusicProvider(orderId, prompt);
   const { status: finalStatus, tracks } = await pollForResult(taskId);
+
+  if (finalStatus === 'LOCAL_POLL_TIMEOUT') {
+    // Polling-ul NOSTRU local a expirat — asta NU inseamna ca Suno a esuat sau ca a
+    // renuntat la generare. Iesim linistit, FARA sa aruncam o eroare: statusul comenzii
+    // ramane 'generating', music_task_id ramane neschimbat, nicio editare nu se restituie.
+    // Callback-ul SunoAPI (sau o reluare ulterioara a polling-ului, vezi ruta /generate)
+    // vor finaliza comanda cand Suno chiar termina.
+    return;
+  }
 
   if (finalStatus !== SUNO_SUCCESS_STATUS) {
     throw new Error(`Suno a raportat un status de eroare: ${finalStatus}`);
@@ -1385,8 +1442,20 @@ async function callMusicProvider(orderId, prompt) {
 // SUCCESS = gata (extragem piesele). CREATE_TASK_FAILED / GENERATE_AUDIO_FAILED /
 // CALLBACK_EXCEPTION / SENSITIVE_WORD_ERROR = eroare definitiva. PENDING / TEXT_SUCCESS /
 // FIRST_SUCCESS = inca in lucru, continuam polling-ul.
+//
+// 90 incercari * 6 secunde = 540 secunde (~9 minute) — marit fata de cele 3 minute
+// anterioare (30*6s), care s-au dovedit insuficiente pentru unele generari reale (Suno
+// a acceptat si a lucrat la ele, dar nu a apucat sa raspunda inauntrul celor 3 minute).
+//
+// IMPORTANT: daca se epuizeaza toate incercarile FARA ca Suno sa fi raportat explicit
+// SUCCESS sau o eroare, NU aruncam o exceptie — un timeout LOCAL de polling nu inseamna ca
+// Suno a esuat, doar ca noi am renuntat sa mai asteptam sincron. Intoarcem un status distinct
+// ('LOCAL_POLL_TIMEOUT'), pe care apelantul (runGeneration) il trateaza explicit ca "inca in
+// lucru", nu ca eroare — statusul comenzii ramane 'generating', fara refund, fara sa stearga
+// music_task_id. Callback-ul SunoAPI (configurat cu callBackUrl la crearea task-ului) poate
+// finaliza comanda oricand mai tarziu, independent de aceasta bucla locala.
 // ==========================================================================================
-async function pollForResult(taskId, maxAttempts = 30, intervalMs = 6000) {
+async function pollForResult(taskId, maxAttempts = 90, intervalMs = 6000) {
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise(r => setTimeout(r, intervalMs));
 
@@ -1423,7 +1492,8 @@ async function pollForResult(taskId, maxAttempts = 30, intervalMs = 6000) {
     }
     // PENDING / TEXT_SUCCESS / FIRST_SUCCESS (sau orice status necunoscut) -> continuam bucla
   }
-  throw new Error('Timeout: melodia nu a fost gata in timpul asteptat.');
+  console.warn(`Polling local epuizat pentru taskId ${taskId} dupa ${maxAttempts} incercari — Suno nu a raportat inca un status final. Comanda ramane 'generating'; callback-ul sau o reluare ulterioara o pot finaliza.`);
+  return { status: 'LOCAL_POLL_TIMEOUT', tracks: [] };
 }
 
 async function downloadFile(url, destPath) {
