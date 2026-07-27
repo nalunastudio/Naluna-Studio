@@ -14,33 +14,40 @@
     --error:#B3574A; --success:#5F8F6E;
   }
   *{box-sizing:border-box; margin:0; padding:0;}
-  html{scroll-behavior:smooth;}
+  html{scroll-behavior:smooth; overflow-x:hidden;}
   body{
     background:var(--bg); color:var(--text); font-family:'Sora', sans-serif;
-    line-height:1.6; -webkit-font-smoothing:antialiased;
+    line-height:1.6; -webkit-font-smoothing:antialiased; overflow-x:hidden;
   }
-  .wrap{ max-width:960px; margin:0 auto; padding:0 24px 80px; }
+  .wrap{ max-width:640px; margin:0 auto; padding:0 20px 60px; }
 
-  .topbar{ display:flex; align-items:center; justify-content:space-between; padding:26px 0; }
-  .logo{ display:flex; align-items:center; gap:12px; }
-  .logo-mark{ width:32px; }
+  .topbar{ display:flex; align-items:center; justify-content:space-between; padding:22px 0 8px; }
+  .logo{ display:flex; align-items:center; gap:10px; }
+  .logo-mark{ width:28px; }
   .logo-mark img{ width:100%; height:auto; display:block; }
   .logo-text{
-    font-family:'Fraunces', serif; font-size:19px; font-weight:400; letter-spacing:.1em;
+    font-family:'Fraunces', serif; font-size:16px; font-weight:400; letter-spacing:.1em;
     background:linear-gradient(90deg, #8B6D3F, #C9A876);
     -webkit-background-clip:text; background-clip:text; color:transparent;
   }
   .back-link{ font-size:13px; color:var(--text-secondary); text-decoration:none; transition:color .2s ease; }
   .back-link:hover{ color:var(--gold-deep); }
 
-  .section-head{ max-width:640px; margin:8px 0 36px; }
-  h1{ font-family:'Fraunces', serif; font-weight:400; font-size:clamp(26px,3.4vw,34px); letter-spacing:-.01em; }
-  .section-head p{ color:var(--text-secondary); margin-top:12px; font-size:15px; }
+  .progress-wrap{ margin:18px 0 28px; }
+  .progress-track{ background:var(--line); border-radius:999px; height:6px; overflow:hidden; }
+  .progress-fill{ background:linear-gradient(90deg, var(--gold-soft), var(--gold)); height:100%; border-radius:999px; transition:width .4s ease; }
+  .progress-label{ font-size:12px; color:var(--text-secondary); margin-top:9px; text-align:center; letter-spacing:.02em; }
 
-  .order-panel{
-    background:var(--bg-secondary); border:1px solid var(--line); border-radius:20px;
-    padding:40px; display:grid; grid-template-columns:1fr 1fr; gap:44px;
+  .step-card{
+    background:var(--bg-secondary); border:1px solid var(--line); border-radius:22px;
+    padding:36px 30px; animation:fadeIn .35s ease;
   }
+  @keyframes fadeIn{ from{ opacity:0; transform:translateY(6px); } to{ opacity:1; transform:translateY(0); } }
+  @media (prefers-reduced-motion: reduce){ .step-card{ animation:none; } }
+
+  h1{ font-family:'Fraunces', serif; font-weight:400; font-size:clamp(22px,3.2vw,28px); letter-spacing:-.01em; margin-bottom:8px; text-align:center; }
+  .step-sub{ color:var(--text-secondary); font-size:14px; text-align:center; margin-bottom:26px; }
+
   .field{ margin-bottom:20px; }
   label{ display:block; font-size:13px; color:var(--text-secondary); margin-bottom:9px; }
   input, select, textarea{
@@ -50,8 +57,10 @@
   }
   textarea{ min-height:110px; resize:vertical; }
   input:focus, select:focus, textarea:focus{ outline:2px solid var(--gold); outline-offset:1px; border-color:var(--gold); }
+  input.field-invalid, select.field-invalid, textarea.field-invalid{ border-color:var(--error); }
+  .field-error{ color:var(--error); font-size:12px; margin-top:6px; min-height:14px; }
 
-  .theme-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:4px; }
+  .theme-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
   .theme-card{
     border:1px solid var(--line); border-radius:12px; padding:15px 17px; cursor:pointer;
     background:var(--surface); transition:border-color .2s ease, background-color .2s ease;
@@ -68,9 +77,6 @@
   .voice-card:hover{ transform:translateY(-1px); }
   .voice-card.active{ border-color:var(--gold); background:rgba(168,131,75,.07); }
   .voice-name{ font-weight:600; font-size:14px; }
-  @media (max-width: 480px){
-    .voice-grid{ grid-template-columns:1fr; }
-  }
 
   .plan-list{ display:flex; flex-direction:column; gap:12px; }
   .plan{
@@ -91,20 +97,31 @@
 
   .btn{
     display:inline-flex; align-items:center; justify-content:center; gap:10px;
-    padding:15px 28px; border-radius:999px; font-size:14px; font-weight:500;
+    padding:15px 26px; border-radius:999px; font-size:14px; font-weight:500;
     border:1px solid transparent; cursor:pointer;
     transition:transform .25s ease, box-shadow .25s ease, background-color .25s ease;
   }
   .btn:hover{ transform:translateY(-1px); }
+  .btn:disabled{ opacity:.55; cursor:default; transform:none; }
   .btn-primary{ background:var(--text); color:var(--bg); }
   .btn-primary:hover{ background:var(--gold-deep); box-shadow:0 12px 28px -10px rgba(139,109,63,.45); }
+  .btn-ghost{ border-color:var(--line); color:var(--text-secondary); background:transparent; }
+  .btn-ghost:hover{ border-color:var(--gold); color:var(--gold-deep); }
 
-  #status-msg{ margin-top:14px; font-size:13px; }
+  .wizard-nav{ display:flex; align-items:center; justify-content:space-between; gap:14px; margin-top:30px; }
+  .wizard-nav .btn-continue{ flex:1; justify-content:center; }
+  .wizard-nav.single{ justify-content:flex-end; }
+
+  #status-msg{ margin-top:14px; font-size:13px; text-align:center; }
   .status-ok{ color:var(--success); }
   .status-err{ color:var(--error); }
 
-  @media (max-width: 860px){
-    .order-panel{ grid-template-columns:1fr; padding:26px; }
+  @media (max-width: 480px){
+    .step-card{ padding:28px 20px; }
+    .theme-grid{ grid-template-columns:1fr; }
+    .voice-grid{ grid-template-columns:1fr; }
+    .wizard-nav .btn-back{ padding:13px 16px; }
+    .wizard-nav .btn-continue{ padding:16px 20px; font-size:15px; }
   }
 </style>
 </head>
@@ -118,79 +135,102 @@
     <a href="/index.html" class="back-link" data-i18n="back_link">← Înapoi la pagina principală</a>
   </div>
 
-  <div class="section-head">
-    <h1 data-i18n="order_title">Compune cântecul tău</h1>
-    <p data-i18n="order_sub">Completează povestea, asculți gratuit un preview de 55 secunde, ceri editări dacă nu e exact ce vrei — plătești doar când ești mulțumit</p>
+  <div class="progress-wrap">
+    <div class="progress-track"><div class="progress-fill" id="progress-fill" style="width:25%;"></div></div>
+    <div class="progress-label" id="progress-label">Pasul 1 din 4</div>
   </div>
 
-  <form class="order-panel" id="order-form">
-    <div>
-      <div class="field">
-        <label data-i18n="theme_label">Pentru ce moment vrei cântecul</label>
-        <div class="theme-grid" id="theme-grid">
-          <div class="theme-card active" data-theme="dor">
-            <div class="theme-name" data-i18n="theme_dor_name">Mi-e dor de cineva</div>
-            <div class="theme-desc" data-i18n="theme_dor_desc">Fără ocazie. Doar dor</div>
-          </div>
-          <div class="theme-card" data-theme="onomastica">
-            <div class="theme-name" data-i18n="theme_onomastica_name">Își serbează numele</div>
-            <div class="theme-desc" data-i18n="theme_onomastica_desc">Onomastică, sfinți, familie</div>
-          </div>
-          <div class="theme-card" data-theme="aniversare">
-            <div class="theme-name" data-i18n="theme_aniversare_name">E ziua lui/ei</div>
-            <div class="theme-desc" data-i18n="theme_aniversare_desc">La mulți ani, dar personal</div>
-          </div>
-          <div class="theme-card" data-theme="declaratie">
-            <div class="theme-name" data-i18n="theme_declaratie_name">Te iubesc, pe note</div>
-            <div class="theme-desc" data-i18n="theme_declaratie_desc">Când mesajul nu ajunge</div>
-          </div>
-          <div class="theme-card" data-theme="nunta">
-            <div class="theme-name" data-i18n="theme_nunta_name">Nuntă</div>
-            <div class="theme-desc" data-i18n="theme_nunta_desc">Primul dans sau surpriză pentru miri</div>
-          </div>
-          <div class="theme-card" data-theme="pierdere">
-            <div class="theme-name" data-i18n="theme_pierdere_name">În memoria cuiva</div>
-            <div class="theme-desc" data-i18n="theme_pierdere_desc">Pentru cei care nu mai sunt aici</div>
-          </div>
-          <div class="theme-card" data-theme="pentru-mine">
-            <div class="theme-name" data-i18n="theme_pentrumine_name">Pentru mine</div>
-            <div class="theme-desc" data-i18n="theme_pentrumine_desc">Un cântec doar pentru tine</div>
-          </div>
-          <div class="theme-card" data-theme="altceva">
-            <div class="theme-name" data-i18n="theme_altceva_name">Orice altceva</div>
-            <div class="theme-desc" data-i18n="theme_altceva_desc">Fără ocazie. Descrie tu</div>
-          </div>
+  <form id="order-form" novalidate>
+
+    <div class="step-card" data-step="1">
+      <h1 data-i18n="wizard_step1_title">Pentru ce moment vrei cântecul?</h1>
+      <div class="theme-grid" id="theme-grid">
+        <div class="theme-card active" data-theme="dor">
+          <div class="theme-name" data-i18n="theme_dor_name">Mi-e dor de cineva</div>
+          <div class="theme-desc" data-i18n="theme_dor_desc">Fără ocazie. Doar dor</div>
         </div>
-        <input type="hidden" id="occasion" value="dor" required>
+        <div class="theme-card" data-theme="onomastica">
+          <div class="theme-name" data-i18n="theme_onomastica_name">Își serbează numele</div>
+          <div class="theme-desc" data-i18n="theme_onomastica_desc">Onomastică, sfinți, familie</div>
+        </div>
+        <div class="theme-card" data-theme="aniversare">
+          <div class="theme-name" data-i18n="theme_aniversare_name">E ziua lui/ei</div>
+          <div class="theme-desc" data-i18n="theme_aniversare_desc">La mulți ani, dar personal</div>
+        </div>
+        <div class="theme-card" data-theme="declaratie">
+          <div class="theme-name" data-i18n="theme_declaratie_name">Te iubesc, pe note</div>
+          <div class="theme-desc" data-i18n="theme_declaratie_desc">Când mesajul nu ajunge</div>
+        </div>
+        <div class="theme-card" data-theme="nunta">
+          <div class="theme-name" data-i18n="theme_nunta_name">Nuntă</div>
+          <div class="theme-desc" data-i18n="theme_nunta_desc">Primul dans sau surpriză pentru miri</div>
+        </div>
+        <div class="theme-card" data-theme="pierdere">
+          <div class="theme-name" data-i18n="theme_pierdere_name">În memoria cuiva</div>
+          <div class="theme-desc" data-i18n="theme_pierdere_desc">Pentru cei care nu mai sunt aici</div>
+        </div>
+        <div class="theme-card" data-theme="pentru-mine">
+          <div class="theme-name" data-i18n="theme_pentrumine_name">Pentru mine</div>
+          <div class="theme-desc" data-i18n="theme_pentrumine_desc">Un cântec doar pentru tine</div>
+        </div>
+        <div class="theme-card" data-theme="altceva">
+          <div class="theme-name" data-i18n="theme_altceva_name">Orice altceva</div>
+          <div class="theme-desc" data-i18n="theme_altceva_desc">Fără ocazie. Descrie tu</div>
+        </div>
       </div>
+      <input type="hidden" id="occasion" value="dor">
+
+      <div class="wizard-nav single">
+        <button type="button" class="btn btn-primary btn-continue" data-next="2" data-validate="1" data-i18n="btn_continue">Continuă</button>
+      </div>
+    </div>
+
+    <div class="step-card" data-step="2" style="display:none;">
+      <h1 data-i18n="wizard_step2_title">Spune-ne pentru cine este cântecul</h1>
+
       <div class="field">
         <label for="recipient" data-i18n="label_recipient">Pentru cine e cântecul (nume)</label>
-        <input type="text" id="recipient" placeholder="ex: Maria" data-i18n-placeholder="ph_recipient" maxlength="60" required>
+        <input type="text" id="recipient" placeholder="ex: Maria" data-i18n-placeholder="ph_recipient" maxlength="60">
+        <div class="field-error" id="err-recipient"></div>
       </div>
       <div class="field">
         <label for="sender" data-i18n="label_sender">Din partea cui e cântecul</label>
-        <input type="text" id="sender" placeholder="ex: Maria, sau Maria și Alexandra" data-i18n-placeholder="ph_sender" maxlength="100" required>
+        <input type="text" id="sender" placeholder="ex: Maria, sau Maria și Alexandra" data-i18n-placeholder="ph_sender" maxlength="100">
+        <div class="field-error" id="err-sender"></div>
       </div>
       <div class="field">
         <label for="relationship" data-i18n="label_relationship">Ce relație există între voi</label>
-        <input type="text" id="relationship" placeholder="ex: soție și soț, mamă și fiică, prieteni" data-i18n-placeholder="ph_relationship" maxlength="60" required>
+        <input type="text" id="relationship" placeholder="ex: soție și soț, mamă și fiică, prieteni" data-i18n-placeholder="ph_relationship" maxlength="60">
+        <div class="field-error" id="err-relationship"></div>
+      </div>
+      <div class="field">
+        <label for="story" data-i18n="label_story">Povestea / detalii de inclus în versuri</label>
+        <textarea id="story" placeholder="Spune-ne ce vă leagă, ce momente importante ați trăit, ce îi iubești cel mai mult, ce vrei să îi transmiți și orice detaliu pe care vrei să îl auzi în melodie" data-i18n-placeholder="ph_story"></textarea>
+        <div class="price-note" style="margin-top:6px;" data-i18n="story_hint">Poți scrie în orice limbă — versurile vor fi generate în limba aleasă mai sus</div>
+        <div class="field-error" id="err-story"></div>
       </div>
       <div class="field">
         <label for="email" data-i18n="label_email">Emailul tău (primești melodia și aici)</label>
-        <input type="email" id="email" placeholder="nume@exemplu.com" required>
+        <input type="email" id="email" placeholder="nume@exemplu.com">
+        <div class="field-error" id="err-email"></div>
       </div>
       <div class="field">
         <label for="phone" data-i18n="label_phone">Telefon WhatsApp (opțional — primești și acolo melodia)</label>
         <input type="tel" id="phone" placeholder="+44 7xxx xxxxxx" data-i18n-placeholder="ph_phone">
       </div>
-      <div class="field">
-        <label for="story" data-i18n="label_story">Povestea / detalii de inclus în versuri</label>
-        <textarea id="story" placeholder="Spune-ne ce vă leagă, ce momente importante ați trăit, ce îi iubești cel mai mult, ce vrei să îi transmiți și orice detaliu pe care vrei să îl auzi în melodie" data-i18n-placeholder="ph_story" required></textarea>
-        <div class="price-note" style="margin-top:6px;" data-i18n="story_hint">Poți scrie în orice limbă — versurile vor fi generate în limba aleasă mai sus</div>
+
+      <div class="wizard-nav">
+        <button type="button" class="btn btn-ghost btn-back" data-prev="1" data-i18n="btn_back">Înapoi</button>
+        <button type="button" class="btn btn-primary btn-continue" data-next="3" data-validate="2" data-i18n="btn_continue">Continuă</button>
       </div>
+    </div>
+
+    <div class="step-card" data-step="3" style="display:none;">
+      <h1 data-i18n="wizard_step3_title">Alege stilul și vocea</h1>
+
       <div class="field">
         <label for="genre" data-i18n="label_genre">Gen muzical</label>
-        <select id="genre" required>
+        <select id="genre">
           <option value="" data-i18n="genre_choose">Alege genul</option>
           <option value="emotional" data-i18n="genre_emotional">Emoțional</option>
           <option value="suflet" data-i18n="genre_suflet">De suflet</option>
@@ -201,7 +241,9 @@
           <option value="manele" data-i18n="genre_manele">Manele</option>
           <option value="copii" data-i18n="genre_copii">Pentru copii</option>
         </select>
+        <div class="field-error" id="err-genre"></div>
       </div>
+
       <div class="field">
         <label data-i18n="voice_label">Ce voce să cânte?</label>
         <div class="voice-grid" id="voice-grid">
@@ -215,16 +257,22 @@
             <div class="voice-name" data-i18n="voice_duet">Duet feminin + masculin</div>
           </div>
           <div class="voice-card active" data-voice="auto">
-            <div class="voice-name" data-i18n="voice_auto">Alege automat</div>
+            <div class="voice-name" data-i18n="voice_auto">Alegem pentru tine ❤️</div>
           </div>
         </div>
         <input type="hidden" id="voice-preference" value="auto">
-        <div class="price-note" style="margin-top:6px;" data-i18n="voice_note">Vom folosi această alegere ca preferință pentru generare</div>
+        <div class="price-note" style="margin-top:6px;" data-i18n="voice_note">Vom alege vocea care se potrivește cel mai bine poveștii tale</div>
+      </div>
+
+      <div class="wizard-nav">
+        <button type="button" class="btn btn-ghost btn-back" data-prev="2" data-i18n="btn_back">Înapoi</button>
+        <button type="button" class="btn btn-primary btn-continue" data-next="4" data-validate="3" data-i18n="btn_continue">Continuă</button>
       </div>
     </div>
 
-    <div>
-      <label style="margin-bottom:12px; display:block;" data-i18n="label_package">Alege pachetul</label>
+    <div class="step-card" data-step="4" style="display:none;">
+      <h1 data-i18n="wizard_step4_title">Alege pachetul</h1>
+
       <div class="plan-list" id="plan-list">
         <div class="plan active" data-plan="standard" data-price="15">
           <div>
@@ -259,7 +307,13 @@
       </button>
       <div class="price-note" style="margin-top:10px; text-align:center;" data-i18n="note_free">Nu plătești acum. Plătești doar dacă îți place rezultatul</div>
       <div id="status-msg"></div>
+
+      <div class="wizard-nav">
+        <button type="button" class="btn btn-ghost btn-back" data-prev="3" data-i18n="btn_back">Înapoi</button>
+        <span></span>
+      </div>
     </div>
+
   </form>
 </div>
 
@@ -308,9 +362,12 @@
       genre_balada: 'Baladă',
       genre_manele: 'Manele',
       genre_copii: 'Pentru copii',
-      voice_label: 'Ce voce să cânte?', voice_female: 'Voce feminină', voice_male: 'Voce masculină',
-      voice_duet: 'Duet feminin + masculin', voice_auto: 'Alege automat',
-      voice_note: 'Vom folosi această alegere ca preferință pentru generare',
+      voice_label: 'Ce voce să cânte?',
+      voice_female: 'Voce feminină',
+      voice_male: 'Voce masculină',
+      voice_duet: 'Duet feminin + masculin',
+      voice_auto: 'Alegem pentru tine ❤️',
+      voice_note: 'Vom alege vocea care se potrivește cel mai bine poveștii tale',
       label_package: 'Alege pachetul',
       plan_standard_name: 'Standard',
       plan_standard_desc: '1 versiune, ~2 minute, livrare pe email',
@@ -326,6 +383,19 @@
       msg_conn_error: 'Eroare de conexiune. Încearcă din nou',
       msg_error_prefix: 'Eroare: ',
       msg_try_again: 'încearcă din nou',
+      wizard_step1_title: 'Pentru ce moment vrei cântecul?',
+      wizard_step2_title: 'Spune-ne pentru cine este cântecul',
+      wizard_step3_title: 'Alege stilul și vocea',
+      wizard_step4_title: 'Alege pachetul',
+      btn_continue: 'Continuă',
+      btn_back: 'Înapoi',
+      val_recipient: 'Spune-ne pentru cine este cântecul',
+      val_sender: 'Spune-ne din partea cui este cântecul',
+      val_relationship: 'Spune-ne ce relație aveți',
+      val_story: 'Adaugă câteva detalii despre poveste',
+      val_email: 'Adresa de email nu este validă',
+      val_genre: 'Alege un gen muzical',
+      step_progress_label: (n) => 'Pasul ' + n + ' din 4',
     },
     en: {
       back_link: 'Back to homepage',
@@ -370,9 +440,12 @@
       genre_balada: 'Ballad',
       genre_manele: 'Manele',
       genre_copii: 'For kids',
-      voice_label: 'Which voice should sing?', voice_female: 'Female voice', voice_male: 'Male voice',
-      voice_duet: 'Female + male duet', voice_auto: 'Choose automatically',
-      voice_note: "We'll use this choice as a preference for the generation",
+      voice_label: 'Which voice should sing?',
+      voice_female: 'Female voice',
+      voice_male: 'Male voice',
+      voice_duet: 'Female + male duet',
+      voice_auto: 'We\'ll choose for you ❤️',
+      voice_note: 'We\'ll choose the voice that best fits your story',
       label_package: 'Choose your package',
       plan_standard_name: 'Standard',
       plan_standard_desc: '1 version, ~2 minutes, delivered by email',
@@ -388,6 +461,19 @@
       msg_conn_error: 'Connection error. Please try again.',
       msg_error_prefix: 'Error: ',
       msg_try_again: 'please try again.',
+      wizard_step1_title: 'What moment is the song for?',
+      wizard_step2_title: 'Tell us who the song is for',
+      wizard_step3_title: 'Choose the style and voice',
+      wizard_step4_title: 'Choose your package',
+      btn_continue: 'Continue',
+      btn_back: 'Back',
+      val_recipient: 'Tell us who the song is for',
+      val_sender: 'Tell us who the song is from',
+      val_relationship: 'Tell us your relationship',
+      val_story: 'Add a few details about your story',
+      val_email: 'The email address is not valid',
+      val_genre: 'Choose a musical genre',
+      step_progress_label: (n) => 'Step ' + n + ' of 4',
     },
     de: {
       back_link: 'Zurück zur Startseite',
@@ -432,9 +518,12 @@
       genre_balada: 'Ballade',
       genre_manele: 'Manele',
       genre_copii: 'Für Kinder',
-      voice_label: 'Welche Stimme soll singen?', voice_female: 'Weibliche Stimme', voice_male: 'Männliche Stimme',
-      voice_duet: 'Duett weiblich + männlich', voice_auto: 'Automatisch auswählen',
-      voice_note: 'Wir verwenden diese Wahl als Präferenz für die Erstellung',
+      voice_label: 'Welche Stimme soll singen?',
+      voice_female: 'Weibliche Stimme',
+      voice_male: 'Männliche Stimme',
+      voice_duet: 'Duett weiblich + männlich',
+      voice_auto: 'Wir wählen für dich ❤️',
+      voice_note: 'Wir wählen die Stimme, die am besten zu deiner Geschichte passt',
       label_package: 'Paket wählen',
       plan_standard_name: 'Standard',
       plan_standard_desc: '1 Version, ca. 2 Minuten, per E-Mail geliefert',
@@ -450,6 +539,19 @@
       msg_conn_error: 'Verbindungsfehler. Bitte versuche es erneut.',
       msg_error_prefix: 'Fehler: ',
       msg_try_again: 'bitte versuche es erneut.',
+      wizard_step1_title: 'Für welchen Moment ist das Lied?',
+      wizard_step2_title: 'Sag uns, für wen das Lied ist',
+      wizard_step3_title: 'Wähle Stil und Stimme',
+      wizard_step4_title: 'Wähle dein Paket',
+      btn_continue: 'Weiter',
+      btn_back: 'Zurück',
+      val_recipient: 'Sag uns, für wen das Lied ist',
+      val_sender: 'Sag uns, von wem das Lied ist',
+      val_relationship: 'Gib eure Beziehung an',
+      val_story: 'Füge ein paar Details zu eurer Geschichte hinzu',
+      val_email: 'Die E-Mail-Adresse ist ungültig',
+      val_genre: 'Wähle eine Musikrichtung',
+      step_progress_label: (n) => 'Schritt ' + n + ' von 4',
     },
     es: {
       back_link: 'Volver a la página principal',
@@ -494,9 +596,12 @@
       genre_balada: 'Balada',
       genre_manele: 'Manele',
       genre_copii: 'Para niños',
-      voice_label: '¿Qué voz debe cantar?', voice_female: 'Voz femenina', voice_male: 'Voz masculina',
-      voice_duet: 'Dúo femenino + masculino', voice_auto: 'Elegir automáticamente',
-      voice_note: 'Usaremos esta elección como preferencia para la generación',
+      voice_label: '¿Qué voz debe cantar?',
+      voice_female: 'Voz femenina',
+      voice_male: 'Voz masculina',
+      voice_duet: 'Dúo femenino + masculino',
+      voice_auto: 'Elegimos por ti ❤️',
+      voice_note: 'Elegiremos la voz que mejor se adapte a tu historia',
       label_package: 'Elige tu paquete',
       plan_standard_name: 'Estándar',
       plan_standard_desc: '1 versión, ~2 minutos, entrega por email',
@@ -512,6 +617,19 @@
       msg_conn_error: 'Error de conexión. Inténtalo de nuevo.',
       msg_error_prefix: 'Error: ',
       msg_try_again: 'inténtalo de nuevo.',
+      wizard_step1_title: '¿Para qué momento es la canción?',
+      wizard_step2_title: 'Dinos para quién es la canción',
+      wizard_step3_title: 'Elige el estilo y la voz',
+      wizard_step4_title: 'Elige tu paquete',
+      btn_continue: 'Continuar',
+      btn_back: 'Atrás',
+      val_recipient: 'Dinos para quién es la canción',
+      val_sender: 'Dinos de parte de quién es la canción',
+      val_relationship: 'Indica vuestra relación',
+      val_story: 'Añade algunos detalles sobre vuestra historia',
+      val_email: 'La dirección de correo no es válida',
+      val_genre: 'Elige un género musical',
+      step_progress_label: (n) => 'Paso ' + n + ' de 4',
     },
     it: {
       back_link: 'Torna alla pagina principale',
@@ -556,9 +674,12 @@
       genre_balada: 'Ballata',
       genre_manele: 'Manele',
       genre_copii: 'Per bambini',
-      voice_label: 'Quale voce deve cantare?', voice_female: 'Voce femminile', voice_male: 'Voce maschile',
-      voice_duet: 'Duetto femminile + maschile', voice_auto: 'Scegli automaticamente',
-      voice_note: 'Useremo questa scelta come preferenza per la generazione',
+      voice_label: 'Quale voce deve cantare?',
+      voice_female: 'Voce femminile',
+      voice_male: 'Voce maschile',
+      voice_duet: 'Duetto femminile + maschile',
+      voice_auto: 'Scegliamo noi per te ❤️',
+      voice_note: 'Sceglieremo la voce più adatta alla tua storia',
       label_package: 'Scegli il pacchetto',
       plan_standard_name: 'Standard',
       plan_standard_desc: '1 versione, ~2 minuti, consegna via email',
@@ -574,6 +695,19 @@
       msg_conn_error: 'Errore di connessione. Riprova.',
       msg_error_prefix: 'Errore: ',
       msg_try_again: 'riprova.',
+      wizard_step1_title: 'Per quale momento è la canzone?',
+      wizard_step2_title: 'Dicci per chi è la canzone',
+      wizard_step3_title: 'Scegli lo stile e la voce',
+      wizard_step4_title: 'Scegli il pacchetto',
+      btn_continue: 'Continua',
+      btn_back: 'Indietro',
+      val_recipient: 'Dicci per chi è la canzone',
+      val_sender: 'Dicci da parte di chi è la canzone',
+      val_relationship: 'Indica la vostra relazione',
+      val_story: 'Aggiungi alcuni dettagli sulla vostra storia',
+      val_email: 'L\'indirizzo email non è valido',
+      val_genre: 'Scegli un genere musicale',
+      step_progress_label: (n) => 'Passo ' + n + ' di 4',
     },
     fr: {
       back_link: 'Retour à la page d\'accueil',
@@ -618,9 +752,12 @@
       genre_balada: 'Ballade',
       genre_manele: 'Manele',
       genre_copii: 'Pour enfants',
-      voice_label: 'Quelle voix doit chanter ?', voice_female: 'Voix féminine', voice_male: 'Voix masculine',
-      voice_duet: 'Duo féminin + masculin', voice_auto: 'Choisir automatiquement',
-      voice_note: 'Nous utiliserons ce choix comme préférence pour la génération',
+      voice_label: 'Quelle voix doit chanter ?',
+      voice_female: 'Voix féminine',
+      voice_male: 'Voix masculine',
+      voice_duet: 'Duo féminin + masculin',
+      voice_auto: 'On choisit pour vous ❤️',
+      voice_note: 'Nous choisirons la voix qui convient le mieux à votre histoire',
       label_package: 'Choisissez votre pack',
       plan_standard_name: 'Standard',
       plan_standard_desc: '1 version, ~2 minutes, livrée par email',
@@ -636,6 +773,19 @@
       msg_conn_error: 'Erreur de connexion. Veuillez réessayer.',
       msg_error_prefix: 'Erreur : ',
       msg_try_again: 'veuillez réessayer.',
+      wizard_step1_title: 'Pour quel moment est la chanson ?',
+      wizard_step2_title: 'Dites-nous pour qui est la chanson',
+      wizard_step3_title: 'Choisissez le style et la voix',
+      wizard_step4_title: 'Choisissez votre pack',
+      btn_continue: 'Continuer',
+      btn_back: 'Retour',
+      val_recipient: 'Dites-nous pour qui est la chanson',
+      val_sender: 'Dites-nous de la part de qui est la chanson',
+      val_relationship: 'Indiquez votre relation',
+      val_story: 'Ajoutez quelques détails sur votre histoire',
+      val_email: 'L\'adresse email n\'est pas valide',
+      val_genre: 'Choisissez un genre musical',
+      step_progress_label: (n) => 'Étape ' + n + ' sur 4',
     },
     bg: {
       back_link: 'Обратно към началната страница',
@@ -680,9 +830,12 @@
       genre_balada: 'Балада',
       genre_manele: 'Манеле',
       genre_copii: 'За деца',
-      voice_label: 'Какъв глас да пее?', voice_female: 'Женски глас', voice_male: 'Мъжки глас',
-      voice_duet: 'Дует женски + мъжки глас', voice_auto: 'Избери автоматично',
-      voice_note: 'Ще използваме този избор като предпочитание за генерирането',
+      voice_label: 'Какъв глас да пее?',
+      voice_female: 'Женски глас',
+      voice_male: 'Мъжки глас',
+      voice_duet: 'Дует женски + мъжки глас',
+      voice_auto: 'Ние избираме вместо теб ❤️',
+      voice_note: 'Ще изберем гласа, който пасва най-добре на историята ти',
       label_package: 'Избери пакет',
       plan_standard_name: 'Стандартен',
       plan_standard_desc: '1 версия, ~2 минути, доставка по имейл',
@@ -698,6 +851,19 @@
       msg_conn_error: 'Грешка във връзката. Опитай отново.',
       msg_error_prefix: 'Грешка: ',
       msg_try_again: 'опитай отново.',
+      wizard_step1_title: 'За кой момент е песента?',
+      wizard_step2_title: 'Кажи ни за кого е песента',
+      wizard_step3_title: 'Избери стила и гласа',
+      wizard_step4_title: 'Избери пакета',
+      btn_continue: 'Продължи',
+      btn_back: 'Назад',
+      val_recipient: 'Кажи ни за кого е песента',
+      val_sender: 'Кажи ни от чие име е песента',
+      val_relationship: 'Посочи каква е връзката ви',
+      val_story: 'Добави няколко детайла за вашата история',
+      val_email: 'Имейл адресът не е валиден',
+      val_genre: 'Избери музикален жанр',
+      step_progress_label: (n) => 'Стъпка ' + n + ' от 4',
     },
     tr: {
       back_link: 'Ana sayfaya dön',
@@ -742,9 +908,12 @@
       genre_balada: 'Balad',
       genre_manele: 'Manele',
       genre_copii: 'Çocuklar için',
-      voice_label: 'Hangi ses söylemeli?', voice_female: 'Kadın sesi', voice_male: 'Erkek sesi',
-      voice_duet: 'Kadın + erkek düeti', voice_auto: 'Otomatik seç',
-      voice_note: 'Bu seçimi oluşturma için bir tercih olarak kullanacağız',
+      voice_label: 'Hangi ses söylemeli?',
+      voice_female: 'Kadın sesi',
+      voice_male: 'Erkek sesi',
+      voice_duet: 'Kadın + erkek düeti',
+      voice_auto: 'Sizin için biz seçelim ❤️',
+      voice_note: 'Hikayenize en uygun sesi biz seçeceğiz',
       label_package: 'Paketinizi seçin',
       plan_standard_name: 'Standart',
       plan_standard_desc: '1 versiyon, ~2 dakika, e-posta ile teslim',
@@ -760,6 +929,19 @@
       msg_conn_error: 'Bağlantı hatası. Lütfen tekrar deneyin.',
       msg_error_prefix: 'Hata: ',
       msg_try_again: 'lütfen tekrar deneyin.',
+      wizard_step1_title: 'Şarkı hangi an için?',
+      wizard_step2_title: 'Şarkının kimin için olduğunu söyleyin',
+      wizard_step3_title: 'Stili ve sesi seçin',
+      wizard_step4_title: 'Paketinizi seçin',
+      btn_continue: 'Devam et',
+      btn_back: 'Geri',
+      val_recipient: 'Şarkının kimin için olduğunu söyleyin',
+      val_sender: 'Şarkının kimden geldiğini söyleyin',
+      val_relationship: 'Aranızdaki ilişkiyi belirtin',
+      val_story: 'Hikayeniz hakkında birkaç detay ekleyin',
+      val_email: 'E-posta adresi geçerli değil',
+      val_genre: 'Bir müzik türü seçin',
+      step_progress_label: (n) => 'Adım ' + n + '/4',
     },
   };
 
@@ -784,10 +966,98 @@
       const key = el.getAttribute('data-i18n-placeholder');
       if (translations[lang][key] !== undefined) el.setAttribute('placeholder', translations[lang][key]);
     });
+    updateProgressLabel();
   }
-  applyLang(currentLang);
 
-  // -------- selectie tema --------
+  const TOTAL_STEPS = 4;
+  const STEP_KEY = 'currentStep';
+  let currentStep = 1;
+
+  const stepCards = document.querySelectorAll('.step-card');
+  const progressFill = document.getElementById('progress-fill');
+  const progressLabel = document.getElementById('progress-label');
+
+  function updateProgressLabel() {
+    progressLabel.textContent = translations[currentLang].step_progress_label(currentStep);
+    progressFill.style.width = (currentStep / TOTAL_STEPS * 100) + '%';
+  }
+
+  function showStep(n) {
+    currentStep = n;
+    stepCards.forEach(card => {
+      card.style.display = Number(card.dataset.step) === n ? 'block' : 'none';
+    });
+    updateProgressLabel();
+    try { localStorage.setItem(STEP_KEY, String(n)); } catch (err) { /* ignoram */ }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function setFieldError(fieldId, message) {
+    const input = document.getElementById(fieldId);
+    const errEl = document.getElementById('err-' + fieldId);
+    if (input) input.classList.toggle('field-invalid', !!message);
+    if (errEl) errEl.textContent = message || '';
+  }
+
+  function isValidEmailClient(v) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v || '');
+  }
+
+  function validateStep(n) {
+    let firstInvalid = null;
+    let ok = true;
+
+    if (n === 2) {
+      const recipient = document.getElementById('recipient').value.trim();
+      const sender = document.getElementById('sender').value.trim();
+      const relationship = document.getElementById('relationship').value.trim();
+      const story = document.getElementById('story').value.trim();
+      const email = document.getElementById('email').value.trim();
+
+      setFieldError('recipient', recipient ? '' : t('val_recipient'));
+      setFieldError('sender', sender ? '' : t('val_sender'));
+      setFieldError('relationship', relationship ? '' : t('val_relationship'));
+      setFieldError('story', story ? '' : t('val_story'));
+      setFieldError('email', isValidEmailClient(email) ? '' : t('val_email'));
+
+      if (!recipient) { ok = false; firstInvalid = firstInvalid || 'recipient'; }
+      if (!sender) { ok = false; firstInvalid = firstInvalid || 'sender'; }
+      if (!relationship) { ok = false; firstInvalid = firstInvalid || 'relationship'; }
+      if (!story) { ok = false; firstInvalid = firstInvalid || 'story'; }
+      if (!isValidEmailClient(email)) { ok = false; firstInvalid = firstInvalid || 'email'; }
+    }
+
+    if (n === 3) {
+      const genre = document.getElementById('genre').value;
+      setFieldError('genre', genre ? '' : t('val_genre'));
+      if (!genre) { ok = false; firstInvalid = 'genre'; }
+    }
+
+    if (n === 1) {
+      ok = !!document.getElementById('occasion').value;
+    }
+
+    if (!ok && firstInvalid) {
+      const el = document.getElementById(firstInvalid);
+      if (el) el.focus({ preventScroll: false });
+    }
+    return ok;
+  }
+
+  document.querySelectorAll('[data-next]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const validateTarget = btn.dataset.validate ? Number(btn.dataset.validate) : null;
+      if (validateTarget && !validateStep(validateTarget)) return;
+      showStep(Number(btn.dataset.next));
+      saveDraft();
+    });
+  });
+  document.querySelectorAll('[data-prev]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      showStep(Number(btn.dataset.prev));
+    });
+  });
+
   const themeCards = document.querySelectorAll('.theme-card');
   const occasionInput = document.getElementById('occasion');
   themeCards.forEach(c => {
@@ -799,7 +1069,6 @@
     });
   });
 
-  // -------- selectie voce --------
   const voiceCards = document.querySelectorAll('.voice-card');
   const voiceInput = document.getElementById('voice-preference');
   voiceCards.forEach(c => {
@@ -811,7 +1080,6 @@
     });
   });
 
-  // -------- selectie pachet --------
   const plans = document.querySelectorAll('.plan');
   const sumPlan = document.getElementById('sum-plan');
   const sumTotal = document.getElementById('sum-total');
@@ -832,9 +1100,6 @@
     });
   });
 
-  // -------- pastrare temporara a formularului in localStorage (DOAR campurile
-  // formularului — niciun token, nicio parola, nimic legat de Stripe). Restaurat daca
-  // utilizatorul reincarca accidental pagina; sters dupa crearea cu succes a comenzii. --------
   const DRAFT_KEY = 'nds_form_draft';
 
   function collectPayload() {
@@ -916,16 +1181,30 @@
   }
   restoreDraft();
 
+  let restoredStep = 1;
+  try {
+    const savedStep = Number(localStorage.getItem(STEP_KEY));
+    if (savedStep >= 1 && savedStep <= TOTAL_STEPS) restoredStep = savedStep;
+  } catch (err) { /* ignoram */ }
+
   const form = document.getElementById('order-form');
   form.addEventListener('input', saveDraft);
 
-  // -------- trimite comanda, porneste generarea GRATUITA a 2 variante, apoi redirectioneaza
-  // catre pagina dedicata de asteptare --------
+  applyLang(currentLang);
+  showStep(restoredStep);
+
   const statusMsg = document.getElementById('status-msg');
   const generateBtn = document.getElementById('generate-btn');
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
+
+    if (currentStep !== TOTAL_STEPS) {
+      const nextBtn = document.querySelector(`.step-card[data-step="${currentStep}"] [data-next]`);
+      if (nextBtn) nextBtn.click();
+      return;
+    }
+
     generateBtn.disabled = true;
     const generateBtnLabel = document.getElementById('generate-btn-label');
     const originalBtnText = generateBtnLabel.textContent;
@@ -952,17 +1231,14 @@
       const currentOrderId = createData.orderId;
       const currentAccessToken = createData.accessToken || '';
 
-      // pornim generarea (token obligatoriu), apoi redirectionam catre pagina dedicata
-      // de asteptare — nu mai facem polling inline pe formular
       await fetch(`/api/orders/${currentOrderId}/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Access-Token': currentAccessToken },
         body: JSON.stringify({ feedback: null })
       });
 
-      // Comanda a fost creata cu succes — datele temporare ale formularului nu mai sunt
-      // necesare. NU stergem 'nds_lang' (preferinta de limba, valabila pe tot site-ul).
       localStorage.removeItem(DRAFT_KEY);
+      localStorage.removeItem(STEP_KEY);
 
       const tokenParam = encodeURIComponent(currentAccessToken);
       window.location.href = `/se-compune.html?id=${currentOrderId}&token=${tokenParam}`;
