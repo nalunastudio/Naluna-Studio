@@ -1569,15 +1569,15 @@ const OCCASION_INSTRUCTIONS = {
   },
   aniversare: {
     full: 'Personal, warm birthday mood — heartfelt wishes and real memories, not a generic birthday song.',
-    short: 'Personal birthday warmth, heartfelt wishes.'
+    short: 'Personal birthday warmth, heartfelt.'
   },
   declaratie: {
     full: 'Sincere romantic declaration — express love and gratitude, personal and direct, like a real confession.',
-    short: 'Sincere romantic declaration of love.'
+    short: 'Sincere romantic declaration.'
   },
   nunta: {
     full: 'Loving, joyful atmosphere of promise and togetherness for a wedding — solemn and moving, never sad.',
-    short: 'Loving, joyful wedding atmosphere.'
+    short: 'Loving, joyful wedding mood.'
   },
   pierdere: {
     full: 'Gentle, respectful, deeply emotional remembrance — comfort and lasting love, never cheerful or upbeat.',
@@ -1608,11 +1608,11 @@ const RELATIONSHIP_MAX_LEN = 60;
 
 // Garantam intotdeauna cel putin acest spatiu pentru poveste — partea cea mai importanta
 // pentru personalizare (Partea 4) nu trebuie sa poata fi eliminata complet de un nume,
-// expeditor, relatie sau instructiune de ocazie mai lunga, sau de instructiuni repetitive.
-// 180 e limita inferioara a intervalului 180-220 cerut — coborata usor de la 200 fata de
-// versiunea anterioara, DOAR ca sa faca loc noii instructiuni de ocazie (Partea 2) fara
-// sa sacrifice inutil relatia/expeditorul in cazuri obisnuite (nume si poveste scurte).
-const STORY_MIN_RESERVE = 180;
+// expeditor, relatie sau instructiune de ocazie/voce mai lunga, sau de instructiuni
+// repetitive. 160 e limita inferioara a intervalului 160-180 cerut explicit — redusa de la
+// 180 DOAR ca sa faca loc garantiei ca vocea aleasa explicit de client nu mai e eliminata
+// niciodata complet din prompt (cerinta explicita).
+const STORY_MIN_RESERVE = 160;
 
 function buildPrompt(order, feedback) {
   const genreMap = {
@@ -1658,26 +1658,44 @@ function buildPrompt(order, feedback) {
   // Instructiunea de voce e SEPARATA de personalizare (nume, relatie, poveste) — o propozitie
   // proprie, scurta, niciodata amestecata in aceeasi fraza cu destinatarul/expeditorul/relatia.
   // 'auto' inseamna explicit "nicio instructiune" — lasam serviciul sa aleaga liber.
-  const VOICE_INSTRUCTIONS = {
+  //
+  // IMPORTANT (corectie explicita): daca clientul a ALES explicit o voce (female/male/duet),
+  // instructiunea de voce NU se elimina NICIODATA complet din prompt, indiferent cat de
+  // stramtorat e bugetul — se poate doar COMPRIMA la forma scurta (VOICE_INSTRUCTIONS_SHORT).
+  // Anterior, pasul `includeVoiceInstruction = false` din cascada de scurtare putea elimina
+  // complet alegerea clientului — asta nu mai e permis.
+  const VOICE_INSTRUCTIONS_FULL = {
     female: ' Use a female lead vocal.',
     male: ' Use a male lead vocal.',
     duet: ' Use a male and female duet, with both voices clearly present.',
     auto: ''
   };
+  const VOICE_INSTRUCTIONS_SHORT = {
+    female: ' Female vocal.',
+    male: ' Male vocal.',
+    duet: ' Male-female duet.',
+    auto: ''
+  };
   const requestedVoicePref = VOICE_PREFERENCES.includes(order.voicePreference) ? order.voicePreference : 'auto';
-  let includeVoiceInstruction = requestedVoicePref !== 'auto';
+  let useShortVoiceInstruction = false;
   function currentVoiceInstruction() {
-    return includeVoiceInstruction ? VOICE_INSTRUCTIONS[requestedVoicePref] : '';
+    if (requestedVoicePref === 'auto') return '';
+    return useShortVoiceInstruction ? VOICE_INSTRUCTIONS_SHORT[requestedVoicePref] : VOICE_INSTRUCTIONS_FULL[requestedVoicePref];
   }
 
   // Doua variante de instructiune: completa (calitate mai buna a personalizarii) si una
   // scurta, folosita DOAR daca partea fixa tot nu incape in buget dupa scurtarea campurilor
   // — evita ca instructiunile repetitive sa manance tot spatiul (cerinta explicita), fara sa
   // renunte la cele doua cerinte esentiale: numele destinatarului de 2 ori, expeditorul o data.
-  const instructionWithSenderFull = ' Write this as a personal song from the sender to the recipient. Name the recipient early and again in the chorus. Mention the sender once. Use only real details from the story — invent nothing.';
-  const instructionWithSenderShort = ' Name the recipient early and again in the chorus; mention the sender once. Use real story details only.';
-  const instructionNoSenderFull = ' Address the recipient by name naturally in the lyrics. Use only real details from the story — invent nothing.';
-  const instructionNoSenderShort = ' Address the recipient by name naturally. Use real story details only.';
+  // Instructiune permanenta (Partea noua, ceruta explicit): intro instrumental foarte scurt,
+  // vocea sa intre aproape imediat — integrata DIRECT in instructiunile de personalizare deja
+  // existente (nu adaugata separat, ca sa nu duplicam si sa nu umflam bugetul de 500 caractere
+  // mai mult decat strict necesar). Se aplica identic la generarea initiala SI la regenerari,
+  // pentru ca ambele folosesc aceeasi functie buildPrompt() -> currentInstruction() de mai jos.
+  const instructionWithSenderFull = ' Write this as a personal song from the sender to the recipient, with a very short instrumental intro so the vocal starts almost immediately. Name the recipient early and again in the chorus. Mention the sender once. Use only real details from the story — invent nothing.';
+  const instructionWithSenderShort = ' Sing within seconds; name the recipient early and again in the chorus; mention the sender once. Use real story details only.';
+  const instructionNoSenderFull = ' Keep the instrumental intro very short so the vocal starts almost immediately. Address the recipient by name naturally in the lyrics. Use only real details from the story — invent nothing.';
+  const instructionNoSenderShort = ' Sing within seconds. Address the recipient by name naturally. Use real story details only.';
 
   let useShortInstruction = false;
   function currentInstruction() {
@@ -1704,27 +1722,29 @@ function buildPrompt(order, feedback) {
   let head = buildFixedPart(recipient, sender, relationship);
 
   // Daca partea fixa tot nu lasa spatiul minim garantat pentru poveste (campuri foarte lungi
-  // combinate cu un gen muzical/ocazie cu descriere mai lunga), scurtam progresiv, respectand
-  // ordinea de prioritate ceruta: limba > destinatar > expeditor > relatie > ocazie > poveste >
-  // gen muzical > voce. Vocea (cea mai joasa prioritate) cade prima; ocazia (prioritate mai
-  // mare) e doar COMPRIMATA devreme (forma scurta, fara pierdere reala de continut) si
-  // eliminata complet abia ca ultim resort, mult dupa voce. Fiecare pas se aplica DOAR daca
-  // cel anterior n-a fost suficient.
+  // combinate cu un gen muzical/ocazie cu descriere mai lunga), scurtam progresiv, IN ACEASTA
+  // ORDINE EXPLICITA (corectie fata de versiunea anterioara):
+  //   1. instructiunea de ocazie -> forma scurta;
+  //   2. instructiunea de personalizare/intro -> forma scurta;
+  //   3. instructiunea de voce -> forma scurta (NICIODATA eliminata complet daca s-a ales
+  //      explicit o voce — vezi comentariul de la VOICE_INSTRUCTIONS_SHORT mai sus);
+  //   4. relatia, apoi expeditorul, apoi destinatarul — scurtate progresiv, NICIODATA
+  //      eliminate complet.
+  // Povestea insasi nu e scurtata aici — bugetul ei se calculeaza separat mai jos, cu o
+  // rezerva minima garantata (STORY_MIN_RESERVE, 160-180 caractere utile).
   const budgetForFixedPart = SUNO_PROMPT_MAX_LEN - STORY_MIN_RESERVE;
   const shrinkSteps = [
-    () => { useShortInstruction = true; },
     () => { useShortOccasionInstruction = true; },
+    () => { useShortInstruction = true; },
+    () => { useShortVoiceInstruction = true; },
     () => { relationship = truncateSafely(relationship, 20); },
     () => { sender = truncateSafely(sender, 30); },
     () => { recipient = truncateSafely(recipient, 30); },
-    () => { includeVoiceInstruction = false; },
     () => { relationship = truncateSafely(relationship, 10); },
     () => { sender = truncateSafely(sender, 15); },
     () => { recipient = truncateSafely(recipient, 15); },
-    () => { relationship = ''; },
     () => { sender = truncateSafely(sender, 8); },
-    () => { recipient = truncateSafely(recipient, 10); },
-    () => { includeOccasionInstruction = false; }
+    () => { recipient = truncateSafely(recipient, 10); }
   ];
   for (const step of shrinkSteps) {
     if (head.length <= budgetForFixedPart) break;
