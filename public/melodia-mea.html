@@ -569,6 +569,141 @@
     return `${m}:${s}`;
   }
 
+  // ==========================================================================================
+  // Traducerea etichetelor de structura ([Verse], [Chorus], [Bridge] etc.) — DOAR PENTRU
+  // AFISARE in editor si in caseta de versuri needitabila. Nu modifica in niciun fel textul
+  // versurilor, structura strofelor, liniile goale sau ordinea — inlocuieste STRICT
+  // continutul dintre paranteze patrate, printr-o expresie regulata care nu atinge restul
+  // textului. Versurile SALVATE in baza de date (originalLyrics/editedLyrics) raman
+  // intotdeauna exact asa cum au fost generate de Suno sau editate de client — aceasta
+  // transformare exista NUMAI in memoria browserului, la momentul afisarii.
+  //
+  // Mapare centralizata, usor de extins: adauga o noua cheie in SECTION_LABEL_TRANSLATIONS
+  // (cu toate cele 8 limbi) si un pattern corespunzator in SECTION_LABEL_PATTERNS.
+  // ==========================================================================================
+  const SECTION_LABEL_TRANSLATIONS = {
+    intro:        { ro: 'Introducere', en: 'Intro', de: 'Intro', es: 'Intro', it: 'Intro', fr: 'Intro', bg: 'Интро', tr: 'Giriş' },
+    verse:        { ro: 'Versul', en: 'Verse', de: 'Strophe', es: 'Verso', it: 'Strofa', fr: 'Couplet', bg: 'Куплет', tr: 'Kıta' },
+    prechorus:    { ro: 'Pre-refren', en: 'Pre-Chorus', de: 'Vor-Refrain', es: 'Pre-Coro', it: 'Pre-Ritornello', fr: 'Pré-refrain', bg: 'Пред-припев', tr: 'Ön Nakarat' },
+    chorus:       { ro: 'Refren', en: 'Chorus', de: 'Refrain', es: 'Coro', it: 'Ritornello', fr: 'Refrain', bg: 'Припев', tr: 'Nakarat' },
+    postchorus:   { ro: 'Post-refren', en: 'Post-Chorus', de: 'Nach-Refrain', es: 'Post-Coro', it: 'Post-Ritornello', fr: 'Post-refrain', bg: 'Пост-припев', tr: 'Son Nakarat' },
+    bridge:       { ro: 'Punte', en: 'Bridge', de: 'Bridge', es: 'Puente', it: 'Bridge', fr: 'Pont', bg: 'Мост', tr: 'Köprü' },
+    finalchorus:  { ro: 'Refren final', en: 'Final Chorus', de: 'Schlussrefrain', es: 'Coro final', it: 'Ritornello finale', fr: 'Refrain final', bg: 'Финален припев', tr: 'Final Nakarat' },
+    outro:        { ro: 'Încheiere', en: 'Outro', de: 'Outro', es: 'Outro', it: 'Outro', fr: 'Outro', bg: 'Аутро', tr: 'Çıkış' },
+    instrumental: { ro: 'Instrumental', en: 'Instrumental', de: 'Instrumental', es: 'Instrumental', it: 'Strumentale', fr: 'Instrumental', bg: 'Инструментал', tr: 'Enstrümantal' },
+    guitarsolo:   { ro: 'Solo de chitară', en: 'Guitar Solo', de: 'Gitarrensolo', es: 'Solo de guitarra', it: 'Assolo di chitarra', fr: 'Solo de guitare', bg: 'Китарно соло', tr: 'Gitar Solosu' },
+    interlude:    { ro: 'Interludiu', en: 'Interlude', de: 'Zwischenspiel', es: 'Interludio', it: 'Interludio', fr: 'Interlude', bg: 'Интерлюдия', tr: 'Ara Bölüm' },
+    hook:         { ro: 'Hook', en: 'Hook', de: 'Hook', es: 'Gancho', it: 'Hook', fr: 'Accroche', bg: 'Кука', tr: 'Kanca' },
+    refrain:      { ro: 'Refren', en: 'Refrain', de: 'Refrain', es: 'Estribillo', it: 'Ritornello', fr: 'Refrain', bg: 'Рефрен', tr: 'Nakarat' },
+    breakdown:    { ro: 'Repriză', en: 'Breakdown', de: 'Breakdown', es: 'Breakdown', it: 'Breakdown', fr: 'Breakdown', bg: 'Брейкдаун', tr: 'Kırılma' },
+    drop:         { ro: 'Drop', en: 'Drop', de: 'Drop', es: 'Drop', it: 'Drop', fr: 'Drop', bg: 'Дроп', tr: 'Drop' },
+    spokenword:   { ro: 'Recitat', en: 'Spoken Word', de: 'Sprechgesang', es: 'Palabra hablada', it: 'Parlato', fr: 'Parlé', bg: 'Говорим текст', tr: 'Konuşma' },
+    adlib:        { ro: 'Ad-lib', en: 'Ad-Lib', de: 'Ad-Lib', es: 'Ad-Lib', it: 'Ad-Lib', fr: 'Ad-Lib', bg: 'Ад-либ', tr: 'Ad-Lib' }
+  };
+
+  // ORDINEA conteaza — modelele compuse/mai specifice se verifica INAINTEA celor simple
+  // (ex. "final chorus" inaintea lui "chorus", "pre-chorus" inaintea lui "chorus").
+  const SECTION_LABEL_PATTERNS = [
+    { key: 'finalchorus', re: /^final\s*chorus$/i },
+    { key: 'prechorus', re: /^pre[\s-]?chorus$/i },
+    { key: 'postchorus', re: /^post[\s-]?chorus$/i },
+    { key: 'guitarsolo', re: /^guitar\s*solo$/i },
+    { key: 'spokenword', re: /^spoken\s*word$/i },
+    { key: 'adlib', re: /^ad[\s-]?lib$/i },
+    { key: 'intro', re: /^intro$/i },
+    { key: 'outro', re: /^outro$/i },
+    { key: 'bridge', re: /^bridge$/i },
+    { key: 'instrumental', re: /^instrumental$/i },
+    { key: 'interlude', re: /^interlude$/i },
+    { key: 'hook', re: /^hook$/i },
+    { key: 'refrain', re: /^refrain$/i },
+    { key: 'breakdown', re: /^breakdown$/i },
+    { key: 'drop', re: /^drop$/i },
+    { key: 'verse', re: /^verse$/i },
+    { key: 'chorus', re: /^chorus$/i }
+  ];
+
+  // Traduce O SINGURA eticheta (textul dintre paranteze, fara parantezele in sine). Un numar
+  // final optional (ex. "Verse 2") e extras si repus dupa traducere, in aceeasi pozitie.
+  // O eticheta necunoscuta e intoarsa NESCHIMBATA — niciodata ascunsa sau stricata.
+  function translateSectionLabel(rawLabel, lang) {
+    const trimmed = rawLabel.trim();
+    const m = trimmed.match(/^(.*?)(?:\s+(\d+))?$/);
+    const base = (m && m[1] ? m[1] : trimmed).trim();
+    const number = (m && m[2]) || '';
+
+    for (const pattern of SECTION_LABEL_PATTERNS) {
+      if (pattern.re.test(base)) {
+        const dict = SECTION_LABEL_TRANSLATIONS[pattern.key];
+        const translated = (dict && dict[lang]) || (dict && dict.en) || base;
+        return number ? `${translated} ${number}` : translated;
+      }
+    }
+    return trimmed;
+  }
+
+  // Inlocuieste DOAR continutul dintre [ ] — restul textului (versurile propriu-zise,
+  // liniile goale, ordinea strofelor) trece complet neatins prin aceasta functie.
+  // Comenzile in engleza raman neschimbate (cerinta explicita).
+  function translateSectionLabelsForDisplay(text, lang) {
+    if (!text || lang === 'en') return text;
+    return text.replace(/\[([^\[\]]+)\]/g, (whole, inner) => `[${translateSectionLabel(inner, lang)}]`);
+  }
+
+  // ==========================================================================================
+  // NORMALIZARE INAINTE DE SALVARE — traducerea etichetelor de mai sus e STRICT vizuala; ce
+  // ajunge in baza de date (si, ulterior, in promptul de regenerare Suno) trebuie sa foloseasca
+  // mereu etichetele standard in engleza, niciodata cele traduse. Aceasta functie face
+  // conversia INVERSA, chiar inainte de request-ul catre server.
+  //
+  // Harta inversa e construita AUTOMAT din SECTION_LABEL_TRANSLATIONS (aceeasi sursa unica,
+  // fara duplicare de date) — pentru fiecare limba, fiecare text localizat cunoscut e mapat
+  // inapoi la cheia lui. Cateva chei impart acelasi text localizat in unele limbi (de ex.
+  // "chorus" si "refrain" sunt ambele "Refren" in romana) — in acel caz castiga PRIMA cheie
+  // intalnita, in ordinea de mai sus din SECTION_LABEL_TRANSLATIONS (deci "Refren" -> "Chorus",
+  // nu "Refrain", pentru ca "chorus" e definit inaintea lui "refrain" — o alegere determinista
+  // si documentata, nu una intamplatoare).
+  // ==========================================================================================
+  const SECTION_LABEL_REVERSE = {};
+  for (const lang of Object.keys(SECTION_LABEL_TRANSLATIONS.intro)) {
+    SECTION_LABEL_REVERSE[lang] = {};
+    for (const key of Object.keys(SECTION_LABEL_TRANSLATIONS)) {
+      const localized = SECTION_LABEL_TRANSLATIONS[key][lang];
+      if (!localized) continue;
+      const normKey = localized.trim().toLowerCase();
+      if (!(normKey in SECTION_LABEL_REVERSE[lang])) {
+        SECTION_LABEL_REVERSE[lang][normKey] = key;
+      }
+    }
+  }
+
+  // Normalizeaza O SINGURA eticheta localizata inapoi la forma engleza standard. Un numar
+  // final optional (ex. "Versul 2") e extras si repus dupa normalizare. O eticheta care nu
+  // se regaseste in harta inversa (necunoscuta, sau deja in engleza) e intoarsa NESCHIMBATA —
+  // asta acopera exact cazul din cerinta: "[Refren nou]" ramane exact asa.
+  function normalizeSectionLabel(rawLabel, lang) {
+    const trimmed = rawLabel.trim();
+    const m = trimmed.match(/^(.*?)(?:\s+(\d+))?$/);
+    const base = (m && m[1] ? m[1] : trimmed).trim();
+    const number = (m && m[2]) || '';
+
+    const reverseMap = SECTION_LABEL_REVERSE[lang] || SECTION_LABEL_REVERSE.en;
+    const key = reverseMap[base.toLowerCase()];
+    if (key) {
+      const enLabel = SECTION_LABEL_TRANSLATIONS[key].en;
+      return number ? `${enLabel} ${number}` : enLabel;
+    }
+    return trimmed;
+  }
+
+  // Inlocuieste DOAR continutul dintre [ ] cu forma engleza standard — restul textului
+  // (versurile, liniile goale, ordinea, punctuatia, diacriticele) trece complet neatins.
+  // Comenzile in engleza nu au nevoie de normalizare (nu au fost traduse la afisare).
+  function normalizeSectionLabelsForSaving(text, lang) {
+    if (!text || lang === 'en') return text;
+    return text.replace(/\[([^\[\]]+)\]/g, (whole, inner) => `[${normalizeSectionLabel(inner, lang)}]`);
+  }
+
   function renderVariants(order) {
     variantsWrap.innerHTML = '';
     (order.variants || []).forEach((v, i) => {
@@ -577,7 +712,8 @@
       card.dataset.index = i;
 
       const label = i === 0 ? t.variant1_label : t.variant2_label;
-      const lyricsText = (v.editedLyrics && v.editedLyrics.trim()) ? v.editedLyrics : v.originalLyrics;
+      const lyricsTextRaw = (v.editedLyrics && v.editedLyrics.trim()) ? v.editedLyrics : v.originalLyrics;
+      const lyricsText = translateSectionLabelsForDisplay(lyricsTextRaw, order.lang);
       const wasEdited = !!(v.editedLyrics && v.editedLyrics.trim());
 
       let lyricsHtml;
@@ -639,7 +775,7 @@
   function openLyricsEditor(variant) {
     editingVariantId = variant.id;
     const existing = (variant.editedLyrics && variant.editedLyrics.trim()) ? variant.editedLyrics : (variant.originalLyrics || '');
-    lyricsTextarea.value = existing;
+    lyricsTextarea.value = translateSectionLabelsForDisplay(existing, currentOrder.lang);
     updateCharCounter();
     lyricsValidationEl.textContent = '';
     contentState.style.display = 'none';
@@ -671,11 +807,16 @@
     lyricsValidationEl.textContent = '';
     editorSaveBtn.disabled = true;
 
+    // IMPORTANT: ce se afla in textarea are etichetele traduse (afisate clientului) —
+    // niciodata nu trimitem asta direct catre server. Normalizam intai la etichetele
+    // standard engleze; versurile propriu-zise, liniile goale si ordinea raman neatinse.
+    const normalizedText = normalizeSectionLabelsForSaving(text, currentOrder.lang);
+
     try {
       const res = await fetch(`/api/orders/${orderId}/variants/${editingVariantId}/lyrics`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Access-Token': accessToken },
-        body: JSON.stringify({ lyrics: text })
+        body: JSON.stringify({ lyrics: normalizedText })
       });
       const data = await res.json();
       editorSaveBtn.disabled = false;
@@ -688,7 +829,7 @@
       // reflectam local editarea, fara sa mai asteptam un nou fetch complet
       const variant = currentOrder.variants.find(v => v.id === editingVariantId);
       if (variant) {
-        variant.editedLyrics = text;
+        variant.editedLyrics = normalizedText;
         variant.lyricsUpdatedAt = new Date().toISOString();
       }
       renderVariants(currentOrder);

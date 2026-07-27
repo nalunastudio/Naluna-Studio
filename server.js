@@ -1481,6 +1481,54 @@ const OCCASION_LABELS = {
   altceva: 'a personal occasion'
 };
 
+// Instructiune de ATMOSFERA/TON pentru fiecare ocazie — separata de OCCASION_LABELS (care e
+// doar eticheta scurta "Occasion: X."). Fara aceasta, ocazia era doar mentionata, nu si
+// folosita ca directie reala pentru versuri (cerinta explicita). Valorile interne ale
+// ocaziei (cheile acestui obiect) raman EXACT cele deja folosite in formular — nu s-a
+// schimbat nimic in ce trimite clientul, doar cum foloseste server-ul aceasta valoare.
+// Fiecare ocazie are o forma FULL (calitate mai buna) si una SHORT (folosita doar daca
+// bugetul de 500 caractere e foarte stramtorat — vezi cascada de scurtare din buildPrompt).
+const OCCASION_INSTRUCTIONS = {
+  dor: {
+    full: 'Convey deep longing for someone missed — evoke shared memories and quiet nostalgia throughout.',
+    short: 'Deep longing and nostalgia.'
+  },
+  onomastica: {
+    full: 'Warm, celebratory mood — express appreciation, wishes and joy for their special name day.',
+    short: 'Warm, celebratory, joyful wishes.'
+  },
+  aniversare: {
+    full: 'Personal, warm birthday mood — heartfelt wishes and real memories, not a generic birthday song.',
+    short: 'Personal birthday warmth, heartfelt wishes.'
+  },
+  declaratie: {
+    full: 'Sincere romantic declaration — express love and gratitude, personal and direct, like a real confession.',
+    short: 'Sincere romantic declaration of love.'
+  },
+  nunta: {
+    full: 'Loving, joyful atmosphere of promise and togetherness for a wedding — solemn and moving, never sad.',
+    short: 'Loving, joyful wedding atmosphere.'
+  },
+  pierdere: {
+    full: 'Gentle, respectful, deeply emotional remembrance — comfort and lasting love, never cheerful or upbeat.',
+    short: 'Gentle, respectful remembrance.'
+  },
+  'pentru-mine': {
+    full: 'Reflective, healing, personal tone — a message to oneself; let the story below guide the mood.',
+    short: 'Reflective, healing, personal tone.'
+  },
+  altceva: {
+    full: 'Infer the mood and atmosphere from the story below rather than assuming any specific occasion.',
+    short: 'Infer the mood from the story.'
+  }
+};
+// Fallback pentru comenzi vechi/valoare necunoscuta de ocazie (Partea 2, punctul 11) —
+// neutru, nu blocheaza generarea, lasa povestea sa conduca tonul.
+const OCCASION_INSTRUCTION_FALLBACK = {
+  full: 'Let the story below guide the mood and atmosphere of the song.',
+  short: 'Let the story guide the mood.'
+};
+
 // Lungimi maxime pentru campurile de personalizare — validate deja la creare (vezi POST
 // /api/orders), dar re-aplicate defensiv aici si pentru comenzi mai vechi care ar putea
 // avea valori mai lungi salvate sub reguli anterioare.
@@ -1490,8 +1538,11 @@ const RELATIONSHIP_MAX_LEN = 60;
 
 // Garantam intotdeauna cel putin acest spatiu pentru poveste — partea cea mai importanta
 // pentru personalizare (Partea 4) nu trebuie sa poata fi eliminata complet de un nume,
-// expeditor sau relatie foarte lungi, sau de instructiuni repetitive.
-const STORY_MIN_RESERVE = 200;
+// expeditor, relatie sau instructiune de ocazie mai lunga, sau de instructiuni repetitive.
+// 180 e limita inferioara a intervalului 180-220 cerut — coborata usor de la 200 fata de
+// versiunea anterioara, DOAR ca sa faca loc noii instructiuni de ocazie (Partea 2) fara
+// sa sacrifice inutil relatia/expeditorul in cazuri obisnuite (nume si poveste scurte).
+const STORY_MIN_RESERVE = 180;
 
 function buildPrompt(order, feedback) {
   const genreMap = {
@@ -1512,6 +1563,17 @@ function buildPrompt(order, feedback) {
   const lyricsLanguage = languageNames[order.lang] || 'Romanian';
   const styleTags = genreMap[order.genre] || 'pop, warm vocals';
   const occasionLabel = OCCASION_LABELS[order.occasion] || order.occasion;
+
+  // Instructiunea de atmosfera/ton pentru ocazia aleasa — comenzi vechi sau o valoare
+  // necunoscuta de ocazie NU blocheaza generarea (Partea 2, punctul 11): folosim fallback-ul
+  // neutru, bazat pe poveste.
+  const occasionInstructionSet = OCCASION_INSTRUCTIONS[order.occasion] || OCCASION_INSTRUCTION_FALLBACK;
+  let useShortOccasionInstruction = false;
+  let includeOccasionInstruction = true;
+  function currentOccasionInstruction() {
+    if (!includeOccasionInstruction) return '';
+    return ' ' + (useShortOccasionInstruction ? occasionInstructionSet.short : occasionInstructionSet.full);
+  }
 
   // Comenzile vechi (dinainte de sender/relationship) nu au aceste campuri — tratate optional.
   const hasSender = typeof order.senderName === 'string' && order.senderName.trim().length > 0;
@@ -1560,23 +1622,28 @@ function buildPrompt(order, feedback) {
   // vine ULTIMA, dupa personalizare — separata clar, propria ei propozitie.
   function buildFixedPart(rec, snd, rel) {
     let lines = `Recipient: ${rec}.`;
-    if (hasSender) lines += ` Sender: ${snd}.`;
-    if (hasRelationship) lines += ` Relationship: ${rel}.`;
-    return `${styleTags}. Write the song lyrics entirely in ${lyricsLanguage}. Occasion: ${occasionLabel}. ${lines}${currentInstruction()}${currentVoiceInstruction()}`;
+    // IMPORTANT: verificam valoarea CURENTA (snd/rel, care pot fi golite de cascada de
+    // scurtare de mai jos), nu flag-urile fixe hasSender/hasRelationship calculate o
+    // singura data la inceput — altfel, o relatie golita explicit tot ar aparea ca
+    // "Relationship: ." (segment gol, in loc sa fie omis complet, irosind spatiu).
+    if (hasSender && snd) lines += ` Sender: ${snd}.`;
+    if (hasRelationship && rel) lines += ` Relationship: ${rel}.`;
+    return `${styleTags}. Write the song lyrics entirely in ${lyricsLanguage}. Occasion: ${occasionLabel}.${currentOccasionInstruction()} ${lines}${currentInstruction()}${currentVoiceInstruction()}`;
   }
 
   let head = buildFixedPart(recipient, sender, relationship);
 
   // Daca partea fixa tot nu lasa spatiul minim garantat pentru poveste (campuri foarte lungi
-  // combinate cu un gen muzical/ocazie cu descriere mai lunga), scurtam progresiv. Prima
-  // incercare e mereu sa trecem pe instructiunea de personalizare SCURTA — elibereaza mult
-  // spatiu fara sa sacrifice nimic ales explicit de client. DOAR daca tot nu ajunge, eliminam
-  // instructiunea de voce (cerinta explicita: vocea nu e in lista de prioritati — poveste >
-  // destinatar > expeditor > relatie > limba > gen muzical — deci cade inaintea acestora).
-  // Fiecare pas se aplica DOAR daca cel anterior n-a fost suficient.
+  // combinate cu un gen muzical/ocazie cu descriere mai lunga), scurtam progresiv, respectand
+  // ordinea de prioritate ceruta: limba > destinatar > expeditor > relatie > ocazie > poveste >
+  // gen muzical > voce. Vocea (cea mai joasa prioritate) cade prima; ocazia (prioritate mai
+  // mare) e doar COMPRIMATA devreme (forma scurta, fara pierdere reala de continut) si
+  // eliminata complet abia ca ultim resort, mult dupa voce. Fiecare pas se aplica DOAR daca
+  // cel anterior n-a fost suficient.
   const budgetForFixedPart = SUNO_PROMPT_MAX_LEN - STORY_MIN_RESERVE;
   const shrinkSteps = [
     () => { useShortInstruction = true; },
+    () => { useShortOccasionInstruction = true; },
     () => { relationship = truncateSafely(relationship, 20); },
     () => { sender = truncateSafely(sender, 30); },
     () => { recipient = truncateSafely(recipient, 30); },
@@ -1586,7 +1653,8 @@ function buildPrompt(order, feedback) {
     () => { recipient = truncateSafely(recipient, 15); },
     () => { relationship = ''; },
     () => { sender = truncateSafely(sender, 8); },
-    () => { recipient = truncateSafely(recipient, 10); }
+    () => { recipient = truncateSafely(recipient, 10); },
+    () => { includeOccasionInstruction = false; }
   ];
   for (const step of shrinkSteps) {
     if (head.length <= budgetForFixedPart) break;
