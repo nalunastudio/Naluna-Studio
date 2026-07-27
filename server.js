@@ -81,7 +81,7 @@ const FETCH_TIMEOUT_MS = 25000;
 // nu poate plati mai putin decat pretul real al pachetului ales.
 const PLAN_PRICES = { standard: 15, premium: 25, video: 35 };
 const ALLOWED_OCCASIONS = ['dor', 'onomastica', 'aniversare', 'declaratie', 'nunta', 'pierdere', 'pentru-mine', 'altceva'];
-const ALLOWED_GENRES = ['emotional', 'suflet', 'pop', 'acustic', 'petrecere', 'balada', 'manele', 'copii'];
+const ALLOWED_GENRES = ['emotional', 'suflet', 'pop', 'acustic', 'petrecere', 'balada', 'manele', 'copii', 'populara', 'rock', 'colind', 'modern', 'hiphop', 'lautareasca', 'motivational'];
 const ALLOWED_LANGS = ['ro', 'en', 'de', 'es', 'it', 'fr', 'bg', 'tr'];
 
 // Mesaje de validare traduse pentru campurile obligatorii legate de personalizare
@@ -168,6 +168,31 @@ const INVALID_VOICE_MESSAGES = {
 function invalidVoiceMessage(lang) {
   const safe = ALLOWED_LANGS.includes(lang) ? lang : 'ro';
   return INVALID_VOICE_MESSAGES[safe];
+}
+
+// Mesaj de validare tradus — numar de telefon invalid (selector international WhatsApp).
+const INVALID_PHONE_MESSAGES = {
+  ro: 'Numărul de telefon nu este valid',
+  en: 'The phone number is not valid',
+  de: 'Die Telefonnummer ist ungültig',
+  es: 'El número de teléfono no es válido',
+  it: 'Il numero di telefono non è valido',
+  fr: 'Le numéro de téléphone n\'est pas valide',
+  bg: 'Телефонният номер не е валиден',
+  tr: 'Telefon numarası geçerli değil'
+};
+function invalidPhoneMessage(lang) {
+  const safe = ALLOWED_LANGS.includes(lang) ? lang : 'ro';
+  return INVALID_PHONE_MESSAGES[safe];
+}
+
+// Validare E.164 STRICT independenta de tara — NU presupune si NU forteaza niciodata un
+// prefix anume (ex. +44). Accepta orice tara valida: "+" urmat de 7-15 cifre, prima cifra
+// nefiind 0 (asa cum cere standardul E.164). Numarul trebuie sa fi fost deja normalizat de
+// frontend (intl-tel-input) inainte sa ajunga aici — server-ul doar verifica FORMATUL,
+// nu presupune sau modifica NICIODATA continutul.
+function isValidE164Phone(str) {
+  return typeof str === 'string' && /^\+[1-9]\d{6,14}$/.test(str.trim());
 }
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // Token "fals", generat o singura data la pornire, cu exact aceeasi forma ca un accessToken
@@ -570,7 +595,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 // ==========================================================================================
 app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
   try {
-    const { occasion, recipient, senderName, relationship, email, story, genre, plan, lang, voicePreference } = req.body || {};
+    const { occasion, recipient, senderName, relationship, email, phone, story, genre, plan, lang, voicePreference } = req.body || {};
     const safeLang = ALLOWED_LANGS.includes(lang) ? lang : 'ro';
 
     if (!ALLOWED_OCCASIONS.includes(occasion)) {
@@ -587,6 +612,15 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
     }
     if (!isValidEmail(email)) {
       return res.status(400).json({ error: 'Adresa de email nu este validă.' });
+    }
+    // Telefonul (WhatsApp) e OPTIONAL — gol e intotdeauna acceptat. Daca e trimis, TREBUIE sa
+    // fie deja format international E.164 (frontend-ul il normalizeaza inainte sa trimita) —
+    // validat aici independent de orice tara anume; NU presupunem si NU inlocuim niciodata
+    // cu un prefix implicit (ex. +44). Un client din orice tara poate trimite orice numar
+    // international valid.
+    const safePhone = (typeof phone === 'string' && phone.trim()) ? phone.trim() : null;
+    if (safePhone && !isValidE164Phone(safePhone)) {
+      return res.status(400).json({ error: invalidPhoneMessage(safeLang) });
     }
     if (!isValidString(story, 5, 2000)) {
       return res.status(400).json({ error: missingFieldMessage('story', safeLang) });
@@ -617,7 +651,8 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
       story: story.trim(), genre, plan, price, lang: safeLang,
       status: 'draft', editsUsed: 0, variants: [], selectedVariantId: null,
       senderName: senderName.trim(), relationship: relationship.trim(),
-      voicePreference: safeVoicePreference
+      voicePreference: safeVoicePreference,
+      phone: safePhone
     });
 
     res.json({ orderId: order.id, accessToken: order.accessToken });
@@ -1623,7 +1658,14 @@ function buildPrompt(order, feedback) {
     petrecere: 'party music, energetic, danceable',
     balada: 'emotional ballad, piano-led, slow build',
     manele: 'romanian manele style, live instruments',
-    copii: 'children\'s song, playful, simple melody, cheerful upbeat tempo, friendly vocals'
+    copii: 'children\'s song, playful, simple melody, cheerful upbeat tempo, friendly vocals',
+    populara: 'romanian popular folk-pop, traditional instruments blended with modern production, upbeat',
+    rock: 'rock, driving electric guitars, powerful vocals, energetic',
+    colind: 'christmas carol style, festive, warm choir-like harmonies, traditional',
+    modern: 'modern pop-electronic, contemporary production, catchy synths',
+    hiphop: 'hip-hop, rhythmic vocal delivery, modern beat, confident',
+    lautareasca: 'romanian lautareasca style, virtuosic violin and accordion, lively traditional folk instruments',
+    motivational: 'motivational anthem, uplifting and empowering, building energy, inspiring vocals'
   };
 
   const languageNames = {

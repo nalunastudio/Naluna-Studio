@@ -102,6 +102,11 @@ async function initDb() {
   // deci comenzile vechi continua sa functioneze neschimbate, fara nicio migrare de date.
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS voice_preference TEXT;`);
 
+  // phone: numarul WhatsApp optional, salvat INTOTDEAUNA in format international E.164
+  // (ex. +447920728215, +40721234567, +8613812345678) — niciodata fara prefix, niciodata
+  // presupunand vreo tara implicita. NULL cand clientul nu il completeaza (ramane optional).
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS phone TEXT;`);
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS testimonials (
       id UUID PRIMARY KEY,
@@ -158,21 +163,23 @@ function rowToOrder(row) {
     // NULL (comenzi vechi, dinainte de aceasta coloana) devine 'auto' aici, o singura
     // data, central — restul aplicatiei (buildPrompt, API, comanda.html, melodia-mea.html)
     // nu mai trebuie sa trateze separat cazul NULL.
-    voicePreference: row.voice_preference || 'auto'
+    voicePreference: row.voice_preference || 'auto',
+    phone: row.phone || null
   };
 }
 
 async function createOrder(order) {
   const result = await pool.query(
     `INSERT INTO orders
-      (id, access_token, occasion, recipient, email, story, genre, plan, price, lang, status, edits_used, variants, selected_variant_id, sender_name, relationship, voice_preference)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+      (id, access_token, occasion, recipient, email, story, genre, plan, price, lang, status, edits_used, variants, selected_variant_id, sender_name, relationship, voice_preference, phone)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
      RETURNING *`,
     [
       order.id, order.accessToken, order.occasion, order.recipient, order.email,
       order.story, order.genre, order.plan, order.price, order.lang,
       order.status, order.editsUsed, JSON.stringify(order.variants || []), order.selectedVariantId,
-      order.senderName || null, order.relationship || null, order.voicePreference || 'auto'
+      order.senderName || null, order.relationship || null, order.voicePreference || 'auto',
+      order.phone || null
     ]
   );
   return rowToOrder(result.rows[0]);

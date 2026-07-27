@@ -6,6 +6,7 @@
 <title>Compune cântecul tău — NALUNA</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;1,9..144,400&family=Sora:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.19/css/intlTelInput.css">
 <style>
   :root{
     --bg:#FAF8F5; --bg-secondary:#F8F6F2; --surface:#FDFCFA;
@@ -59,6 +60,29 @@
   input:focus, select:focus, textarea:focus{ outline:2px solid var(--gold); outline-offset:1px; border-color:var(--gold); }
   input.field-invalid, select.field-invalid, textarea.field-invalid{ border-color:var(--error); }
   .field-error{ color:var(--error); font-size:12px; margin-top:6px; min-height:14px; }
+
+  /* Integrare vizuala a selectorului international de telefon (intl-tel-input) cu
+     identitatea Naluna — pastreaza aceleasi colturi rotunjite, culori si inaltime ca
+     restul campurilor din formular. */
+  .iti{ width:100%; }
+  .iti input.iti__tel-input{
+    width:100%; background:var(--surface); border:1px solid var(--line); border-radius:10px;
+    padding:13px 15px; color:var(--text); font-family:'Sora', sans-serif; font-size:14px;
+  }
+  .iti input.iti__tel-input:focus{ outline:2px solid var(--gold); outline-offset:1px; border-color:var(--gold); }
+  .iti input.iti__tel-input.field-invalid{ border-color:var(--error); }
+  .iti__country-list{
+    border-radius:10px; border:1px solid var(--line); font-family:'Sora', sans-serif;
+    box-shadow:0 12px 28px -10px rgba(43,43,43,.18);
+  }
+  .iti__selected-country{ border-radius:10px 0 0 10px; }
+  /* daca librăria nu se incarca (ex. CDN blocat), campul telefon ramane un <input> simplu,
+     complet functional, cu acelasi stil ca restul formularului — vezi si JS-ul de mai jos */
+  #phone{
+    width:100%; background:var(--surface); border:1px solid var(--line); border-radius:10px;
+    padding:13px 15px; color:var(--text); font-family:'Sora', sans-serif; font-size:14px;
+  }
+  #phone:focus{ outline:2px solid var(--gold); outline-offset:1px; border-color:var(--gold); }
 
   .theme-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
   .theme-card{
@@ -215,8 +239,9 @@
         <div class="field-error" id="err-email"></div>
       </div>
       <div class="field">
-        <label for="phone" data-i18n="label_phone">Telefon WhatsApp (opțional — primești și acolo melodia)</label>
-        <input type="tel" id="phone" placeholder="+44 7xxx xxxxxx" data-i18n-placeholder="ph_phone">
+        <label for="phone" data-i18n="label_phone">Număr WhatsApp (opțional)</label>
+        <input type="tel" id="phone" placeholder="+44 7920 728215" data-i18n-placeholder="ph_phone">
+        <div class="field-error" id="err-phone"></div>
       </div>
 
       <div class="wizard-nav">
@@ -240,6 +265,13 @@
           <option value="balada" data-i18n="genre_balada">Baladă</option>
           <option value="manele" data-i18n="genre_manele">Manele</option>
           <option value="copii" data-i18n="genre_copii">Pentru copii</option>
+          <option value="populara" data-i18n="genre_populara">Populară</option>
+          <option value="rock" data-i18n="genre_rock">Rock</option>
+          <option value="colind" data-i18n="genre_colind">Colind</option>
+          <option value="modern" data-i18n="genre_modern">Modern</option>
+          <option value="hiphop" data-i18n="genre_hiphop">Hip-hop</option>
+          <option value="lautareasca" data-i18n="genre_lautareasca">Lăutărească</option>
+          <option value="motivational" data-i18n="genre_motivational">Motivațional</option>
         </select>
         <div class="field-error" id="err-genre"></div>
       </div>
@@ -317,6 +349,7 @@
   </form>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.19/js/intlTelInput.min.js"></script>
 <script>
   const translations = {
     ro: {
@@ -348,7 +381,7 @@
       label_relationship: 'Ce relație există între voi',
       ph_relationship: 'ex: soție și soț, mamă și fiică, prieteni',
       label_email: 'Emailul tău (primești melodia și aici)',
-      label_phone: 'Telefon WhatsApp (opțional — primești și acolo melodia)',
+      label_phone: 'Număr WhatsApp (opțional)',
       ph_phone: '+44 7xxx xxxxxx',
       label_story: 'Povestea / detalii de inclus în versuri',
       ph_story: 'Spune-ne ce vă leagă, ce momente importante ați trăit, ce îi iubești cel mai mult, ce vrei să îi transmiți și orice detaliu pe care vrei să îl auzi în melodie',
@@ -362,6 +395,8 @@
       genre_balada: 'Baladă',
       genre_manele: 'Manele',
       genre_copii: 'Pentru copii',
+      genre_populara: 'Populară', genre_rock: 'Rock', genre_colind: 'Colind', genre_modern: 'Modern', genre_hiphop: 'Hip-hop',
+      genre_lautareasca: 'Lăutărească', genre_motivational: 'Motivațional',
       voice_label: 'Ce voce să cânte?',
       voice_female: 'Voce feminină',
       voice_male: 'Voce masculină',
@@ -394,6 +429,7 @@
       val_relationship: 'Spune-ne ce relație aveți',
       val_story: 'Adaugă câteva detalii despre poveste',
       val_email: 'Adresa de email nu este validă',
+      val_phone: 'Numărul de telefon nu este valid',
       val_genre: 'Alege un gen muzical',
       step_progress_label: (n) => 'Pasul ' + n + ' din 4',
     },
@@ -426,7 +462,7 @@
       label_relationship: 'What is your relationship',
       ph_relationship: 'e.g. wife and husband, mother and daughter, friends',
       label_email: 'Your email (you\'ll also receive the song here)',
-      label_phone: 'WhatsApp phone (optional — you\'ll also get the song there)',
+      label_phone: 'WhatsApp number (optional)',
       ph_phone: '+44 7xxx xxxxxx',
       label_story: 'The story / details to include in the lyrics',
       ph_story: 'Tell us what connects you, the important moments you have shared, what you love most about them, what you want to say to them, and anything else you would like to hear in the song',
@@ -440,6 +476,8 @@
       genre_balada: 'Ballad',
       genre_manele: 'Manele',
       genre_copii: 'For kids',
+      genre_populara: 'Folk-pop', genre_rock: 'Rock', genre_colind: 'Christmas carol', genre_modern: 'Modern', genre_hiphop: 'Hip-hop',
+      genre_lautareasca: 'Romanian fiddle folk', genre_motivational: 'Motivational',
       voice_label: 'Which voice should sing?',
       voice_female: 'Female voice',
       voice_male: 'Male voice',
@@ -472,6 +510,7 @@
       val_relationship: 'Tell us your relationship',
       val_story: 'Add a few details about your story',
       val_email: 'The email address is not valid',
+      val_phone: 'The phone number is not valid',
       val_genre: 'Choose a musical genre',
       step_progress_label: (n) => 'Step ' + n + ' of 4',
     },
@@ -504,7 +543,7 @@
       label_relationship: 'Welche Beziehung habt ihr',
       ph_relationship: 'z.B. Ehefrau und Ehemann, Mutter und Tochter, Freunde',
       label_email: 'Deine E-Mail (du erhältst das Lied auch hier)',
-      label_phone: 'WhatsApp-Nummer (optional — du erhältst das Lied auch dort)',
+      label_phone: 'WhatsApp-Nummer (optional)',
       ph_phone: '+44 7xxx xxxxxx',
       label_story: 'Die Geschichte / Details für den Text',
       ph_story: 'Erzähl uns, was euch verbindet, welche wichtigen Momente ihr erlebt habt, was du an dieser Person am meisten liebst, was du ihr sagen möchtest, und alles andere, das im Lied vorkommen soll',
@@ -518,6 +557,8 @@
       genre_balada: 'Ballade',
       genre_manele: 'Manele',
       genre_copii: 'Für Kinder',
+      genre_populara: 'Volkstümlich', genre_rock: 'Rock', genre_colind: 'Weihnachtslied', genre_modern: 'Modern', genre_hiphop: 'Hip-Hop',
+      genre_lautareasca: 'Rumänische Fiedelmusik', genre_motivational: 'Motivierend',
       voice_label: 'Welche Stimme soll singen?',
       voice_female: 'Weibliche Stimme',
       voice_male: 'Männliche Stimme',
@@ -550,6 +591,7 @@
       val_relationship: 'Gib eure Beziehung an',
       val_story: 'Füge ein paar Details zu eurer Geschichte hinzu',
       val_email: 'Die E-Mail-Adresse ist ungültig',
+      val_phone: 'Die Telefonnummer ist ungültig',
       val_genre: 'Wähle eine Musikrichtung',
       step_progress_label: (n) => 'Schritt ' + n + ' von 4',
     },
@@ -582,7 +624,7 @@
       label_relationship: 'Qué relación tenéis',
       ph_relationship: 'ej: esposa y esposo, madre e hija, amigos',
       label_email: 'Tu email (también recibirás la canción aquí)',
-      label_phone: 'Teléfono WhatsApp (opcional — también recibirás la canción allí)',
+      label_phone: 'Número de WhatsApp (opcional)',
       ph_phone: '+44 7xxx xxxxxx',
       label_story: 'La historia / detalles para la letra',
       ph_story: 'Cuéntanos qué os une, los momentos importantes que habéis vivido, qué es lo que más amas de esa persona, qué quieres decirle, y cualquier detalle que quieras escuchar en la canción',
@@ -596,6 +638,8 @@
       genre_balada: 'Balada',
       genre_manele: 'Manele',
       genre_copii: 'Para niños',
+      genre_populara: 'Popular', genre_rock: 'Rock', genre_colind: 'Villancico', genre_modern: 'Moderno', genre_hiphop: 'Hip-hop',
+      genre_lautareasca: 'Folk rumano con violín', genre_motivational: 'Motivacional',
       voice_label: '¿Qué voz debe cantar?',
       voice_female: 'Voz femenina',
       voice_male: 'Voz masculina',
@@ -628,6 +672,7 @@
       val_relationship: 'Indica vuestra relación',
       val_story: 'Añade algunos detalles sobre vuestra historia',
       val_email: 'La dirección de correo no es válida',
+      val_phone: 'El número de teléfono no es válido',
       val_genre: 'Elige un género musical',
       step_progress_label: (n) => 'Paso ' + n + ' de 4',
     },
@@ -660,7 +705,7 @@
       label_relationship: 'Che relazione avete',
       ph_relationship: 'es: moglie e marito, madre e figlia, amici',
       label_email: 'La tua email (riceverai la canzone anche qui)',
-      label_phone: 'Telefono WhatsApp (facoltativo — riceverai la canzone anche lì)',
+      label_phone: 'Numero WhatsApp (facoltativo)',
       ph_phone: '+44 7xxx xxxxxx',
       label_story: 'La storia / dettagli per il testo',
       ph_story: 'Raccontaci cosa vi lega, i momenti importanti che avete vissuto insieme, cosa ami di più di questa persona, cosa vuoi dirle, e qualsiasi dettaglio che vuoi sentire nella canzone',
@@ -674,6 +719,8 @@
       genre_balada: 'Ballata',
       genre_manele: 'Manele',
       genre_copii: 'Per bambini',
+      genre_populara: 'Popolare', genre_rock: 'Rock', genre_colind: 'Canto natalizio', genre_modern: 'Moderno', genre_hiphop: 'Hip-hop',
+      genre_lautareasca: 'Folk rumeno con violino', genre_motivational: 'Motivazionale',
       voice_label: 'Quale voce deve cantare?',
       voice_female: 'Voce femminile',
       voice_male: 'Voce maschile',
@@ -706,6 +753,7 @@
       val_relationship: 'Indica la vostra relazione',
       val_story: 'Aggiungi alcuni dettagli sulla vostra storia',
       val_email: 'L\'indirizzo email non è valido',
+      val_phone: 'Il numero di telefono non è valido',
       val_genre: 'Scegli un genere musicale',
       step_progress_label: (n) => 'Passo ' + n + ' di 4',
     },
@@ -738,7 +786,7 @@
       label_relationship: 'Quelle est votre relation',
       ph_relationship: 'ex : épouse et mari, mère et fille, amis',
       label_email: 'Votre email (vous recevrez aussi la chanson ici)',
-      label_phone: 'Téléphone WhatsApp (facultatif — vous recevrez aussi la chanson là-bas)',
+      label_phone: 'Numéro WhatsApp (facultatif)',
       ph_phone: '+44 7xxx xxxxxx',
       label_story: 'L\'histoire / détails à inclure dans les paroles',
       ph_story: 'Dites-nous ce qui vous unit, les moments importants que vous avez vécus, ce que vous aimez le plus chez cette personne, ce que vous voulez lui dire, et tout détail que vous aimeriez entendre dans la chanson',
@@ -752,6 +800,8 @@
       genre_balada: 'Ballade',
       genre_manele: 'Manele',
       genre_copii: 'Pour enfants',
+      genre_populara: 'Populaire', genre_rock: 'Rock', genre_colind: 'Chant de Noël', genre_modern: 'Moderne', genre_hiphop: 'Hip-hop',
+      genre_lautareasca: 'Folk roumain au violon', genre_motivational: 'Motivant',
       voice_label: 'Quelle voix doit chanter ?',
       voice_female: 'Voix féminine',
       voice_male: 'Voix masculine',
@@ -784,6 +834,7 @@
       val_relationship: 'Indiquez votre relation',
       val_story: 'Ajoutez quelques détails sur votre histoire',
       val_email: 'L\'adresse email n\'est pas valide',
+      val_phone: 'Le numéro de téléphone n\'est pas valide',
       val_genre: 'Choisissez un genre musical',
       step_progress_label: (n) => 'Étape ' + n + ' sur 4',
     },
@@ -816,7 +867,7 @@
       label_relationship: 'Каква е връзката между вас',
       ph_relationship: 'напр. съпруга и съпруг, майка и дъщеря, приятели',
       label_email: 'Твоят имейл (ще получиш песента и тук)',
-      label_phone: 'WhatsApp телефон (по желание — ще получиш песента и там)',
+      label_phone: 'WhatsApp номер (по желание)',
       ph_phone: '+44 7xxx xxxxxx',
       label_story: 'Историята / детайли за текста',
       ph_story: 'Разкажи ни какво ви свързва, важните моменти, които сте преживели заедно, какво обичаш най-много у този човек, какво искаш да му кажеш, и всеки детайл, който искаш да чуеш в песента',
@@ -830,6 +881,8 @@
       genre_balada: 'Балада',
       genre_manele: 'Манеле',
       genre_copii: 'За деца',
+      genre_populara: 'Народна', genre_rock: 'Рок', genre_colind: 'Коледна песен', genre_modern: 'Модерна', genre_hiphop: 'Хип-хоп',
+      genre_lautareasca: 'Лъутарска музика', genre_motivational: 'Мотивационна',
       voice_label: 'Какъв глас да пее?',
       voice_female: 'Женски глас',
       voice_male: 'Мъжки глас',
@@ -862,6 +915,7 @@
       val_relationship: 'Посочи каква е връзката ви',
       val_story: 'Добави няколко детайла за вашата история',
       val_email: 'Имейл адресът не е валиден',
+      val_phone: 'Телефонният номер не е валиден',
       val_genre: 'Избери музикален жанр',
       step_progress_label: (n) => 'Стъпка ' + n + ' от 4',
     },
@@ -894,7 +948,7 @@
       label_relationship: 'Aranızdaki ilişki nedir',
       ph_relationship: 'örn: eş ve eş, anne ve kız, arkadaşlar',
       label_email: 'E-posta adresiniz (şarkıyı buraya da alacaksınız)',
-      label_phone: 'WhatsApp telefonu (isteğe bağlı — şarkıyı oradan da alacaksınız)',
+      label_phone: 'WhatsApp numarası (isteğe bağlı)',
       ph_phone: '+44 7xxx xxxxxx',
       label_story: 'Hikaye / sözlere eklenecek detaylar',
       ph_story: 'Sizi birbirinize bağlayan şeyi, yaşadığınız önemli anları, bu kişide en çok neyi sevdiğinizi, ona ne söylemek istediğinizi ve şarkıda duymak istediğiniz her ayrıntıyı bize anlatın',
@@ -908,6 +962,8 @@
       genre_balada: 'Balad',
       genre_manele: 'Manele',
       genre_copii: 'Çocuklar için',
+      genre_populara: 'Popüler', genre_rock: 'Rock', genre_colind: 'Noel ilahisi', genre_modern: 'Modern', genre_hiphop: 'Hip-hop',
+      genre_lautareasca: 'Rumen keman müziği', genre_motivational: 'Motivasyonel',
       voice_label: 'Hangi ses söylemeli?',
       voice_female: 'Kadın sesi',
       voice_male: 'Erkek sesi',
@@ -940,6 +996,7 @@
       val_relationship: 'Aranızdaki ilişkiyi belirtin',
       val_story: 'Hikayeniz hakkında birkaç detay ekleyin',
       val_email: 'E-posta adresi geçerli değil',
+      val_phone: 'Telefon numarası geçerli değil',
       val_genre: 'Bir müzik türü seçin',
       step_progress_label: (n) => 'Adım ' + n + '/4',
     },
@@ -1003,6 +1060,76 @@
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v || '');
   }
 
+  // ==========================================================================================
+  // SELECTOR INTERNATIONAL DE TELEFON (WhatsApp, optional). Foloseste intl-tel-input
+  // (biblioteca profesionala incarcata din cdnjs) pentru: steag, cautare dupa tara, prefix
+  // international, validare si normalizare in format E.164. Selectia de tara e complet
+  // INDEPENDENTA de limba melodiei, limba site-ului, moneda sau locatia utilizatorului —
+  // nu exista niciun geoIpLookup si niciun "initialCountry: auto" (care ar necesita
+  // detectarea locatiei reale). Un client din China poate alege orice tara pentru numarul
+  // sau de telefon si poate comanda o melodie in orice limba, complet independent.
+  //
+  // FALLBACK: daca biblioteca nu s-a incarcat (CDN blocat, fara conexiune la acel domeniu
+  // etc.), `window.intlTelInput` nu exista — campul ramane un <input type="tel"> obisnuit,
+  // complet functional, cu validare/normalizare facuta manual mai jos (getPhoneE164Fallback).
+  // Formularul NU se blocheaza in niciun caz.
+  // ==========================================================================================
+  const phoneInput = document.getElementById('phone');
+  let iti = null;
+  if (typeof window.intlTelInput === 'function') {
+    try {
+      iti = window.intlTelInput(phoneInput, {
+        initialCountry: 'gb', // punct de pornire neutru, NU o presupunere despre client — usor de schimbat din selector
+        preferredCountries: [],
+        separateDialCode: true,
+        utilsScript: 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.19/js/utils.js'
+      });
+    } catch (err) {
+      iti = null; // orice eroare la initializare -> ramanem pe fallback-ul simplu, fara sa blocam formularul
+    }
+  }
+
+  // Normalizare de rezerva, folosita DOAR daca biblioteca nu e disponibila: accepta spatii,
+  // cratime, paranteze si un eventual 0 local, si construieste un E.164 plauzibil daca
+  // numarul incepe deja cu "+". Nu presupune NICIODATA o anumita tara (nu adauga +44 sau
+  // orice alt prefix implicit) — daca nu incepe cu "+", cerem clientului sa il adauge.
+  function getPhoneE164Fallback() {
+    const raw = phoneInput.value.trim();
+    if (!raw) return { empty: true, value: '', valid: true };
+    const cleaned = raw.replace(/[\s\-().]/g, '');
+    const valid = /^\+[1-9]\d{6,14}$/.test(cleaned);
+    return { empty: false, value: cleaned, valid };
+  }
+
+  // Intoarce { empty, value (E.164 sau ''), valid } — sursa unica de adevar pentru
+  // validare/normalizare, folosita atat la validarea pasului 2 cat si la trimiterea comenzii.
+  function getPhoneInfo() {
+    if (!phoneInput.value.trim()) return { empty: true, value: '', valid: true };
+    if (iti) {
+      // iti.isValidNumber() foloseste utils.js (metadata libphonenumber) daca s-a incarcat;
+      // pana atunci se comporta permisiv — validarea finala si sigura ramane oricum pe server.
+      const valid = typeof iti.isValidNumber === 'function' ? !!iti.isValidNumber() : true;
+      const value = typeof iti.getNumber === 'function' ? iti.getNumber() : phoneInput.value.trim();
+      return { empty: false, value: value || phoneInput.value.trim(), valid };
+    }
+    return getPhoneE164Fallback();
+  }
+
+  function setPhoneValue(e164) {
+    if (!e164) return;
+    if (iti && typeof iti.setNumber === 'function') {
+      iti.setNumber(e164); // reface si numarul SI tara corecta din formatul E.164
+    } else {
+      phoneInput.value = e164;
+    }
+  }
+
+  function validatePhoneField() {
+    const info = getPhoneInfo();
+    setFieldError('phone', info.empty || info.valid ? '' : t('val_phone'));
+    return info.empty || info.valid;
+  }
+
   function validateStep(n) {
     let firstInvalid = null;
     let ok = true;
@@ -1019,12 +1146,14 @@
       setFieldError('relationship', relationship ? '' : t('val_relationship'));
       setFieldError('story', story ? '' : t('val_story'));
       setFieldError('email', isValidEmailClient(email) ? '' : t('val_email'));
+      const phoneOk = validatePhoneField();
 
       if (!recipient) { ok = false; firstInvalid = firstInvalid || 'recipient'; }
       if (!sender) { ok = false; firstInvalid = firstInvalid || 'sender'; }
       if (!relationship) { ok = false; firstInvalid = firstInvalid || 'relationship'; }
       if (!story) { ok = false; firstInvalid = firstInvalid || 'story'; }
       if (!isValidEmailClient(email)) { ok = false; firstInvalid = firstInvalid || 'email'; }
+      if (!phoneOk) { ok = false; firstInvalid = firstInvalid || 'phone'; }
     }
 
     if (n === 3) {
@@ -1109,6 +1238,7 @@
       senderName: document.getElementById('sender').value,
       relationship: document.getElementById('relationship').value,
       email: document.getElementById('email').value,
+      phone: getPhoneInfo().value,
       story: document.getElementById('story').value,
       genre: document.getElementById('genre').value,
       voicePreference: voiceInput.value,
@@ -1126,7 +1256,7 @@
         sender: document.getElementById('sender').value,
         relationship: document.getElementById('relationship').value,
         email: document.getElementById('email').value,
-        phone: document.getElementById('phone').value,
+        phone: getPhoneInfo().value || phoneInput.value,
         story: document.getElementById('story').value,
         genre: document.getElementById('genre').value,
         voicePreference: voiceInput.value,
@@ -1157,7 +1287,7 @@
     if (draft.sender) document.getElementById('sender').value = draft.sender;
     if (draft.relationship) document.getElementById('relationship').value = draft.relationship;
     if (draft.email) document.getElementById('email').value = draft.email;
-    if (draft.phone) document.getElementById('phone').value = draft.phone;
+    if (draft.phone) setPhoneValue(draft.phone);
     if (draft.story) document.getElementById('story').value = draft.story;
     if (draft.genre) document.getElementById('genre').value = draft.genre;
     if (draft.voicePreference) {
