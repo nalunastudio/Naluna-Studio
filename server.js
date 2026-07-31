@@ -1138,7 +1138,7 @@ app.post('/api/music/callback', async (req, res) => {
 
     if (statusName === SUNO_SUCCESS_STATUS) {
       const tracks = extractSunoTracks(body);
-      await finalizeVariantsIfNeeded(order.id, tracks).catch(err => {
+      await finalizeVariantsIfNeeded(order.id, tracks, taskId).catch(err => {
         console.error(`Callback SunoAPI: eroare la finalizarea comenzii ${order.id}:`, err.message);
       });
     } else if (SUNO_ERROR_STATUSES.includes(statusName)) {
@@ -1199,7 +1199,7 @@ async function resumeExistingTaskPolling(orderId, taskId) {
       return;
     }
     if (finalStatus === SUNO_SUCCESS_STATUS) {
-      await finalizeVariantsIfNeeded(orderId, tracks);
+      await finalizeVariantsIfNeeded(orderId, tracks, taskId);
       return;
     }
     if (SUNO_ERROR_STATUSES.includes(finalStatus)) {
@@ -1238,7 +1238,7 @@ async function runGeneration(orderId, feedback) {
 
   // ghidat de acelasi mecanism folosit si de /api/music/callback — daca ambele au ajuns
   // aproape simultan la rezultat, doar primul care ajunge aici proceseaza efectiv fisierele
-  await finalizeVariantsIfNeeded(orderId, tracks);
+  await finalizeVariantsIfNeeded(orderId, tracks, taskId);
 }
 
 // Descarca+taie+urca in stocare fiecare piesa primita de la Suno, si scrie variantele
@@ -1249,7 +1249,7 @@ async function runGeneration(orderId, feedback) {
 // trec de verificare inainte sa apuce vreuna sa scrie — ambele ar descarca si urca fisierele,
 // dublu cost, dublu risc. UPDATE...WHERE...RETURNING e o singura operatie atomica in
 // Postgres: doar una dintre cererile concurente poate "castiga" preluarea.
-async function finalizeVariantsIfNeeded(orderId, tracks) {
+async function finalizeVariantsIfNeeded(orderId, tracks, taskId) {
   const claimed = await db.claimOrderForProviderFinalization(orderId);
   if (!claimed) {
     return false; // alta cerere (polling sau callback) a preluat-o deja — nu procesam a doua oara
@@ -1264,7 +1264,7 @@ async function finalizeVariantsIfNeeded(orderId, tracks) {
     }
 
     const variants = await Promise.all(
-      tracks.map(track => buildVariantFromTrack(orderId, randomUUID().slice(0, 8), track))
+      tracks.map(track => buildVariantFromTrack(orderId, randomUUID().slice(0, 8), track, taskId))
     );
 
     await db.updateOrder(orderId, {
@@ -1306,7 +1306,121 @@ async function finalizeVariantsIfNeeded(orderId, tracks) {
 // Proceseaza O SINGURA piesa primita de la Suno (deja avem URL-ul audio): descarcare,
 // taiere preview cu ffmpeg, citire durata, urcare in stocare (cloud sau fallback local).
 // Identic ca logica de stocare cu versiunea anterioara — doar decuplat de apelul catre provider.
-async function buildVariantFromTrack(orderId, variantId, track) {
+// ==========================================================================================
+// PREVIEW-UL INCEPE DE LA PRIMUL CUVANT REAL CANTAT, NU MEREU DE LA SECUNDA 0.
+//
+// Foloseste endpoint-ul OFICIAL, deja documentat, al furnizorului actual (sunoapi.org):
+// POST /api/v1/generate/get-timestamped-lyrics — verificat direct in documentatia lor,
+// returneaza `alignedWords`: cuvinte cu timp de start/sfarsit exact (secunde), plus un
+// flag `success` per cuvant. Aceasta e sursa de adevar REALA, nu o presupunere audio.
+//
+// Fisierul COMPLET (platit) nu e atins in niciun fel de aceasta functie — doar decide DE
+// UNDE incepe taierea preview-ului (trimAudio). Orice esec, la orice pas, cade automat pe
+// previewStart = 0 (comportamentul de dinainte) — nicio generare nu esueaza din cauza asta.
+// ==========================================================================================
+const TIMESTAMPED_LYRICS_TIMEOUT_MS = 8000; // timeout scurt — nu tinem procesarea in loc
+const PREVIEW_START_BUFFER_S = 1.5;         // rezerva inainte de primul cuvant detectat
+const PREVIEW_START_MAX_S = 25;             // plafon dur — niciodata mai mult de 25 sec sarite
+
+// Eticheta structurala intre paranteze patrate (ex. "[Verse]", "[Chorus]") nu e un cuvant
+// cantat efectiv — o eliminam ca sa vedem daca ramane text real dupa ea (uneori raspunsul
+// providerului concateneaza eticheta cu primul cuvant in acelasi camp).
+function stripStructuralTagsFromWord(word) {
+  return String(word || '').replace(/\[[^[\]]*\]/g, '').trim();
+}
+
+// Un singur apel HTTP, cu maximum o reincercare — DOAR pentru timeout sau erori 5xx
+// (probleme temporare ale furnizorului). O eroare 4xx (ex. audioId invalid) nu se
+// reincearca, pentru ca repetarea ei nu ar schimba rezultatul.
+async function fetchTimestampedLyricsOnce(taskId, audioId) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetchWithTimeout(
+        `${process.env.MUSIC_API_BASE_URL}/api/v1/generate/get-timestamped-lyrics`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${process.env.MUSIC_API_KEY}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ taskId, audioId })
+        },
+        TIMESTAMPED_LYRICS_TIMEOUT_MS
+      );
+      if (res.ok) return { ok: true, res };
+      if (res.status >= 500 && attempt === 0) continue; // eroare temporara -> o singura reincercare
+      return { ok: false, reason: `HTTP ${res.status}` };
+    } catch (err) {
+      if (attempt === 0) continue; // timeout/eroare de retea -> o singura reincercare
+      return { ok: false, reason: `timeout/retea: ${err.message}` };
+    }
+  }
+  return { ok: false, reason: 'necunoscut' };
+}
+
+async function getPreviewStartFromLyrics(taskId, audioId, orderId) {
+  // identificatori scurtati pentru loguri — niciodata tokenul API, niciodata date sensibile
+  const orderTag = orderId ? String(orderId).slice(0, 8) : '?';
+  const taskTag = taskId ? String(taskId).slice(0, 8) : '?';
+  const logPrefix = `[preview-start] comanda ${orderTag}, task ${taskTag}`;
+
+  function fallback(reason) {
+    console.log(`${logPrefix}: fallback la previewStart=0 (motiv: ${reason})`);
+    return 0;
+  }
+
+  if (!taskId || !audioId) {
+    return fallback('taskId sau audioId lipsa');
+  }
+
+  let outcome;
+  try {
+    outcome = await fetchTimestampedLyricsOnce(taskId, audioId);
+  } catch (err) {
+    return fallback(`eroare neasteptata: ${err.message}`);
+  }
+  if (!outcome.ok) {
+    return fallback(outcome.reason);
+  }
+
+  let body;
+  try {
+    body = await outcome.res.json();
+  } catch (err) {
+    return fallback('raspuns invalid (nu e JSON)');
+  }
+
+  if (!body || body.code !== 200 || !body.data || !Array.isArray(body.data.alignedWords)) {
+    return fallback('structura raspuns neasteptata');
+  }
+
+  const words = body.data.alignedWords;
+  if (words.length === 0) {
+    return fallback('alignedWords gol');
+  }
+
+  const firstReal = words.find(w =>
+    w && w.success === true &&
+    typeof w.startS === 'number' && Number.isFinite(w.startS) && w.startS >= 0 &&
+    stripStructuralTagsFromWord(w.word).length > 0
+  );
+
+  if (!firstReal) {
+    return fallback('niciun cuvant real cu success:true gasit');
+  }
+
+  let previewStart = firstReal.startS - PREVIEW_START_BUFFER_S;
+  previewStart = Math.max(0, previewStart);
+  previewStart = Math.min(previewStart, PREVIEW_START_MAX_S);
+
+  console.log(
+    `${logPrefix}: primul cuvant real la ${firstReal.startS.toFixed(2)}s -> ` +
+    `previewStart=${previewStart.toFixed(2)}s (fallback: nu)`
+  );
+  return previewStart;
+}
+
+async function buildVariantFromTrack(orderId, variantId, track, taskId) {
   if (!track.audioUrl) {
     throw new Error(`Piesa primita de la Suno (id: ${track.id || 'necunoscut'}) nu are audioUrl/audio_url.`);
   }
@@ -1315,7 +1429,11 @@ async function buildVariantFromTrack(orderId, variantId, track) {
   const tempPreview = path.join(TEMP_DIR, `${orderId}-${variantId}-preview.mp3`);
 
   await downloadFile(track.audioUrl, tempFull);
-  await trimAudio(tempFull, tempPreview, PREVIEW_SECONDS);
+  // punctul de start al preview-ului — vezi getPreviewStartFromLyrics() pentru detalii si
+  // fallback; fisierul COMPLET (tempFull, de mai sus) e deja descarcat neschimbat, nu e
+  // afectat in niciun fel de aceasta decizie.
+  const previewStart = await getPreviewStartFromLyrics(taskId, track.id, orderId);
+  await trimAudio(tempFull, tempPreview, PREVIEW_SECONDS, previewStart);
   const durationSeconds = await getAudioDuration(tempFull);
 
   const fullKey = `orders/full/${orderId}-${variantId}.mp3`;
@@ -1537,8 +1655,16 @@ async function downloadFile(url, destPath) {
   await pipeline(res.body, fs.createWriteStream(destPath));
 }
 
-async function trimAudio(srcPath, destPath, seconds) {
-  await execFileAsync('ffmpeg', ['-y', '-i', srcPath, '-t', String(seconds), '-acodec', 'copy', destPath]);
+// startSeconds (optional, implicit 0) — punctul de la care incepe taierea preview-ului.
+// Cand e 0 (comportamentul dintotdeauna), NU adaugam deloc flag-ul -ss, ca sa pastram
+// exact aceeasi comanda ffmpeg de dinainte. Fisierul COMPLET (tempFull, folosit pentru
+// descarcarea platita) nu trece NICIODATA prin aceasta functie — doar preview-ul.
+async function trimAudio(srcPath, destPath, seconds, startSeconds = 0) {
+  const safeStart = Math.max(0, Number(startSeconds) || 0);
+  const args = ['-y'];
+  if (safeStart > 0) args.push('-ss', String(safeStart));
+  args.push('-i', srcPath, '-t', String(seconds), '-acodec', 'copy', destPath);
+  await execFileAsync('ffmpeg', args);
 }
 
 async function getAudioDuration(filePath) {
