@@ -1307,7 +1307,10 @@ async function finalizeVariantsIfNeeded(orderId, tracks, taskId) {
 // taiere preview cu ffmpeg, citire durata, urcare in stocare (cloud sau fallback local).
 // Identic ca logica de stocare cu versiunea anterioara — doar decuplat de apelul catre provider.
 // ==========================================================================================
-// PREVIEW-UL INCEPE DE LA PRIMUL CUVANT REAL CANTAT, NU MEREU DE LA SECUNDA 0.
+// PREVIEW-UL PASTREAZA UN INTRO INSTRUMENTAL NATURAL (~8-10 sec) INAINTE DE VOCE, NU SARE
+// DIRECT LA PRIMUL CUVANT — daca vocea porneste deja devreme in melodie, preview-ul incepe
+// pur si simplu de la secunda 0 (nimic de mutat); daca vocea porneste tarziu, preview-ul e
+// mutat inainte astfel incat vocea sa ajunga sa se auda in jurul secundei 9 din preview.
 //
 // Foloseste endpoint-ul OFICIAL, deja documentat, al furnizorului actual (sunoapi.org):
 // POST /api/v1/generate/get-timestamped-lyrics — verificat direct in documentatia lor,
@@ -1319,7 +1322,7 @@ async function finalizeVariantsIfNeeded(orderId, tracks, taskId) {
 // previewStart = 0 (comportamentul de dinainte) — nicio generare nu esueaza din cauza asta.
 // ==========================================================================================
 const TIMESTAMPED_LYRICS_TIMEOUT_MS = 8000; // timeout scurt — nu tinem procesarea in loc
-const PREVIEW_START_BUFFER_S = 1.5;         // rezerva inainte de primul cuvant detectat
+const TARGET_VOICE_POSITION_S = 9;          // pozitia dorita a vocii IN preview (secunda 8-10)
 const PREVIEW_START_MAX_S = 25;             // plafon dur — niciodata mai mult de 25 sec sarite
 
 // Eticheta structurala intre paranteze patrate (ex. "[Verse]", "[Chorus]") nu e un cuvant
@@ -1409,7 +1412,13 @@ async function getPreviewStartFromLyrics(taskId, audioId, orderId) {
     return fallback('niciun cuvant real cu success:true gasit');
   }
 
-  let previewStart = firstReal.startS - PREVIEW_START_BUFFER_S;
+  // Formula: pastram un intro instrumental natural in preview — nu mutam preview-ul
+  // pana la primul cuvant (asta ar face vocea sa intre BRUSC, din prima secunda), ci
+  // calculam un punct de start astfel incat vocea sa ajunga sa se auda in jurul secundei
+  // TARGET_VOICE_POSITION_S in interiorul preview-ului. Daca vocea porneste deja devreme
+  // in melodie (<= 9s), previewStart ramane 0 — nu mutam nimic, se pastreaza inceputul
+  // original (vocea se va auzi pur si simplu mai devreme de secunda 9, ceea ce e in regula).
+  let previewStart = firstReal.startS - TARGET_VOICE_POSITION_S;
   previewStart = Math.max(0, previewStart);
   previewStart = Math.min(previewStart, PREVIEW_START_MAX_S);
 
@@ -1860,10 +1869,10 @@ function buildPrompt(order, feedback) {
   // existente (nu adaugata separat, ca sa nu duplicam si sa nu umflam bugetul de 500 caractere
   // mai mult decat strict necesar). Se aplica identic la generarea initiala SI la regenerari,
   // pentru ca ambele folosesc aceeasi functie buildPrompt() -> currentInstruction() de mai jos.
-  const instructionWithSenderFull = ' Write this as a personal song from the sender to the recipient. Vocals must start within the first 3-5 seconds — an extremely short instrumental intro, never a long instrumental opening. Name the recipient early and again in the chorus. Mention the sender once. Use only real details from the story — invent nothing.';
-  const instructionWithSenderShort = ' Start vocals in the first 3-5 seconds, minimal intro; name the recipient early and again in the chorus; mention the sender once. Use real story details only.';
-  const instructionNoSenderFull = ' Vocals must start within the first 3-5 seconds — an extremely short instrumental intro, never a long instrumental opening. Address the recipient by name naturally in the lyrics. Use only real details from the story — invent nothing.';
-  const instructionNoSenderShort = ' Start vocals in the first 3-5 seconds, minimal intro. Address the recipient by name naturally. Use real story details only.';
+  const instructionWithSenderFull = ' Write this as a personal song from the sender to the recipient. Use a short natural instrumental intro. Start the vocals around 8-10 seconds, never immediately and never after a long instrumental opening. Name the recipient early and again in the chorus. Mention the sender once. Use only real details from the story — invent nothing.';
+  const instructionWithSenderShort = ' Short natural intro; start vocals around 8-10 seconds; name the recipient early and again in the chorus; mention the sender once. Use real story details only.';
+  const instructionNoSenderFull = ' Use a short natural instrumental intro. Start the vocals around 8-10 seconds, never immediately and never after a long instrumental opening. Address the recipient by name naturally in the lyrics. Use only real details from the story — invent nothing.';
+  const instructionNoSenderShort = ' Short natural intro; start vocals around 8-10 seconds. Address the recipient by name naturally. Use real story details only.';
 
   let useShortInstruction = false;
   function currentInstruction() {
