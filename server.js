@@ -73,9 +73,10 @@ const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 
 const PORT = process.env.PORT || 3000;
 const DOMAIN = process.env.DOMAIN;
-const PREVIEW_SECONDS = 35;
-const FREE_EDITS = 2; // prima melodie generata NU consuma nicio editare (vezi /generate, care
-                       // nu atinge editsUsed) — clientul are apoi exact 2 regenerari gratuite
+const PREVIEW_SECONDS = 40;
+const FREE_EDITS = 1; // prima melodie generata NU consuma nicio editare (vezi /generate, care
+                       // nu atinge editsUsed) — clientul are apoi exact O SINGURA regenerare
+                       // gratuita; a doua tentativa e blocata
 const FETCH_TIMEOUT_MS = 25000;
 
 // Preturile NU vin niciodata de la client. Un client care modifica payload-ul (curl/devtools)
@@ -794,7 +795,7 @@ app.post('/api/orders/:orderId/regenerate', generationLimiter, requireOrderToken
         return res.status(400).json({ error: 'Comanda e deja plătită și finalizată.' });
       }
       if (fresh && fresh.editsUsed >= FREE_EDITS) {
-        return res.status(400).json({ error: 'Ai folosit toate editările gratuite pentru această comandă. Dacă dorești o melodie nouă, creează o comandă nouă.' });
+        return res.status(400).json({ error: 'Ai folosit editarea gratuită pentru această comandă. Alege varianta preferată pentru a continua.' });
       }
       if (fresh && (fresh.status === 'generating' || fresh.status === 'processing_provider_result') && fresh.musicTaskId) {
         resumeExistingTaskPolling(order.id, fresh.musicTaskId);

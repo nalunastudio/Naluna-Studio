@@ -134,6 +134,22 @@
   .plan-price{ font-family:'Fraunces', serif; font-size:22px; color:var(--gold-deep); }
 
   .order-summary{ margin-top:22px; padding-top:22px; border-top:1px solid var(--line); }
+
+  /* Checklist premium cu beneficii, afisat inainte de butonul de generare — card mic,
+     aerisit, fara culori agresive, integrat in identitatea vizuala existenta. */
+  .benefits-card{
+    background:var(--surface); border:1px solid var(--line); border-radius:14px;
+    padding:18px 20px; margin-top:22px;
+  }
+  .benefits-list{ display:flex; flex-direction:column; gap:12px; }
+  .benefit-item{ display:flex; align-items:flex-start; gap:10px; }
+  .benefit-check{
+    flex-shrink:0; width:18px; height:18px; margin-top:1px; border-radius:50%;
+    background:rgba(168,131,75,.12); color:var(--gold-deep);
+    display:flex; align-items:center; justify-content:center;
+    font-size:11px; font-weight:700; line-height:1;
+  }
+  .benefit-text{ font-size:13px; line-height:1.55; color:var(--text); }
   .order-summary .row{ display:flex; justify-content:space-between; font-size:14px; margin-bottom:8px; color:var(--text-secondary); }
   .order-summary .total{ color:var(--text); font-weight:700; font-size:17px; }
 
@@ -354,6 +370,14 @@
         <div class="row total"><span data-i18n="sum_total">Total</span><span id="sum-total">£15</span></div>
       </div>
 
+      <div class="benefits-card">
+        <div class="benefits-list">
+          <div class="benefit-item"><span class="benefit-check">✓</span><span class="benefit-text" data-i18n="benefit_1">Primești 2 variante gratuite.</span></div>
+          <div class="benefit-item"><span class="benefit-check">✓</span><span class="benefit-text" data-i18n="benefit_2">Dacă niciuna nu este exact cum îți dorești, poți face o editare gratuită și vom crea încă 2 variante noi pentru povestea ta.</span></div>
+          <div class="benefit-item"><span class="benefit-check">✓</span><span class="benefit-text" data-i18n="benefit_3">Nu plătești acum. Plătești doar dacă îți place rezultatul.</span></div>
+        </div>
+      </div>
+
       <button type="submit" class="btn btn-primary" id="generate-btn" style="width:100%; justify-content:center; margin-top:20px;">
         <span data-i18n="btn_generate" id="generate-btn-label">Generează previzualizarea gratuit →</span>
       </button>
@@ -376,7 +400,7 @@
       back_link: 'Înapoi la pagina principală',
       order_eyebrow: 'Comanda',
       order_title: 'Compune cântecul tău',
-      order_sub: 'Completează povestea, asculți gratuit un preview de 55 secunde, ceri editări dacă nu e exact ce vrei — plătești doar când ești mulțumit',
+      order_sub: 'Completează povestea, asculți gratuit un preview de 40 secunde, ceri editări dacă nu e exact ce vrei — plătești doar când ești mulțumit',
       theme_label: 'Pentru ce moment vrei cântecul',
       theme_dor_name: 'Mi-e dor de cineva',
       theme_dor_desc: 'Fără ocazie. Doar dor',
@@ -435,6 +459,9 @@
       btn_generate: 'Generează previzualizarea gratuit →',
       btn_generate_starting: 'Pornim compunerea...',
       note_free: 'Nu plătești acum. Plătești doar dacă îți place rezultatul',
+      benefit_1: 'Primești 2 variante gratuite.',
+      benefit_2: 'Dacă niciuna nu este exact cum îți dorești, poți face o editare gratuită și vom crea încă 2 variante noi pentru povestea ta.',
+      benefit_3: 'Nu plătești acum. Plătești doar dacă îți place rezultatul.',
       msg_conn_error: 'Eroare de conexiune. Încearcă din nou',
       msg_error_prefix: 'Eroare: ',
       msg_try_again: 'încearcă din nou',
@@ -457,7 +484,7 @@
       back_link: 'Back to homepage',
       order_eyebrow: 'Order',
       order_title: 'Compose your song',
-      order_sub: 'Fill in the story, listen to a free 55-second preview, ask for edits if it is not quite right — pay only when you are happy.',
+      order_sub: 'Fill in the story, listen to a free 40-second preview, ask for edits if it is not quite right — pay only when you are happy.',
       theme_label: 'What moment is this song for',
       theme_dor_name: 'I miss someone',
       theme_dor_desc: 'No occasion. Just longing.',
@@ -516,6 +543,9 @@
       btn_generate: 'Generate your free preview →',
       btn_generate_starting: 'Starting composition...',
       note_free: 'You don\'t pay now. You only pay if you like the result.',
+      benefit_1: 'You get 2 free versions.',
+      benefit_2: "If neither is exactly what you wanted, you can make one free edit and we'll create 2 brand new versions for your story.",
+      benefit_3: "You don't pay now. You only pay if you love the result.",
       msg_conn_error: 'Connection error. Please try again.',
       msg_error_prefix: 'Error: ',
       msg_try_again: 'please try again.',
@@ -538,7 +568,7 @@
       back_link: 'Zurück zur Startseite',
       order_eyebrow: 'Bestellung',
       order_title: 'Komponiere dein Lied',
-      order_sub: 'Erzähle die Geschichte, höre eine kostenlose 55-Sekunden-Vorschau, fordere Änderungen an — zahle erst, wenn du zufrieden bist.',
+      order_sub: 'Erzähle die Geschichte, höre eine kostenlose 40-Sekunden-Vorschau, fordere Änderungen an — zahle erst, wenn du zufrieden bist.',
       theme_label: 'Für welchen Anlass ist das Lied',
       theme_dor_name: 'Ich vermisse jemanden',
       theme_dor_desc: 'Kein Anlass. Nur Sehnsucht.',
@@ -597,6 +627,9 @@
       btn_generate: 'Kostenlose Vorschau erstellen →',
       btn_generate_starting: 'Komposition wird gestartet...',
       note_free: 'Du zahlst jetzt noch nicht. Nur wenn dir das Ergebnis gefällt.',
+      benefit_1: 'Du erhältst 2 kostenlose Versionen.',
+      benefit_2: 'Wenn keine genau das ist, was du dir wünschst, kannst du eine kostenlose Änderung vornehmen, und wir erstellen 2 brandneue Versionen für deine Geschichte.',
+      benefit_3: 'Du zahlst jetzt nichts. Du zahlst nur, wenn dir das Ergebnis gefällt.',
       msg_conn_error: 'Verbindungsfehler. Bitte versuche es erneut.',
       msg_error_prefix: 'Fehler: ',
       msg_try_again: 'bitte versuche es erneut.',
@@ -619,7 +652,7 @@
       back_link: 'Volver a la página principal',
       order_eyebrow: 'Pedido',
       order_title: 'Compón tu canción',
-      order_sub: 'Cuenta la historia, escucha una previsualización gratuita de 55 segundos, pide cambios si no es exactamente lo que quieres — paga solo cuando estés satisfecho.',
+      order_sub: 'Cuenta la historia, escucha una previsualización gratuita de 40 segundos, pide cambios si no es exactamente lo que quieres — paga solo cuando estés satisfecho.',
       theme_label: 'Para qué momento quieres la canción',
       theme_dor_name: 'Extraño a alguien',
       theme_dor_desc: 'Sin ocasión especial. Solo nostalgia.',
@@ -678,6 +711,9 @@
       btn_generate: 'Generar previsualización gratis →',
       btn_generate_starting: 'Iniciando la composición...',
       note_free: 'No pagas ahora. Solo pagas si te gusta el resultado.',
+      benefit_1: 'Recibes 2 versiones gratuitas.',
+      benefit_2: 'Si ninguna es exactamente lo que quieres, puedes hacer una edición gratuita y crearemos 2 versiones nuevas para tu historia.',
+      benefit_3: 'No pagas ahora. Solo pagas si te encanta el resultado.',
       msg_conn_error: 'Error de conexión. Inténtalo de nuevo.',
       msg_error_prefix: 'Error: ',
       msg_try_again: 'inténtalo de nuevo.',
@@ -700,7 +736,7 @@
       back_link: 'Torna alla pagina principale',
       order_eyebrow: 'Ordine',
       order_title: 'Componi la tua canzone',
-      order_sub: 'Racconta la storia, ascolta un\'anteprima gratuita di 55 secondi, chiedi modifiche se non è esattamente quello che vuoi — paghi solo quando sei soddisfatto.',
+      order_sub: 'Racconta la storia, ascolta un\'anteprima gratuita di 40 secondi, chiedi modifiche se non è esattamente quello che vuoi — paghi solo quando sei soddisfatto.',
       theme_label: 'Per quale momento vuoi la canzone',
       theme_dor_name: 'Mi manca qualcuno',
       theme_dor_desc: 'Nessuna occasione. Solo nostalgia.',
@@ -759,6 +795,9 @@
       btn_generate: 'Genera l\'anteprima gratis →',
       btn_generate_starting: 'Avvio della composizione...',
       note_free: 'Non paghi ora. Paghi solo se ti piace il risultato.',
+      benefit_1: 'Ricevi 2 versioni gratuite.',
+      benefit_2: 'Se nessuna delle due è esattamente come la desideri, puoi richiedere una modifica gratuita e creeremo altre 2 nuove versioni per la tua storia.',
+      benefit_3: 'Non paghi ora. Paghi solo se il risultato ti piace.',
       msg_conn_error: 'Errore di connessione. Riprova.',
       msg_error_prefix: 'Errore: ',
       msg_try_again: 'riprova.',
@@ -781,7 +820,7 @@
       back_link: 'Retour à la page d\'accueil',
       order_eyebrow: 'Commande',
       order_title: 'Composez votre chanson',
-      order_sub: 'Racontez l\'histoire, écoutez un aperçu gratuit de 55 secondes, demandez des modifications si besoin — payez seulement quand vous êtes satisfait.',
+      order_sub: 'Racontez l\'histoire, écoutez un aperçu gratuit de 40 secondes, demandez des modifications si besoin — payez seulement quand vous êtes satisfait.',
       theme_label: 'Pour quel moment voulez-vous la chanson',
       theme_dor_name: 'Quelqu\'un me manque',
       theme_dor_desc: 'Sans occasion particulière. Juste le manque.',
@@ -840,6 +879,9 @@
       btn_generate: 'Générer l\'aperçu gratuit →',
       btn_generate_starting: 'Démarrage de la composition...',
       note_free: 'Vous ne payez pas maintenant. Seulement si le résultat vous plaît.',
+      benefit_1: 'Vous recevez 2 versions gratuites.',
+      benefit_2: 'Si aucune ne correspond exactement à ce que vous souhaitez, vous pouvez faire une modification gratuite et nous créerons 2 nouvelles versions pour votre histoire.',
+      benefit_3: 'Vous ne payez pas maintenant. Vous ne payez que si le résultat vous plaît.',
       msg_conn_error: 'Erreur de connexion. Veuillez réessayer.',
       msg_error_prefix: 'Erreur : ',
       msg_try_again: 'veuillez réessayer.',
@@ -862,7 +904,7 @@
       back_link: 'Обратно към началната страница',
       order_eyebrow: 'Поръчка',
       order_title: 'Композирай своята песен',
-      order_sub: 'Разкажи историята, изслушай безплатен преглед от 55 секунди, поискай промени, ако не е точно както искаш — плащаш само когато си доволен.',
+      order_sub: 'Разкажи историята, изслушай безплатен преглед от 40 секунди, поискай промени, ако не е точно както искаш — плащаш само когато си доволен.',
       theme_label: 'За какъв момент искаш песента',
       theme_dor_name: 'Липсва ми някой',
       theme_dor_desc: 'Без повод. Просто копнеж.',
@@ -921,6 +963,9 @@
       btn_generate: 'Генерирай безплатен преглед →',
       btn_generate_starting: 'Стартираме композирането...',
       note_free: 'Не плащаш сега. Плащаш само ако ти хареса резултатът.',
+      benefit_1: 'Получаваш 2 безплатни версии.',
+      benefit_2: 'Ако нито една не е точно това, което искаш, можеш да направиш една безплатна редакция и ще създадем още 2 нови версии за твоята история.',
+      benefit_3: 'Не плащаш сега. Плащаш само ако резултатът ти хареса.',
       msg_conn_error: 'Грешка във връзката. Опитай отново.',
       msg_error_prefix: 'Грешка: ',
       msg_try_again: 'опитай отново.',
@@ -943,7 +988,7 @@
       back_link: 'Ana sayfaya dön',
       order_eyebrow: 'Sipariş',
       order_title: 'Şarkınızı besteleyin',
-      order_sub: 'Hikayeyi anlatın, 55 saniyelik ücretsiz bir ön izleme dinleyin, istediğiniz gibi değilse değişiklik isteyin — sadece memnun kaldığınızda ödeyin.',
+      order_sub: 'Hikayeyi anlatın, 40 saniyelik ücretsiz bir ön izleme dinleyin, istediğiniz gibi değilse değişiklik isteyin — sadece memnun kaldığınızda ödeyin.',
       theme_label: 'Şarkı hangi an için',
       theme_dor_name: 'Birini özlüyorum',
       theme_dor_desc: 'Özel bir sebep yok. Sadece özlem.',
@@ -1002,6 +1047,9 @@
       btn_generate: 'Ücretsiz ön izlemeyi oluştur →',
       btn_generate_starting: 'Beste başlıyor...',
       note_free: 'Şimdi ödemezsiniz. Sadece sonucu beğenirseniz ödersiniz.',
+      benefit_1: '2 ücretsiz versiyon alırsınız.',
+      benefit_2: 'Hiçbiri tam istediğiniz gibi değilse, ücretsiz bir düzenleme yapabilirsiniz ve hikayeniz için 2 yeni versiyon daha oluştururuz.',
+      benefit_3: 'Şimdi ödeme yapmazsınız. Yalnızca sonuçtan memnun kalırsanız ödersiniz.',
       msg_conn_error: 'Bağlantı hatası. Lütfen tekrar deneyin.',
       msg_error_prefix: 'Hata: ',
       msg_try_again: 'lütfen tekrar deneyin.',
