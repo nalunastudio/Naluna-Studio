@@ -185,7 +185,7 @@
   const T = {
     ro: {
       title: 'Melodia ta se compune acum',
-      subtitle: 'Pregătim 2 variante personalizate pentru tine',
+      subtitle: 'Melodia ta este în curs de creare. De obicei durează aproximativ 2–4 minute, dar uneori poate dura puțin mai mult.',
       keepOpen: 'Nu închide această pagină. Rezultatul va apărea automat când este gata.',
       stages: [
         'Analizăm povestea ta...',
@@ -207,7 +207,7 @@
     },
     en: {
       title: 'Your song is being composed',
-      subtitle: 'We\'re preparing 2 personalised versions for you.',
+      subtitle: 'Your song is being created. It usually takes about 2–4 minutes, but sometimes it can take a little longer.',
       keepOpen: 'Don\'t close this page. The result will appear automatically when ready.',
       stages: [
         'Analysing your story...',
@@ -229,7 +229,7 @@
     },
     de: {
       title: 'Dein Lied wird gerade komponiert',
-      subtitle: 'Wir bereiten 2 personalisierte Versionen für dich vor.',
+      subtitle: 'Dein Lied wird gerade erstellt. Das dauert normalerweise etwa 2–4 Minuten, manchmal aber auch etwas länger.',
       keepOpen: 'Schließe diese Seite nicht. Das Ergebnis erscheint automatisch, sobald es fertig ist.',
       stages: [
         'Wir analysieren deine Geschichte...',
@@ -251,7 +251,7 @@
     },
     es: {
       title: 'Tu canción se está componiendo',
-      subtitle: 'Estamos preparando 2 versiones personalizadas para ti.',
+      subtitle: 'Tu canción se está creando. Normalmente tarda entre 2 y 4 minutos, aunque a veces puede tardar un poco más.',
       keepOpen: 'No cierres esta página. El resultado aparecerá automáticamente cuando esté listo.',
       stages: [
         'Analizando tu historia...',
@@ -273,7 +273,7 @@
     },
     it: {
       title: 'La tua canzone è in composizione',
-      subtitle: 'Stiamo preparando 2 versioni personalizzate per te.',
+      subtitle: 'La tua canzone è in fase di creazione. Di solito richiede circa 2–4 minuti, ma a volte può richiedere un po\' più di tempo.',
       keepOpen: 'Non chiudere questa pagina. Il risultato apparirà automaticamente quando sarà pronto.',
       stages: [
         'Analizziamo la tua storia...',
@@ -295,7 +295,7 @@
     },
     fr: {
       title: 'Votre chanson est en cours de composition',
-      subtitle: 'Nous préparons 2 versions personnalisées pour vous.',
+      subtitle: 'Votre chanson est en cours de création. Cela prend généralement environ 2 à 4 minutes, mais parfois un peu plus longtemps.',
       keepOpen: 'Ne fermez pas cette page. Le résultat apparaîtra automatiquement une fois prêt.',
       stages: [
         'Analyse de votre histoire...',
@@ -317,7 +317,7 @@
     },
     bg: {
       title: 'Твоята песен се композира сега',
-      subtitle: 'Подготвяме 2 персонализирани версии за теб.',
+      subtitle: 'Песента ти се създава в момента. Обикновено отнема около 2–4 минути, но понякога може да отнеме малко повече.',
       keepOpen: 'Не затваряй тази страница. Резултатът ще се появи автоматично, когато е готов.',
       stages: [
         'Анализираме историята ти...',
@@ -339,7 +339,7 @@
     },
     tr: {
       title: 'Şarkınız şu anda besteleniyor',
-      subtitle: 'Sizin için 2 kişiselleştirilmiş versiyon hazırlıyoruz.',
+      subtitle: 'Şarkınız oluşturuluyor. Genellikle yaklaşık 2-4 dakika sürer, ancak bazen biraz daha uzun sürebilir.',
       keepOpen: 'Bu sayfayı kapatmayın. Sonuç hazır olduğunda otomatik olarak görünecektir.',
       stages: [
         'Hikayenizi analiz ediyoruz...',
@@ -446,14 +446,11 @@
       setStatusMessage(t.stages[stageIndex]);
     }
 
-    const remainingMs = Math.max(ESTIMATE_MS - elapsed, 0);
-    const remainingMin = Math.ceil(remainingMs / 60000);
-    if (remainingMs <= 0) {
-      estimatePillEl.classList.add('hidden');
-    } else {
-      estimatePillEl.classList.remove('hidden');
-      estimatePillEl.textContent = t.estimate(remainingMin);
-    }
+    // Nu mai afisam un numarator de minute ramase — ar implica o promisiune de timp
+    // exact, pe care nu o putem garanta (timpul real depinde de furnizorul extern).
+    // Bara de progres si etapele de mai sus raman ca indicator vizual general, fara sa
+    // afirme o durata precisa.
+    estimatePillEl.classList.add('hidden');
   }
   updateProgress();
   const progressTimer = setInterval(updateProgress, 1000);

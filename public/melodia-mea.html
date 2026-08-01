@@ -212,9 +212,10 @@
         </div>
 
         <div id="regenerate-row" style="display:flex; gap:12px; flex-wrap:wrap; margin-top:6px;">
-          <button type="button" class="btn btn-ghost" id="regenerate-btn">Editează cântecul (<span id="edits-left">3</span> editări gratuite rămase)</button>
+          <button type="button" class="btn btn-ghost" id="regenerate-btn">Editează cântecul (<span id="edits-left">2</span> editări gratuite rămase)</button>
           <button type="button" class="btn btn-primary" id="checkout-btn" style="flex:1; justify-content:center;">Finalizează cadoul — varianta <span id="selected-variant-label">1</span> (<span id="checkout-price">£15</span>) →</button>
         </div>
+        <div id="edits-exhausted-msg" style="display:none; font-size:13px; color:var(--text-secondary); margin-top:10px;"></div>
 
         <div id="confirm-row" style="display:none; gap:10px; margin-top:16px; flex-wrap:wrap;">
           <span id="confirm-msg" style="flex:1 1 220px; font-size:13px; color:var(--text-secondary);"></span>
@@ -258,6 +259,7 @@
       lyrics_empty_error: 'Versurile nu pot fi goale',
       feedback_label: 'Nu e exact cum vrei? Descrie ce să schimbăm', feedback_ph: 'ex: mai vesel, mai lent, alt început...',
       regenerate_btn: 'Editează cântecul', edits_left_label: 'editări gratuite rămase',
+      edits_exhausted_msg: 'Ai folosit toate editările gratuite pentru această comandă. Dacă dorești o melodie nouă, creează o comandă nouă.',
       confirm_msg: (n) => `Sigur? Se consumă 1 editare gratuită (mai ai ${n}).`,
       lyrics_guidance_notice: 'Versurile editate vor fi folosite ca ghid. Generarea poate modifica și alte versuri, vocea sau linia melodică.',
       voice_female: 'feminină', voice_male: 'masculină', voice_duet: 'duet', voice_auto: 'automat',
@@ -287,6 +289,7 @@
       lyrics_empty_error: 'Lyrics cannot be empty',
       feedback_label: 'Not quite right? Describe what to change', feedback_ph: 'e.g. more upbeat, slower, different intro...',
       regenerate_btn: 'Edit the song', edits_left_label: 'free edits left',
+      edits_exhausted_msg: "You've used all the free edits for this order. If you'd like a new song, create a new order.",
       confirm_msg: (n) => `Are you sure? This uses 1 free edit (${n} left).`,
       lyrics_guidance_notice: 'The edited lyrics will be used as a guide. The generation may change other lyrics, the voice, or the melody.',
       voice_female: 'female', voice_male: 'male', voice_duet: 'duet', voice_auto: 'automatic',
@@ -316,6 +319,7 @@
       lyrics_empty_error: 'Der Text darf nicht leer sein',
       feedback_label: 'Nicht ganz richtig? Beschreibe, was geändert werden soll', feedback_ph: 'z.B. fröhlicher, langsamer, anderer Anfang...',
       regenerate_btn: 'Lied bearbeiten', edits_left_label: 'kostenlose Änderungen übrig',
+      edits_exhausted_msg: 'Du hast alle kostenlosen Änderungen für diese Bestellung genutzt. Für ein neues Lied erstelle bitte eine neue Bestellung.',
       confirm_msg: (n) => `Sicher? Das verbraucht 1 kostenlose Änderung (noch ${n} übrig).`,
       lyrics_guidance_notice: 'Der bearbeitete Text wird als Orientierung verwendet. Die Generierung kann andere Textzeilen, die Stimme oder die Melodie verändern.',
       voice_female: 'weiblich', voice_male: 'männlich', voice_duet: 'Duett', voice_auto: 'automatisch',
@@ -345,6 +349,7 @@
       lyrics_empty_error: 'La letra no puede estar vacía',
       feedback_label: '¿No es exactamente lo que quieres? Describe qué cambiar', feedback_ph: 'ej: más alegre, más lenta, otro inicio...',
       regenerate_btn: 'Editar la canción', edits_left_label: 'ediciones gratuitas restantes',
+      edits_exhausted_msg: 'Has usado todas las ediciones gratuitas de este pedido. Si quieres una canción nueva, crea un nuevo pedido.',
       confirm_msg: (n) => `¿Seguro? Esto consume 1 edición gratuita (te quedan ${n}).`,
       lyrics_guidance_notice: 'La letra editada se usará como guía. La generación puede cambiar otras partes de la letra, la voz o la melodía.',
       voice_female: 'femenina', voice_male: 'masculina', voice_duet: 'dúo', voice_auto: 'automática',
@@ -374,6 +379,7 @@
       lyrics_empty_error: 'Il testo non può essere vuoto',
       feedback_label: 'Non è esattamente come vuoi? Descrivi cosa cambiare', feedback_ph: 'es: più allegra, più lenta, inizio diverso...',
       regenerate_btn: 'Modifica la canzone', edits_left_label: 'modifiche gratuite rimaste',
+      edits_exhausted_msg: 'Hai usato tutte le modifiche gratuite per questo ordine. Se desideri una nuova canzone, crea un nuovo ordine.',
       confirm_msg: (n) => `Sicuro? Verrà usata 1 modifica gratuita (te ne restano ${n}).`,
       lyrics_guidance_notice: 'Il testo modificato sarà usato come guida. La generazione potrebbe cambiare altre parti del testo, la voce o la melodia.',
       voice_female: 'femminile', voice_male: 'maschile', voice_duet: 'duetto', voice_auto: 'automatica',
@@ -403,6 +409,7 @@
       lyrics_empty_error: 'Les paroles ne peuvent pas être vides',
       feedback_label: "Pas tout à fait ce que vous voulez ? Décrivez ce qu'il faut changer", feedback_ph: 'ex : plus joyeux, plus lent, autre intro...',
       regenerate_btn: 'Modifier la chanson', edits_left_label: 'modifications gratuites restantes',
+      edits_exhausted_msg: 'Vous avez utilisé toutes les modifications gratuites pour cette commande. Pour une nouvelle chanson, créez une nouvelle commande.',
       confirm_msg: (n) => `Confirmer ? Cela utilise 1 modification gratuite (il en reste ${n}).`,
       lyrics_guidance_notice: 'Les paroles modifiées serviront de guide. La génération peut modifier d\'autres paroles, la voix ou la mélodie.',
       voice_female: 'féminine', voice_male: 'masculine', voice_duet: 'duo', voice_auto: 'automatique',
@@ -432,6 +439,7 @@
       lyrics_empty_error: 'Текстът не може да бъде празен',
       feedback_label: 'Не е точно както искаш? Опиши какво да променим', feedback_ph: 'напр. по-весело, по-бавно, друго начало...',
       regenerate_btn: 'Редактирай песента', edits_left_label: 'безплатни редакции остават',
+      edits_exhausted_msg: 'Използва всички безплатни редакции за тази поръчка. Ако искаш нова песен, направи нова поръчка.',
       confirm_msg: (n) => `Сигурен ли си? Това ще използва 1 безплатна редакция (остават ${n}).`,
       lyrics_guidance_notice: 'Редактираният текст ще бъде използван като насока. Генерирането може да промени други части от текста, гласа или мелодията.',
       voice_female: 'женски', voice_male: 'мъжки', voice_duet: 'дует', voice_auto: 'автоматично',
@@ -461,6 +469,7 @@
       lyrics_empty_error: 'Sözler boş olamaz',
       feedback_label: 'Tam istediğiniz gibi değil mi? Neyin değişmesini istediğinizi yazın', feedback_ph: 'örn: daha neşeli, daha yavaş, farklı bir giriş...',
       regenerate_btn: 'Şarkıyı düzenle', edits_left_label: 'ücretsiz düzenleme hakkı kaldı',
+      edits_exhausted_msg: 'Bu sipariş için tüm ücretsiz düzenlemeleri kullandınız. Yeni bir şarkı istiyorsanız yeni bir sipariş oluşturun.',
       confirm_msg: (n) => `Emin misiniz? Bu, 1 ücretsiz düzenlemeyi kullanır (${n} kaldı).`,
       lyrics_guidance_notice: 'Düzenlenen sözler rehber olarak kullanılacaktır. Oluşturma işlemi diğer sözleri, sesi veya melodiyi değiştirebilir.',
       voice_female: 'kadın', voice_male: 'erkek', voice_duet: 'düet', voice_auto: 'otomatik',
@@ -476,6 +485,12 @@
   };
 
   const supportedLangs = ['ro', 'en', 'de', 'es', 'it', 'fr', 'bg', 'tr'];
+  // trebuie sa ramana identic cu FREE_EDITS din server.js — prima melodie generata NU
+  // consuma nicio editare; clientul are apoi exact 2 regenerari gratuite. Contorul REAL
+  // (editsUsed) traieste doar in baza de date, pe comanda — acest numar e folosit STRICT
+  // pentru afisare (cate mai raman), niciodata ca sursa de adevar pentru limitare; blocarea
+  // efectiva se face mereu server-side, in /regenerate.
+  const FREE_EDITS_CLIENT = 2;
   let lang = 'ro';
   let t = T.ro;
 
@@ -540,6 +555,7 @@
   const regenerateBtn = document.getElementById('regenerate-btn');
   const checkoutBtn = document.getElementById('checkout-btn');
   const editsLeftEl = document.getElementById('edits-left');
+  const editsExhaustedMsgEl = document.getElementById('edits-exhausted-msg');
   const checkoutPriceEl = document.getElementById('checkout-price');
   const selectedVariantLabelEl = document.getElementById('selected-variant-label');
   const confirmRow = document.getElementById('confirm-row');
@@ -847,7 +863,7 @@
   // "ultima varianta editata". Daca acea varianta are versuri editate, le folosim ca ghidaj;
   // daca nu, folosim doar feedback-ul general si datele comenzii. --------
   regenerateBtn.addEventListener('click', () => {
-    const editsLeft = Math.max(0, 3 - (currentOrder.editsUsed || 0));
+    const editsLeft = Math.max(0, FREE_EDITS_CLIENT - (currentOrder.editsUsed || 0));
     const selected = currentOrder.variants && currentOrder.variants[selectedVariantIndex];
     const hasEditedLyrics = !!(selected && selected.editedLyrics && selected.editedLyrics.trim());
 
@@ -974,11 +990,15 @@
     selectedVoicePreference = order.voicePreference || 'auto';
     setVoiceCardActive(selectedVoicePreference);
 
-    const editsLeft = Math.max(0, 3 - (order.editsUsed || 0));
+    const editsLeft = Math.max(0, FREE_EDITS_CLIENT - (order.editsUsed || 0));
     editsLeftEl.textContent = editsLeft;
     regenerateBtn.disabled = editsLeft === 0;
     regenerateBtn.style.opacity = editsLeft === 0 ? '.5' : '1';
     regenerateBtn.innerHTML = `${t.regenerate_btn} (<span id="edits-left">${editsLeft}</span> ${t.edits_left_label})`;
+    // mesaj clar, vizibil, cand cele 2 editari gratuite au fost deja consumate — nu doar
+    // un buton dezactivat fara explicatie
+    editsExhaustedMsgEl.style.display = editsLeft === 0 ? 'block' : 'none';
+    editsExhaustedMsgEl.textContent = editsLeft === 0 ? t.edits_exhausted_msg : '';
 
     checkoutPriceEl.textContent = '£' + order.price;
     checkoutBtn.innerHTML = `${t.checkout_btn} — ${t.variant_word} <span id="selected-variant-label">${selectedVariantIndex + 1}</span> (<span id="checkout-price">£${order.price}</span>) →`;

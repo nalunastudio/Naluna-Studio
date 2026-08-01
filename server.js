@@ -73,8 +73,9 @@ const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 
 const PORT = process.env.PORT || 3000;
 const DOMAIN = process.env.DOMAIN;
-const PREVIEW_SECONDS = 55;
-const FREE_EDITS = 3;
+const PREVIEW_SECONDS = 35;
+const FREE_EDITS = 2; // prima melodie generata NU consuma nicio editare (vezi /generate, care
+                       // nu atinge editsUsed) — clientul are apoi exact 2 regenerari gratuite
 const FETCH_TIMEOUT_MS = 25000;
 
 // Preturile NU vin niciodata de la client. Un client care modifica payload-ul (curl/devtools)
@@ -247,6 +248,17 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = FETCH_TIMEOUT_MS)
   } finally {
     clearTimeout(timeoutId);
   }
+}
+
+// ==========================================================================================
+// LOGGING DE PERFORMANTA — masoara UNDE se duce timpul intr-o generare (Suno vs. descarcare
+// vs. timestamp-uri vs. FFmpeg vs. storage vs. codul nostru), fara date sensibile: doar
+// identificatori scurtati (comanda/task, primele 8 caractere) si durate in milisecunde.
+// Niciodata token-uri, URL-uri semnate sau continut audio/text.
+// ==========================================================================================
+function perfLog(orderId, stage, extra = '') {
+  const tag = orderId ? String(orderId).slice(0, 8) : '?';
+  console.log(`[perf] comanda ${tag} | ${stage}${extra ? ' | ' + extra : ''} | ${Date.now()}`);
 }
 
 // -------- comparatie timing-safe, folosita pentru parola de admin SI pentru access token-uri --------
@@ -782,7 +794,7 @@ app.post('/api/orders/:orderId/regenerate', generationLimiter, requireOrderToken
         return res.status(400).json({ error: 'Comanda e deja plătită și finalizată.' });
       }
       if (fresh && fresh.editsUsed >= FREE_EDITS) {
-        return res.status(400).json({ error: `Ai folosit toate cele ${FREE_EDITS} editări gratuite.` });
+        return res.status(400).json({ error: 'Ai folosit toate editările gratuite pentru această comandă. Dacă dorești o melodie nouă, creează o comandă nouă.' });
       }
       if (fresh && (fresh.status === 'generating' || fresh.status === 'processing_provider_result') && fresh.musicTaskId) {
         resumeExistingTaskPolling(order.id, fresh.musicTaskId);
@@ -1135,6 +1147,7 @@ app.post('/api/music/callback', async (req, res) => {
     }
 
     const statusName = data.status || body.status;
+    perfLog(order.id, 'callback_received', `status=${statusName || 'necunoscut'}`);
 
     if (statusName === SUNO_SUCCESS_STATUS) {
       const tracks = extractSunoTracks(body);
@@ -1191,11 +1204,11 @@ async function resumeExistingTaskPolling(orderId, taskId) {
   if (activePollResumptions.has(orderId)) return; // deja se verifica in alta parte
   activePollResumptions.add(orderId);
   try {
-    const { status: finalStatus, tracks } = await pollForResult(taskId);
+    const { status: finalStatus, tracks } = await pollForResult(taskId, orderId);
 
-    if (finalStatus === 'LOCAL_POLL_TIMEOUT') {
-      // Tot in lucru — nu schimbam nimic, ramane 'generating' pentru o viitoare reluare
-      // sau pentru callback-ul SunoAPI.
+    if (finalStatus === 'ALREADY_FINALIZED_BY_CALLBACK' || finalStatus === 'LOCAL_POLL_TIMEOUT') {
+      // Fie callback-ul a preluat-o deja, fie e tot in lucru — in ambele cazuri nu mai
+      // avem nimic de facut aici.
       return;
     }
     if (finalStatus === SUNO_SUCCESS_STATUS) {
@@ -1220,8 +1233,18 @@ async function runGeneration(orderId, feedback) {
 
   const prompt = buildPrompt(order, feedback);
 
+  perfLog(orderId, 'generation_start');
   const taskId = await callMusicProvider(orderId, prompt);
-  const { status: finalStatus, tracks } = await pollForResult(taskId);
+  const { status: finalStatus, tracks } = await pollForResult(taskId, orderId);
+
+  if (finalStatus === 'ALREADY_FINALIZED_BY_CALLBACK') {
+    // Callback-ul SunoAPI (mecanismul PRINCIPAL) a ajuns si a finalizat deja comanda, in
+    // timp ce noi asteptam la polling — nu mai e nimic de facut, evitam sa procesam a
+    // doua oara acelasi rezultat (garda atomica din finalizeVariantsIfNeeded ar fi
+    // prevenit oricum o dubla procesare, dar aici nici nu mai incercam).
+    perfLog(orderId, 'polling_stopped_early_callback_won');
+    return;
+  }
 
   if (finalStatus === 'LOCAL_POLL_TIMEOUT') {
     // Polling-ul NOSTRU local a expirat — asta NU inseamna ca Suno a esuat sau ca a
@@ -1255,6 +1278,9 @@ async function finalizeVariantsIfNeeded(orderId, tracks, taskId) {
     return false; // alta cerere (polling sau callback) a preluat-o deja — nu procesam a doua oara
   }
 
+  const finalizeStart = Date.now();
+  perfLog(orderId, 'finalize_start', `piese=${tracks ? tracks.length : 0}`);
+
   try {
     if (!tracks || tracks.length === 0) {
       throw new Error('Suno a raportat SUCCESS, dar nu am gasit nicio piesa cu audioUrl in raspuns.');
@@ -1263,9 +1289,32 @@ async function finalizeVariantsIfNeeded(orderId, tracks, taskId) {
       console.warn(`SunoAPI a returnat ${tracks.length} piese in loc de 2, pentru comanda ${orderId}. Continui cu cate au venit.`);
     }
 
-    const variants = await Promise.all(
+    // Promise.allSettled (nu Promise.all): daca o varianta esueaza la procesare
+    // (descarcare/timestamp/ffmpeg/upload), NU intrerupe si NU corupe procesarea celeilalte
+    // variante, care poate continua complet independent pana la capat. Deciziile de mai
+    // jos (esec total vs. partial) se iau abia dupa ce AMBELE s-au terminat, indiferent
+    // de rezultat.
+    const settled = await Promise.allSettled(
       tracks.map(track => buildVariantFromTrack(orderId, randomUUID().slice(0, 8), track, taskId))
     );
+
+    const variants = [];
+    const failures = [];
+    for (const result of settled) {
+      if (result.status === 'fulfilled') variants.push(result.value);
+      else failures.push(result.reason);
+    }
+
+    if (variants.length === 0) {
+      const detail = failures.map(e => (e && e.message) || String(e)).join(' | ');
+      throw new Error(`Ambele variante au esuat la procesare: ${detail}`);
+    }
+    if (failures.length > 0) {
+      console.warn(
+        `Comanda ${orderId}: o varianta a esuat la procesare, continui cu ${variants.length} varianta(e) reusita(e). ` +
+        `Motiv: ${(failures[0] && failures[0].message) || String(failures[0])}`
+      );
+    }
 
     await db.updateOrder(orderId, {
       status: 'preview_ready',
@@ -1277,6 +1326,15 @@ async function finalizeVariantsIfNeeded(orderId, tracks, taskId) {
       // o generare INITIALA, editReserved era deja false — actualizarea e un no-op sigur.
       editReserved: false
     });
+
+    perfLog(orderId, 'finalize_done', `${Date.now() - finalizeStart}ms, variante_reusite=${variants.length}`);
+    // durata totala de la crearea comenzii pana la 'preview_ready' — util ca sa vedem cat
+    // din timpul perceput de client vine de fapt din asteptarea inainte de generare
+    // (crearea comenzii, formular etc.) fata de generarea efectiva
+    if (claimed.createdAt) {
+      const totalMs = Date.now() - new Date(claimed.createdAt).getTime();
+      perfLog(orderId, 'total_since_order_created', `${totalMs}ms (${(totalMs / 1000).toFixed(1)}s)`);
+    }
     return true;
   } catch (err) {
     // Am apucat sa marcam comanda "processing_provider_result" (am preluat-o), dar
@@ -1436,14 +1494,39 @@ async function buildVariantFromTrack(orderId, variantId, track, taskId) {
 
   const tempFull = path.join(TEMP_DIR, `${orderId}-${variantId}-full.mp3`);
   const tempPreview = path.join(TEMP_DIR, `${orderId}-${variantId}-preview.mp3`);
+  const vTag = `varianta=${variantId}`;
 
-  await downloadFile(track.audioUrl, tempFull);
-  // punctul de start al preview-ului — vezi getPreviewStartFromLyrics() pentru detalii si
-  // fallback; fisierul COMPLET (tempFull, de mai sus) e deja descarcat neschimbat, nu e
-  // afectat in niciun fel de aceasta decizie.
-  const previewStart = await getPreviewStartFromLyrics(taskId, track.id, orderId);
-  await trimAudio(tempFull, tempPreview, PREVIEW_SECONDS, previewStart);
-  const durationSeconds = await getAudioDuration(tempFull);
+  // Descarcarea fisierului si cererea de timestamp-uri NU depind una de cealalta (ambele
+  // au nevoie doar de taskId/track.id, disponibile deja) — le rulam in PARALEL, nu una
+  // dupa alta, ca sa nu adaugam timpul lor unul peste celalalt in "drumul critic" al
+  // generarii. Fisierul COMPLET (tempFull) ramane neschimbat de acest pas — descarcarea e
+  // singura operatie care il atinge.
+  const downloadStart = Date.now();
+  const timestampStart = Date.now();
+  perfLog(orderId, 'download_start', vTag);
+  perfLog(orderId, 'timestamp_fetch_start', vTag);
+  const [, previewStart] = await Promise.all([
+    downloadFile(track.audioUrl, tempFull).then(() => {
+      perfLog(orderId, 'download_done', `${vTag}, ${Date.now() - downloadStart}ms`);
+    }),
+    getPreviewStartFromLyrics(taskId, track.id, orderId).then(v => {
+      perfLog(orderId, 'timestamp_fetch_done', `${vTag}, ${Date.now() - timestampStart}ms`);
+      return v;
+    })
+  ]);
+
+  // Taierea preview-ului (FFmpeg, doar copiere de stream — deja cea mai rapida optiune
+  // posibila pentru asta, fara reincodare) si citirea duratei fisierului complet (ffprobe)
+  // NU depind una de cealalta — ambele au nevoie doar de tempFull, deja descarcat. Le
+  // rulam de asemenea in paralel.
+  const ffmpegStart = Date.now();
+  perfLog(orderId, 'ffmpeg_start', vTag);
+  const [, durationSeconds] = await Promise.all([
+    trimAudio(tempFull, tempPreview, PREVIEW_SECONDS, previewStart).then(() => {
+      perfLog(orderId, 'ffmpeg_done', `${vTag}, ${Date.now() - ffmpegStart}ms`);
+    }),
+    getAudioDuration(tempFull)
+  ]);
 
   const fullKey = `orders/full/${orderId}-${variantId}.mp3`;
   const previewKey = `orders/preview/${orderId}-${variantId}.mp3`;
@@ -1451,13 +1534,18 @@ async function buildVariantFromTrack(orderId, variantId, track, taskId) {
   let previewUrl;
   let storedFullKey = null;
   let storedPreviewKey = null;
+  const uploadStart = Date.now();
 
   if (storage.CLOUD_ENABLED) {
     // fisierul complet merge STRICT in bucket-ul privat (naluna-private) — nu exista nicio
     // functie in storage.js care sa-l poata trimite din greseala in bucket-ul public.
     // Accesul se face doar prin URL semnat, generat la cerere, dupa ce verificam plata.
-    await storage.uploadPrivateFile(tempFull, fullKey, 'audio/mpeg');
-    await storage.uploadPublicFile(tempPreview, previewKey, 'audio/mpeg');
+    // Cele doua upload-uri sunt independente (fisiere si bucket-uri diferite) — le rulam
+    // in paralel.
+    await Promise.all([
+      storage.uploadPrivateFile(tempFull, fullKey, 'audio/mpeg'),
+      storage.uploadPublicFile(tempPreview, previewKey, 'audio/mpeg')
+    ]);
     previewUrl = storage.getPublicUrl(previewKey);
     storedFullKey = fullKey;
     storedPreviewKey = previewKey;
@@ -1469,6 +1557,7 @@ async function buildVariantFromTrack(orderId, variantId, track, taskId) {
     fs.renameSync(tempPreview, path.join(MEDIA_PREVIEW_DIR, `${orderId}-${variantId}.mp3`));
     previewUrl = `/media/preview/${orderId}/${variantId}`;
   }
+  perfLog(orderId, 'upload_save_done', `${vTag}, ${Date.now() - uploadStart}ms`);
 
   return {
     id: variantId,
@@ -1559,11 +1648,20 @@ async function callMusicProvider(orderId, prompt) {
     throw new Error('Prompt invalid sau gol — cererea catre SunoAPI nu a fost trimisa.');
   }
 
+  // Model configurabil prin variabila de mediu MUSIC_MODEL — vezi .env.example pentru
+  // valorile acceptate de furnizor (V4_5ALL, V4, V4_5, V4_5PLUS, V5). Daca variabila lipseste
+  // sau e goala, ramanem pe V4_5ALL (modelul folosit dintotdeauna) — schimbarea modelului e
+  // deci strict opt-in, niciodata automata. Verificat direct in documentatia oficiala
+  // sunoapi.org: toate aceste modele accepta acelasi prompt de max. 500 caractere in
+  // customMode:false, deci buildPrompt() nu are nevoie de nicio ajustare la schimbarea
+  // modelului.
+  const musicModel = (process.env.MUSIC_MODEL && process.env.MUSIC_MODEL.trim()) || 'V4_5ALL';
+
   const requestBody = {
     prompt,
     customMode: false,
     instrumental: false,
-    model: 'V4_5ALL',
+    model: musicModel,
     callBackUrl: `${DOMAIN}/api/music/callback`
   };
 
@@ -1595,6 +1693,7 @@ async function callMusicProvider(orderId, prompt) {
   }
 
   await db.updateOrder(orderId, { musicTaskId: taskId });
+  perfLog(orderId, 'suno_task_created', `taskId=${taskId.slice(0, 8)}, model=${musicModel}`);
 
   return taskId;
 }
@@ -1609,6 +1708,12 @@ async function callMusicProvider(orderId, prompt) {
 // anterioare (30*6s), care s-au dovedit insuficiente pentru unele generari reale (Suno
 // a acceptat si a lucrat la ele, dar nu a apucat sa raspunda inauntrul celor 3 minute).
 //
+// CALLBACK-UL E MECANISMUL PRINCIPAL — polling-ul e doar fallback/recuperare. La fiecare
+// iteratie, INAINTE de a mai face un apel catre Suno, verificam daca comanda a fost deja
+// finalizata (de catre callback, care poate ajunge oricand independent de aceasta bucla).
+// Daca da, iesim IMEDIAT — nu mai asteptam restul buclei de 9 minute degeaba si nu mai
+// facem apeluri HTTP inutile catre Suno.
+//
 // IMPORTANT: daca se epuizeaza toate incercarile FARA ca Suno sa fi raportat explicit
 // SUCCESS sau o eroare, NU aruncam o exceptie — un timeout LOCAL de polling nu inseamna ca
 // Suno a esuat, doar ca noi am renuntat sa mai asteptam sincron. Intoarcem un status distinct
@@ -1617,9 +1722,20 @@ async function callMusicProvider(orderId, prompt) {
 // music_task_id. Callback-ul SunoAPI (configurat cu callBackUrl la crearea task-ului) poate
 // finaliza comanda oricand mai tarziu, independent de aceasta bucla locala.
 // ==========================================================================================
-async function pollForResult(taskId, maxAttempts = 90, intervalMs = 6000) {
+async function pollForResult(taskId, orderId, maxAttempts = 90, intervalMs = 6000) {
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise(r => setTimeout(r, intervalMs));
+
+    // Callback-ul e calea principala — daca a ajuns deja si a finalizat comanda (succes
+    // SAU esec), nu mai continuam polling-ul. Verificare ieftina (un SELECT), facuta
+    // INAINTE de apelul HTTP catre Suno, ca sa evitam cereri inutile odata ce stim ca
+    // exista deja un rezultat.
+    if (orderId) {
+      const current = await db.getOrderById(orderId).catch(() => null);
+      if (current && ['preview_ready', 'ready', 'generation_failed'].includes(current.status)) {
+        return { status: 'ALREADY_FINALIZED_BY_CALLBACK', tracks: [] };
+      }
+    }
 
     const res = await fetchWithTimeout(
       `${process.env.MUSIC_API_BASE_URL}/api/v1/generate/record-info?taskId=${encodeURIComponent(taskId)}`,
