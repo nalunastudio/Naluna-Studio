@@ -61,12 +61,34 @@
 const fs = require('fs');
 const path = require('path');
 
-const CLOUD_ENABLED = !!(
-  process.env.S3_ACCESS_KEY_ID &&
-  process.env.S3_SECRET_ACCESS_KEY &&
-  process.env.S3_PRIVATE_BUCKET &&
-  process.env.S3_PUBLIC_BUCKET
-);
+// Cele 5 variabile de mai jos sunt un TOT unitar — fara S3_PUBLIC_BASE_URL, uploadurile ar
+// reusi (nu au nevoie de ea), dar orice preview ar esua imediat dupa, la prima generare
+// reala, cand getPublicUrl() arunca eroare ("S3_PUBLIC_BASE_URL lipseste"). Asta ar insemna
+// "porneste pe jumatate si pica la prima comanda" — exact ce REQUIRED_ENV_VARS din server.js
+// evita explicit pentru celelalte variabile obligatorii. Validam deci strict: TOATE cele 5
+// setate -> cloud activat; NICIUNA setata -> fallback local (comportamentul de pana acum,
+// neschimbat); orice combinatie PARTIALA -> esec clar la boot, nu la prima comanda.
+const S3_CONFIG_VARS = {
+  S3_ACCESS_KEY_ID: process.env.S3_ACCESS_KEY_ID,
+  S3_SECRET_ACCESS_KEY: process.env.S3_SECRET_ACCESS_KEY,
+  S3_PRIVATE_BUCKET: process.env.S3_PRIVATE_BUCKET,
+  S3_PUBLIC_BUCKET: process.env.S3_PUBLIC_BUCKET,
+  S3_PUBLIC_BASE_URL: process.env.S3_PUBLIC_BASE_URL
+};
+const s3VarsSet = Object.entries(S3_CONFIG_VARS).filter(([, v]) => !!v).map(([k]) => k);
+const s3VarsMissing = Object.entries(S3_CONFIG_VARS).filter(([, v]) => !v).map(([k]) => k);
+
+if (s3VarsSet.length > 0 && s3VarsMissing.length > 0) {
+  console.error(
+    `Storage: configurare S3/R2 incompleta — lipsesc: ${s3VarsMissing.join(', ')}. ` +
+    `Fie completezi TOATE variabilele S3_* (vezi comentariile din storage.js), fie le lasi ` +
+    `pe TOATE necompletate ca sa folosesti fallback-ul local. O configurare partiala nu ` +
+    `porneste — ar rula cu upload-uri reusite dar preview-uri care esueaza la prima comanda reala.`
+  );
+  process.exit(1);
+}
+
+const CLOUD_ENABLED = s3VarsSet.length === Object.keys(S3_CONFIG_VARS).length;
 
 const PRIVATE_BUCKET = process.env.S3_PRIVATE_BUCKET;
 const PUBLIC_BUCKET = process.env.S3_PUBLIC_BUCKET;

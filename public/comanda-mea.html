@@ -135,6 +135,12 @@
   document.getElementById('p-sub').textContent = t.sub;
   document.getElementById('btn-search').textContent = t.search;
 
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str == null ? '' : String(str);
+    return div.innerHTML;
+  }
+
   async function lookup(tokenOverride) {
     const token = (tokenOverride || document.getElementById('token').value.trim());
     const results = document.getElementById('results');
@@ -164,7 +170,7 @@
       results.innerHTML = `
         <div class="order">
           <div class="top">
-            <div class="name">${t.for_label} ${o.recipient}</div>
+            <div class="name">${t.for_label} ${escapeHtml(o.recipient)}</div>
             <div class="status status-${o.status}">${t.status[o.status] || o.status}</div>
           </div>
           ${o.status === 'ready' ? `

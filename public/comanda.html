@@ -1337,7 +1337,8 @@
       genre: document.getElementById('genre').value,
       voicePreference: voiceInput.value,
       plan: selectedPlan.id,
-      price: selectedPlan.price,
+      // FARA price aici — serverul recalculeaza intotdeauna pretul din "plan", niciodata din
+      // ce trimite clientul (vezi POST /api/orders). Campul era trimis dar complet ignorat.
       lang: currentLang
     };
   }
@@ -1424,6 +1425,13 @@
   const statusMsg = document.getElementById('status-msg');
   const generateBtn = document.getElementById('generate-btn');
 
+  // Daca /generate esueaza dupa ce comanda a fost deja creata (rate limit, eroare
+  // temporara etc.), pastram orderId/accessToken aici, ca o reincercare (al doilea submit)
+  // sa apeleze din nou DOAR /generate pentru comanda deja creata, nu sa creeze o comanda
+  // noua de fiecare data cand utilizatorul apasa butonul.
+  let pendingOrderId = null;
+  let pendingAccessToken = null;
+
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
 
@@ -1441,29 +1449,54 @@
     statusMsg.className = '';
 
     try {
-      const createRes = await fetch('/api/orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(collectPayload())
-      });
-      const createData = await createRes.json();
+      let currentOrderId = pendingOrderId;
+      let currentAccessToken = pendingAccessToken;
 
-      if (!createData.orderId) {
-        statusMsg.textContent = t('msg_error_prefix') + (createData.error || t('msg_try_again'));
-        statusMsg.className = 'status-err';
-        generateBtn.disabled = false;
-        generateBtnLabel.textContent = originalBtnText;
-        return;
+      if (!currentOrderId) {
+        const createRes = await fetch('/api/orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(collectPayload())
+        });
+        const createData = await createRes.json();
+
+        if (!createData.orderId) {
+          statusMsg.textContent = t('msg_error_prefix') + (createData.error || t('msg_try_again'));
+          statusMsg.className = 'status-err';
+          generateBtn.disabled = false;
+          generateBtnLabel.textContent = originalBtnText;
+          return;
+        }
+
+        currentOrderId = createData.orderId;
+        currentAccessToken = createData.accessToken || '';
+        pendingOrderId = currentOrderId;
+        pendingAccessToken = currentAccessToken;
       }
 
-      const currentOrderId = createData.orderId;
-      const currentAccessToken = createData.accessToken || '';
-
-      await fetch(`/api/orders/${currentOrderId}/generate`, {
+      // IMPORTANT: verificam raspunsul lui /generate explicit — inainte, cererea era
+      // trimisa si ignorata complet, deci un esec (rate limit, eroare temporara etc.)
+      // redirectiona oricum clientul catre se-compune.html, unde comanda ramanea blocata
+      // la infinit in starea 'draft' (fara nicio stare de eroare vizibila, fara buton de
+      // reincercare). 409 ("generare deja in desfasurare") e tratat ca succes — inseamna
+      // ca exista deja un task activ pe server (acelasi tipar folosit si in se-compune.html).
+      const generateRes = await fetch(`/api/orders/${currentOrderId}/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Access-Token': currentAccessToken },
         body: JSON.stringify({ feedback: null })
       });
+
+      if (!generateRes.ok && generateRes.status !== 409) {
+        let serverMsg = '';
+        try { const data = await generateRes.json(); serverMsg = data && data.error; } catch (err) { /* ignoram */ }
+        statusMsg.textContent = t('msg_error_prefix') + (serverMsg || t('msg_try_again'));
+        statusMsg.className = 'status-err';
+        generateBtn.disabled = false;
+        generateBtnLabel.textContent = originalBtnText;
+        // pendingOrderId ramane setat — urmatorul submit reincearca /generate pe aceeasi
+        // comanda, nu mai creeaza una noua.
+        return;
+      }
 
       localStorage.removeItem(DRAFT_KEY);
       localStorage.removeItem(STEP_KEY);

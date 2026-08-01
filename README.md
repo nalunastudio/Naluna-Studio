@@ -17,8 +17,8 @@ Site de comenzi cadou: melodie personalizata generata prin AI, preview gratuit i
 
 1. Clientul completeaza formularul si apasa **"Genereaza previzualizarea"** — gratuit, fara plata.
 2. Serverul genereaza **2 variante** in paralel, taie 55 secunde din fiecare cu `ffmpeg`, citeste durata reala cu `ffprobe`.
-3. Clientul asculta, alege o varianta sau apasa **"Editeaza cantecul"** — 3 runde gratuite.
-4. Apasa **"Finalizeaza cadoul"** -> Stripe Checkout, restrictionat tehnic la clienti din UK.
+3. Clientul asculta, alege o varianta sau apasa **"Editeaza cantecul"** — o singura regenerare gratuita (`FREE_EDITS` in server.js).
+4. Apasa **"Finalizeaza cadoul"** -> Stripe Checkout, vanzare internationala, fara restrictie de tara.
 5. Dupa plata confirmata (webhook), fisierul complet se deblocheaza si pleaca automat un **email de livrare** cu link direct.
 6. Daca plata esueaza/e abandonata, clientul revine si vede bannerul de recuperare — comanda ramane salvata.
 7. Clientul isi poate regasi oricand comanda la `/comanda-mea.html`, folosind **codul de acces unic** primit pe email — nu prin simpla introducere a adresei de email.
@@ -168,7 +168,7 @@ Dupa ce apasa "Genereaza previzualizarea", clientul e redirectionat (aceeasi fil
 
 **Fara reincercare automata.** Cand statusul devine `generation_failed`, pagina opreste complet polling-ul si progresul si arata o stare de eroare cu mesaj clar ("Nu am putut finaliza melodia de aceasta data. Nu ai fost taxat.") si un buton manual "Incearca din nou" — acesta e **singurul loc** din pagina care apeleaza `/generate`, si doar la click explicit. Nu se porneste niciun task Suno nou fara actiune directa a clientului. O eroare de retea la polling (nu de generare) arata doar un mesaj discret ("Conexiunea dureaza putin mai mult") si continua sa verifice, fara sa atinga `/generate`.
 
-Cand statusul devine `preview_ready`, redirectioneaza automat catre `/index.html?ready=<orderId>` — un parametru **diferit** de `?resume=` (folosit pentru plati abandonate), tocmai ca sa nu apara gresit bannerul de "plata neterminata" pentru un client care nici n-a ajuns inca la plata.
+Cand statusul devine `preview_ready` (sau `ready`), redirectioneaza automat catre `/melodia-mea.html?id=<orderId>&token=<accessToken>` — pagina de recenzie/plata a variantelor. Acolo, un parametru **separat** `?resume=1` (folosit doar la revenirea dintr-o plata abandonata pe Stripe, vezi `cancel_url`) controleaza bannerul de "plata neterminata" — `se-compune.html` nu il seteaza niciodata, tocmai ca sa nu apara gresit acel banner pentru un client care nici n-a ajuns inca la plata.
 
 Editarea (regenerarea unei previzualizari deja afisate) ramane neschimbata — se intampla inline, pe formularul principal, nu redirectioneaza nicaieri.
 

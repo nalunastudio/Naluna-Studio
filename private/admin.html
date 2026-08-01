@@ -176,6 +176,7 @@
   const statusLabel = {
     draft: 'Neplătită',
     generating: 'Se compune',
+    processing_provider_result: 'Se finalizează',
     preview_ready: 'Previzualizare gata',
     ready: 'Plătită și livrată',
     generation_failed: 'Eroare'
@@ -196,8 +197,8 @@
       body.innerHTML = data.orders.map(o => `
         <tr>
           <td>${new Date(o.createdAt).toLocaleString('ro-RO')}</td>
-          <td>${o.recipient}</td>
-          <td>${o.email || '—'}</td>
+          <td>${escapeHtml(o.recipient)}</td>
+          <td>${escapeHtml(o.email || '—')}</td>
           <td>${(o.lang || 'ro').toUpperCase()}</td>
           <td>${o.occasion}</td>
           <td>${o.genre}</td>

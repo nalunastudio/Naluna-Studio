@@ -391,6 +391,10 @@
 
   if (!orderId) {
     window.location.href = '/index.html';
+    // opreste executia scriptului aici — fara acest return, restul codului (setup polling,
+    // un fetch inutil catre /api/orders/null) tot rula o data inainte ca navigarea sa se
+    // finalizeze efectiv.
+    throw new Error('orderId lipsa din URL — redirectionare catre /index.html');
   }
 
   const progressState = document.getElementById('progress-state');

@@ -365,6 +365,16 @@ const lookupLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false,
   message: { error: 'Prea multe încercări. Încearcă din nou mai târziu' }
 });
+// Panoul de admin e cel mai privilegiat punct de acces din aplicatie (acces la toate
+// comenzile/emailurile clientilor) si, spre deosebire de toate rutele de mai sus, nu avea
+// NICIUN rate limiting — Basic Auth putea fi incercat la nesfarsit. skipSuccessfulRequests:
+// true inseamna ca doar incercarile ESUATE (401) conteaza spre limita — adminul autentificat
+// corect nu e limitat niciodata, indiferent cate cereri face panoul in sesiunea lui.
+const adminAuthLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, max: 20, standardHeaders: true, legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  message: { error: 'Prea multe încercări de autentificare. Încearcă din nou mai târziu' }
+});
 
 // -------- Login owner: HTTP Basic Auth pentru panoul de admin --------
 function requireAdminAuth(req, res, next) {
@@ -388,10 +398,10 @@ function requireAdminAuth(req, res, next) {
   return res.status(401).send('Date de autentificare incorecte');
 }
 
-app.get('/admin', requireAdminAuth, (req, res) => {
+app.get('/admin', adminAuthLimiter, requireAdminAuth, (req, res) => {
   res.sendFile(path.join(__dirname, 'private', 'admin.html'));
 });
-app.use('/api/admin', requireAdminAuth);
+app.use('/api/admin', adminAuthLimiter, requireAdminAuth);
 
 app.get('/api/admin/orders', async (req, res, next) => {
   try {
@@ -601,7 +611,18 @@ app.get('/api/testimonials', async (req, res, next) => {
 });
 
 app.use(express.json({ limit: '20kb' })); // limita de marime — nu accepta payload-uri uriase
-app.use(express.static(path.join(__dirname, 'public')));
+// Cache lung (7 zile) DOAR pentru imagini/iconite (logo, favicon, og-image) — practic nu se
+// schimba niciodata, si fara asta fiecare vizita re-verifica fiecare imagine cu serverul
+// (maxAge implicit al express.static e 0). Paginile HTML raman NECACHE-uite (maxAge implicit,
+// nemodificat) — contin logica aplicatiei, care se poate schimba intre doua vizite, si un
+// client cu o copie veche cache-uita ar rula cod cu bug-uri deja reparate.
+app.use(express.static(path.join(__dirname, 'public'), {
+  setHeaders: (res, filePath) => {
+    if (/\.(png|svg|ico|jpg|jpeg|webp)$/i.test(filePath)) {
+      res.setHeader('Cache-Control', 'public, max-age=604800');
+    }
+  }
+}));
 
 // ==========================================================================================
 // 1. Creeaza comanda (fara plata) — VALIDARE STRICTA + PRET CALCULAT SERVER-SIDE
@@ -956,6 +977,9 @@ app.get('/api/orders/:orderId', async (req, res, next) => {
 app.post('/api/orders/:orderId/checkout', requireOrderToken, async (req, res, next) => {
   try {
     const order = req.order;
+    if (order.status === 'ready') {
+      return res.status(400).json({ error: 'Comanda a fost deja plătită.' });
+    }
     if (order.status !== 'preview_ready') {
       return res.status(400).json({ error: 'Generează o previzualizare înainte de plată.' });
     }
@@ -971,7 +995,10 @@ app.post('/api/orders/:orderId/checkout', requireOrderToken, async (req, res, ne
 
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
-      payment_method_types: ['card'],
+      // FARA payment_method_types fixat la ['card']: neprecizat, Checkout ofera automat
+      // metodele de plata activate in Stripe Dashboard, relevante pentru tara clientului
+      // (exact comportamentul "Stripe decide singur" descris in README) — inainte, ['card']
+      // fortat aici bloca acel comportament indiferent de configurarea din Dashboard.
       customer_email: order.email,
       line_items: [{
         price_data: {
@@ -997,6 +1024,15 @@ app.post('/api/orders/:orderId/checkout', requireOrderToken, async (req, res, ne
       // plata abandonata sau esuata -> revine la pagina dedicata melodiei (nu la formular),
       // cu comanda deja generata si token-ul de acces inclus
       cancel_url: `${DOMAIN}/melodia-mea.html?id=${order.id}&token=${order.accessToken}&resume=1`
+    }, {
+      // Idempotency key legata de comanda: un dublu-click, un al doilea tab, sau un retry
+      // client dupa o eroare de retea nu mai creeaza o A DOUA sesiune Stripe independenta
+      // pentru aceeasi comanda — Stripe returneaza exact aceeasi sesiune/URL la cereri
+      // repetate in fereastra sa de idempotenta (~24h). Fara asta, doua sesiuni platite
+      // separat pentru aceeasi comanda ar insemna client taxat de doua ori — garda noastra
+      // interna (status !== 'ready' in webhook) previne doar livrarea/procesarea dubla,
+      // nu si taxarea dubla efectiva la Stripe.
+      idempotencyKey: `checkout-${order.id}`
     });
 
     res.json({ url: session.url });
@@ -1134,7 +1170,11 @@ app.post('/api/music/callback', async (req, res) => {
   try {
     const body = req.body || {};
     const data = body.data || body;
-    const taskId = data.taskId || body.taskId;
+    // IMPORTANT: documentatia reala SunoAPI (verificata direct, docs.sunoapi.org) foloseste
+    // "task_id" (snake_case) in payload-ul de CALLBACK — diferit de "taskId" (camelCase)
+    // folosit de raspunsul endpoint-ului de POLLING (record-info). Verificam ambele forme,
+    // defensiv, dar task_id e forma reala documentata pentru acest payload specific.
+    const taskId = data.task_id || data.taskId || body.taskId;
 
     if (!taskId || typeof taskId !== 'string') {
       console.warn('Callback SunoAPI primit fara taskId recunoscut.');
@@ -1147,27 +1187,33 @@ app.post('/api/music/callback', async (req, res) => {
       return res.status(200).json({ received: true });
     }
 
-    const statusName = data.status || body.status;
-    perfLog(order.id, 'callback_received', `status=${statusName || 'necunoscut'}`);
+    // IMPORTANT: payload-ul de callback NU are un camp "status" (spre deosebire de
+    // record-info, folosit de polling) — foloseste "callbackType" ('text' | 'first' |
+    // 'complete' | 'error'), plus campul radacina "code" (200 succes, 400/451/500 eroare).
+    // Tratate distinct de SUNO_SUCCESS_STATUS/SUNO_ERROR_STATUSES (acelea raman valabile
+    // DOAR pentru raspunsul de polling, care chiar are un camp "status").
+    const callbackType = data.callbackType;
+    const callbackCode = typeof body.code === 'number' ? body.code : null;
+    perfLog(order.id, 'callback_received', `callbackType=${callbackType || 'necunoscut'}, code=${callbackCode}`);
 
-    if (statusName === SUNO_SUCCESS_STATUS) {
+    if (callbackType === 'complete' && callbackCode === 200) {
       const tracks = extractSunoTracks(body);
       await finalizeVariantsIfNeeded(order.id, tracks, taskId).catch(err => {
         console.error(`Callback SunoAPI: eroare la finalizarea comenzii ${order.id}:`, err.message);
       });
-    } else if (SUNO_ERROR_STATUSES.includes(statusName)) {
+    } else if (callbackType === 'error' || (callbackCode !== null && callbackCode !== 200)) {
       const current = await db.getOrderById(order.id);
       if (current && !['preview_ready', 'ready', 'generation_failed'].includes(current.status)) {
-        // Suno a raportat direct un status de eroare prin callback (fara sa treaca prin
+        // Suno a raportat direct un esec prin callback (fara sa treaca prin
         // finalizeVariantsIfNeeded) — tot trebuie sa restituim atomic editarea rezervata,
         // daca esecul a aparut in timpul unei regenerari.
         await db.refundEditIfReserved(order.id).catch(refundErr => {
           console.error(`Eroare la restituirea editarii pentru comanda ${order.id}:`, refundErr.message);
         });
-        await db.updateOrder(order.id, { status: 'generation_failed', error: `Suno: ${statusName}` });
+        await db.updateOrder(order.id, { status: 'generation_failed', error: `Suno callback: ${body.msg || callbackType || 'eroare necunoscuta'}` });
       }
     }
-    // PENDING / TEXT_SUCCESS / FIRST_SUCCESS / status necunoscut -> nu facem nimic aici,
+    // callbackType 'text' / 'first' (etape intermediare) -> nu facem nimic aici,
     // polling-ul (pollForResult) continua sa verifice independent
 
     res.status(200).json({ received: true });
@@ -1327,6 +1373,27 @@ async function finalizeVariantsIfNeeded(orderId, tracks, taskId) {
       // o generare INITIALA, editReserved era deja false — actualizarea e un no-op sigur.
       editReserved: false
     });
+
+    // La o REGENERARE (nu la generarea initiala, unde claimed.variants e []), variantele
+    // vechi tocmai inlocuite mai sus raman orfane in bucket-urile R2/S3 daca nu le stergem
+    // explicit — nimic altceva nu le mai atinge vreodata. Curatare best-effort, DUPA ce noile
+    // variante sunt deja salvate cu succes (niciodata invers — nu stergem fisiere vechi inainte
+    // sa fie sigur ca inlocuitorii lor exista), si niciodata pentru comenzi deja 'ready'
+    // (regenerarea e blocata dupa plata, deci nu atinge niciodata fisierul livrat clientului).
+    // Doar bucket-urile cloud — fallback-ul local nu e productie recomandata, nu adaugam
+    // aceeasi complexitate acolo.
+    if (storage.CLOUD_ENABLED && claimed.variants && claimed.variants.length > 0) {
+      const oldVariants = claimed.variants;
+      Promise.allSettled(oldVariants.flatMap(v => [
+        v.fullKey ? storage.deletePrivateFile(v.fullKey) : null,
+        v.previewKey ? storage.deletePublicFile(v.previewKey) : null
+      ].filter(Boolean))).then(results => {
+        const failed = results.filter(r => r.status === 'rejected');
+        if (failed.length > 0) {
+          console.error(`Comanda ${orderId}: ${failed.length} fisier(e) vechi nu au putut fi sterse din storage dupa regenerare:`, failed.map(f => f.reason && f.reason.message).join(' | '));
+        }
+      });
+    }
 
     perfLog(orderId, 'finalize_done', `${Date.now() - finalizeStart}ms, variante_reusite=${variants.length}`);
     // durata totala de la crearea comenzii pana la 'preview_ready' — util ca sa vedem cat
@@ -2103,6 +2170,20 @@ function buildPrompt(order, feedback) {
 // ==========================================================================================
 // EMAIL DE LIVRARE — Resend. Link cu access token, nu doar "cauta cu emailul tau".
 // ==========================================================================================
+// Escape HTML-uri simplu, pentru text interpolat in corpul HTML al emailurilor de livrare —
+// order.recipient e text liber introdus de client (nu are alt fel de validare/enum care sa-l
+// restrictioneze), deci trebuie tratat ca neincrezator oriunde ajunge in HTML randat. NU se
+// aplica pe subject (subiectul emailului e text simplu, nu HTML — escaparea acolo ar afisa
+// gresit caractere ca &amp; direct in subiect, in loc sa previna ceva).
+function escapeHtmlForEmail(str) {
+  return String(str == null ? '' : str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 async function sendDeliveryEmail(order) {
   if (!process.env.RESEND_API_KEY) {
     console.warn('RESEND_API_KEY lipsa din .env — email de livrare NU a fost trimis.');
@@ -2111,24 +2192,25 @@ async function sendDeliveryEmail(order) {
 
   const downloadUrl = `${DOMAIN}/media/full/${order.id}?token=${order.accessToken}`;
   const accessUrl = `${DOMAIN}/comanda-mea.html?token=${order.accessToken}`;
+  const safeRecipient = escapeHtmlForEmail(order.recipient);
 
   const templates = {
     ro: { subject: `Cântecul tău pentru ${order.recipient} e gata`,
-      html: `<p>Salut,</p><p>Cântecul tău personalizat pentru <strong>${order.recipient}</strong> e gata.</p><p><a href="${downloadUrl}">Descarcă melodia</a></p><p>O poți regăsi oricând la <a href="${accessUrl}">acest link</a>.</p><p>— NALUNA</p>` },
+      html: `<p>Salut,</p><p>Cântecul tău personalizat pentru <strong>${safeRecipient}</strong> e gata.</p><p><a href="${downloadUrl}">Descarcă melodia</a></p><p>O poți regăsi oricând la <a href="${accessUrl}">acest link</a>.</p><p>— NALUNA</p>` },
     en: { subject: `Your song for ${order.recipient} is ready`,
-      html: `<p>Hi,</p><p>Your personalised song for <strong>${order.recipient}</strong> is ready.</p><p><a href="${downloadUrl}">Download your song</a></p><p>You can find it anytime at <a href="${accessUrl}">this link</a>.</p><p>— NALUNA</p>` },
+      html: `<p>Hi,</p><p>Your personalised song for <strong>${safeRecipient}</strong> is ready.</p><p><a href="${downloadUrl}">Download your song</a></p><p>You can find it anytime at <a href="${accessUrl}">this link</a>.</p><p>— NALUNA</p>` },
     de: { subject: `Dein Lied für ${order.recipient} ist fertig`,
-      html: `<p>Hallo,</p><p>Dein persönliches Lied für <strong>${order.recipient}</strong> ist fertig.</p><p><a href="${downloadUrl}">Lied herunterladen</a></p><p>Du findest es jederzeit über <a href="${accessUrl}">diesen Link</a>.</p><p>— NALUNA</p>` },
+      html: `<p>Hallo,</p><p>Dein persönliches Lied für <strong>${safeRecipient}</strong> ist fertig.</p><p><a href="${downloadUrl}">Lied herunterladen</a></p><p>Du findest es jederzeit über <a href="${accessUrl}">diesen Link</a>.</p><p>— NALUNA</p>` },
     es: { subject: `Tu canción para ${order.recipient} está lista`,
-      html: `<p>Hola,</p><p>Tu canción personalizada para <strong>${order.recipient}</strong> está lista.</p><p><a href="${downloadUrl}">Descargar la canción</a></p><p>Puedes encontrarla siempre en <a href="${accessUrl}">este enlace</a>.</p><p>— NALUNA</p>` },
+      html: `<p>Hola,</p><p>Tu canción personalizada para <strong>${safeRecipient}</strong> está lista.</p><p><a href="${downloadUrl}">Descargar la canción</a></p><p>Puedes encontrarla siempre en <a href="${accessUrl}">este enlace</a>.</p><p>— NALUNA</p>` },
     it: { subject: `La tua canzone per ${order.recipient} è pronta`,
-      html: `<p>Ciao,</p><p>La tua canzone personalizzata per <strong>${order.recipient}</strong> è pronta.</p><p><a href="${downloadUrl}">Scarica la canzone</a></p><p>Puoi trovarla sempre su <a href="${accessUrl}">questo link</a>.</p><p>— NALUNA</p>` },
+      html: `<p>Ciao,</p><p>La tua canzone personalizzata per <strong>${safeRecipient}</strong> è pronta.</p><p><a href="${downloadUrl}">Scarica la canzone</a></p><p>Puoi trovarla sempre su <a href="${accessUrl}">questo link</a>.</p><p>— NALUNA</p>` },
     fr: { subject: `Votre chanson pour ${order.recipient} est prête`,
-      html: `<p>Bonjour,</p><p>Votre chanson personnalisée pour <strong>${order.recipient}</strong> est prête.</p><p><a href="${downloadUrl}">Télécharger la chanson</a></p><p>Vous pouvez la retrouver à tout moment via <a href="${accessUrl}">ce lien</a>.</p><p>— NALUNA</p>` },
+      html: `<p>Bonjour,</p><p>Votre chanson personnalisée pour <strong>${safeRecipient}</strong> est prête.</p><p><a href="${downloadUrl}">Télécharger la chanson</a></p><p>Vous pouvez la retrouver à tout moment via <a href="${accessUrl}">ce lien</a>.</p><p>— NALUNA</p>` },
     bg: { subject: `Твоята песен за ${order.recipient} е готова`,
-      html: `<p>Здравей,</p><p>Твоята персонализирана песен за <strong>${order.recipient}</strong> е готова.</p><p><a href="${downloadUrl}">Изтегли песента</a></p><p>Можеш да я намериш винаги на <a href="${accessUrl}">този линк</a>.</p><p>— NALUNA</p>` },
+      html: `<p>Здравей,</p><p>Твоята персонализирана песен за <strong>${safeRecipient}</strong> е готова.</p><p><a href="${downloadUrl}">Изтегли песента</a></p><p>Можеш да я намериш винаги на <a href="${accessUrl}">този линк</a>.</p><p>— NALUNA</p>` },
     tr: { subject: `${order.recipient} için şarkınız hazır`,
-      html: `<p>Merhaba,</p><p><strong>${order.recipient}</strong> için kişiselleştirilmiş şarkınız hazır.</p><p><a href="${downloadUrl}">Şarkınızı indirin</a></p><p><a href="${accessUrl}">Bu bağlantıdan</a> her zaman ulaşabilirsiniz.</p><p>— NALUNA</p>` }
+      html: `<p>Merhaba,</p><p><strong>${safeRecipient}</strong> için kişiselleştirilmiş şarkınız hazır.</p><p><a href="${downloadUrl}">Şarkınızı indirin</a></p><p><a href="${accessUrl}">Bu bağlantıdan</a> her zaman ulaşabilirsiniz.</p><p>— NALUNA</p>` }
   };
 
   const template = templates[order.lang] || templates.ro;

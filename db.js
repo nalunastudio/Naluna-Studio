@@ -56,7 +56,12 @@ async function initDb() {
       paid_at TIMESTAMPTZ
     );
   `);
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_orders_access_token ON orders(access_token);`);
+  // FARA index explicit pe access_token: constraintul UNIQUE de mai sus (access_token TEXT
+  // UNIQUE NOT NULL) creeaza deja automat un index btree unic pe aceasta coloana
+  // (orders_access_token_key) — un al doilea index explicit pe aceeasi coloana ar fi pur
+  // redundant (dublu cost de scriere la fiecare INSERT/UPDATE, fara niciun beneficiu la
+  // citire). DROP IF EXISTS, idempotent, curata si instalarile mai vechi care il au deja.
+  await pool.query(`DROP INDEX IF EXISTS idx_orders_access_token;`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at DESC);`);
 
   // ALTER separat (nu doar in CREATE TABLE) — ca baza de date sa se actualizeze corect
@@ -341,6 +346,29 @@ async function computeRevenue() {
 // TESTIMONIALS — reactii clienti, gestionate exclusiv din panoul de admin
 // ==================================================================================
 
+// Helper de tranzactie, folosit de createTestimonial/moveTestimonial mai jos — ambele
+// citesc o stare (MAX(display_order), respectiv vecinul curent) si apoi scriu pe baza
+// acelei citiri, in pasi separati. Fara o tranzactie reala, doua actiuni concurente
+// (doi admini, sau doua click-uri rapide) pot citi aceeasi stare "veche" inainte ca
+// vreuna sa scrie, rezultand in valori duplicate/pierdute de display_order — reprodus
+// empiric la verificare (8 creari concurente -> valori duplicate). LOCK TABLE ... IN
+// SHARE ROW EXCLUSIVE MODE serializeaza scrierile concurente pe acest tabel (mic,
+// folosit doar din admin) — cost neglijabil, corectitudine garantata.
+async function withTransaction(fn) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await fn(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 function rowToTestimonial(row) {
   if (!row) return null;
   return {
@@ -359,18 +387,24 @@ function rowToTestimonial(row) {
 }
 
 async function createTestimonial(t) {
-  // noua reactie intra la finalul listei (cel mai mare display_order + 1)
-  const maxRes = await pool.query(`SELECT COALESCE(MAX(display_order), -1) AS max_order FROM testimonials`);
-  const nextOrder = Number(maxRes.rows[0].max_order) + 1;
+  return withTransaction(async (client) => {
+    await client.query('LOCK TABLE testimonials IN SHARE ROW EXCLUSIVE MODE');
 
-  const result = await pool.query(
-    `INSERT INTO testimonials
-      (id, first_name, location, quote, media_type, media_path, published, display_order, consent_confirmed)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-     RETURNING *`,
-    [t.id, t.firstName, t.location || null, t.quote, t.mediaType, t.mediaPath || null, t.published, nextOrder, t.consentConfirmed]
-  );
-  return rowToTestimonial(result.rows[0]);
+    // noua reactie intra la finalul listei (cel mai mare display_order + 1) — citirea
+    // MAX(display_order) si INSERT-ul ruleaza acum in aceeasi tranzactie, cu tabelul
+    // blocat impotriva altor scrieri concurente intre cele doua.
+    const maxRes = await client.query(`SELECT COALESCE(MAX(display_order), -1) AS max_order FROM testimonials`);
+    const nextOrder = Number(maxRes.rows[0].max_order) + 1;
+
+    const result = await client.query(
+      `INSERT INTO testimonials
+        (id, first_name, location, quote, media_type, media_path, published, display_order, consent_confirmed)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+       RETURNING *`,
+      [t.id, t.firstName, t.location || null, t.quote, t.mediaType, t.mediaPath || null, t.published, nextOrder, t.consentConfirmed]
+    );
+    return rowToTestimonial(result.rows[0]);
+  });
 }
 
 async function getTestimonialById(id) {
@@ -421,25 +455,38 @@ async function listPublishedTestimonials(limit) {
   return result.rows.map(rowToTestimonial);
 }
 
-// interschimba display_order intre o reactie si vecina ei (sus/jos), pentru reordonare manuala
+// interschimba display_order intre o reactie si vecina ei (sus/jos), pentru reordonare manuala.
+// Citirea vecinului si cele doua UPDATE-uri de swap ruleaza acum intr-o singura tranzactie
+// (tabelul blocat pe durata ei) — fara asta, doua reordonari concurente puteau citi acelasi
+// vecin "vechi" inainte ca vreuna sa scrie, rezultand valori duplicate de display_order
+// (reprodus empiric la verificare: 8 randuri, 7 valori unice dupa reordonari concurente).
 async function moveTestimonial(id, direction) {
-  const current = await getTestimonialById(id);
-  if (!current) return null;
+  return withTransaction(async (client) => {
+    // Lock-ul se ia INAINTE de orice citire (nu doar inainte de vecin) — altfel ramane o
+    // fereastra intre citirea lui "current" si obtinerea lock-ului in care o alta tranzactie
+    // concurenta ar putea inca citi aceeasi stare veche.
+    await client.query('LOCK TABLE testimonials IN SHARE ROW EXCLUSIVE MODE');
 
-  const comparator = direction === 'up' ? '<' : '>';
-  const orderDirection = direction === 'up' ? 'DESC' : 'ASC';
+    const currentRes = await client.query(`SELECT * FROM testimonials WHERE id = $1`, [id]);
+    const current = rowToTestimonial(currentRes.rows[0]);
+    if (!current) return null;
 
-  const neighborRes = await pool.query(
-    `SELECT * FROM testimonials WHERE display_order ${comparator} $1 ORDER BY display_order ${orderDirection} LIMIT 1`,
-    [current.displayOrder]
-  );
-  const neighbor = rowToTestimonial(neighborRes.rows[0]);
-  if (!neighbor) return current; // deja la capat, nimic de miscat
+    const comparator = direction === 'up' ? '<' : '>';
+    const orderDirection = direction === 'up' ? 'DESC' : 'ASC';
 
-  await pool.query(`UPDATE testimonials SET display_order = $1 WHERE id = $2`, [neighbor.displayOrder, current.id]);
-  await pool.query(`UPDATE testimonials SET display_order = $1 WHERE id = $2`, [current.displayOrder, neighbor.id]);
+    const neighborRes = await client.query(
+      `SELECT * FROM testimonials WHERE display_order ${comparator} $1 ORDER BY display_order ${orderDirection} LIMIT 1`,
+      [current.displayOrder]
+    );
+    const neighbor = rowToTestimonial(neighborRes.rows[0]);
+    if (!neighbor) return current; // deja la capat, nimic de miscat
 
-  return getTestimonialById(id);
+    await client.query(`UPDATE testimonials SET display_order = $1 WHERE id = $2`, [neighbor.displayOrder, current.id]);
+    await client.query(`UPDATE testimonials SET display_order = $1 WHERE id = $2`, [current.displayOrder, neighbor.id]);
+
+    const finalRes = await client.query(`SELECT * FROM testimonials WHERE id = $1`, [id]);
+    return rowToTestimonial(finalRes.rows[0]);
+  });
 }
 
 module.exports = {
