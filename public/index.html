@@ -211,6 +211,16 @@
   .testimonial-name{ font-weight:600; font-size:14px; }
   .testimonial-location{ color:var(--text-secondary); font-size:12px; letter-spacing:.03em; }
 
+  /* FAQ — acelasi tipar vizual ca .steps (fundal var(--bg-secondary), separatoare var(--line),
+     aceleasi variabile de culoare/font ca restul paginii) — nicio culoare sau font noi. */
+  .faq-list{
+    max-width:760px; margin:0 auto; display:flex; flex-direction:column; gap:1px;
+    background:var(--line); border:1px solid var(--line); border-radius:16px; overflow:hidden;
+  }
+  .faq-item{ background:var(--bg-secondary); padding:24px 28px; }
+  .faq-q{ font-family:'Fraunces', serif; font-weight:500; font-size:16px; margin-bottom:8px; }
+  .faq-a{ color:var(--text-secondary); font-size:14px; line-height:1.6; }
+
   @media (max-width: 860px){
     .testimonial-grid{ grid-template-columns:1fr; }
   }
@@ -364,6 +374,35 @@
     <div class="testimonial-grid" id="testimonial-grid"></div>
   </section>
 
+  <section id="faq">
+    <div class="section-head">
+      <div class="eyebrow" data-i18n="faq_eyebrow">Întrebări</div>
+      <h2 data-i18n="faq_title">Întrebări frecvente</h2>
+    </div>
+    <div class="faq-list">
+      <div class="faq-item">
+        <div class="faq-q" data-i18n="faq_q1">Cât durează să primesc melodia?</div>
+        <div class="faq-a" data-i18n="faq_a1">De obicei, aproximativ 3 minute pentru previzualizare. Asculți gratuit înainte să plătești.</div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-q" data-i18n="faq_q2">În ce limbi pot avea melodia?</div>
+        <div class="faq-a" data-i18n="faq_a2">În oricare din cele 8 limbi disponibile — versurile sunt scrise direct în limba aleasă, nu traduse.</div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-q" data-i18n="faq_q3">Trebuie să plătesc înainte să ascult melodia?</div>
+        <div class="faq-a" data-i18n="faq_a3">Nu. Asculți gratuit 2 variante și alegi pe cea care îți place, abia apoi plătești.</div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-q" data-i18n="faq_q4">Cum primesc melodia după plată?</div>
+        <div class="faq-a" data-i18n="faq_a4">Automat, pe email, imediat după confirmarea plății. O poți regăsi oricând cu codul tău unic de acces.</div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-q" data-i18n="faq_q5">Ce se întâmplă dacă ceva nu iese bine?</div>
+        <div class="faq-a" data-i18n="faq_a5">Te contactăm pentru remediere sau rambursare.</div>
+      </div>
+    </div>
+  </section>
+
   <footer>
     <div class="footer-logo">
       <div class="logo-mark"><img src="/logo.svg" alt="NALUNA"></div>
@@ -394,6 +433,12 @@
       step4_title: 'Plata și livrarea', step4_desc: 'Plătești doar când ești mulțumit. Primești melodia pe email imediat',
       reviews_eyebrow: 'Reacții reale', reviews_title: 'Reacții reale de la clienți',
       reviews_sub: 'Povești reale, de la oameni care au comandat deja un cântec',
+      faq_eyebrow: 'Întrebări', faq_title: 'Întrebări frecvente',
+      faq_q1: 'Cât durează să primesc melodia?', faq_a1: 'De obicei, aproximativ 3 minute pentru previzualizare. Asculți gratuit înainte să plătești.',
+      faq_q2: 'În ce limbi pot avea melodia?', faq_a2: 'În oricare din cele 8 limbi disponibile — versurile sunt scrise direct în limba aleasă, nu traduse.',
+      faq_q3: 'Trebuie să plătesc înainte să ascult melodia?', faq_a3: 'Nu. Asculți gratuit 2 variante și alegi pe cea care îți place, abia apoi plătești.',
+      faq_q4: 'Cum primesc melodia după plată?', faq_a4: 'Automat, pe email, imediat după confirmarea plății. O poți regăsi oricând cu codul tău unic de acces.',
+      faq_q5: 'Ce se întâmplă dacă ceva nu iese bine?', faq_a5: 'Te contactăm pentru remediere sau rambursare.',
       footer_note: 'Compoziție originală personalizată pe baza poveștii tale',
     },
     en: {
@@ -414,6 +459,12 @@
       step4_title: 'Payment and delivery', step4_desc: 'You only pay once you are happy. You get the song by email right away.',
       reviews_eyebrow: 'Real reactions', reviews_title: 'Real reactions from customers',
       reviews_sub: 'Real stories, from people who have already ordered a song.',
+      faq_eyebrow: 'FAQ', faq_title: 'Frequently asked questions',
+      faq_q1: 'How long does it take to get my song?', faq_a1: 'Usually about 3 minutes for the preview. You listen for free before you pay.',
+      faq_q2: 'What languages can I get the song in?', faq_a2: 'Any of our 8 available languages — the lyrics are written directly in that language, not translated.',
+      faq_q3: 'Do I have to pay before I hear the song?', faq_a3: 'No. You listen to 2 free versions and pick your favourite — only then do you pay.',
+      faq_q4: 'How do I get the song after paying?', faq_a4: 'Automatically, by email, right after your payment is confirmed. You can also find it anytime with your unique access code.',
+      faq_q5: 'What happens if something goes wrong?', faq_a5: "We'll contact you to fix it or refund you.",
       footer_note: 'Original composition, personalised around your story.',
     },
     de: {
@@ -434,6 +485,12 @@
       step4_title: 'Zahlung und Lieferung', step4_desc: 'Du zahlst erst, wenn du zufrieden bist. Das Lied kommt sofort per E-Mail.',
       reviews_eyebrow: 'Echte Reaktionen', reviews_title: 'Echte Reaktionen von Kunden',
       reviews_sub: 'Echte Geschichten von Menschen, die bereits ein Lied bestellt haben.',
+      faq_eyebrow: 'Fragen', faq_title: 'Häufig gestellte Fragen',
+      faq_q1: 'Wie lange dauert es, bis ich mein Lied bekomme?', faq_a1: 'Normalerweise etwa 3 Minuten für die Vorschau. Du hörst kostenlos rein, bevor du bezahlst.',
+      faq_q2: 'In welchen Sprachen kann ich das Lied bekommen?', faq_a2: 'In jeder unserer 8 verfügbaren Sprachen — der Text wird direkt in dieser Sprache geschrieben, nicht übersetzt.',
+      faq_q3: 'Muss ich bezahlen, bevor ich das Lied höre?', faq_a3: 'Nein. Du hörst dir 2 kostenlose Versionen an und wählst deine Favoritin — erst dann bezahlst du.',
+      faq_q4: 'Wie bekomme ich das Lied nach der Zahlung?', faq_a4: 'Automatisch per E-Mail, direkt nach Zahlungsbestätigung. Du findest es auch jederzeit mit deinem persönlichen Zugangscode wieder.',
+      faq_q5: 'Was passiert, wenn etwas schiefgeht?', faq_a5: 'Wir melden uns bei dir, um es zu beheben oder dir dein Geld zurückzuerstatten.',
       footer_note: 'Originalkomposition, persönlich auf deine Geschichte abgestimmt.',
     },
     es: {
@@ -454,6 +511,12 @@
       step4_title: 'Pago y entrega', step4_desc: 'Solo pagas cuando estás satisfecho. Recibes la canción por email al instante.',
       reviews_eyebrow: 'Reacciones reales', reviews_title: 'Reacciones reales de clientes',
       reviews_sub: 'Historias reales, de personas que ya han pedido una canción.',
+      faq_eyebrow: 'Preguntas', faq_title: 'Preguntas frecuentes',
+      faq_q1: '¿Cuánto tarda en llegar mi canción?', faq_a1: 'Normalmente unos 3 minutos para la previsualización. La escuchas gratis antes de pagar.',
+      faq_q2: '¿En qué idiomas puedo tener la canción?', faq_a2: 'En cualquiera de nuestros 8 idiomas disponibles — la letra se escribe directamente en ese idioma, no se traduce.',
+      faq_q3: '¿Tengo que pagar antes de escuchar la canción?', faq_a3: 'No. Escuchas 2 versiones gratuitas y eliges tu favorita — solo entonces pagas.',
+      faq_q4: '¿Cómo recibo la canción después de pagar?', faq_a4: 'Automáticamente, por email, justo después de confirmarse el pago. También puedes encontrarla siempre con tu código de acceso único.',
+      faq_q5: '¿Qué pasa si algo sale mal?', faq_a5: 'Te contactamos para solucionarlo o para devolverte el dinero.',
       footer_note: 'Composición original, personalizada según tu historia.',
     },
     it: {
@@ -474,6 +537,12 @@
       step4_title: 'Pagamento e consegna', step4_desc: 'Paghi solo quando sei soddisfatto. Ricevi la canzone via email subito.',
       reviews_eyebrow: 'Reazioni reali', reviews_title: 'Reazioni reali dei clienti',
       reviews_sub: 'Storie vere, di persone che hanno già ordinato una canzone.',
+      faq_eyebrow: 'Domande', faq_title: 'Domande frequenti',
+      faq_q1: 'Quanto tempo ci vuole per ricevere la mia canzone?', faq_a1: "Di solito circa 3 minuti per l'anteprima. L'ascolti gratis prima di pagare.",
+      faq_q2: 'In quali lingue posso avere la canzone?', faq_a2: 'In una delle nostre 8 lingue disponibili — il testo viene scritto direttamente in quella lingua, non tradotto.',
+      faq_q3: 'Devo pagare prima di ascoltare la canzone?', faq_a3: 'No. Ascolti 2 versioni gratuite e scegli quella che preferisci — solo dopo paghi.',
+      faq_q4: 'Come ricevo la canzone dopo il pagamento?', faq_a4: 'Automaticamente, via email, subito dopo la conferma del pagamento. Puoi ritrovarla sempre anche con il tuo codice di accesso unico.',
+      faq_q5: 'Cosa succede se qualcosa va storto?', faq_a5: 'Ti contattiamo per risolvere il problema o per il rimborso.',
       footer_note: 'Composizione originale, personalizzata sulla tua storia.',
     },
     fr: {
@@ -494,6 +563,12 @@
       step4_title: 'Paiement et livraison', step4_desc: 'Vous ne payez que si vous êtes satisfait. Vous recevez la chanson par email immédiatement.',
       reviews_eyebrow: 'Vraies réactions', reviews_title: 'Vraies réactions de clients',
       reviews_sub: 'Des histoires vraies, de personnes ayant déjà commandé une chanson.',
+      faq_eyebrow: 'Questions', faq_title: 'Questions fréquentes',
+      faq_q1: 'Combien de temps faut-il pour recevoir ma chanson ?', faq_a1: "Généralement environ 3 minutes pour l'aperçu. Vous l'écoutez gratuitement avant de payer.",
+      faq_q2: 'Dans quelles langues puis-je avoir la chanson ?', faq_a2: 'Dans l\'une de nos 8 langues disponibles — les paroles sont écrites directement dans cette langue, pas traduites.',
+      faq_q3: 'Dois-je payer avant d\'écouter la chanson ?', faq_a3: "Non. Vous écoutez 2 versions gratuites et choisissez votre préférée — ce n'est qu'ensuite que vous payez.",
+      faq_q4: 'Comment est-ce que je reçois la chanson après le paiement ?', faq_a4: 'Automatiquement, par email, juste après la confirmation du paiement. Vous pouvez aussi la retrouver à tout moment avec votre code d\'accès unique.',
+      faq_q5: 'Que se passe-t-il si quelque chose ne va pas ?', faq_a5: 'Nous vous contactons pour résoudre le problème ou vous rembourser.',
       footer_note: 'Composition originale, personnalisée selon votre histoire.',
     },
     bg: {
@@ -514,6 +589,12 @@
       step4_title: 'Плащане и доставка', step4_desc: 'Плащаш само когато си доволен. Получаваш песента по имейл веднага.',
       reviews_eyebrow: 'Истински реакции', reviews_title: 'Истински реакции от клиенти',
       reviews_sub: 'Истински истории от хора, които вече са поръчали песен.',
+      faq_eyebrow: 'Въпроси', faq_title: 'Често задавани въпроси',
+      faq_q1: 'Колко време отнема да получа песента си?', faq_a1: 'Обикновено около 3 минути за прегледа. Слушаш безплатно, преди да платиш.',
+      faq_q2: 'На кои езици мога да получа песента?', faq_a2: 'На всеки от 8-те налични езика — текстът се пише директно на този език, не се превежда.',
+      faq_q3: 'Трябва ли да платя, преди да чуя песента?', faq_a3: 'Не. Слушаш 2 безплатни версии и избираш любимата си — едва тогава плащаш.',
+      faq_q4: 'Как получавам песента след плащане?', faq_a4: 'Автоматично, по имейл, веднага след потвърждаване на плащането. Можеш да я намериш и по всяко време с уникалния си код за достъп.',
+      faq_q5: 'Какво се случва, ако нещо се обърка?', faq_a5: 'Свързваме се с теб, за да го оправим или да ти върнем парите.',
       footer_note: 'Оригинална композиция, персонализирана според твоята история.',
     },
     tr: {
@@ -534,6 +615,12 @@
       step4_title: 'Ödeme ve teslimat', step4_desc: 'Sadece memnun kaldığınızda ödersiniz. Şarkıyı hemen e-posta ile alırsınız.',
       reviews_eyebrow: 'Gerçek tepkiler', reviews_title: 'Müşterilerden gerçek tepkiler',
       reviews_sub: 'Zaten bir şarkı sipariş etmiş kişilerden gerçek hikayeler.',
+      faq_eyebrow: 'Sorular', faq_title: 'Sıkça sorulan sorular',
+      faq_q1: 'Şarkımı almam ne kadar sürer?', faq_a1: 'Genellikle ön izleme için yaklaşık 3 dakika sürer. Ödemeden önce ücretsiz dinlersiniz.',
+      faq_q2: 'Şarkıyı hangi dillerde alabilirim?', faq_a2: 'Mevcut 8 dilden herhangi birinde — sözler çevrilmez, doğrudan o dilde yazılır.',
+      faq_q3: 'Şarkıyı dinlemeden önce ödeme yapmam gerekiyor mu?', faq_a3: 'Hayır. 2 ücretsiz versiyonu dinler ve favorinizi seçersiniz — ödemeyi ancak o zaman yaparsınız.',
+      faq_q4: 'Ödemeden sonra şarkıyı nasıl alırım?', faq_a4: 'Ödeme onaylandıktan hemen sonra otomatik olarak e-posta ile. Ayrıca benzersiz erişim kodunuzla her zaman tekrar bulabilirsiniz.',
+      faq_q5: 'Bir şeyler ters giderse ne olur?', faq_a5: 'Sizinle iletişime geçip sorunu çözer veya ücret iadesi yaparız.',
       footer_note: 'Hikayenize özel, orijinal beste.',
     }
   };

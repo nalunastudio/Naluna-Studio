@@ -1555,6 +1555,47 @@ async function getPreviewStartFromLyrics(taskId, audioId, orderId) {
   return previewStart;
 }
 
+// Verifica DUPA upload ca preview-ul e chiar accesibil public la URL-ul construit din
+// S3_PUBLIC_BASE_URL. Un raspuns 200/206 de la PutObjectCommand catre R2/S3 NU garanteaza
+// ca fisierul e livrat corect prin domeniul public configurat — Custom Domain-ul Cloudflare
+// neconectat/neconfigurat cu DNS proxied, un S3_PUBLIC_BASE_URL gresit, sau bucket-ul fara
+// acces public activat sunt toate probleme complet in afara controlului acestui cod, dar
+// care lasa exact urma unui "player audio care afiseaza Eroare": comanda ajunge legitim la
+// 'preview_ready', cu un previewUrl care ARATA valid, dar care nu se poate incarca de fapt
+// in browser. Verificarea foloseste un Range request pentru primii 2 octeti — testeaza in
+// aceeasi cerere atat existenta/accesibilitatea fisierului, cat si suportul pentru Range
+// (necesar pentru Safari). Un singur retry, doar pentru esec tranzitoriu de retea/timeout,
+// ca sa nu marcam o comanda buna drept esuata din cauza unui blip temporar de retea.
+// DACA verificarea esueaza, aruncam o eroare clara — variant-ul e tratat ca esuat prin
+// acelasi mecanism ca un esec de download/ffmpeg/upload (Promise.allSettled in
+// finalizeVariantsIfNeeded), deci comanda devine explicit 'generation_failed', cu eroarea
+// REALA in logul serverului, in loc sa ramana 'preview_ready' cu un URL nefunctional.
+async function verifyPreviewReachable(orderId, variantId, previewUrl) {
+  const vTag = `varianta=${variantId}`;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetchWithTimeout(previewUrl, { headers: { Range: 'bytes=0-1' } }, 10000);
+      const contentType = res.headers.get('content-type') || '(lipsa)';
+      const contentLength = res.headers.get('content-length') || '(lipsa)';
+      // previewUrl e PUBLIC prin design (nu e semnat, nu e privat) — sigur de logat integral,
+      // e exact URL-ul pe care browserul clientului il va incerca oricum.
+      perfLog(orderId, 'preview_verify', `${vTag}, status=${res.status}, content-type=${contentType}, content-length=${contentLength}, url=${previewUrl}`);
+
+      if (!res.ok) {
+        throw new Error(`Preview urcat cu succes in storage, dar URL-ul public raspunde cu HTTP ${res.status} la ${previewUrl} — verifica S3_PUBLIC_BASE_URL, Custom Domain-ul Cloudflare (trebuie DNS proxied) si accesul public pe bucket.`);
+      }
+      if (!contentType.toLowerCase().startsWith('audio/')) {
+        throw new Error(`Preview accesibil la ${previewUrl}, dar Content-Type raspuns e "${contentType}" in loc de audio/mpeg — verifica configuratia bucket-ului/CDN-ului.`);
+      }
+      return; // succes
+    } catch (err) {
+      const transient = err.name === 'AbortError' || /fetch failed|ECONNRESET|ETIMEDOUT/i.test(String(err.message));
+      if (transient && attempt === 0) continue; // o singura reincercare, doar pt. esec tranzitoriu
+      throw err instanceof Error ? err : new Error(String(err));
+    }
+  }
+}
+
 async function buildVariantFromTrack(orderId, variantId, track, taskId) {
   if (!track.audioUrl) {
     throw new Error(`Piesa primita de la Suno (id: ${track.id || 'necunoscut'}) nu are audioUrl/audio_url.`);
@@ -1615,6 +1656,9 @@ async function buildVariantFromTrack(orderId, variantId, track, taskId) {
       storage.uploadPublicFile(tempPreview, previewKey, 'audio/mpeg')
     ]);
     previewUrl = storage.getPublicUrl(previewKey);
+    // Verificam ca preview-ul e chiar accesibil public INAINTE sa consideram varianta
+    // reusita — vezi comentariul de la verifyPreviewReachable() pentru motiv.
+    await verifyPreviewReachable(orderId, variantId, previewUrl);
     storedFullKey = fullKey;
     storedPreviewKey = previewKey;
     fs.unlinkSync(tempFull);
@@ -1969,22 +2013,28 @@ const RELATIONSHIP_MAX_LEN = 60;
 const STORY_MIN_RESERVE = 160;
 
 function buildPrompt(order, feedback) {
+  // Fiecare descriere stabileste compact: instrumentatie, tempo, atmosfera, tip de productie,
+  // nivel de energie, stil vocal, structura/comportament specific — cerinta explicita, ca
+  // Suno sa produca rezultate clar diferite per gen, nu doar cuvinte diferite pentru acelasi
+  // sunet. "manele" ramane mapat pe identitatea "Manele de jale" (asa cum e deja afisat
+  // clientului in comanda.html: "Manele de jale"), distinct de "manele_suflet" ("Manele de
+  // suflet") — confirmat explicit inainte de a scrie aceasta valoare, nu presupus.
   const genreMap = {
-    emotional: 'emotional ballad-pop, tender vocals, heartfelt',
-    suflet: 'romanian "de suflet" style, soulful acoustic instruments, raw emotional delivery',
-    pop: 'upbeat pop, warm vocals',
-    acustic: 'acoustic folk, guitar-led, intimate',
-    petrecere: 'party music, energetic, danceable',
-    balada: 'emotional ballad, piano-led, slow build',
-    manele: 'romanian manele style, live instruments',
-    copii: 'children\'s song, playful, simple melody, cheerful upbeat tempo, friendly vocals',
-    populara: 'romanian popular folk-pop, traditional instruments blended with modern production, upbeat',
-    rock: 'rock, driving electric guitars, powerful vocals, energetic',
-    colind: 'modern christmas song, clear natural vocal, warm delivery, piano, bells, no choir, no robotic vocals',
-    modern: 'modern pop-electronic, contemporary production, catchy synths',
-    hiphop: 'hip-hop, rhythmic vocal delivery, modern beat, confident',
-    manele_suflet: 'modern romanian manele, style of leading manele artists, expressive vocals, themes of family, love, longing',
-    motivational: 'motivational anthem, uplifting and empowering, building energy, inspiring vocals'
+    emotional: 'cinematic orchestral ballad, piano and strings, dynamic build, vulnerable vocal, emotional climax',
+    suflet: 'intimate de suflet style, warm sincere vocal, discreet acoustic, close organic production',
+    pop: 'commercial pop, verse-chorus structure, catchy hook, polished radio production, accessible energy',
+    acustic: 'acoustic folk, guitar-led, organic instruments, natural rhythm, warm authentic close vocal',
+    petrecere: 'fast danceable party tempo, festive horns, non-stop energy, big repeatable chorus, club production',
+    balada: 'slow piano-or-guitar ballad, vocal-centered, gradual build, no dance beat, no aggressive production',
+    manele: 'sad slow romanian manele, grave tonality, ornamented vocal, balkan strings, loss and longing themes',
+    copii: 'cheerful playful children\'s song, simple melody, bright instruments, easy rhythm, friendly vocal',
+    populara: 'authentic romanian folk, traditional instruments, folkloric rhythm, no manele production',
+    rock: 'rock, real electric guitars, driving bass, powerful drums, guitar riffs, raw vocal, explosive chorus',
+    colind: 'modern christmas carol, sleigh bells, warm choir, piano and strings, festive feeling',
+    modern: 'modern pop, elegant synths, deep bass, contemporary beat, premium atmosphere, sleeker than classic pop',
+    hiphop: 'modern hip-hop beat, punchy kick and snare, deep 808 bass, rap flow, catchy hook, no ballad structure',
+    manele_suflet: 'romantic romanian manele, heartfelt vocal, moderate tempo, emotional ornamentation, balkan instruments',
+    motivational: 'inspirational anthem, energetic build, driving percussion, triumphant chords, confident vocal, big chorus'
   };
 
   const languageNames = {
