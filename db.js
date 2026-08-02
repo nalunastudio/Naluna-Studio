@@ -11,6 +11,7 @@
 // si setezi DATABASE_URL in .env, ex: postgres://postgres:parola@localhost:5432/postgres
 
 const { Pool } = require('pg');
+const { randomUUID } = require('crypto');
 
 if (!process.env.DATABASE_URL) {
   throw new Error(
@@ -129,6 +130,41 @@ async function initDb() {
   `);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_testimonials_published_order ON testimonials(published, display_order);`);
 
+  // generation_attempts: contor DUR, NICIODATA restituit (spre deosebire de edits_used,
+  // care are semantica de "editare gratuita" cu refund la esec) — protejeaza impotriva
+  // consumului nelimitat de credite Suno prin reincercari repetate ale unei generari care
+  // esueaza constant. Vezi credits.js, MAX_GENERATION_ATTEMPTS.
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS generation_attempts INTEGER NOT NULL DEFAULT 0;`);
+
+  // credit_events: jurnal complet al fiecarui apel real catre providerul de muzica (Suno),
+  // plus fiecare blocare de generare/checkout facuta de sistemul de protectie a creditelor —
+  // baza pentru statistici zilnice, estimarea comenzilor ramase si detectarea consumului
+  // neobisnuit (vezi credits.js).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS credit_events (
+      id UUID PRIMARY KEY,
+      order_id UUID,
+      event_type TEXT NOT NULL,
+      credits_spent NUMERIC,
+      balance_after NUMERIC,
+      note TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_credit_events_created_at ON credit_events(created_at DESC);`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_credit_events_order_id ON credit_events(order_id);`);
+
+  // app_settings: setari simple cheie-valoare, persistente intre restarturi/redeploy-uri —
+  // folosit in prezent doar pentru credit_baseline (valoarea de referinta 100% fata de care
+  // se calculeaza pragurile de alerta 30/15/10/5%, vezi credits.js).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `);
+
   console.log('Postgres: schema orders verificata/creata.');
 }
 
@@ -169,7 +205,8 @@ function rowToOrder(row) {
     // data, central — restul aplicatiei (buildPrompt, API, comanda.html, melodia-mea.html)
     // nu mai trebuie sa trateze separat cazul NULL.
     voicePreference: row.voice_preference || 'auto',
-    phone: row.phone || null
+    phone: row.phone || null,
+    generationAttempts: row.generation_attempts || 0
   };
 }
 
@@ -251,20 +288,45 @@ async function claimOrderForProviderFinalization(orderId) {
 // regenerarea chiar e acceptata de server (nu doar incercata). Daca nu e trimisa
 // (null/undefined), COALESCE pastreaza valoarea existenta neschimbata.
 // ==================================================================================
-async function claimOrderForRegeneration(orderId, maxEdits, voicePreference) {
+async function claimOrderForRegeneration(orderId, maxEdits, voicePreference, maxAttempts) {
   const result = await pool.query(
     `UPDATE orders
      SET status = 'generating',
          edits_used = edits_used + 1,
          edit_reserved = true,
+         generation_attempts = generation_attempts + 1,
          voice_preference = COALESCE($3, voice_preference)
      WHERE id = $1
        AND status NOT IN ('generating', 'processing_provider_result', 'ready')
        AND edits_used < $2
+       AND generation_attempts < $4
      RETURNING *`,
-    [orderId, maxEdits, voicePreference || null]
+    [orderId, maxEdits, voicePreference || null, maxAttempts]
   );
-  return rowToOrder(result.rows[0]); // null daca deja in curs, deja platita, sau limita atinsa
+  return rowToOrder(result.rows[0]); // null daca deja in curs, deja platita, limita de editari SAU limita de incercari atinsa
+}
+
+// ==================================================================================
+// PRELUARE ATOMICA pentru generarea INITIALA (prima generare gratuita a unei comenzi).
+// Foloseste generation_attempts (contor DUR, niciodata restituit — vezi comentariul
+// coloanei in initDb) ca plasa de siguranta impotriva reincercarilor nelimitate ale
+// unei generari care esueaza constant (fiecare incercare reala catre Suno consuma
+// credite reale, indiferent de rezultat — vezi credits.js). Verificarile de status
+// facute deja in ruta /generate raman ca prima linie de aparare; asta e a doua,
+// atomica, la nivel de baza de date.
+// ==================================================================================
+async function claimOrderForInitialGeneration(orderId, maxAttempts) {
+  const result = await pool.query(
+    `UPDATE orders
+     SET status = 'generating',
+         generation_attempts = generation_attempts + 1
+     WHERE id = $1
+       AND status NOT IN ('generating', 'processing_provider_result', 'ready')
+       AND generation_attempts < $2
+     RETURNING *`,
+    [orderId, maxAttempts]
+  );
+  return rowToOrder(result.rows[0]); // null daca deja in curs, deja platita, sau limita de incercari atinsa
 }
 
 // ==================================================================================
@@ -296,6 +358,40 @@ async function refundEditIfReserved(orderId) {
   return rowToOrder(result.rows[0]); // null daca nu era nimic de restituit (deja restituita, sau generare initiala)
 }
 
+// ==================================================================================
+// SISTEM DE PROTECTIE A CREDITELOR — jurnal de evenimente + setari persistente.
+// Vezi credits.js pentru logica de decizie (praguri, alerte, mod de urgenta);
+// functiile de mai jos sunt strict acces la date, fara nicio logica de business.
+// ==================================================================================
+async function logCreditEvent({ orderId, eventType, creditsSpent, balanceAfter, note }) {
+  await pool.query(
+    `INSERT INTO credit_events (id, order_id, event_type, credits_spent, balance_after, note)
+     VALUES ($1, $2, $3, $4, $5, $6)`,
+    [randomUUID(), orderId || null, eventType, creditsSpent ?? null, balanceAfter ?? null, note || null]
+  );
+}
+
+async function getCreditEventsSince(since) {
+  const result = await pool.query(
+    `SELECT * FROM credit_events WHERE created_at >= $1 ORDER BY created_at ASC`,
+    [since]
+  );
+  return result.rows;
+}
+
+async function getSetting(key) {
+  const result = await pool.query(`SELECT value FROM app_settings WHERE key = $1`, [key]);
+  return result.rows[0] ? result.rows[0].value : null;
+}
+
+async function setSetting(key, value) {
+  await pool.query(
+    `INSERT INTO app_settings (key, value, updated_at) VALUES ($1, $2, now())
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
+    [key, String(value)]
+  );
+}
+
 // mapare camelCase (folosit in restul aplicatiei) -> nume coloana in DB,
 // ca sa putem construi un UPDATE dinamic dintr-un obiect partial (patch)
 const COLUMN_MAP = {
@@ -315,7 +411,8 @@ const COLUMN_MAP = {
   stripePaymentIntentId: 'stripe_payment_intent_id',
   regenerateSourceVariantId: 'regenerate_source_variant_id',
   editReserved: 'edit_reserved',
-  voicePreference: 'voice_preference'
+  voicePreference: 'voice_preference',
+  generationAttempts: 'generation_attempts'
 };
 
 async function updateOrder(id, patch) {
@@ -491,8 +588,10 @@ async function moveTestimonial(id, direction) {
 
 module.exports = {
   pool, initDb, createOrder, getOrderById, getOrderByToken, getOrderByMusicTaskId,
-  claimOrderForProviderFinalization, claimOrderForRegeneration, refundEditIfReserved,
+  claimOrderForProviderFinalization, claimOrderForRegeneration, claimOrderForInitialGeneration,
+  refundEditIfReserved,
   updateOrder, listOrders, computeRevenue,
+  logCreditEvent, getCreditEventsSince, getSetting, setSetting,
   createTestimonial, getTestimonialById, updateTestimonial, deleteTestimonial,
   listAllTestimonials, listPublishedTestimonials, moveTestimonial
 };

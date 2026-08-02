@@ -52,6 +52,7 @@ const { promisify } = require('util');
 const execFileAsync = promisify(execFile);
 const db = require('./db');
 const storage = require('./storage');
+const credits = require('./credits');
 
 // -------- Validare stricta a variabilelor de mediu obligatorii, la pornire --------
 // Mai bine esueaza clar la boot decat sa porneasca "pe jumatate" si sa pice abia la prima comanda.
@@ -414,6 +415,43 @@ app.get('/api/admin/orders', async (req, res, next) => {
 });
 
 // ==========================================================================================
+// PANOU CREDITE SUNO — vizibilitate completa asupra sistemului de protectie a creditelor
+// (vezi credits.js): balanta live, rezerva de siguranta, mod de urgenta, statistici zilnice,
+// estimare comenzi ramase, detectare consum neobisnuit. Protejat de acelasi middleware
+// admin ca restul rutelor /api/admin (vezi app.use mai sus).
+// ==========================================================================================
+app.get('/api/admin/credits', async (req, res, next) => {
+  try {
+    const { balance, stale, unavailable } = await credits.getBalance({ forceRefresh: true });
+    const baseline = unavailable ? null : await credits.getOrInitBaseline(db, balance);
+    const alertLevel = credits.getAlertLevel(balance, baseline);
+    const daily = await credits.getDailyStats(db);
+    const anomaly = await credits.detectAnomaly(db);
+
+    res.json({
+      provider: 'sunoapi.org',
+      providerConfigured: credits.providerConfigured(),
+      balance,
+      balanceStale: stale,
+      balanceUnavailable: unavailable,
+      baseline,
+      alertLevel,
+      emergencyMode: credits.isEmergencyMode(balance),
+      safetyReserveOrders: credits.SAFETY_RESERVE_ORDERS,
+      reserveCredits: credits.reserveCredits(),
+      creditsPerGeneration: credits.VERIFIED_CREDITS_PER_GENERATION,
+      creditsPerOrderEstimate: credits.CREDITS_PER_ORDER_ESTIMATE,
+      maxGenerationAttempts: credits.MAX_GENERATION_ATTEMPTS,
+      estimatedRemainingOrders: credits.estimatedRemainingOrders(balance),
+      today: daily,
+      anomaly
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ==========================================================================================
 // REACTII CLIENTI (testimonials) — gestionate exclusiv din /admin.
 // Nu exista, in aceasta etapa, niciun formular public de upload — un client nu poate
 // trimite singur o reactie. Doar administratorul adauga/editeaza/sterge, dupa ce a
@@ -750,9 +788,26 @@ app.post('/api/orders/:orderId/generate', generationLimiter, requireOrderToken, 
       return res.status(409).json({ error: 'Generarea este deja în desfășurare.' });
     }
 
+    // Protectie credite Suno — vezi credits.js. Doua verificari distincte:
+    // 1. limita DURA de incercari per comanda (generation_attempts), impotriva reincercarilor
+    //    nelimitate ale unei generari care esueaza constant;
+    // 2. balanta reala a contului, cu rezerva de siguranta configurabila (implicit 10 comenzi).
+    if (order.generationAttempts >= credits.MAX_GENERATION_ATTEMPTS) {
+      await db.logCreditEvent({ orderId: order.id, eventType: 'blocked_retry_limit', note: `attempts=${order.generationAttempts}` });
+      return res.status(429).json({ error: 'Ai atins numărul maxim de încercări pentru această comandă. Contactează-ne pentru ajutor.' });
+    }
+    const guard = await credits.evaluateGuard('generation');
+    if (!guard.allowed) {
+      await db.logCreditEvent({ orderId: order.id, eventType: 'blocked_low_credit', balanceAfter: guard.balance, note: guard.reason });
+      return res.status(503).json({ error: 'Ne pare rău, sistemul este temporar indisponibil pentru comenzi noi. Te rugăm să încerci din nou în câteva minute.' });
+    }
+
     const feedback = typeof req.body?.feedback === 'string' ? req.body.feedback.slice(0, 500) : null;
 
-    await db.updateOrder(order.id, { status: 'generating' });
+    const claimed = await db.claimOrderForInitialGeneration(order.id, credits.MAX_GENERATION_ATTEMPTS);
+    if (!claimed) {
+      return res.status(409).json({ error: 'Generarea este deja în desfășurare.' });
+    }
     res.json({ started: true });
 
     runGeneration(order.id, feedback).catch(async (err) => {
@@ -802,12 +857,26 @@ app.post('/api/orders/:orderId/regenerate', generationLimiter, requireOrderToken
       return res.status(400).json({ error: invalidVoiceMessage(order.lang) });
     }
 
+    // Protectie credite Suno — vezi credits.js. Verificata INAINTE de rezervarea atomica de
+    // mai jos, care oricum aplica separat limita de incercari (generation_attempts) direct
+    // in SQL — verificarea de aici doar da un mesaj clar clientului fara sa mai incerce
+    // rezervarea cand stim deja ca va fi respinsa din motive de credit.
+    if (order.generationAttempts >= credits.MAX_GENERATION_ATTEMPTS) {
+      await db.logCreditEvent({ orderId: order.id, eventType: 'blocked_retry_limit', note: `attempts=${order.generationAttempts}` });
+      return res.status(429).json({ error: 'Ai atins numărul maxim de încercări pentru această comandă. Contactează-ne pentru ajutor.' });
+    }
+    const guard = await credits.evaluateGuard('generation');
+    if (!guard.allowed) {
+      await db.logCreditEvent({ orderId: order.id, eventType: 'blocked_low_credit', balanceAfter: guard.balance, note: guard.reason });
+      return res.status(503).json({ error: 'Ne pare rău, sistemul este temporar indisponibil pentru regenerări noi. Te rugăm să încerci din nou în câteva minute.' });
+    }
+
     // REZERVARE ATOMICA: status -> 'generating', edits_used + 1, edit_reserved = true,
-    // si (optional) noua preferinta de voce — toate intr-o singura instructiune SQL (vezi
-    // db.claimOrderForRegeneration). Previne doua regenerari simultane, depasirea celor 3
-    // editari gratuite, si salveaza noua preferinta de voce DOAR daca regenerarea chiar
-    // porneste (nu doar la o incercare respinsa).
-    const claimed = await db.claimOrderForRegeneration(order.id, FREE_EDITS, requestedVoice);
+    // generation_attempts + 1, si (optional) noua preferinta de voce — toate intr-o singura
+    // instructiune SQL (vezi db.claimOrderForRegeneration). Previne doua regenerari simultane,
+    // depasirea editarilor gratuite, depasirea limitei DURE de incercari, si salveaza noua
+    // preferinta de voce DOAR daca regenerarea chiar porneste (nu doar la o incercare respinsa).
+    const claimed = await db.claimOrderForRegeneration(order.id, FREE_EDITS, requestedVoice, credits.MAX_GENERATION_ATTEMPTS);
     if (!claimed) {
       // Recitim starea curenta doar ca sa dam mesajul de eroare potrivit clientului —
       // rezervarea insasi a esuat deja atomic mai sus, deci nu exista nicio cursa aici.
@@ -817,6 +886,9 @@ app.post('/api/orders/:orderId/regenerate', generationLimiter, requireOrderToken
       }
       if (fresh && fresh.editsUsed >= FREE_EDITS) {
         return res.status(400).json({ error: 'Ai folosit editarea gratuită pentru această comandă. Alege varianta preferată pentru a continua.' });
+      }
+      if (fresh && fresh.generationAttempts >= credits.MAX_GENERATION_ATTEMPTS) {
+        return res.status(429).json({ error: 'Ai atins numărul maxim de încercări pentru această comandă. Contactează-ne pentru ajutor.' });
       }
       if (fresh && (fresh.status === 'generating' || fresh.status === 'processing_provider_result') && fresh.musicTaskId) {
         resumeExistingTaskPolling(order.id, fresh.musicTaskId);
@@ -985,6 +1057,18 @@ app.post('/api/orders/:orderId/checkout', requireOrderToken, async (req, res, ne
     }
     if (!order.selectedVariantId) {
       return res.status(400).json({ error: 'Alege o variantă înainte de plată.' });
+    }
+
+    // Protectie credite Suno — vezi credits.js. Aceasta comanda specifica NU mai are nevoie
+    // de niciun apel catre Suno (previzualizarea a reusit deja, melodia completa vine din
+    // acelasi fisier deja descarcat) — verificarea de aici e un intrerupator global: daca
+    // balanta a scazut sub rezerva de siguranta INTRE momentul previzualizarii si acum (alte
+    // comenzi concurente), preferam sa nu acceptam plati noi pana clarificam situatia
+    // creditelor, mai degraba decat sa lasam clientii sa plateasca intr-un moment nesigur.
+    const checkoutGuard = await credits.evaluateGuard('checkout');
+    if (!checkoutGuard.allowed) {
+      await db.logCreditEvent({ orderId: order.id, eventType: 'blocked_low_credit', balanceAfter: checkoutGuard.balance, note: `checkout: ${checkoutGuard.reason}` });
+      return res.status(503).json({ error: 'Ne pare rău, plățile sunt temporar indisponibile. Te rugăm să încerci din nou în câteva minute.' });
     }
 
     // TVA: dezactivat implicit. Se activeaza DOAR daca STRIPE_AUTOMATIC_TAX_ENABLED=true
@@ -1806,6 +1890,19 @@ async function callMusicProvider(orderId, prompt) {
 
   await db.updateOrder(orderId, { musicTaskId: taskId });
   perfLog(orderId, 'suno_task_created', `taskId=${taskId.slice(0, 8)}, model=${musicModel}`);
+
+  // Jurnalizarea consumului de credite se face AICI, imediat dupa ce Suno confirma crearea
+  // task-ului — verificat direct (2026-08-02) ca exact in acest moment se debiteaza creditele
+  // real (12 credite/apel, model V4_5ALL), indiferent daca task-ul reuseste sau esueaza ulterior.
+  // Nu asteptam rezultatul final al generarii pentru a jurnaliza — pana atunci creditul e deja cheltuit.
+  const balanceAfter = await credits.getBalance({ forceRefresh: true });
+  db.logCreditEvent({
+    orderId,
+    eventType: 'generation_attempt',
+    creditsSpent: credits.VERIFIED_CREDITS_PER_GENERATION,
+    balanceAfter: balanceAfter.balance
+  }).catch(err => console.error('[credits] Eroare la jurnalizarea consumului de credite:', err.message));
+  credits.checkThresholdsAndAlert(db).catch(err => console.error('[credits] Eroare la verificarea pragurilor de alerta:', err.message));
 
   return taskId;
 }

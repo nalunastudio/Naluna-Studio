@@ -28,7 +28,7 @@
 //    AMBELE bucket-uri (acelasi token poate avea acces la ambele, e un singur cont R2).
 //    Copiezi Access Key ID si Secret Access Key — apar o singura data.
 // 3. Doar pe "naluna-public": Settings -> Public Access -> Custom Domains -> Connect Domain
-//    (ex: media.naluna.co.uk). NU activezi niciun fel de acces public pe "naluna-private".
+//    (ex: media.nalunastudio.com). NU activezi niciun fel de acces public pe "naluna-private".
 // 4. Endpoint-ul (S3_ENDPOINT) il gasesti in Settings -> sectiunea "S3 API", pe oricare
 //    din cele doua bucket-uri — e acelasi pentru tot contul (contine account_id, nu numele bucket-ului).
 // 5. Completezi in .env:
@@ -38,7 +38,7 @@
 //    S3_SECRET_ACCESS_KEY=...
 //    S3_ENDPOINT=https://<account_id>.r2.cloudflarestorage.com
 //    S3_REGION=auto
-//    S3_PUBLIC_BASE_URL=https://media.naluna.co.uk
+//    S3_PUBLIC_BASE_URL=https://media.nalunastudio.com
 //
 // ============================================================================
 // SETUP AWS S3 (alternativa) — doua bucket-uri

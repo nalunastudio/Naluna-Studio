@@ -113,7 +113,7 @@ Toate fisierele media — melodiile complete, preview-urile, si materialele din 
 ### Setup Cloudflare R2
 1. dash.cloudflare.com -> R2 Object Storage -> **Create bucket**, de doua ori: `naluna-private` si `naluna-public`.
 2. R2 -> Overview -> Manage API Tokens -> Create API token -> permisiuni **Object Read & Write** -> scop **Apply to specific buckets only** -> selectezi **ambele** bucket-uri (acelasi token poate avea acces la amandoua). Copiezi Access Key ID si Secret Access Key — apar o singura data.
-3. **Doar pe `naluna-public`**: Settings -> Public Access -> Custom Domains -> Connect Domain (ex: `media.naluna.co.uk`). **Pe `naluna-private` nu activezi niciun fel de acces public, niciodata.**
+3. **Doar pe `naluna-public`**: Settings -> Public Access -> Custom Domains -> Connect Domain (ex: `media.nalunastudio.com`). **Pe `naluna-private` nu activezi niciun fel de acces public, niciodata.**
 4. Endpoint-ul (acelasi pentru tot contul, indiferent de bucket) il gasesti in Settings -> sectiunea "S3 API", pe oricare din cele doua bucket-uri.
 5. Completezi in `.env`:
    ```
@@ -123,7 +123,7 @@ Toate fisierele media — melodiile complete, preview-urile, si materialele din 
    S3_SECRET_ACCESS_KEY=...
    S3_ENDPOINT=https://<account_id>.r2.cloudflarestorage.com
    S3_REGION=auto
-   S3_PUBLIC_BASE_URL=https://media.naluna.co.uk
+   S3_PUBLIC_BASE_URL=https://media.nalunastudio.com
    ```
 
 ### Setup AWS S3 (alternativa)
