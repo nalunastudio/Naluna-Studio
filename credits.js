@@ -35,6 +35,15 @@ const SAFETY_RESERVE_ORDERS = parseInt(process.env.CREDIT_SAFETY_RESERVE_ORDERS,
 const MAX_GENERATION_ATTEMPTS = parseInt(process.env.MAX_GENERATION_ATTEMPTS, 10) || 4;
 const ADMIN_ALERT_EMAIL = process.env.ADMIN_ALERT_EMAIL || null;
 
+// Pragul FIX (in credite, nu procent) pentru alerta principala — cerinta explicita: alerta
+// trebuie sa se declanseze la trecerea PESTE->SUB acest numar exact de credite, indiferent
+// de cat de mare a fost baseline-ul initial. Complet separat de ALERT_THRESHOLDS de mai jos
+// (acelea sunt procentuale, relative la baseline — cele doua sisteme coexista).
+const FIXED_ALERT_THRESHOLD = parseInt(process.env.CREDIT_ALERT_THRESHOLD, 10) || 248;
+const SUNOAPI_DASHBOARD_URL = 'https://sunoapi.org/'; // nu exista, verificat, niciun link documentat mai specific catre o pagina de sold anume
+const INSUFFICIENT_DATA_MESSAGE = 'Insufficient sales data to estimate remaining days.';
+const MIN_ORDERS_FOR_ESTIMATE = 3; // sub acest numar de comenzi finalizate in ultimele 30 zile, o rata zilnica ar fi nesigura/instabila
+
 const ALERT_THRESHOLDS = [0.30, 0.15, 0.10, 0.05]; // procente din baseline, verificate in ordine descrescatoare
 
 let cachedBalance = null;
@@ -259,11 +268,148 @@ async function getDailyStats(db) {
   };
 }
 
+function formatUkTimestamp(date) {
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/London',
+    day: '2-digit', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false, timeZoneName: 'short'
+  }).format(date);
+}
+
+// Calculeaza toate cifrele cerute explicit in emailul de alerta. Foloseste media REALA
+// de credite per comanda finalizata (nu doar estimarea statica CREDITS_PER_ORDER_ESTIMATE)
+// pentru "zile ramase", cand exista suficiente date — mai precisa pentru o afacere reala.
+async function computeThresholdAlertStats(db, currentBalance) {
+  const [avgResult, completed7d, completed30d] = await Promise.all([
+    db.getAverageCreditsPerCompletedOrder(),
+    db.getCompletedOrdersSince(7),
+    db.getCompletedOrdersSince(30)
+  ]);
+
+  const avgOrdersPerDay30d = completed30d / 30;
+  const bestCaseRemainingOrders = estimatedRemainingOrders(currentBalance); // foloseste 12 credite/comanda (VERIFIED_CREDITS_PER_GENERATION)
+  const worstCaseRemainingOrders = Math.max(0, Math.floor(currentBalance / CREDITS_PER_ORDER_ESTIMATE)); // 24 credite/comanda
+
+  let remainingDaysMessage;
+  if (completed30d < MIN_ORDERS_FOR_ESTIMATE || avgOrdersPerDay30d <= 0 || !avgResult.averageCredits) {
+    remainingDaysMessage = INSUFFICIENT_DATA_MESSAGE;
+  } else {
+    const realisticRemainingOrders = currentBalance / avgResult.averageCredits;
+    const remainingDays = Math.floor(realisticRemainingOrders / avgOrdersPerDay30d);
+    remainingDaysMessage = `${remainingDays} zile (estimare bazata pe media reala din ultimele 30 de zile)`;
+  }
+
+  return {
+    bestCaseRemainingOrders,
+    worstCaseRemainingOrders,
+    averageCreditsPerOrder: avgResult.averageCredits !== null ? Math.round(avgResult.averageCredits * 100) / 100 : null,
+    averageCreditsSampleSize: avgResult.sampleSize,
+    completed7d,
+    completed30d,
+    avgOrdersPerDay30d: Math.round(avgOrdersPerDay30d * 100) / 100,
+    remainingDaysMessage
+  };
+}
+
+async function sendThresholdAlertEmail({ currentBalance, previousBalance, stats }) {
+  if (!ADMIN_ALERT_EMAIL) {
+    console.warn('[credits] ADMIN_ALERT_EMAIL nu e configurat — alerta de prag fix NU a putut fi trimisa prin email (doar logata).');
+    return { sent: false, reason: 'no_recipient_configured' };
+  }
+  if (!process.env.RESEND_API_KEY) {
+    console.warn('[credits] RESEND_API_KEY lipseste — alerta de prag fix NU a putut fi trimisa prin email (doar logata).');
+    return { sent: false, reason: 'no_resend_key' };
+  }
+
+  const timestamp = formatUkTimestamp(new Date());
+  const html = `
+    <p>Balanta de credite SunoAPI a scazut la sau sub pragul de ${FIXED_ALERT_THRESHOLD}.</p>
+    <ul>
+      <li>Balanta curenta: ${currentBalance} credite</li>
+      <li>Balanta anterioara: ${previousBalance !== null ? previousBalance : 'necunoscuta (prima verificare)'} credite</li>
+      <li>Comenzi ramase estimate (best case, 12 credite/comanda): ${stats.bestCaseRemainingOrders}</li>
+      <li>Comenzi ramase estimate (worst case, 24 credite/comanda): ${stats.worstCaseRemainingOrders}</li>
+      <li>Media reala de credite per comanda finalizata: ${stats.averageCreditsPerOrder !== null ? stats.averageCreditsPerOrder : 'date insuficiente'} (${stats.averageCreditsSampleSize} comenzi analizate)</li>
+      <li>Comenzi finalizate in ultimele 7 zile: ${stats.completed7d}</li>
+      <li>Comenzi finalizate in ultimele 30 zile: ${stats.completed30d}</li>
+      <li>Media comenzilor finalizate pe zi (ultimele 30 zile): ${stats.avgOrdersPerDay30d}</li>
+      <li>Zile ramase estimate pana la epuizarea creditelor: ${stats.remainingDaysMessage}</li>
+    </ul>
+    <p>Dashboard SunoAPI: <a href="${SUNOAPI_DASHBOARD_URL}">${SUNOAPI_DASHBOARD_URL}</a></p>
+    <p>Data/ora (UK): ${timestamp}</p>
+  `;
+
+  const attempt = async () => fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      from: process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev',
+      to: ADMIN_ALERT_EMAIL,
+      subject: `Naluna Alert: Credits Reached ${FIXED_ALERT_THRESHOLD}`,
+      html
+    })
+  });
+
+  // Reincercarea de mai jos priveste STRICT trimiterea email-ului (starea de alerta a fost
+  // deja "consumata" atomic in Postgres INAINTE sa ajungem aici — vezi checkFixedThresholdAlert)
+  // — deci o reincercare aici NU poate niciodata produce un al doilea email pentru aceeasi
+  // scadere sub prag, doar creste sansa ca UNUL sa ajunga cu succes.
+  for (let attemptNum = 1; attemptNum <= 2; attemptNum++) {
+    try {
+      const res = await attempt();
+      if (res.ok) {
+        if (attemptNum > 1) console.log(`[credits] alert_sent (retry_success) dupa ${attemptNum} incercari`);
+        else console.log('[credits] alert_sent la prima incercare');
+        return { sent: true };
+      }
+      const body = await res.text();
+      console.error(`[credits] email_failure (incercarea ${attemptNum}/2): HTTP ${res.status} — ${body}`);
+    } catch (err) {
+      console.error(`[credits] email_failure (incercarea ${attemptNum}/2): ${err.message}`);
+    }
+  }
+  return { sent: false, reason: 'send_failed_after_retry' };
+}
+
+// Punctul de intrare principal — apelat dupa fiecare consum real de credite (vezi
+// callMusicProvider in server.js). Toata logica de decizie (crossing, dedup, re-arm) e
+// delegata catre db.claimCreditAlertTransition, care e ATOMICA in Postgres — functia de
+// aici doar reactioneaza la rezultat si trimite emailul cand e cazul.
+async function checkFixedThresholdAlert(db, currentBalance) {
+  console.log(`[credits] balance_checked: ${currentBalance} (prag fix: ${FIXED_ALERT_THRESHOLD})`);
+
+  const { action, previousBalance } = await db.claimCreditAlertTransition(currentBalance, FIXED_ALERT_THRESHOLD);
+
+  if (action === 'none') return;
+
+  if (action === 'rearmed') {
+    console.log(`[credits] alert_re-armed: balanta a urcat inapoi peste ${FIXED_ALERT_THRESHOLD} (${previousBalance} -> ${currentBalance})`);
+    return;
+  }
+
+  if (action === 'suppressed') {
+    console.log(`[credits] alert_suppressed: balanta ramane sub ${FIXED_ALERT_THRESHOLD} (${currentBalance}), alerta deja trimisa pentru aceasta scadere`);
+    return;
+  }
+
+  // action === 'send_alert'
+  console.log(`[credits] threshold_crossed: ${previousBalance} -> ${currentBalance} (prag: ${FIXED_ALERT_THRESHOLD})`);
+  const stats = await computeThresholdAlertStats(db, currentBalance);
+  const result = await sendThresholdAlertEmail({ currentBalance, previousBalance, stats });
+  if (!result.sent) {
+    console.error(`[credits] alerta de prag fix NU a putut fi trimisa prin email (motiv: ${result.reason}) — starea 'armed=false' ramane setata in Postgres, deci NU se va retrimite automat pana la o reincarcare de credite si o noua scadere sub prag. Verifica manual daca e nevoie.`);
+  }
+}
+
 module.exports = {
   VERIFIED_CREDITS_PER_GENERATION,
   CREDITS_PER_ORDER_ESTIMATE,
   SAFETY_RESERVE_ORDERS,
   MAX_GENERATION_ATTEMPTS,
+  FIXED_ALERT_THRESHOLD,
+  ADMIN_ALERT_EMAIL,
+  SUNOAPI_DASHBOARD_URL,
   providerConfigured,
   getBalance,
   getOrInitBaseline,
@@ -275,5 +421,7 @@ module.exports = {
   evaluateGuard,
   checkThresholdsAndAlert,
   detectAnomaly,
-  getDailyStats
+  getDailyStats,
+  computeThresholdAlertStats,
+  checkFixedThresholdAlert
 };

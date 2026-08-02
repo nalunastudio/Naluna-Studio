@@ -427,6 +427,8 @@ app.get('/api/admin/credits', async (req, res, next) => {
     const alertLevel = credits.getAlertLevel(balance, baseline);
     const daily = await credits.getDailyStats(db);
     const anomaly = await credits.detectAnomaly(db);
+    const alertState = await db.getCreditAlertState();
+    const stats = balance !== null ? await credits.computeThresholdAlertStats(db, balance) : null;
 
     res.json({
       provider: 'sunoapi.org',
@@ -444,8 +446,37 @@ app.get('/api/admin/credits', async (req, res, next) => {
       maxGenerationAttempts: credits.MAX_GENERATION_ATTEMPTS,
       estimatedRemainingOrders: credits.estimatedRemainingOrders(balance),
       today: daily,
-      anomaly
+      anomaly,
+      fixedThresholdAlert: {
+        threshold: credits.FIXED_ALERT_THRESHOLD,
+        recipientConfigured: !!credits.ADMIN_ALERT_EMAIL,
+        armed: alertState ? alertState.armed : null,
+        lastAlertSentAt: alertState ? alertState.lastAlertSentAt : null,
+        lastKnownBalance: alertState ? alertState.lastBalance : null,
+        estimatedRemainingOrdersBestCase: stats ? stats.bestCaseRemainingOrders : null,
+        estimatedRemainingOrdersWorstCase: stats ? stats.worstCaseRemainingOrders : null,
+        estimatedRemainingDays: stats ? stats.remainingDaysMessage : null
+      }
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Utilitar de TESTARE — permite verificarea completa a logicii de alerta la prag fix
+// (vezi credits.checkFixedThresholdAlert) cu o balanta SIMULATA, fara sa consume niciun
+// credit real Suno. Protejat de acelasi middleware admin ca restul rutelor /api/admin.
+// Util permanent pentru retestarea sigura a sistemului de alerte, nu doar o unealta
+// temporara de dezvoltare.
+app.post('/api/admin/credits/test-alert', express.json(), async (req, res, next) => {
+  try {
+    const mockBalance = Number(req.body?.balance);
+    if (!Number.isFinite(mockBalance)) {
+      return res.status(400).json({ error: 'Trimite un camp numeric "balance" in corpul cererii.' });
+    }
+    await credits.checkFixedThresholdAlert(db, mockBalance);
+    const alertState = await db.getCreditAlertState();
+    res.json({ tested: true, mockBalance, alertState });
   } catch (err) {
     next(err);
   }
@@ -1903,6 +1934,9 @@ async function callMusicProvider(orderId, prompt) {
     balanceAfter: balanceAfter.balance
   }).catch(err => console.error('[credits] Eroare la jurnalizarea consumului de credite:', err.message));
   credits.checkThresholdsAndAlert(db).catch(err => console.error('[credits] Eroare la verificarea pragurilor de alerta:', err.message));
+  if (balanceAfter.balance !== null) {
+    credits.checkFixedThresholdAlert(db, balanceAfter.balance).catch(err => console.error('[credits] Eroare la verificarea pragului fix de alerta:', err.message));
+  }
 
   return taskId;
 }

@@ -165,6 +165,25 @@ async function initDb() {
     );
   `);
 
+  // credit_alert_state: rand SINGLETON (id fixat la 1) care tine starea "armat/dezarmat" a
+  // alertei de prag fix de credite (implicit 248) — persistenta in Postgres, NICIODATA doar
+  // in memorie, ca sa supravietuiasca restarturilor/redeploy-urilor Railway. "armed=true"
+  // inseamna "nu am trimis inca alerta pentru scaderea curenta sub prag" — trecerea la
+  // "armed=false" (si trimiterea alertei) se face ATOMIC, cu SELECT ... FOR UPDATE (vezi
+  // db.claimCreditAlertTransition), ca doua comenzi finalizate simultan sa nu poata trimite
+  // niciodata doua emailuri pentru aceeasi scadere sub prag.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS credit_alert_state (
+      id INTEGER PRIMARY KEY DEFAULT 1,
+      armed BOOLEAN NOT NULL DEFAULT true,
+      last_balance NUMERIC,
+      last_alert_sent_at TIMESTAMPTZ,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      CONSTRAINT credit_alert_state_singleton CHECK (id = 1)
+    );
+  `);
+  await pool.query(`INSERT INTO credit_alert_state (id) VALUES (1) ON CONFLICT (id) DO NOTHING;`);
+
   console.log('Postgres: schema orders verificata/creata.');
 }
 
@@ -392,6 +411,94 @@ async function setSetting(key, value) {
   );
 }
 
+// ==================================================================================
+// TRANZITIE ATOMICA a alertei de prag fix de credite (implicit 248, vezi credits.js).
+// SELECT ... FOR UPDATE blocheaza randul singleton pe durata tranzactiei — o a doua
+// chemare concurenta (ex. doua generari care se termina aproape simultan, ambele sub
+// prag) asteapta pana cand prima tranzactie face COMMIT, apoi vede STAREA DEJA ACTUALIZATA
+// (armed=false), deci NU mai poate "castiga" ea insasi trimiterea alertei — exact
+// mecanismul cerut explicit: o singura alerta per scadere sub prag, indiferent de cate
+// comenzi se finalizeaza simultan chiar in acel moment.
+//
+// Returneaza intotdeauna previousBalance (valoarea dinainte de aceasta verificare) si
+// action: 'send_alert' | 'suppressed' | 'rearmed' | 'none' — apelantul (credits.js)
+// decide ce sa faca mai departe (trimite email doar la 'send_alert').
+// ==================================================================================
+async function claimCreditAlertTransition(currentBalance, threshold) {
+  return withTransaction(async (client) => {
+    const { rows } = await client.query('SELECT * FROM credit_alert_state WHERE id = 1 FOR UPDATE');
+    const state = rows[0];
+    const previousBalance = state.last_balance !== null ? Number(state.last_balance) : null;
+    const wasArmed = state.armed;
+
+    if (currentBalance > threshold) {
+      if (!wasArmed) {
+        await client.query(
+          `UPDATE credit_alert_state SET armed = true, last_balance = $1, updated_at = now() WHERE id = 1`,
+          [currentBalance]
+        );
+        return { action: 'rearmed', previousBalance };
+      }
+      await client.query(`UPDATE credit_alert_state SET last_balance = $1, updated_at = now() WHERE id = 1`, [currentBalance]);
+      return { action: 'none', previousBalance };
+    }
+
+    // currentBalance <= threshold
+    if (wasArmed) {
+      await client.query(
+        `UPDATE credit_alert_state SET armed = false, last_balance = $1, last_alert_sent_at = now(), updated_at = now() WHERE id = 1`,
+        [currentBalance]
+      );
+      return { action: 'send_alert', previousBalance };
+    }
+    await client.query(`UPDATE credit_alert_state SET last_balance = $1, updated_at = now() WHERE id = 1`, [currentBalance]);
+    return { action: 'suppressed', previousBalance };
+  });
+}
+
+async function getCreditAlertState() {
+  const result = await pool.query('SELECT * FROM credit_alert_state WHERE id = 1');
+  const row = result.rows[0];
+  if (!row) return null;
+  return {
+    armed: row.armed,
+    lastBalance: row.last_balance !== null ? Number(row.last_balance) : null,
+    lastAlertSentAt: row.last_alert_sent_at
+  };
+}
+
+// Comenzi FINALIZATE (platite, status='ready') din ultimele `days` zile — folosit pentru
+// statisticile din emailul de alerta si din panoul admin. paid_at (nu created_at) e reperul
+// corect: o comanda poate fi creata cu zile inainte sa fie efectiv platita.
+async function getCompletedOrdersSince(days) {
+  const result = await pool.query(
+    `SELECT count(*)::int AS n FROM orders WHERE status = 'ready' AND paid_at >= now() - ($1 || ' days')::interval`,
+    [days]
+  );
+  return result.rows[0].n;
+}
+
+// Media reala de credite consumate per comanda FINALIZATA (platita) — calculata din
+// jurnalul real de evenimente (credit_events), nu din estimarea statica CREDITS_PER_ORDER_ESTIMATE.
+// Mai precisa: reflecta cate comenzi platite chiar au folosit regenerarea gratuita.
+async function getAverageCreditsPerCompletedOrder() {
+  const result = await pool.query(`
+    SELECT AVG(order_total)::numeric AS avg_credits, COUNT(*)::int AS order_count
+    FROM (
+      SELECT ce.order_id, SUM(ce.credits_spent) AS order_total
+      FROM credit_events ce
+      JOIN orders o ON o.id = ce.order_id
+      WHERE ce.event_type = 'generation_attempt' AND o.status = 'ready'
+      GROUP BY ce.order_id
+    ) per_order
+  `);
+  const row = result.rows[0];
+  return {
+    averageCredits: row.avg_credits !== null ? Number(row.avg_credits) : null,
+    sampleSize: row.order_count
+  };
+}
+
 // mapare camelCase (folosit in restul aplicatiei) -> nume coloana in DB,
 // ca sa putem construi un UPDATE dinamic dintr-un obiect partial (patch)
 const COLUMN_MAP = {
@@ -592,6 +699,7 @@ module.exports = {
   refundEditIfReserved,
   updateOrder, listOrders, computeRevenue,
   logCreditEvent, getCreditEventsSince, getSetting, setSetting,
+  claimCreditAlertTransition, getCreditAlertState, getCompletedOrdersSince, getAverageCreditsPerCompletedOrder,
   createTestimonial, getTestimonialById, updateTestimonial, deleteTestimonial,
   listAllTestimonials, listPublishedTestimonials, moveTestimonial
 };
