@@ -1288,14 +1288,25 @@ app.post('/api/orders/:orderId/checkout', requireOrderToken, async (req, res, ne
 // ==========================================================================================
 // 6b. Fotografii/videoclipuri client pentru pachetul "video" (videoclip cu memorii) — DOAR
 // dupa plata (status='ready'), niciodata inainte (o comanda neplatita/abandonata nu trebuie
-// sa poata acumula upload-uri mari). Fisierele merg STRICT in bucket-ul privat — amintiri
-// personale ale clientului, la fel de private ca melodia completa.
-// ==========================================================================================
+// sa poata acumula upload-uri mari inainte de a exista macar o previzualizare). Fisierele
+// merg STRICT in bucket-ul privat — amintiri personale ale clientului, la fel de private ca
+// melodia completa.
+//
+// STATUS ACCEPTAT: 'preview_ready' SAU 'ready' — INTENTIONAT, nu doar 'ready'. Testare reala
+// (2026-08-03) a aratat ca a limita incarcarea la strict dupa plata ascundea complet acest pas
+// din experienta clientului: pagina de checkout (melodia-mea.html) e unde clientul alege
+// pachetul video si e gata sa plateasca, deci acolo trebuie sa poata incarca pozele/
+// videoclipurile INAINTE de a apasa "Finalizeaza cadoul" — nu doar dupa, pe o pagina separata
+// pe care s-ar putea sa nu o mai viziteze niciodata. Randarea video propriu-zisa tot nu poate
+// porni inainte de plata (melodia completa nu exista inca la 'preview_ready'), dar incarcarea
+// fisierelor nu are aceasta dependinta.
 app.post('/api/orders/:orderId/media', requireOrderToken, orderMediaUpload.array('media', ORDER_MEDIA_MAX_ITEMS), async (req, res, next) => {
   try {
     const order = req.order;
     if (order.plan !== 'video') return res.status(400).json({ error: 'Doar pachetul video acceptă fotografii/videoclipuri.' });
-    if (order.status !== 'ready') return res.status(403).json({ error: 'Poți încărca fotografii după finalizarea plății.' });
+    if (order.status !== 'preview_ready' && order.status !== 'ready') {
+      return res.status(403).json({ error: 'Poți încărca fotografii după ce ai auzit previzualizarea.' });
+    }
 
     const existing = order.uploadedMedia || [];
     const files = req.files || [];

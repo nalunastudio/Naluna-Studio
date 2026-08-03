@@ -52,6 +52,11 @@
   audio{ width:100%; margin-top:14px; }
   .empty{ color:var(--text-secondary); font-size:14px; }
   a.download{ color:var(--gold-deep); font-size:13px; display:inline-block; margin-top:10px; margin-right:14px; }
+  .plan-badge{
+    display:inline-flex; align-items:center; gap:8px; background:var(--surface);
+    border:1px solid var(--gold); border-radius:999px; padding:6px 14px; margin-bottom:12px;
+    font-size:12px; font-weight:600; color:var(--gold-deep);
+  }
 
   .memories{ margin-top:20px; padding-top:20px; border-top:1px solid var(--line); }
   .memories-sub{ font-size:13px; color:var(--text-secondary); margin-bottom:14px; }
@@ -113,7 +118,8 @@
       memories_creating: 'Se creează videoclipul tău cu amintiri... poate dura câteva minute',
       memories_remove: '✕', memories_upload_error: 'Încărcarea a eșuat. Încearcă din nou',
       memories_create_error: 'Crearea videoclipului a eșuat. Încearcă din nou',
-      memories_sections: { none: 'Fără preferință', beginning: 'Început', verse1: 'Strofa 1', chorus: 'Refren', verse2: 'Strofa 2', ending: 'Final' }
+      memories_sections: { none: 'Fără preferință', beginning: 'Început', verse1: 'Strofa 1', chorus: 'Refren', verse2: 'Strofa 2', ending: 'Final' },
+      plan_standard: '🎵 Pachet Standard', plan_premium: '💿 Pachet Premium', plan_video: '🎬 Cadou video'
     },
     en: {
       title: 'My order', sub: 'Enter the access code you received by email to see your song.',
@@ -129,7 +135,8 @@
       memories_creating: 'Creating your memory video... this can take a few minutes',
       memories_remove: '✕', memories_upload_error: 'Upload failed. Please try again.',
       memories_create_error: 'Creating the video failed. Please try again.',
-      memories_sections: { none: 'No preference', beginning: 'Beginning', verse1: 'Verse 1', chorus: 'Chorus', verse2: 'Verse 2', ending: 'Ending' }
+      memories_sections: { none: 'No preference', beginning: 'Beginning', verse1: 'Verse 1', chorus: 'Chorus', verse2: 'Verse 2', ending: 'Ending' },
+      plan_standard: '🎵 Standard package', plan_premium: '💿 Premium package', plan_video: '🎬 Video gift'
     },
     de: {
       title: 'Meine Bestellung', sub: 'Gib den per E-Mail erhaltenen Zugangscode ein, um dein Lied zu sehen.',
@@ -145,7 +152,8 @@
       memories_creating: 'Dein Erinnerungsvideo wird erstellt... das kann einige Minuten dauern',
       memories_remove: '✕', memories_upload_error: 'Hochladen fehlgeschlagen. Bitte versuche es erneut.',
       memories_create_error: 'Videoerstellung fehlgeschlagen. Bitte versuche es erneut.',
-      memories_sections: { none: 'Keine Präferenz', beginning: 'Anfang', verse1: 'Strophe 1', chorus: 'Refrain', verse2: 'Strophe 2', ending: 'Ende' }
+      memories_sections: { none: 'Keine Präferenz', beginning: 'Anfang', verse1: 'Strophe 1', chorus: 'Refrain', verse2: 'Strophe 2', ending: 'Ende' },
+      plan_standard: '🎵 Standard-Paket', plan_premium: '💿 Premium-Paket', plan_video: '🎬 Video-Geschenk'
     },
     es: {
       title: 'Mi pedido', sub: 'Introduce el código de acceso recibido por email para ver tu canción.',
@@ -161,7 +169,8 @@
       memories_creating: 'Creando tu video de recuerdos... puede tardar unos minutos',
       memories_remove: '✕', memories_upload_error: 'Error al subir. Inténtalo de nuevo.',
       memories_create_error: 'Error al crear el video. Inténtalo de nuevo.',
-      memories_sections: { none: 'Sin preferencia', beginning: 'Inicio', verse1: 'Estrofa 1', chorus: 'Estribillo', verse2: 'Estrofa 2', ending: 'Final' }
+      memories_sections: { none: 'Sin preferencia', beginning: 'Inicio', verse1: 'Estrofa 1', chorus: 'Estribillo', verse2: 'Estrofa 2', ending: 'Final' },
+      plan_standard: '🎵 Paquete Estándar', plan_premium: '💿 Paquete Premium', plan_video: '🎬 Regalo en video'
     },
     it: {
       title: 'Il mio ordine', sub: 'Inserisci il codice di accesso ricevuto via email per vedere la tua canzone.',
@@ -177,7 +186,8 @@
       memories_creating: 'Creazione del video con i ricordi... può richiedere qualche minuto',
       memories_remove: '✕', memories_upload_error: 'Caricamento non riuscito. Riprova.',
       memories_create_error: 'Creazione del video non riuscita. Riprova.',
-      memories_sections: { none: 'Nessuna preferenza', beginning: 'Inizio', verse1: 'Strofa 1', chorus: 'Ritornello', verse2: 'Strofa 2', ending: 'Finale' }
+      memories_sections: { none: 'Nessuna preferenza', beginning: 'Inizio', verse1: 'Strofa 1', chorus: 'Ritornello', verse2: 'Strofa 2', ending: 'Finale' },
+      plan_standard: '🎵 Pacchetto Standard', plan_premium: '💿 Pacchetto Premium', plan_video: '🎬 Regalo video'
     },
     fr: {
       title: 'Ma commande', sub: 'Entrez le code d\'accès reçu par email pour voir votre chanson.',
@@ -193,7 +203,8 @@
       memories_creating: 'Création de votre vidéo souvenir... cela peut prendre quelques minutes',
       memories_remove: '✕', memories_upload_error: 'Échec de l\'envoi. Veuillez réessayer.',
       memories_create_error: 'Échec de la création de la vidéo. Veuillez réessayer.',
-      memories_sections: { none: 'Aucune préférence', beginning: 'Début', verse1: 'Couplet 1', chorus: 'Refrain', verse2: 'Couplet 2', ending: 'Fin' }
+      memories_sections: { none: 'Aucune préférence', beginning: 'Début', verse1: 'Couplet 1', chorus: 'Refrain', verse2: 'Couplet 2', ending: 'Fin' },
+      plan_standard: '🎵 Pack Standard', plan_premium: '💿 Pack Premium', plan_video: '🎬 Cadeau vidéo'
     },
     bg: {
       title: 'Моята поръчка', sub: 'Въведи кода за достъп, получен по имейл, за да видиш песента си.',
@@ -209,7 +220,8 @@
       memories_creating: 'Създаваме твоето видео със спомени... може да отнеме няколко минути',
       memories_remove: '✕', memories_upload_error: 'Качването не бе успешно. Опитай отново.',
       memories_create_error: 'Създаването на видеото не бе успешно. Опитай отново.',
-      memories_sections: { none: 'Без предпочитание', beginning: 'Начало', verse1: 'Куплет 1', chorus: 'Припев', verse2: 'Куплет 2', ending: 'Край' }
+      memories_sections: { none: 'Без предпочитание', beginning: 'Начало', verse1: 'Куплет 1', chorus: 'Припев', verse2: 'Куплет 2', ending: 'Край' },
+      plan_standard: '🎵 Пакет Стандарт', plan_premium: '💿 Пакет Премиум', plan_video: '🎬 Видео подарък'
     },
     tr: {
       title: 'Siparişim', sub: 'Şarkınızı görmek için e-posta ile aldığınız erişim kodunu girin.',
@@ -225,7 +237,8 @@
       memories_creating: 'Anı videonuz oluşturuluyor... bu birkaç dakika sürebilir',
       memories_remove: '✕', memories_upload_error: 'Yükleme başarısız oldu. Lütfen tekrar deneyin.',
       memories_create_error: 'Video oluşturma başarısız oldu. Lütfen tekrar deneyin.',
-      memories_sections: { none: 'Fark etmez', beginning: 'Başlangıç', verse1: '1. Kıta', chorus: 'Nakarat', verse2: '2. Kıta', ending: 'Final' }
+      memories_sections: { none: 'Fark etmez', beginning: 'Başlangıç', verse1: '1. Kıta', chorus: 'Nakarat', verse2: '2. Kıta', ending: 'Final' },
+      plan_standard: '🎵 Standart Paket', plan_premium: '💿 Premium Paket', plan_video: '🎬 Video Hediye'
     }
   };
   const supportedLangs = ['ro', 'en', 'de', 'es', 'it', 'fr', 'bg', 'tr'];
@@ -412,12 +425,16 @@
         extrasHtml += `<a class="download" href="${videoUrl}" download>${t.download_video}</a>`;
       }
 
+      const planBadgeHtml = (o.plan === 'standard' || o.plan === 'premium' || o.plan === 'video')
+        ? `<div class="plan-badge">${t['plan_' + o.plan]}</div>` : '';
+
       results.innerHTML = `
         <div class="order">
           <div class="top">
             <div class="name">${t.for_label} ${escapeHtml(o.recipient)}</div>
             <div class="status status-${o.status}">${t.status[o.status] || o.status}</div>
           </div>
+          ${planBadgeHtml}
           ${o.status === 'ready' ? `
             <audio controls src="${fullUrl}"></audio>
             <div><a class="download" href="${fullUrl}" download>${t.download}</a>${extrasHtml}</div>
