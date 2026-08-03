@@ -548,6 +548,27 @@ app.post('/api/admin/credits/test-alert', express.json(), async (req, res, next)
   }
 });
 
+// Reincercare manuala a extraselor de pachet (WAV/video) pentru o comanda deja platita —
+// util operational permanent, nu doar pentru testare: daca generatePremiumExtras esueaza
+// din orice motiv tranzitoriu (retea, timeout ffmpeg etc.), altfel clientul care a platit
+// deja pentru premium/video ar ramane fara extrasul lui pentru totdeauna, fara nicio cale
+// de recuperare in afara unei interventii manuale in baza de date.
+app.post('/api/admin/orders/:orderId/retry-extras', async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.orderId)) return res.status(400).json({ error: 'ID comandă invalid.' });
+    const order = await db.getOrderById(req.params.orderId);
+    if (!order) return res.status(404).json({ error: 'Comanda nu există.' });
+    if (order.status !== 'ready') return res.status(400).json({ error: 'Comanda nu e încă plătită.' });
+
+    await generatePremiumExtras(req.params.orderId);
+    const fresh = await db.getOrderById(req.params.orderId);
+    const variant = (fresh.variants || []).find(v => v.id === fresh.selectedVariantId);
+    res.json({ retried: true, hasWav: !!(variant && variant.wavKey), hasVideo: !!(variant && variant.videoKey) });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ==========================================================================================
 // REACTII CLIENTI (testimonials) — gestionate exclusiv din /admin.
 // Nu exista, in aceasta etapa, niciun formular public de upload — un client nu poate
@@ -2133,7 +2154,7 @@ function toSrt(lines) {
 // tonuri calde (nu fundalul deschis al site-ului) — text deschis pe fond inchis se citeste
 // mult mai bine intr-un videoclip decat invers, mai ales pe telefon.
 const VIDEO_BG_COLOR = '0x2B2016'; // maro cald inchis, din aceeasi familie ca --gold-deep
-const VIDEO_TEXT_STYLE = "FontName=Arial,FontSize=26,PrimaryColour=&H00E8F0F6,OutlineColour=&H0016202B,BorderStyle=1,Outline=2,Alignment=2,MarginV=220";
+const VIDEO_TEXT_STYLE = "FontName=Arial,FontSize=18,PrimaryColour=&H00E8F0F6,OutlineColour=&H0016202B,BorderStyle=1,Outline=2,Alignment=2,MarginV=150";
 
 async function generateLyricVideo(order, variant, tempFullMp3Path) {
   if (!variant.sunoTrackId || !order.musicTaskId) {
@@ -2165,16 +2186,26 @@ async function generateLyricVideo(order, variant, tempFullMp3Path) {
   const srtForFilter = srtPath.replace(/\\/g, '/').replace(/:/g, '\\:');
 
   try {
+    // Verificat direct pe Railway (2026-08-03, comanda 59ae99f9, plata reala): libass,
+    // subtitrarile si fonturile functioneaza corect pe containerul de productie — encodarea
+    // CHIAR pornea si avansa (frame=45, fps~15) cand a fost omorata de limita de 180000ms.
+    // CPU-ul containerului Railway e mult mai lent decat masina locala de test (unde acelasi
+    // videoclip a durat ~40s) — la ~15fps reale, un videoclip de 4 minute la 25fps/1080x1920
+    // are nevoie de 400+ secunde, nu 180. Solutie: rezolutie mai mica (721x1280 — mult mai
+    // putini pixeli de encodat, tot suficient de buna pentru telefon/social), preset
+    // "ultrafast" (semnificativ mai rapid decat "veryfast", cu compresie usor mai slaba —
+    // acceptabil, viteza conteaza mai mult decat marimea fisierului aici), si un timeout
+    // mult mai generos (10 minute) — sigur, ruleaza complet asincron, nu blocheaza nimic.
     await execFileAsync('ffmpeg', [
       '-y',
-      '-f', 'lavfi', '-i', `color=c=${VIDEO_BG_COLOR}:s=1080x1920:d=${durationSeconds}`,
+      '-f', 'lavfi', '-i', `color=c=${VIDEO_BG_COLOR}:s=720x1280:d=${durationSeconds}`,
       '-i', tempFullMp3Path,
       '-vf', `subtitles='${srtForFilter}':force_style='${VIDEO_TEXT_STYLE}'`,
-      '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+      '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '26',
       '-c:a', 'aac', '-b:a', '192k',
       '-shortest',
       tempVideo
-    ], { timeout: 180000 });
+    ], { timeout: 600000 });
   } finally {
     try { fs.unlinkSync(srtPath); } catch (e) { /* best-effort */ }
   }
