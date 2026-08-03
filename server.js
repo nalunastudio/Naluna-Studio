@@ -601,7 +601,7 @@ app.post('/api/admin/orders/:orderId/retry-extras', async (req, res, next) => {
 // uploadedMedia curatate, ca sa putem testa upload real + create-video real prin API-ul
 // public, pe acelasi container Railway, fara sa atingem comanda reala a clientului si fara
 // nicio plata noua. DE STERS dupa ce testarea Task #60 se incheie.
-app.post('/api/admin/test/clone-video-order', async (req, res, next) => {
+app.post('/api/admin/test/clone-video-order', express.json(), async (req, res, next) => {
   try {
     const sourceOrderId = req.body && req.body.sourceOrderId;
     if (!UUID_RE.test(sourceOrderId)) return res.status(400).json({ error: 'sourceOrderId invalid.' });
