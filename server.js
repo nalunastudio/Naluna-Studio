@@ -68,7 +68,16 @@ if (missingEnvVars.length > 0) {
 // inainte de a lua comenzi reale.
 
 const app = express();
-app.set('trust proxy', 1); // Railway sta in spatele unui proxy — necesar ca rate limiting sa vada IP-ul real
+// Railway sta in spatele unui proxy — necesar ca rate limiting sa vada IP-ul real, nu pe cel
+// al proxy-ului. IMPORTANT: 'trust proxy', 1 (un singur hop numeric) NU e corect aici — a fost
+// verificat direct (2026-08-03) ca produce un rate-limiting nefiabil (ratelimit-remaining
+// fluctua nemonoton — 14, 12, 15, 14... — pe cereri consecutive de la aceeasi sursa reala),
+// pentru ca hop-ul intern Railway nu e mereu acelasi IP exact, doar mereu in intervalul
+// 100.64.0.0/10 (Shared Address Space, RFC 6598, folosit de Railway pentru retea interna).
+// Increderea intr-un interval CIDR (nu un numar fix de hop-uri) rezolva asta corect: Express
+// urca prin X-Forwarded-For sarind peste orice IP din acest interval, si foloseste primul
+// IP din stanga care NU se potriveste ca fiind clientul real.
+app.set('trust proxy', '100.64.0.0/10');
 
 const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 
@@ -229,6 +238,28 @@ const TESTIMONIAL_MIME_TYPES = {
 };
 const TESTIMONIAL_MAX_BYTES = 60 * 1024 * 1024; // 60MB — suficient pentru un video scurt de telefon
 
+// Verificare "magic bytes" — validarea de mai sus (file.mimetype) se bazeaza STRICT pe
+// Content-Type-ul declarat de clientul care trimite cererea (usor de falsificat, verificat
+// direct in auditul de securitate 2026-08-03: un fisier arbitrar cu Content-Type "image/png"
+// declarat manual trece validarea, indiferent de continutul real). Aceasta verificare
+// suplimentara citeste primii octeti REALI ai fisierului si confirma ca formatul declarat
+// chiar corespunde continutului. Nu inlocuieste validarea de mimetype, o completeaza.
+function bufferMatchesDeclaredType(buffer, mimetype) {
+  const sig = (bytes) => bytes.every((b, i) => buffer[i] === b);
+  switch (mimetype) {
+    case 'image/jpeg': return sig([0xFF, 0xD8, 0xFF]);
+    case 'image/png': return sig([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+    case 'image/webp': return sig([0x52, 0x49, 0x46, 0x46]) && buffer.slice(8, 12).toString('ascii') === 'WEBP';
+    case 'video/webm': return sig([0x1A, 0x45, 0xDF, 0xA3]);
+    case 'video/mp4':
+    case 'audio/mp4':
+    case 'audio/x-m4a': return buffer.slice(4, 8).toString('ascii') === 'ftyp';
+    case 'audio/wav': return sig([0x52, 0x49, 0x46, 0x46]) && buffer.slice(8, 12).toString('ascii') === 'WAVE';
+    case 'audio/mpeg': return sig([0x49, 0x44, 0x33]) || (buffer[0] === 0xFF && (buffer[1] & 0xE0) === 0xE0);
+    default: return false;
+  }
+}
+
 // memoryStorage — fisierul ajunge in req.file.buffer, ca sa-l putem urca direct in cloud
 // fara sa-l scriem intai pe disc. Pentru fallback local, il scriem noi manual din buffer.
 const testimonialUpload = multer({
@@ -297,8 +328,12 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, 
     const sig = req.headers['stripe-signature'];
     event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
   } catch (err) {
+    // Detaliul erorii ramane STRICT server-side (log) — raspunsul catre apelant e generic,
+    // ca sa nu oferim informatii despre motivul exact al esecului de semnatura unui atacator
+    // care incearca sa forjeze un webhook (chiar daca semnatura criptografica ramane oricum
+    // imposibil de fortat fara STRIPE_WEBHOOK_SECRET, nu are rost sa oferim niciun indiciu).
     console.error('Webhook signature invalida:', err.message);
-    return res.status(400).send(`Webhook Error: ${err.message}`);
+    return res.status(400).json({ error: 'Webhook Error: invalid signature' });
   }
 
   try {
@@ -352,6 +387,13 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, 
 // -------- securitate: headere HTTP standard. CSP dezactivat explicit — paginile folosesc
 // script/style inline, o politica CSP stricta le-ar rupe fara o refactorizare separata. --------
 app.use(helmet({ contentSecurityPolicy: false }));
+// Permissions-Policy: site-ul nu foloseste camera/microfon/geolocatie/plati-web-API etc. —
+// blocarea lor explicita nu costa nimic functional si reduce suprafata de atac daca vreun
+// script tert (sau o vulnerabilitate viitoare) ar incerca sa le acceseze.
+app.use((req, res, next) => {
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()');
+  next();
+});
 
 // -------- rate limiting pe rutele care costa bani (apeleaza API-ul de muzica) sau sunt tinta de abuz --------
 const orderCreationLimiter = rateLimit({
@@ -556,6 +598,9 @@ app.post('/api/admin/testimonials', (req, res, next) => {
         if (!expected.includes(req.file.mimetype)) {
           return res.status(400).json({ error: `Fișierul încărcat nu corespunde tipului "${mediaType}".` });
         }
+        if (!bufferMatchesDeclaredType(req.file.buffer, req.file.mimetype)) {
+          return res.status(400).json({ error: 'Conținutul fișierului nu corespunde tipului declarat.' });
+        }
       }
 
       const mediaKey = req.file ? await saveTestimonialFile(req.file) : null;
@@ -607,6 +652,9 @@ app.put('/api/admin/testimonials/:id', (req, res, next) => {
         const expected = TESTIMONIAL_MIME_TYPES[mediaType] || [];
         if (!expected.includes(req.file.mimetype)) {
           return res.status(400).json({ error: `Fișierul încărcat nu corespunde tipului "${mediaType}".` });
+        }
+        if (!bufferMatchesDeclaredType(req.file.buffer, req.file.mimetype)) {
+          return res.status(400).json({ error: 'Conținutul fișierului nu corespunde tipului declarat.' });
         }
       }
 
@@ -1014,24 +1062,27 @@ app.post('/api/orders/:orderId/select', requireOrderToken, async (req, res, next
 });
 
 // ==========================================================================================
-// 5. Status comanda (polling din frontend) — accesul e implicit protejat de faptul ca
-// orderId e un UUID v4 (122 biti de entropie), nu e listat/ghicit nicaieri.
+// 5. Status comanda (polling din frontend).
 //
-// TOKEN OPTIONAL: daca cererea include ?token=, acesta TREBUIE sa corespunda
-// order.accessToken (comparatie timing-safe), altfel raspundem 404 generic — foloseste
-// acelasi tipar de securitate ca /media/full. Pagina melodia-mea.html trimite intotdeauna
-// acest token. Paginile mai vechi (index.html/se-compune.html), care nu trimit token,
-// pastreaza comportamentul anterior neschimbat — nu se blocheaza nimic retroactiv.
+// TOKEN OBLIGATORIU — verificat direct (2026-08-03, audit de securitate) ca a nu cere
+// tokenul aici insemna ca oricine obtine/vede vreodata un orderId (istoric browser,
+// captura de ecran, log de server, referrer scurs etc.) putea citi datele complete ale
+// comenzii ALTCUIVA, inclusiv versurile complete ale melodiei — text adesea personal/sensibil
+// (declaratii, doliu etc.). Protectia bazata doar pe faptul ca orderId e un UUID v4
+// negasibil e insuficienta ca unic control de acces pentru date de aceasta sensibilitate
+// (exact tiparul OWASP A01 Broken Access Control / "security through obscurity"). Toate
+// paginile curente au deja tokenul disponibil in acel moment (se-compune.html si succes.html
+// il citesc deja din URL/localStorage pentru alte apeluri) — cerinta tokenului aici nu rupe
+// niciun flux existent.
 // ==========================================================================================
 app.get('/api/orders/:orderId', async (req, res, next) => {
   try {
     if (!UUID_RE.test(req.params.orderId)) return res.status(400).json({ error: 'ID comandă invalid.' });
 
     const order = await db.getOrderById(req.params.orderId);
-    if (!order) return res.status(404).json({ error: 'Comanda nu există.' });
-
-    const providedToken = typeof req.query.token === 'string' ? req.query.token : null;
-    if (providedToken !== null && !safeCompare(providedToken, order.accessToken)) {
+    const providedToken = typeof req.query.token === 'string' ? req.query.token : '';
+    const expectedToken = order ? order.accessToken : DUMMY_TOKEN_FOR_TIMING;
+    if (!order || !safeCompare(providedToken, expectedToken)) {
       return res.status(404).json({ error: 'Comanda nu există.' });
     }
 

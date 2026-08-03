@@ -155,7 +155,7 @@
 
     async function checkStatus() {
       try {
-        const res = await fetch(`/api/orders/${orderId}`);
+        const res = await fetch(`/api/orders/${orderId}?token=${encodeURIComponent(accessToken || '')}`);
         const data = await res.json();
 
         if (data.status === 'ready') {

@@ -519,7 +519,7 @@
   let pollTimer = null;
   async function pollStatus() {
     try {
-      const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}`);
+      const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}?token=${encodeURIComponent(accessToken)}`);
       if (!res.ok) {
         consecutivePollFailures++;
         if (consecutivePollFailures >= 2) showSoftNotice();
