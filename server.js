@@ -714,6 +714,18 @@ app.post('/api/admin/testimonials/:id/move', express.json(), async (req, res, ne
   }
 });
 
+// TEMPORAR — diagnostic pentru problema de trust proxy, de eliminat dupa audit.
+app.get('/api/_debug_ip', (req, res) => {
+  res.json({
+    reqIp: req.ip,
+    reqIps: req.ips,
+    xForwardedFor: req.headers['x-forwarded-for'],
+    xRailwayEdge: req.headers['x-railway-edge'],
+    xRealIp: req.headers['x-real-ip'],
+    allHeaders: req.headers
+  });
+});
+
 // -------- Reactii publicate — endpoint public, folosit de homepage --------
 app.get('/api/testimonials', async (req, res, next) => {
   try {
