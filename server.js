@@ -68,16 +68,15 @@ if (missingEnvVars.length > 0) {
 // inainte de a lua comenzi reale.
 
 const app = express();
-// Railway sta in spatele unui proxy — necesar ca rate limiting sa vada IP-ul real, nu pe cel
-// al proxy-ului. IMPORTANT: 'trust proxy', 1 (un singur hop numeric) NU e corect aici — a fost
-// verificat direct (2026-08-03) ca produce un rate-limiting nefiabil (ratelimit-remaining
-// fluctua nemonoton — 14, 12, 15, 14... — pe cereri consecutive de la aceeasi sursa reala),
-// pentru ca hop-ul intern Railway nu e mereu acelasi IP exact, doar mereu in intervalul
-// 100.64.0.0/10 (Shared Address Space, RFC 6598, folosit de Railway pentru retea interna).
-// Increderea intr-un interval CIDR (nu un numar fix de hop-uri) rezolva asta corect: Express
-// urca prin X-Forwarded-For sarind peste orice IP din acest interval, si foloseste primul
-// IP din stanga care NU se potriveste ca fiind clientul real.
-app.set('trust proxy', '100.64.0.0/10');
+// Railway sta in spatele unui proxy. NOTA (2026-08-03, audit de securitate): nici 'trust
+// proxy', 1, nici un interval CIDR presupus pentru hop-ul intern nu s-au dovedit fiabile aici
+// — verificat direct ca acel hop se roteste dintr-un mic pool de IP-uri (nu e stabil si nu
+// pare sa fie intr-un interval documentat). Din acest motiv, deciziile de securitate (rate
+// limiting) NU se bazeaza pe req.ip/trust proxy — folosesc explicit header-ul dedicat
+// X-Real-IP, setat de Railway si confirmat ca nu poate fi falsificat de client (vezi
+// realClientIp() mai jos). Setarea de aici ramane doar pentru comportamentul standard
+// Express (req.secure etc.), fara rol de securitate.
+app.set('trust proxy', 1);
 
 const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 
@@ -395,17 +394,34 @@ app.use((req, res, next) => {
   next();
 });
 
+// -------- IP-ul real al clientului, pe Railway --------
+// Verificat direct (2026-08-03, audit de securitate): X-Forwarded-For contine DOAR 2 IP-uri
+// (clientul real + hop-ul intern Railway), dar hop-ul intern NU e stabil — se roteste
+// dintr-un pool (152.233.29.2, .3, .4... vazute direct in teste), deci `trust proxy` bazat
+// pe numar de hop-uri SAU pe un interval CIDR presupus produce chei diferite la cereri
+// consecutive de la acelasi client real, facand rate limiting-ul nefiabil (verificat: acelasi
+// IP sursa, ratelimit-remaining fluctua nemonoton intre cereri consecutive). Railway seteaza
+// insa un header dedicat, X-Real-IP, cu IP-ul real al clientului — stabil, si confirmat
+// direct ca nu poate fi falsificat de client (Railway il suprascrie mereu la edge, indiferent
+// ce trimite clientul). Toate limiter-ele de mai jos cheie explicit pe acest header.
+function realClientIp(req) {
+  return req.headers['x-real-ip'] || req.ip;
+}
+
 // -------- rate limiting pe rutele care costa bani (apeleaza API-ul de muzica) sau sunt tinta de abuz --------
 const orderCreationLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, max: 20, standardHeaders: true, legacyHeaders: false,
+  keyGenerator: realClientIp,
   message: { error: 'Prea multe comenzi create de la această adresă. Încearcă din nou mai târziu' }
 });
 const generationLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, max: 15, standardHeaders: true, legacyHeaders: false,
+  keyGenerator: realClientIp,
   message: { error: 'Prea multe generări solicitate. Încearcă din nou mai târziu' }
 });
 const lookupLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false,
+  keyGenerator: realClientIp,
   message: { error: 'Prea multe încercări. Încearcă din nou mai târziu' }
 });
 // Panoul de admin e cel mai privilegiat punct de acces din aplicatie (acces la toate
@@ -416,6 +432,7 @@ const lookupLimiter = rateLimit({
 const adminAuthLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, max: 20, standardHeaders: true, legacyHeaders: false,
   skipSuccessfulRequests: true,
+  keyGenerator: realClientIp,
   message: { error: 'Prea multe încercări de autentificare. Încearcă din nou mai târziu' }
 });
 
@@ -712,18 +729,6 @@ app.post('/api/admin/testimonials/:id/move', express.json(), async (req, res, ne
   } catch (err) {
     next(err);
   }
-});
-
-// TEMPORAR — diagnostic pentru problema de trust proxy, de eliminat dupa audit.
-app.get('/api/_debug_ip', (req, res) => {
-  res.json({
-    reqIp: req.ip,
-    reqIps: req.ips,
-    xForwardedFor: req.headers['x-forwarded-for'],
-    xRailwayEdge: req.headers['x-railway-edge'],
-    xRealIp: req.headers['x-real-ip'],
-    allHeaders: req.headers
-  });
 });
 
 // -------- Reactii publicate — endpoint public, folosit de homepage --------
