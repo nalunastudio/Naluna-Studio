@@ -594,6 +594,49 @@ app.post('/api/admin/orders/:orderId/retry-extras', async (req, res, next) => {
   }
 });
 
+// TEMPORAR — doar pentru testarea in productie a pipeline-ului cinematic cu amintiri
+// (Task #60). Clona o comanda "video" deja platita si finalizata intr-o comanda de test noua,
+// REFOLOSIND acelasi fullKey/sunoTrackId/musicTaskId (deci fara niciun cost suplimentar de
+// credite Suno — nu se apeleaza deloc providerul de muzica), cu wavKey/videoKey si
+// uploadedMedia curatate, ca sa putem testa upload real + create-video real prin API-ul
+// public, pe acelasi container Railway, fara sa atingem comanda reala a clientului si fara
+// nicio plata noua. DE STERS dupa ce testarea Task #60 se incheie.
+app.post('/api/admin/test/clone-video-order', async (req, res, next) => {
+  try {
+    const sourceOrderId = req.body && req.body.sourceOrderId;
+    if (!UUID_RE.test(sourceOrderId)) return res.status(400).json({ error: 'sourceOrderId invalid.' });
+    const source = await db.getOrderById(sourceOrderId);
+    if (!source) return res.status(404).json({ error: 'Comanda sursa nu există.' });
+    const variant = (source.variants || []).find(v => v.id === source.selectedVariantId);
+    if (!variant || !variant.fullKey || !variant.sunoTrackId || !source.musicTaskId) {
+      return res.status(400).json({ error: 'Comanda sursa nu are datele necesare (fullKey/sunoTrackId/musicTaskId).' });
+    }
+
+    const clone = await db.createOrder({
+      id: randomUUID(),
+      accessToken: randomBytes(24).toString('hex'),
+      occasion: source.occasion, recipient: source.recipient, email: 'test-clone@nalunastudio.com',
+      story: source.story || 'test clone', genre: source.genre, plan: 'video', price: 35, lang: source.lang,
+      status: 'draft', editsUsed: 0, variants: [], selectedVariantId: null,
+      senderName: source.senderName, relationship: source.relationship,
+      voicePreference: source.voicePreference
+    });
+
+    const clonedVariant = { ...variant, wavKey: null, videoKey: null };
+    await db.updateOrder(clone.id, {
+      status: 'ready',
+      musicTaskId: source.musicTaskId,
+      selectedVariantId: clonedVariant.id,
+      variants: [clonedVariant],
+      uploadedMedia: []
+    });
+
+    res.json({ id: clone.id, accessToken: clone.accessToken });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ==========================================================================================
 // REACTII CLIENTI (testimonials) — gestionate exclusiv din /admin.
 // Nu exista, in aceasta etapa, niciun formular public de upload — un client nu poate
