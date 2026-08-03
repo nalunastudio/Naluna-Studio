@@ -188,6 +188,25 @@ async function uploadPublicBuffer(buffer, key, contentType) {
   return { key };
 }
 
+// urca direct dintr-un buffer in memorie, in bucket-ul PRIVAT — folosit pentru fotografiile/
+// videoclipurile incarcate de client pentru pachetul "video" (amintiri personale, niciodata
+// publice, la fel de private ca melodia completa).
+async function uploadPrivateBuffer(buffer, key, contentType) {
+  if (CLOUD_ENABLED) {
+    await s3Client.send(new PutObjectCommand({
+      Bucket: PRIVATE_BUCKET,
+      Key: key,
+      Body: buffer,
+      ContentType: contentType
+    }));
+  } else {
+    const dest = path.join(LOCAL_PRIVATE_DIR, key);
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.writeFileSync(dest, buffer);
+  }
+  return { key };
+}
+
 // ============================================================================
 // ACCES — URL public direct (bucket public) sau URL semnat, temporar (bucket privat)
 // ============================================================================
@@ -240,6 +259,7 @@ module.exports = {
   uploadPrivateFile,
   uploadPublicFile,
   uploadPublicBuffer,
+  uploadPrivateBuffer,
   getPublicUrl,
   getSignedDownloadUrl,
   deletePrivateFile,

@@ -251,13 +251,34 @@ function bufferMatchesDeclaredType(buffer, mimetype) {
     case 'image/webp': return sig([0x52, 0x49, 0x46, 0x46]) && buffer.slice(8, 12).toString('ascii') === 'WEBP';
     case 'video/webm': return sig([0x1A, 0x45, 0xDF, 0xA3]);
     case 'video/mp4':
+    case 'video/quicktime':
+    case 'image/heic':
+    case 'image/heif':
     case 'audio/mp4':
-    case 'audio/x-m4a': return buffer.slice(4, 8).toString('ascii') === 'ftyp';
+    case 'audio/x-m4a': return buffer.slice(4, 8).toString('ascii') === 'ftyp'; // container ISO-BMFF comun (MP4/MOV/HEIC/HEIF)
     case 'audio/wav': return sig([0x52, 0x49, 0x46, 0x46]) && buffer.slice(8, 12).toString('ascii') === 'WAVE';
     case 'audio/mpeg': return sig([0x49, 0x44, 0x33]) || (buffer[0] === 0xFF && (buffer[1] & 0xE0) === 0xE0);
     default: return false;
   }
 }
+
+// -------- incarcare fotografii/videoclipuri client, pentru pachetul "video" (memorii) --------
+const ORDER_MEDIA_MIME_TYPES = {
+  photo: ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'],
+  video: ['video/mp4', 'video/quicktime', 'video/webm']
+};
+const ORDER_MEDIA_MAX_BYTES = 150 * 1024 * 1024; // 150MB — suficient pentru un videoclip scurt de telefon la calitate buna
+const ORDER_MEDIA_MAX_ITEMS = 10;
+
+const orderMediaUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: ORDER_MEDIA_MAX_BYTES, files: ORDER_MEDIA_MAX_ITEMS },
+  fileFilter: (req, file, cb) => {
+    const allAllowed = [...ORDER_MEDIA_MIME_TYPES.photo, ...ORDER_MEDIA_MIME_TYPES.video];
+    if (allAllowed.includes(file.mimetype)) return cb(null, true);
+    cb(new Error(`Tip de fisier neacceptat: ${file.mimetype}`));
+  }
+});
 
 // memoryStorage — fisierul ajunge in req.file.buffer, ca sa-l putem urca direct in cloud
 // fara sa-l scriem intai pe disc. Pentru fallback local, il scriem noi manual din buffer.
@@ -371,10 +392,12 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, 
             console.error('Email de livrare esuat pentru comanda', orderId, err.message);
             // nu blocam livrarea — clientul tot poate lua melodia din pagina de succes
           });
-          // Extrasele de pachet (WAV pentru premium/video, videoclip pentru video) NU
-          // blocheaza livrarea MP3-ului, deja confirmata functionala — pornesc complet
-          // asincron, pot dura pana la cateva minute (encodare video reala). generatePremiumExtras
-          // insasi verifica order.plan si nu face nimic pentru "standard".
+          // Extrasul WAV (premium/video) NU blocheaza livrarea MP3-ului, deja confirmata
+          // functionala — porneste complet asincron. generatePremiumExtras insasi verifica
+          // order.plan si nu face nimic pentru "standard". Videoclipul (plan "video") NU se
+          // genereaza aici — e declansat explicit de client din /create-video, dupa ce a avut
+          // ocazia sa incarce poze/videoclipuri (vezi generatePremiumExtras si comentariul de
+          // langa endpoint-ul /create-video pentru motiv).
           generatePremiumExtras(orderId).catch(err => {
             console.error('Generarea extraselor de pachet a esuat pentru comanda', orderId, err.message);
           });
@@ -560,7 +583,9 @@ app.post('/api/admin/orders/:orderId/retry-extras', async (req, res, next) => {
     if (!order) return res.status(404).json({ error: 'Comanda nu există.' });
     if (order.status !== 'ready') return res.status(400).json({ error: 'Comanda nu e încă plătită.' });
 
-    await generatePremiumExtras(req.params.orderId);
+    // forceVideo:true aici — spre deosebire de declansarea automata din webhook, acesta e un
+    // instrument de recuperare manuala si trebuie sa poata reincerca si videoclipul, nu doar WAV.
+    await generatePremiumExtras(req.params.orderId, { forceVideo: true });
     const fresh = await db.getOrderById(req.params.orderId);
     const variant = (fresh.variants || []).find(v => v.id === fresh.selectedVariantId);
     res.json({ retried: true, hasWav: !!(variant && variant.wavKey), hasVideo: !!(variant && variant.videoKey) });
@@ -1164,6 +1189,9 @@ app.get('/api/orders/:orderId', async (req, res, next) => {
       error: order.error,
       price: order.price,
       variants: safeVariants,
+      // tip+sectiune per element, NICIODATA cheia de storage — clientul are nevoie sa vada
+      // ce a incarcat deja (ca sa poata sterge dupa index) inainte sa apese "creeaza videoclipul"
+      uploadedMedia: (order.uploadedMedia || []).map(m => ({ type: m.type, section: m.section || null })),
       createdAt: order.createdAt
     });
   } catch (err) {
@@ -1254,6 +1282,113 @@ app.post('/api/orders/:orderId/checkout', requireOrderToken, async (req, res, ne
   } catch (err) {
     console.error('Eroare la initierea platii:', err.message);
     res.status(502).json({ error: 'Eroare la inițierea plății. Încearcă din nou în câteva momente' });
+  }
+});
+
+// ==========================================================================================
+// 6b. Fotografii/videoclipuri client pentru pachetul "video" (videoclip cu memorii) — DOAR
+// dupa plata (status='ready'), niciodata inainte (o comanda neplatita/abandonata nu trebuie
+// sa poata acumula upload-uri mari). Fisierele merg STRICT in bucket-ul privat — amintiri
+// personale ale clientului, la fel de private ca melodia completa.
+// ==========================================================================================
+app.post('/api/orders/:orderId/media', requireOrderToken, orderMediaUpload.array('media', ORDER_MEDIA_MAX_ITEMS), async (req, res, next) => {
+  try {
+    const order = req.order;
+    if (order.plan !== 'video') return res.status(400).json({ error: 'Doar pachetul video acceptă fotografii/videoclipuri.' });
+    if (order.status !== 'ready') return res.status(403).json({ error: 'Poți încărca fotografii după finalizarea plății.' });
+
+    const existing = order.uploadedMedia || [];
+    const files = req.files || [];
+    if (files.length === 0) return res.status(400).json({ error: 'Niciun fișier primit.' });
+    if (existing.length + files.length > ORDER_MEDIA_MAX_ITEMS) {
+      return res.status(400).json({ error: `Poți încărca maximum ${ORDER_MEDIA_MAX_ITEMS} fotografii/videoclipuri în total.` });
+    }
+
+    // "sections" (optional) vine ca un camp text unic in form-data, continand un array JSON
+    // de string-uri — ex. '["Copilarie","Prieteni"]' — cate un element per fisier incarcat,
+    // in aceeasi ordine. Absent sau invalid -> toate fisierele raman neorganizate (section: null),
+    // distribuite automat mai tarziu la randare.
+    let sections = [];
+    if (typeof req.body?.sections === 'string' && req.body.sections.trim()) {
+      try {
+        const parsed = JSON.parse(req.body.sections);
+        if (Array.isArray(parsed)) sections = parsed;
+      } catch (e) { /* ramane [] — organizare automata */ }
+    }
+
+    const uploaded = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const type = ORDER_MEDIA_MIME_TYPES.photo.includes(file.mimetype) ? 'photo'
+        : ORDER_MEDIA_MIME_TYPES.video.includes(file.mimetype) ? 'video' : null;
+      if (!type) return res.status(400).json({ error: `Tip de fișier neacceptat: ${file.mimetype}` });
+      if (!bufferMatchesDeclaredType(file.buffer, file.mimetype)) {
+        return res.status(400).json({ error: 'Conținutul unui fișier nu corespunde tipului declarat.' });
+      }
+      const ext = path.extname(file.originalname).toLowerCase() || (type === 'photo' ? '.jpg' : '.mp4');
+      const key = `orders/memories/${order.id}/${randomUUID()}${ext}`;
+      await storage.uploadPrivateBuffer(file.buffer, key, file.mimetype);
+      uploaded.push({ key, type, section: (typeof sections[i] === 'string' && sections[i].trim()) ? sections[i].trim() : null });
+    }
+
+    const updatedMedia = [...existing, ...uploaded];
+    await db.updateOrder(order.id, { uploadedMedia: updatedMedia });
+    res.json({ uploaded: uploaded.length, total: updatedMedia.length });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.delete('/api/orders/:orderId/media/:index', requireOrderToken, async (req, res, next) => {
+  try {
+    const order = req.order;
+    if (order.plan !== 'video') return res.status(400).json({ error: 'Doar pachetul video are fotografii/videoclipuri.' });
+    const idx = Number(req.params.index);
+    const existing = order.uploadedMedia || [];
+    if (!Number.isInteger(idx) || idx < 0 || idx >= existing.length) {
+      return res.status(400).json({ error: 'Index invalid.' });
+    }
+    const removed = existing[idx];
+    const updatedMedia = existing.filter((_, i) => i !== idx);
+    await db.updateOrder(order.id, { uploadedMedia: updatedMedia });
+    if (removed && removed.key) {
+      storage.deletePrivateFile(removed.key).catch(err => console.error('Nu am putut sterge fisierul de amintiri:', err.message));
+    }
+    res.json({ ok: true, total: updatedMedia.length });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Declanseaza EXPLICIT crearea videoclipului cu memorii — separat intentionat de webhook-ul
+// de plata (care declanseaza doar WAV-ul, automat), tocmai ca sa nu existe nicio cursa intre
+// "clientul inca incarca poze" si "randarea a pornit deja fara ele". Clientul apasa un buton
+// abia dupa ce a terminat de incarcat (sau alege sa sara peste si sa primeasca fundalul
+// implicit). Idempotent: daca videoclipul exista deja, nu-l regenereaza; daca o generare e
+// deja in curs pentru aceeasi comanda, respinge o a doua incercare in loc sa porneasca doua
+// randari simultane (server single-instance — o garda in memorie e suficienta si sigura).
+const activeVideoRenders = new Set();
+app.post('/api/orders/:orderId/create-video', requireOrderToken, async (req, res, next) => {
+  try {
+    const order = req.order;
+    if (order.plan !== 'video') return res.status(400).json({ error: 'Doar pachetul video poate crea un videoclip.' });
+    if (order.status !== 'ready') return res.status(403).json({ error: 'Poți crea videoclipul după finalizarea plății.' });
+
+    const variant = (order.variants || []).find(v => v.id === order.selectedVariantId);
+    if (variant && variant.videoKey) return res.json({ started: false, alreadyReady: true });
+    if (activeVideoRenders.has(order.id)) return res.status(409).json({ error: 'Videoclipul este deja în curs de creare.' });
+
+    activeVideoRenders.add(order.id);
+    res.json({ started: true });
+
+    generatePremiumExtras(order.id, { forceVideo: true }).catch(err => {
+      console.error('Crearea videoclipului cu memorii a esuat pentru comanda', order.id, err.message);
+    }).finally(() => {
+      activeVideoRenders.delete(order.id);
+    });
+  } catch (err) {
+    activeVideoRenders.delete(req.params.orderId);
+    next(err);
   }
 });
 
@@ -1429,7 +1564,8 @@ app.get('/api/orders/access/:token', lookupLimiter, async (req, res, next) => {
       createdAt: order.createdAt,
       plan: order.plan,
       hasWav: !!(selectedVariant && selectedVariant.wavKey),
-      hasVideo: !!(selectedVariant && selectedVariant.videoKey)
+      hasVideo: !!(selectedVariant && selectedVariant.videoKey),
+      uploadedMedia: (order.uploadedMedia || []).map(m => ({ type: m.type, section: m.section || null }))
     });
   } catch (err) {
     next(err);
@@ -1990,7 +2126,12 @@ async function buildVariantFromTrack(orderId, variantId, track, taskId) {
 // Premium promitea WAV, Video promitea un videoclip — niciunul nu exista in cod.
 // ==========================================================================================
 
-async function generatePremiumExtras(orderId) {
+// options.forceVideo: DOAR apelul explicit al clientului (POST .../create-video) trimite
+// true aici. Webhook-ul de plata NU mai declanseaza automat videoclipul (spre deosebire de
+// WAV, care ramane mereu automat) — motivul e sa nu existe nicio cursa intre "clientul inca
+// incarca poze/videoclipuri" si randarea care ar porni oricum, fara ele, daca ar fi automata.
+async function generatePremiumExtras(orderId, options = {}) {
+  const { forceVideo = false } = options;
   const order = await db.getOrderById(orderId);
   if (!order || order.plan === 'standard') return; // standard nu are extrase de generat
   if (!storage.CLOUD_ENABLED) {
@@ -2011,7 +2152,7 @@ async function generatePremiumExtras(orderId) {
 
     const patch = {};
 
-    if (order.plan === 'premium' || order.plan === 'video') {
+    if ((order.plan === 'premium' || order.plan === 'video') && !variant.wavKey) {
       try {
         patch.wavKey = await generateWavExtra(orderId, variant.id, tempFull);
         perfLog(orderId, 'wav_ready', `varianta=${variant.id}`);
@@ -2020,7 +2161,7 @@ async function generatePremiumExtras(orderId) {
       }
     }
 
-    if (order.plan === 'video') {
+    if (order.plan === 'video' && forceVideo && !variant.videoKey) {
       try {
         patch.videoKey = await generateLyricVideo(order, variant, tempFull);
         perfLog(orderId, 'video_ready', `varianta=${variant.id}`);
@@ -2156,6 +2297,175 @@ function toSrt(lines) {
 const VIDEO_BG_COLOR = '0x2B2016'; // maro cald inchis, din aceeasi familie ca --gold-deep
 const VIDEO_TEXT_STYLE = "FontName=Arial,FontSize=18,PrimaryColour=&H00E8F0F6,OutlineColour=&H0016202B,BorderStyle=1,Outline=2,Alignment=2,MarginV=150";
 
+// ==========================================================================================
+// Videoclip cinematic cu memorii (poze/videoclipuri incarcate de client) — Faza 1.
+//
+// Arhitectura in 3 treceri separate, fiecare cu un ffmpeg simplu si usor de depanat, in loc
+// de un singur filter_complex urias (mai rapid de scris, dar mult mai fragil pe un CPU lent
+// ca cel de pe Railway — o eroare intr-un lant complex e mult mai greu de izolat):
+//   1) fiecare element (poza/videoclip) -> un segment TACUT, durata fixa, cu efect Ken Burns
+//      (poze) sau scalare/decupare/bucla (videoclipuri) — renderMemorySegment()
+//   2) segmentele -> UN singur fundal video tacut, cu tranzitii crossfade intre ele,
+//      durata TOTALA exact egala cu durata melodiei — concatWithCrossfades()
+//   3) fundalul + audio-ul real + subtitrarile sincronizate -> videoclipul final (aceeasi
+//      trecere finala ca la fundalul solid, doar sursa video difera)
+//
+// Daca ORICE pas de mai sus esueaza (element corupt, timeout, ffmpeg indisponibil etc.),
+// generateLyricVideo() prinde eroarea si trece automat pe fundalul solid dovedit — clientul
+// primeste intotdeauna un videoclip, chiar daca nu cel cinematic. Aceasta e prioritatea
+// explicita a clientului: robustete inainte de efecte avansate.
+//
+// Faza 2 (neimplementata inca — vezi task separat): aliniere reala pe sectiuni ([Verse 1],
+// [Chorus] etc, cu marcaje de timp reale din alignedWords) in loc de distributia egala de
+// mai jos. MEMORY_SECTION_ORDER e pregatit pentru asta — clientul poate deja eticheta
+// elementele cu o sectiune la incarcare (vezi POST /api/orders/:orderId/media), iar aici
+// folosim deja acea eticheta pentru A ORDONA elementele (nu inca pentru a le sincroniza cu
+// momentul exact al sectiunii in melodie — asta ramane pentru faza 2).
+// ==========================================================================================
+
+const MEMORY_VIDEO_WIDTH = 720;
+const MEMORY_VIDEO_HEIGHT = 1280;
+const MEMORY_VIDEO_FPS = 25;
+const MEMORY_XFADE_SECONDS = 0.6; // tranzitie scurta — eleganta, fara sa incarce randarea
+
+const MEMORY_SECTION_ORDER = ['beginning', 'verse1', 'chorus', 'verse2', 'ending'];
+
+// Ordoneaza elementele dupa eticheta de sectiune aleasa de client (dupa cheile canonice de
+// mai sus), pastrand ordinea de incarcare intre elementele din aceeasi sectiune sau fara
+// sectiune. Etichete necunoscute/lipsa merg la coada, in ordinea in care au fost incarcate.
+function sortMediaBySection(items) {
+  return items
+    .map((item, i) => ({ item, i }))
+    .sort((a, b) => {
+      const ra = a.item.section ? MEMORY_SECTION_ORDER.indexOf(a.item.section) : -1;
+      const rb = b.item.section ? MEMORY_SECTION_ORDER.indexOf(b.item.section) : -1;
+      const ea = ra === -1 ? MEMORY_SECTION_ORDER.length : ra;
+      const eb = rb === -1 ? MEMORY_SECTION_ORDER.length : rb;
+      if (ea !== eb) return ea - eb;
+      return a.i - b.i;
+    })
+    .map(x => x.item);
+}
+
+// Descarca toate elementele uploadedMedia ale comenzii din bucket-ul PRIVAT, in fisiere
+// locale temporare. O eroare la orice element opreste tot pipeline-ul cinematic — apelantul
+// (generateLyricVideo) trateaza asta ca semnal sa treaca pe fundalul solid.
+async function downloadOrderMedia(order, items) {
+  const localItems = [];
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    const ext = path.extname(item.key) || (item.type === 'video' ? '.mp4' : '.jpg');
+    const localPath = path.join(TEMP_DIR, `${order.id}-memory-src-${i}${ext}`);
+    const signedUrl = await storage.getSignedDownloadUrl(item.key, 600);
+    await downloadFile(signedUrl, localPath);
+    localItems.push({ ...item, localPath });
+  }
+  return localItems;
+}
+
+// Randeaza UN element ca segment TACUT, durata fixa exacta, la rezolutia finala a
+// videoclipului (720x1280). Pozele primesc un zoom lent si subtil (efect Ken Burns, de la
+// 1.0x la 1.12x, centrat) — suficient de discret sa nu para agresiv pe o amintire.
+// Videoclipurile sunt scalate/decupate la acelasi format si repetate in bucla (-stream_loop)
+// daca sunt mai scurte decat durata alocata, ca sa umple exact intervalul.
+async function renderMemorySegment(item, index, segDurationSeconds, order) {
+  const outPath = path.join(TEMP_DIR, `${order.id}-memory-seg-${index}.mp4`);
+  const frames = Math.max(1, Math.round(segDurationSeconds * MEMORY_VIDEO_FPS));
+
+  if (item.type === 'photo') {
+    // pre-scalare la 2x rezolutia finala (acelasi raport 9:16) — da zoompan-ului suficient
+    // "spatiu" sa faca un zoom lent si neted, fara sa mareasca artificial o poza mica
+    const zoomExpr = 'min(zoom+0.0012,1.12)';
+    await execFileAsync('ffmpeg', [
+      '-y', '-loop', '1', '-i', item.localPath,
+      '-t', String(segDurationSeconds),
+      '-vf', `scale=${MEMORY_VIDEO_WIDTH * 2}:${MEMORY_VIDEO_HEIGHT * 2}:force_original_aspect_ratio=increase,crop=${MEMORY_VIDEO_WIDTH * 2}:${MEMORY_VIDEO_HEIGHT * 2},zoompan=z='${zoomExpr}':d=${frames}:s=${MEMORY_VIDEO_WIDTH}x${MEMORY_VIDEO_HEIGHT}:fps=${MEMORY_VIDEO_FPS},format=yuv420p`,
+      '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '28', '-an',
+      outPath
+    ], { timeout: 180000 });
+  } else {
+    await execFileAsync('ffmpeg', [
+      '-y', '-stream_loop', '-1', '-i', item.localPath,
+      '-t', String(segDurationSeconds),
+      '-vf', `scale=${MEMORY_VIDEO_WIDTH}:${MEMORY_VIDEO_HEIGHT}:force_original_aspect_ratio=increase,crop=${MEMORY_VIDEO_WIDTH}:${MEMORY_VIDEO_HEIGHT},fps=${MEMORY_VIDEO_FPS},format=yuv420p`,
+      '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '28', '-an',
+      outPath
+    ], { timeout: 180000 });
+  }
+  return outPath;
+}
+
+// Concateneaza segmentele tacute intr-un singur fundal, cu tranzitii crossfade (xfade) intre
+// elemente consecutive. Fiecare segment e alocat exact (total + (N-1)*tranzitie) / N secunde
+// (vezi buildMemoryBackground) — asta compenseaza suprapunerea introdusa de fiecare tranzitie,
+// ca durata FINALA a fundalului sa fie exact egala cu durata melodiei, nu mai scurta.
+async function concatWithCrossfades(segmentPaths, segDurationSeconds, order) {
+  if (segmentPaths.length === 1) return segmentPaths[0];
+
+  const outPath = path.join(TEMP_DIR, `${order.id}-memory-background.mp4`);
+  const inputArgs = [];
+  segmentPaths.forEach(p => inputArgs.push('-i', p));
+
+  let filter = '';
+  let lastLabel = '0:v';
+  let cumulative = segDurationSeconds;
+  for (let i = 1; i < segmentPaths.length; i++) {
+    const offset = Math.max(0, cumulative - MEMORY_XFADE_SECONDS);
+    const outLabel = i === segmentPaths.length - 1 ? 'vout' : `x${i}`;
+    filter += `[${lastLabel}][${i}:v]xfade=transition=fade:duration=${MEMORY_XFADE_SECONDS}:offset=${offset.toFixed(3)}[${outLabel}];`;
+    lastLabel = outLabel;
+    cumulative += segDurationSeconds - MEMORY_XFADE_SECONDS;
+  }
+  filter = filter.replace(/;$/, '');
+
+  await execFileAsync('ffmpeg', [
+    '-y', ...inputArgs,
+    '-filter_complex', filter,
+    '-map', `[${lastLabel}]`,
+    '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '26',
+    outPath
+  ], { timeout: 900000 });
+
+  return outPath;
+}
+
+// Construieste fundalul cinematic complet (tacut) pentru comanda — descarca elementele,
+// randeaza fiecare segment, le concateneaza cu tranzitii. Curata singura toate fisierele
+// intermediare proprii (sursele descarcate, segmentele) inainte sa iasa, indiferent de
+// rezultat — doar fundalul final ramane (returnat apelantului, care il curata la randul lui).
+async function buildMemoryBackground(order, mediaItems, durationSeconds) {
+  const ordered = sortMediaBySection(mediaItems);
+  const cleanupPaths = [];
+  try {
+    const downloaded = await downloadOrderMedia(order, ordered);
+    downloaded.forEach(d => cleanupPaths.push(d.localPath));
+
+    // segDurationSeconds egal pentru toate elementele in Faza 1 (distributie egala) —
+    // formula compenseaza suprapunerea tranzitiilor, vezi concatWithCrossfades()
+    const n = downloaded.length;
+    const segDurationSeconds = (durationSeconds + (n - 1) * MEMORY_XFADE_SECONDS) / n;
+
+    const segments = [];
+    for (let i = 0; i < downloaded.length; i++) {
+      const segPath = await renderMemorySegment(downloaded[i], i, segDurationSeconds, order);
+      segments.push(segPath);
+      cleanupPaths.push(segPath);
+    }
+
+    const backgroundPath = await concatWithCrossfades(segments, segDurationSeconds, order);
+    // fundalul final nu trebuie sters aici daca a fost produs de concat (dar TREBUIE sters
+    // daca era un singur segment, caz in care concatWithCrossfades a returnat direct
+    // segmentul — deja in cleanupPaths, l-am scoate de acolo ca sa nu-l stergem prea devreme)
+    const finalIndex = cleanupPaths.indexOf(backgroundPath);
+    if (finalIndex !== -1) cleanupPaths.splice(finalIndex, 1);
+
+    return { backgroundPath, cleanupPaths };
+  } catch (err) {
+    cleanupPaths.forEach(p => { try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch (e) { /* best-effort */ } });
+    throw err;
+  }
+}
+
 async function generateLyricVideo(order, variant, tempFullMp3Path) {
   if (!variant.sunoTrackId || !order.musicTaskId) {
     throw new Error('Lipseste sunoTrackId sau musicTaskId — nu pot cere versurile cu marcaj de timp.');
@@ -2185,20 +2495,36 @@ async function generateLyricVideo(order, variant, tempFullMp3Path) {
   // pe Linux-ul de productie, dar sigur oricum) trebuie scapat explicit.
   const srtForFilter = srtPath.replace(/\\/g, '/').replace(/:/g, '\\:');
 
+  let memoryBackground = null;
   try {
+    const mediaItems = order.uploadedMedia || [];
+    if (mediaItems.length > 0) {
+      try {
+        memoryBackground = await buildMemoryBackground(order, mediaItems, durationSeconds);
+        perfLog(order.id, 'memory_background_ready', `elemente=${mediaItems.length}`);
+      } catch (err) {
+        console.error(`Comanda ${order.id}: pipeline-ul cinematic cu amintiri a esuat, revin la fundalul solid:`, err.message);
+        memoryBackground = null;
+      }
+    }
+
     // Verificat direct pe Railway (2026-08-03, comanda 59ae99f9, plata reala): libass,
     // subtitrarile si fonturile functioneaza corect pe containerul de productie — encodarea
     // CHIAR pornea si avansa (frame=45, fps~15) cand a fost omorata de limita de 180000ms.
     // CPU-ul containerului Railway e mult mai lent decat masina locala de test (unde acelasi
     // videoclip a durat ~40s) — la ~15fps reale, un videoclip de 4 minute la 25fps/1080x1920
-    // are nevoie de 400+ secunde, nu 180. Solutie: rezolutie mai mica (721x1280 — mult mai
+    // are nevoie de 400+ secunde, nu 180. Solutie: rezolutie mai mica (720x1280 — mult mai
     // putini pixeli de encodat, tot suficient de buna pentru telefon/social), preset
     // "ultrafast" (semnificativ mai rapid decat "veryfast", cu compresie usor mai slaba —
     // acceptabil, viteza conteaza mai mult decat marimea fisierului aici), si un timeout
     // mult mai generos (10 minute) — sigur, ruleaza complet asincron, nu blocheaza nimic.
+    const videoInputArgs = memoryBackground
+      ? ['-i', memoryBackground.backgroundPath]
+      : ['-f', 'lavfi', '-i', `color=c=${VIDEO_BG_COLOR}:s=${MEMORY_VIDEO_WIDTH}x${MEMORY_VIDEO_HEIGHT}:d=${durationSeconds}`];
+
     await execFileAsync('ffmpeg', [
       '-y',
-      '-f', 'lavfi', '-i', `color=c=${VIDEO_BG_COLOR}:s=720x1280:d=${durationSeconds}`,
+      ...videoInputArgs,
       '-i', tempFullMp3Path,
       '-vf', `subtitles='${srtForFilter}':force_style='${VIDEO_TEXT_STYLE}'`,
       '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '26',
@@ -2208,6 +2534,10 @@ async function generateLyricVideo(order, variant, tempFullMp3Path) {
     ], { timeout: 600000 });
   } finally {
     try { fs.unlinkSync(srtPath); } catch (e) { /* best-effort */ }
+    if (memoryBackground) {
+      memoryBackground.cleanupPaths.forEach(p => { try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch (e) { /* best-effort */ } });
+      try { if (fs.existsSync(memoryBackground.backgroundPath)) fs.unlinkSync(memoryBackground.backgroundPath); } catch (e) { /* best-effort */ }
+    }
   }
 
   const videoKey = `orders/full-video/${order.id}-${variant.id}.mp4`;

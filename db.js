@@ -113,6 +113,13 @@ async function initDb() {
   // presupunand vreo tara implicita. NULL cand clientul nu il completeaza (ramane optional).
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS phone TEXT;`);
 
+  // uploaded_media: fotografii/videoclipuri incarcate de client pentru pachetul "video"
+  // (vezi POST /api/orders/:orderId/media) — array JSON, fiecare element
+  // {key, type: 'photo'|'video', section: string|null}. NICIODATA in bucket-ul public —
+  // amintiri personale ale clientului, la fel de private ca melodia completa. section
+  // ramane null daca clientul nu organizeaza manual (server-ul distribuie automat).
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS uploaded_media JSONB NOT NULL DEFAULT '[]'::jsonb;`);
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS testimonials (
       id UUID PRIMARY KEY,
@@ -225,7 +232,8 @@ function rowToOrder(row) {
     // nu mai trebuie sa trateze separat cazul NULL.
     voicePreference: row.voice_preference || 'auto',
     phone: row.phone || null,
-    generationAttempts: row.generation_attempts || 0
+    generationAttempts: row.generation_attempts || 0,
+    uploadedMedia: row.uploaded_media || []
   };
 }
 
@@ -519,7 +527,8 @@ const COLUMN_MAP = {
   regenerateSourceVariantId: 'regenerate_source_variant_id',
   editReserved: 'edit_reserved',
   voicePreference: 'voice_preference',
-  generationAttempts: 'generation_attempts'
+  generationAttempts: 'generation_attempts',
+  uploadedMedia: 'uploaded_media'
 };
 
 async function updateOrder(id, patch) {
@@ -527,7 +536,7 @@ async function updateOrder(id, patch) {
   if (keys.length === 0) return getOrderById(id);
 
   const setClauses = keys.map((k, i) => `${COLUMN_MAP[k]} = $${i + 2}`);
-  const values = keys.map(k => (k === 'variants' ? JSON.stringify(patch[k]) : patch[k]));
+  const values = keys.map(k => ((k === 'variants' || k === 'uploadedMedia') ? JSON.stringify(patch[k]) : patch[k]));
 
   const result = await pool.query(
     `UPDATE orders SET ${setClauses.join(', ')} WHERE id = $1 RETURNING *`,

@@ -16,6 +16,7 @@
   body{
     background:var(--bg); color:var(--text); font-family:'Sora', sans-serif;
     min-height:100vh; display:flex; align-items:center; justify-content:center; margin:0;
+    padding:24px 0;
   }
   .logo-mark{ width:56px; margin:0 auto 24px; display:block; }
   .card{
@@ -23,6 +24,7 @@
     padding:48px; max-width:480px; width:100%; text-align:center;
   }
   h1{ font-family:'Fraunces', serif; font-weight:400; font-size:26px; margin-bottom:12px; }
+  h2{ font-family:'Fraunces', serif; font-weight:400; font-size:19px; margin:0 0 6px; }
   p{ color:var(--text-secondary); font-size:15px; margin-bottom:24px; }
   .spinner{
     width:40px; height:40px; margin:0 auto 24px;
@@ -33,12 +35,40 @@
   @media (prefers-reduced-motion: reduce){ .spinner{ animation-duration:3s; } }
   audio{ width:100%; margin-top:12px; }
   .btn{
-    display:inline-block; margin-top:20px; padding:13px 26px; border-radius:999px;
+    display:inline-block; margin-top:10px; padding:13px 26px; border-radius:999px;
     background:var(--text); color:var(--bg); text-decoration:none; font-weight:500; font-size:14px;
-    transition:background-color .25s ease;
+    transition:background-color .25s ease; border:none; cursor:pointer; font-family:'Sora',sans-serif;
   }
   .btn:hover{ background:var(--gold-deep); }
+  .btn:disabled{ opacity:.5; cursor:not-allowed; }
+  .btn-secondary{ background:transparent; color:var(--text-secondary); border:1px solid var(--line); }
+  .btn-secondary:hover{ background:var(--surface); color:var(--text); }
   .err{ color:var(--error); }
+
+  .memories{ margin-top:28px; padding-top:28px; border-top:1px solid var(--line); text-align:left; }
+  .memories-sub{ font-size:13px; margin-bottom:16px; }
+  .memories-hint{ font-size:12px; color:var(--text-secondary); margin:8px 0 16px; }
+  .mem-list{ display:flex; flex-direction:column; gap:8px; margin-bottom:14px; }
+  .mem-item{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    background:var(--surface); border:1px solid var(--line); border-radius:10px;
+    padding:8px 10px; font-size:13px;
+  }
+  .mem-item .mem-name{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; }
+  .mem-item select{
+    font-family:'Sora',sans-serif; font-size:12px; border:1px solid var(--line); border-radius:6px;
+    padding:4px 6px; background:var(--bg); color:var(--text);
+  }
+  .mem-item .mem-remove{
+    background:none; border:none; color:var(--error); font-size:16px; cursor:pointer; line-height:1;
+    padding:2px 4px;
+  }
+  #mem-file-input{
+    display:block; width:100%; font-size:13px; margin-bottom:12px;
+    font-family:'Sora',sans-serif; color:var(--text-secondary);
+  }
+  .mem-actions{ display:flex; flex-wrap:wrap; gap:10px; margin-top:6px; }
+  .mem-status{ font-size:13px; margin-top:10px; }
 </style>
 </head>
 <body>
@@ -59,7 +89,19 @@
         download: 'Descarcă fișierul',
         error_title: 'A apărut o eroare',
         error_sub: 'Nu am putut genera melodia. Vei fi contactat pentru remediere sau rambursare',
-        not_found: 'Comanda nu a fost găsită', download_wav: 'Descarcă WAV', download_video: 'Descarcă videoclipul', extra_processing: 'Se pregătește — reîmprospătează pagina în câteva minute'
+        not_found: 'Comanda nu a fost găsită', download_wav: 'Descarcă WAV', download_video: 'Descarcă videoclipul', extra_processing: 'Se pregătește — reîmprospătează pagina în câteva minute',
+        memories_title: 'Adaugă pozele și videoclipurile tale',
+        memories_sub: 'Adaugă între 3 și 10 poze sau clipuri video, iar noi le vom transforma într-un videoclip cu versuri, cu tranziții cinematice.',
+        memories_hint: 'Poți sări acest pas — videoclipul va folosi un fundal simplu, elegant.',
+        memories_upload_btn: 'Încarcă',
+        memories_uploading: 'Se încarcă...',
+        memories_create_btn: 'Creează videoclipul',
+        memories_create_btn_skip: 'Creează fără poze',
+        memories_creating: 'Se creează videoclipul tău cu amintiri... poate dura câteva minute',
+        memories_remove: '✕',
+        memories_upload_error: 'Încărcarea a eșuat. Încearcă din nou',
+        memories_create_error: 'Crearea videoclipului a eșuat. Încearcă din nou',
+        memories_sections: { none: 'Fără preferință', beginning: 'Început', verse1: 'Strofa 1', chorus: 'Refren', verse2: 'Strofa 2', ending: 'Final' }
       },
       en: {
         waiting_title: 'Payment confirmed. Composing your song...',
@@ -69,7 +111,19 @@
         download: 'Download the file',
         error_title: 'Something went wrong',
         error_sub: 'We couldn\'t generate the song. You\'ll be contacted for a fix or a refund.',
-        not_found: 'Order not found.', download_wav: 'Download WAV', download_video: 'Download the video', extra_processing: 'Still preparing — refresh this page in a few minutes'
+        not_found: 'Order not found.', download_wav: 'Download WAV', download_video: 'Download the video', extra_processing: 'Still preparing — refresh this page in a few minutes',
+        memories_title: 'Add your photos & videos',
+        memories_sub: 'Add 3 to 10 photos or video clips and we\'ll weave them into a lyric video with cinematic transitions.',
+        memories_hint: 'You can skip this — the video will use a simple, elegant background instead.',
+        memories_upload_btn: 'Upload',
+        memories_uploading: 'Uploading...',
+        memories_create_btn: 'Create my video',
+        memories_create_btn_skip: 'Create without photos',
+        memories_creating: 'Creating your memory video... this can take a few minutes',
+        memories_remove: '✕',
+        memories_upload_error: 'Upload failed. Please try again.',
+        memories_create_error: 'Creating the video failed. Please try again.',
+        memories_sections: { none: 'No preference', beginning: 'Beginning', verse1: 'Verse 1', chorus: 'Chorus', verse2: 'Verse 2', ending: 'Ending' }
       },
       de: {
         waiting_title: 'Zahlung bestätigt. Dein Lied wird komponiert...',
@@ -79,7 +133,19 @@
         download: 'Datei herunterladen',
         error_title: 'Etwas ist schiefgelaufen',
         error_sub: 'Wir konnten das Lied nicht erstellen. Du wirst für eine Lösung oder Rückerstattung kontaktiert.',
-        not_found: 'Bestellung nicht gefunden.', download_wav: 'WAV herunterladen', download_video: 'Video herunterladen', extra_processing: 'Wird noch vorbereitet — aktualisiere diese Seite in ein paar Minuten'
+        not_found: 'Bestellung nicht gefunden.', download_wav: 'WAV herunterladen', download_video: 'Video herunterladen', extra_processing: 'Wird noch vorbereitet — aktualisiere diese Seite in ein paar Minuten',
+        memories_title: 'Füge deine Fotos & Videos hinzu',
+        memories_sub: 'Füge 3 bis 10 Fotos oder Videoclips hinzu — wir verweben sie zu einem Lyric-Video mit filmischen Übergängen.',
+        memories_hint: 'Du kannst diesen Schritt überspringen — das Video verwendet dann einen einfachen, eleganten Hintergrund.',
+        memories_upload_btn: 'Hochladen',
+        memories_uploading: 'Wird hochgeladen...',
+        memories_create_btn: 'Video erstellen',
+        memories_create_btn_skip: 'Ohne Fotos erstellen',
+        memories_creating: 'Dein Erinnerungsvideo wird erstellt... das kann einige Minuten dauern',
+        memories_remove: '✕',
+        memories_upload_error: 'Hochladen fehlgeschlagen. Bitte versuche es erneut.',
+        memories_create_error: 'Videoerstellung fehlgeschlagen. Bitte versuche es erneut.',
+        memories_sections: { none: 'Keine Präferenz', beginning: 'Anfang', verse1: 'Strophe 1', chorus: 'Refrain', verse2: 'Strophe 2', ending: 'Ende' }
       },
       es: {
         waiting_title: 'Pago confirmado. Componiendo tu canción...',
@@ -89,7 +155,19 @@
         download: 'Descargar el archivo',
         error_title: 'Algo salió mal',
         error_sub: 'No pudimos generar la canción. Te contactaremos para solucionarlo o reembolsarte.',
-        not_found: 'Pedido no encontrado.', download_wav: 'Descargar WAV', download_video: 'Descargar el video', extra_processing: 'Aún preparando — actualiza esta página en unos minutos'
+        not_found: 'Pedido no encontrado.', download_wav: 'Descargar WAV', download_video: 'Descargar el video', extra_processing: 'Aún preparando — actualiza esta página en unos minutos',
+        memories_title: 'Añade tus fotos y videos',
+        memories_sub: 'Añade entre 3 y 10 fotos o clips de video y los combinaremos en un video lírico con transiciones cinematográficas.',
+        memories_hint: 'Puedes saltarte este paso — el video usará un fondo sencillo y elegante.',
+        memories_upload_btn: 'Subir',
+        memories_uploading: 'Subiendo...',
+        memories_create_btn: 'Crear mi video',
+        memories_create_btn_skip: 'Crear sin fotos',
+        memories_creating: 'Creando tu video de recuerdos... puede tardar unos minutos',
+        memories_remove: '✕',
+        memories_upload_error: 'Error al subir. Inténtalo de nuevo.',
+        memories_create_error: 'Error al crear el video. Inténtalo de nuevo.',
+        memories_sections: { none: 'Sin preferencia', beginning: 'Inicio', verse1: 'Estrofa 1', chorus: 'Estribillo', verse2: 'Estrofa 2', ending: 'Final' }
       },
       it: {
         waiting_title: 'Pagamento confermato. Composizione della canzone...',
@@ -99,7 +177,19 @@
         download: 'Scarica il file',
         error_title: 'Qualcosa è andato storto',
         error_sub: 'Non siamo riusciti a generare la canzone. Sarai contattato per una soluzione o un rimborso.',
-        not_found: 'Ordine non trovato.', download_wav: 'Scarica WAV', download_video: 'Scarica il video', extra_processing: 'Ancora in preparazione — aggiorna questa pagina tra qualche minuto'
+        not_found: 'Ordine non trovato.', download_wav: 'Scarica WAV', download_video: 'Scarica il video', extra_processing: 'Ancora in preparazione — aggiorna questa pagina tra qualche minuto',
+        memories_title: 'Aggiungi le tue foto e i tuoi video',
+        memories_sub: 'Aggiungi da 3 a 10 foto o clip video: le trasformeremo in un video con testo e transizioni cinematografiche.',
+        memories_hint: 'Puoi saltare questo passaggio — il video userà uno sfondo semplice ed elegante.',
+        memories_upload_btn: 'Carica',
+        memories_uploading: 'Caricamento...',
+        memories_create_btn: 'Crea il mio video',
+        memories_create_btn_skip: 'Crea senza foto',
+        memories_creating: 'Creazione del video con i ricordi... può richiedere qualche minuto',
+        memories_remove: '✕',
+        memories_upload_error: 'Caricamento non riuscito. Riprova.',
+        memories_create_error: 'Creazione del video non riuscita. Riprova.',
+        memories_sections: { none: 'Nessuna preferenza', beginning: 'Inizio', verse1: 'Strofa 1', chorus: 'Ritornello', verse2: 'Strofa 2', ending: 'Finale' }
       },
       fr: {
         waiting_title: 'Paiement confirmé. Composition de votre chanson...',
@@ -109,7 +199,19 @@
         download: 'Télécharger le fichier',
         error_title: 'Un problème est survenu',
         error_sub: 'Nous n\'avons pas pu générer la chanson. Vous serez contacté pour une solution ou un remboursement.',
-        not_found: 'Commande introuvable.', download_wav: 'Télécharger le WAV', download_video: 'Télécharger la vidéo', extra_processing: 'Encore en préparation — actualisez cette page dans quelques minutes'
+        not_found: 'Commande introuvable.', download_wav: 'Télécharger le WAV', download_video: 'Télécharger la vidéo', extra_processing: 'Encore en préparation — actualisez cette page dans quelques minutes',
+        memories_title: 'Ajoutez vos photos et vidéos',
+        memories_sub: 'Ajoutez 3 à 10 photos ou clips vidéo, nous les intégrerons dans un clip lyrique avec des transitions cinématographiques.',
+        memories_hint: 'Vous pouvez ignorer cette étape — la vidéo utilisera alors un fond simple et élégant.',
+        memories_upload_btn: 'Envoyer',
+        memories_uploading: 'Envoi en cours...',
+        memories_create_btn: 'Créer ma vidéo',
+        memories_create_btn_skip: 'Créer sans photos',
+        memories_creating: 'Création de votre vidéo souvenir... cela peut prendre quelques minutes',
+        memories_remove: '✕',
+        memories_upload_error: 'Échec de l\'envoi. Veuillez réessayer.',
+        memories_create_error: 'Échec de la création de la vidéo. Veuillez réessayer.',
+        memories_sections: { none: 'Aucune préférence', beginning: 'Début', verse1: 'Couplet 1', chorus: 'Refrain', verse2: 'Couplet 2', ending: 'Fin' }
       },
       bg: {
         waiting_title: 'Плащането е потвърдено. Песента се композира...',
@@ -119,7 +221,19 @@
         download: 'Изтегли файла',
         error_title: 'Нещо се обърка',
         error_sub: 'Не успяхме да генерираме песента. Ще се свържем с теб за решение или възстановяване на сумата.',
-        not_found: 'Поръчката не е намерена.', download_wav: 'Изтегли WAV', download_video: 'Изтегли видеото', extra_processing: 'Все още се подготвя — опресни страницата след няколко минути'
+        not_found: 'Поръчката не е намерена.', download_wav: 'Изтегли WAV', download_video: 'Изтегли видеото', extra_processing: 'Все още се подготвя — опресни страницата след няколко минути',
+        memories_title: 'Добави своите снимки и видеа',
+        memories_sub: 'Добави между 3 и 10 снимки или видеоклипа и ние ще ги вплетем в лирик видео с кинематографични преходи.',
+        memories_hint: 'Можеш да пропуснеш тази стъпка — видеото ще използва прост, елегантен фон.',
+        memories_upload_btn: 'Качи',
+        memories_uploading: 'Качване...',
+        memories_create_btn: 'Създай видеото ми',
+        memories_create_btn_skip: 'Създай без снимки',
+        memories_creating: 'Създаваме твоето видео със спомени... може да отнеме няколко минути',
+        memories_remove: '✕',
+        memories_upload_error: 'Качването не бе успешно. Опитай отново.',
+        memories_create_error: 'Създаването на видеото не бе успешно. Опитай отново.',
+        memories_sections: { none: 'Без предпочитание', beginning: 'Начало', verse1: 'Куплет 1', chorus: 'Припев', verse2: 'Куплет 2', ending: 'Край' }
       },
       tr: {
         waiting_title: 'Ödeme onaylandı. Şarkınız besteleniyor...',
@@ -129,7 +243,19 @@
         download: 'Dosyayı indir',
         error_title: 'Bir şeyler ters gitti',
         error_sub: 'Şarkıyı oluşturamadık. Çözüm veya iade için sizinle iletişime geçilecek.',
-        not_found: 'Sipariş bulunamadı.', download_wav: 'WAV indir', download_video: 'Videoyu indir', extra_processing: 'Hâlâ hazırlanıyor — birkaç dakika içinde bu sayfayı yenileyin'
+        not_found: 'Sipariş bulunamadı.', download_wav: 'WAV indir', download_video: 'Videoyu indir', extra_processing: 'Hâlâ hazırlanıyor — birkaç dakika içinde bu sayfayı yenileyin',
+        memories_title: 'Fotoğraflarınızı ve videolarınızı ekleyin',
+        memories_sub: '3 ile 10 arası fotoğraf veya video klip ekleyin, bunları sinematik geçişlerle bir söz videosuna dönüştürelim.',
+        memories_hint: 'Bu adımı atlayabilirsiniz — video basit, şık bir arka plan kullanır.',
+        memories_upload_btn: 'Yükle',
+        memories_uploading: 'Yükleniyor...',
+        memories_create_btn: 'Videomu oluştur',
+        memories_create_btn_skip: 'Fotoğrafsız oluştur',
+        memories_creating: 'Anı videonuz oluşturuluyor... bu birkaç dakika sürebilir',
+        memories_remove: '✕',
+        memories_upload_error: 'Yükleme başarısız oldu. Lütfen tekrar deneyin.',
+        memories_create_error: 'Video oluşturma başarısız oldu. Lütfen tekrar deneyin.',
+        memories_sections: { none: 'Fark etmez', beginning: 'Başlangıç', verse1: '1. Kıta', chorus: 'Nakarat', verse2: '2. Kıta', ending: 'Final' }
       }
     };
     const supportedLangs = ['ro', 'en', 'de', 'es', 'it', 'fr', 'bg', 'tr'];
@@ -153,53 +279,202 @@
       return div.innerHTML;
     }
 
+    // fisiere alese local, nu inca incarcate — { file, section }
+    let stagedFiles = [];
+
+    function renderMemories(data, variant) {
+      if (data.plan !== 'video' || variant.hasVideo) return '';
+      const uploaded = data.uploadedMedia || [];
+      const sectionOptions = Object.keys(t.memories_sections)
+        .map(k => `<option value="${k === 'none' ? '' : k}">${escapeHtml(t.memories_sections[k])}</option>`).join('');
+
+      const uploadedHtml = uploaded.map((m, i) => `
+        <div class="mem-item">
+          <span class="mem-name">${m.type === 'photo' ? '🖼️' : '🎬'} ${escapeHtml(t.memories_sections[m.section] || t.memories_sections.none)}</span>
+          <button type="button" class="mem-remove" data-remove-index="${i}" title="${t.memories_remove}">${t.memories_remove}</button>
+        </div>
+      `).join('');
+
+      return `
+        <div class="memories" id="memories">
+          <h2>${t.memories_title}</h2>
+          <p class="memories-sub">${t.memories_sub}</p>
+          <div class="mem-list" id="mem-uploaded-list">${uploadedHtml}</div>
+          <div class="mem-list" id="mem-staged-list"></div>
+          <input type="file" id="mem-file-input" multiple
+            accept="image/jpeg,image/png,image/webp,image/heic,image/heif,video/mp4,video/quicktime,video/webm">
+          <p class="memories-hint">${t.memories_hint}</p>
+          <div class="mem-actions">
+            <button type="button" class="btn" id="mem-upload-btn" style="display:none;">${t.memories_upload_btn}</button>
+            <button type="button" class="btn ${uploaded.length > 0 ? '' : 'btn-secondary'}" id="mem-create-btn">${uploaded.length > 0 ? t.memories_create_btn : t.memories_create_btn_skip}</button>
+          </div>
+          <p class="mem-status" id="mem-status"></p>
+        </div>
+      `;
+    }
+
+    function renderStagedList() {
+      const el = document.getElementById('mem-staged-list');
+      const uploadBtn = document.getElementById('mem-upload-btn');
+      if (!el || !uploadBtn) return;
+      const sectionOptions = Object.keys(t.memories_sections)
+        .map(k => `<option value="${k === 'none' ? '' : k}">${escapeHtml(t.memories_sections[k])}</option>`).join('');
+      el.innerHTML = stagedFiles.map((sf, i) => `
+        <div class="mem-item">
+          <span class="mem-name">${sf.file.type.startsWith('video') ? '🎬' : '🖼️'} ${escapeHtml(sf.file.name)}</span>
+          <select data-staged-index="${i}">${sectionOptions}</select>
+          <button type="button" class="mem-remove" data-staged-remove="${i}" title="${t.memories_remove}">${t.memories_remove}</button>
+        </div>
+      `).join('');
+      uploadBtn.style.display = stagedFiles.length > 0 ? 'inline-block' : 'none';
+
+      el.querySelectorAll('select[data-staged-index]').forEach(sel => {
+        sel.addEventListener('change', () => {
+          stagedFiles[Number(sel.dataset.stagedIndex)].section = sel.value || null;
+        });
+      });
+      el.querySelectorAll('button[data-staged-remove]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          stagedFiles.splice(Number(btn.dataset.stagedRemove), 1);
+          renderStagedList();
+        });
+      });
+    }
+
+    function wireMemoriesEvents() {
+      const fileInput = document.getElementById('mem-file-input');
+      const uploadBtn = document.getElementById('mem-upload-btn');
+      const createBtn = document.getElementById('mem-create-btn');
+      const statusEl = document.getElementById('mem-status');
+      if (!fileInput) return;
+
+      document.querySelectorAll('#mem-uploaded-list button[data-remove-index]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          btn.disabled = true;
+          try {
+            await fetch(`/api/orders/${orderId}/media/${btn.dataset.removeIndex}`, {
+              method: 'DELETE',
+              headers: { 'X-Access-Token': accessToken || '' }
+            });
+            await refreshCard();
+          } catch (e) {
+            btn.disabled = false;
+          }
+        });
+      });
+
+      fileInput.addEventListener('change', () => {
+        stagedFiles = stagedFiles.concat(Array.from(fileInput.files).map(file => ({ file, section: null })));
+        fileInput.value = '';
+        renderStagedList();
+      });
+
+      uploadBtn.addEventListener('click', async () => {
+        if (stagedFiles.length === 0) return;
+        uploadBtn.disabled = true;
+        uploadBtn.textContent = t.memories_uploading;
+        statusEl.textContent = '';
+        statusEl.classList.remove('err');
+        try {
+          const formData = new FormData();
+          stagedFiles.forEach(sf => formData.append('media', sf.file));
+          formData.append('sections', JSON.stringify(stagedFiles.map(sf => sf.section || '')));
+          const res = await fetch(`/api/orders/${orderId}/media`, {
+            method: 'POST',
+            headers: { 'X-Access-Token': accessToken || '' },
+            body: formData
+          });
+          if (!res.ok) throw new Error('upload failed');
+          stagedFiles = [];
+          await refreshCard();
+        } catch (e) {
+          statusEl.textContent = t.memories_upload_error;
+          statusEl.classList.add('err');
+          uploadBtn.disabled = false;
+          uploadBtn.textContent = t.memories_upload_btn;
+        }
+      });
+
+      createBtn.addEventListener('click', async () => {
+        createBtn.disabled = true;
+        statusEl.textContent = t.memories_creating;
+        statusEl.classList.remove('err');
+        try {
+          const res = await fetch(`/api/orders/${orderId}/create-video`, {
+            method: 'POST',
+            headers: { 'X-Access-Token': accessToken || '' }
+          });
+          if (!res.ok && res.status !== 409) throw new Error('create failed');
+          setTimeout(checkStatus, 8000);
+        } catch (e) {
+          statusEl.textContent = t.memories_create_error;
+          statusEl.classList.add('err');
+          createBtn.disabled = false;
+        }
+      });
+    }
+
+    async function refreshCard() {
+      const data = await fetchOrder();
+      if (data.status === 'ready') renderReadyCard(data);
+    }
+
+    async function fetchOrder() {
+      const res = await fetch(`/api/orders/${orderId}?token=${encodeURIComponent(accessToken || '')}`);
+      return res.json();
+    }
+
+    function renderReadyCard(data) {
+      localStorage.removeItem('nds_order_id');
+      const fullUrl = `/media/full/${orderId}?token=${encodeURIComponent(accessToken || '')}`;
+      const variant = (data.variants || []).find(v => v.id === data.selectedVariantId) || {};
+
+      // Extrasele de pachet (WAV pentru premium/video, videoclip pentru video) se genereaza
+      // ASINCRON dupa plata (vezi generatePremiumExtras in server.js) — WAV automat, dar
+      // videoclipul DOAR dupa ce clientul apasa butonul din sectiunea "memories" de mai jos
+      // (posibil dupa ce a incarcat poze/videoclipuri). Daca pachetul include WAV dar inca
+      // nu e gata, aratam un mesaj si CONTINUAM sa reimprospatam pana apare.
+      let extrasHtml = '';
+      let stillWaitingForExtras = false;
+      if (data.plan === 'premium' || data.plan === 'video') {
+        if (variant.hasWav) {
+          const wavUrl = `/media/wav/${orderId}?token=${encodeURIComponent(accessToken || '')}`;
+          extrasHtml += `<br><a class="btn" href="${wavUrl}" download>${t.download_wav}</a>`;
+        } else {
+          stillWaitingForExtras = true;
+        }
+      }
+      if (data.plan === 'video') {
+        if (variant.hasVideo) {
+          const videoUrl = `/media/video/${orderId}?token=${encodeURIComponent(accessToken || '')}`;
+          extrasHtml += `<br><a class="btn" href="${videoUrl}" download>${t.download_video}</a>`;
+        }
+      }
+      if (stillWaitingForExtras) {
+        extrasHtml += `<p style="margin-top:16px;">${t.extra_processing}</p>`;
+      }
+
+      card.innerHTML = `
+        <h1>${t.ready_title}</h1>
+        <p>${t.for_label} ${escapeHtml(data.recipient)}</p>
+        <audio controls src="${fullUrl}"></audio>
+        <br>
+        <a class="btn" href="${fullUrl}" download>${t.download}</a>
+        ${extrasHtml}
+        ${renderMemories(data, variant)}
+      `;
+
+      wireMemoriesEvents();
+
+      if (stillWaitingForExtras) setTimeout(checkStatus, 8000);
+    }
+
     async function checkStatus() {
       try {
-        const res = await fetch(`/api/orders/${orderId}?token=${encodeURIComponent(accessToken || '')}`);
-        const data = await res.json();
+        const data = await fetchOrder();
 
         if (data.status === 'ready') {
-          localStorage.removeItem('nds_order_id');
-          const fullUrl = `/media/full/${orderId}?token=${encodeURIComponent(accessToken || '')}`;
-          const variant = (data.variants || []).find(v => v.id === data.selectedVariantId) || {};
-
-          // Extrasele de pachet (WAV pentru premium/video, videoclip pentru video) se
-          // genereaza ASINCRON dupa plata (vezi generatePremiumExtras in server.js) — pot
-          // sa nu fie inca gata quando pagina asta se incarca prima data. Daca pachetul le
-          // include dar inca nu sunt gata, aratam un mesaj si CONTINUAM sa reimprospatam
-          // (acelasi tipar ca asteptarea initiala a melodiei) pana apar.
-          let extrasHtml = '';
-          let stillWaitingForExtras = false;
-          if (data.plan === 'premium' || data.plan === 'video') {
-            if (variant.hasWav) {
-              const wavUrl = `/media/wav/${orderId}?token=${encodeURIComponent(accessToken || '')}`;
-              extrasHtml += `<br><a class="btn" href="${wavUrl}" download>${t.download_wav}</a>`;
-            } else {
-              stillWaitingForExtras = true;
-            }
-          }
-          if (data.plan === 'video') {
-            if (variant.hasVideo) {
-              const videoUrl = `/media/video/${orderId}?token=${encodeURIComponent(accessToken || '')}`;
-              extrasHtml += `<br><a class="btn" href="${videoUrl}" download>${t.download_video}</a>`;
-            } else {
-              stillWaitingForExtras = true;
-            }
-          }
-          if (stillWaitingForExtras) {
-            extrasHtml += `<p style="margin-top:16px;">${t.extra_processing}</p>`;
-          }
-
-          card.innerHTML = `
-            <h1>${t.ready_title}</h1>
-            <p>${t.for_label} ${escapeHtml(data.recipient)}</p>
-            <audio controls src="${fullUrl}"></audio>
-            <br>
-            <a class="btn" href="${fullUrl}" download>${t.download}</a>
-            ${extrasHtml}
-          `;
-
-          if (stillWaitingForExtras) setTimeout(checkStatus, 8000);
+          renderReadyCard(data);
         } else if (data.status === 'generation_failed') {
           card.innerHTML = `
             <h1 class="err">${t.error_title}</h1>
