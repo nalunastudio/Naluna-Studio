@@ -637,6 +637,30 @@ app.post('/api/admin/test/clone-video-order', express.json(), async (req, res, n
   }
 });
 
+// TEMPORAR — companion de curatare pentru clone-video-order de mai sus. Sterge din bucket-ul
+// privat DOAR fisierele proprii comenzii de test (wav/video/memoriile incarcate) — NICIODATA
+// fullKey, care e PARTAJAT cu comanda sursa reala (audio-ul original al clientului). Apoi
+// sterge randul din DB. DE STERS impreuna cu clone-video-order dupa Task #60.
+app.delete('/api/admin/test/clone-video-order/:id', async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.status(400).json({ error: 'ID invalid.' });
+    const order = await db.getOrderById(req.params.id);
+    if (!order || order.email !== 'test-clone@nalunastudio.com') {
+      return res.status(404).json({ error: 'Comanda de test nu există.' });
+    }
+    const variant = (order.variants || []).find(v => v.id === order.selectedVariantId);
+    const keysToDelete = [];
+    if (variant && variant.wavKey) keysToDelete.push(variant.wavKey);
+    if (variant && variant.videoKey) keysToDelete.push(variant.videoKey);
+    (order.uploadedMedia || []).forEach(m => { if (m.key) keysToDelete.push(m.key); });
+    await Promise.allSettled(keysToDelete.map(k => storage.deletePrivateFile(k)));
+    await db.pool.query('DELETE FROM orders WHERE id = $1', [req.params.id]);
+    res.json({ deleted: true, filesRemoved: keysToDelete.length });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ==========================================================================================
 // REACTII CLIENTI (testimonials) — gestionate exclusiv din /admin.
 // Nu exista, in aceasta etapa, niciun formular public de upload — un client nu poate
