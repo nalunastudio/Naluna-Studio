@@ -59,7 +59,7 @@
         download: 'Descarcă fișierul',
         error_title: 'A apărut o eroare',
         error_sub: 'Nu am putut genera melodia. Vei fi contactat pentru remediere sau rambursare',
-        not_found: 'Comanda nu a fost găsită'
+        not_found: 'Comanda nu a fost găsită', download_wav: 'Descarcă WAV', download_video: 'Descarcă videoclipul', extra_processing: 'Se pregătește — reîmprospătează pagina în câteva minute'
       },
       en: {
         waiting_title: 'Payment confirmed. Composing your song...',
@@ -69,7 +69,7 @@
         download: 'Download the file',
         error_title: 'Something went wrong',
         error_sub: 'We couldn\'t generate the song. You\'ll be contacted for a fix or a refund.',
-        not_found: 'Order not found.'
+        not_found: 'Order not found.', download_wav: 'Download WAV', download_video: 'Download the video', extra_processing: 'Still preparing — refresh this page in a few minutes'
       },
       de: {
         waiting_title: 'Zahlung bestätigt. Dein Lied wird komponiert...',
@@ -79,7 +79,7 @@
         download: 'Datei herunterladen',
         error_title: 'Etwas ist schiefgelaufen',
         error_sub: 'Wir konnten das Lied nicht erstellen. Du wirst für eine Lösung oder Rückerstattung kontaktiert.',
-        not_found: 'Bestellung nicht gefunden.'
+        not_found: 'Bestellung nicht gefunden.', download_wav: 'WAV herunterladen', download_video: 'Video herunterladen', extra_processing: 'Wird noch vorbereitet — aktualisiere diese Seite in ein paar Minuten'
       },
       es: {
         waiting_title: 'Pago confirmado. Componiendo tu canción...',
@@ -89,7 +89,7 @@
         download: 'Descargar el archivo',
         error_title: 'Algo salió mal',
         error_sub: 'No pudimos generar la canción. Te contactaremos para solucionarlo o reembolsarte.',
-        not_found: 'Pedido no encontrado.'
+        not_found: 'Pedido no encontrado.', download_wav: 'Descargar WAV', download_video: 'Descargar el video', extra_processing: 'Aún preparando — actualiza esta página en unos minutos'
       },
       it: {
         waiting_title: 'Pagamento confermato. Composizione della canzone...',
@@ -99,7 +99,7 @@
         download: 'Scarica il file',
         error_title: 'Qualcosa è andato storto',
         error_sub: 'Non siamo riusciti a generare la canzone. Sarai contattato per una soluzione o un rimborso.',
-        not_found: 'Ordine non trovato.'
+        not_found: 'Ordine non trovato.', download_wav: 'Scarica WAV', download_video: 'Scarica il video', extra_processing: 'Ancora in preparazione — aggiorna questa pagina tra qualche minuto'
       },
       fr: {
         waiting_title: 'Paiement confirmé. Composition de votre chanson...',
@@ -109,7 +109,7 @@
         download: 'Télécharger le fichier',
         error_title: 'Un problème est survenu',
         error_sub: 'Nous n\'avons pas pu générer la chanson. Vous serez contacté pour une solution ou un remboursement.',
-        not_found: 'Commande introuvable.'
+        not_found: 'Commande introuvable.', download_wav: 'Télécharger le WAV', download_video: 'Télécharger la vidéo', extra_processing: 'Encore en préparation — actualisez cette page dans quelques minutes'
       },
       bg: {
         waiting_title: 'Плащането е потвърдено. Песента се композира...',
@@ -119,7 +119,7 @@
         download: 'Изтегли файла',
         error_title: 'Нещо се обърка',
         error_sub: 'Не успяхме да генерираме песента. Ще се свържем с теб за решение или възстановяване на сумата.',
-        not_found: 'Поръчката не е намерена.'
+        not_found: 'Поръчката не е намерена.', download_wav: 'Изтегли WAV', download_video: 'Изтегли видеото', extra_processing: 'Все още се подготвя — опресни страницата след няколко минути'
       },
       tr: {
         waiting_title: 'Ödeme onaylandı. Şarkınız besteleniyor...',
@@ -129,7 +129,7 @@
         download: 'Dosyayı indir',
         error_title: 'Bir şeyler ters gitti',
         error_sub: 'Şarkıyı oluşturamadık. Çözüm veya iade için sizinle iletişime geçilecek.',
-        not_found: 'Sipariş bulunamadı.'
+        not_found: 'Sipariş bulunamadı.', download_wav: 'WAV indir', download_video: 'Videoyu indir', extra_processing: 'Hâlâ hazırlanıyor — birkaç dakika içinde bu sayfayı yenileyin'
       }
     };
     const supportedLangs = ['ro', 'en', 'de', 'es', 'it', 'fr', 'bg', 'tr'];
@@ -161,13 +161,45 @@
         if (data.status === 'ready') {
           localStorage.removeItem('nds_order_id');
           const fullUrl = `/media/full/${orderId}?token=${encodeURIComponent(accessToken || '')}`;
+          const variant = (data.variants || []).find(v => v.id === data.selectedVariantId) || {};
+
+          // Extrasele de pachet (WAV pentru premium/video, videoclip pentru video) se
+          // genereaza ASINCRON dupa plata (vezi generatePremiumExtras in server.js) — pot
+          // sa nu fie inca gata quando pagina asta se incarca prima data. Daca pachetul le
+          // include dar inca nu sunt gata, aratam un mesaj si CONTINUAM sa reimprospatam
+          // (acelasi tipar ca asteptarea initiala a melodiei) pana apar.
+          let extrasHtml = '';
+          let stillWaitingForExtras = false;
+          if (data.plan === 'premium' || data.plan === 'video') {
+            if (variant.hasWav) {
+              const wavUrl = `/media/wav/${orderId}?token=${encodeURIComponent(accessToken || '')}`;
+              extrasHtml += `<br><a class="btn" href="${wavUrl}" download>${t.download_wav}</a>`;
+            } else {
+              stillWaitingForExtras = true;
+            }
+          }
+          if (data.plan === 'video') {
+            if (variant.hasVideo) {
+              const videoUrl = `/media/video/${orderId}?token=${encodeURIComponent(accessToken || '')}`;
+              extrasHtml += `<br><a class="btn" href="${videoUrl}" download>${t.download_video}</a>`;
+            } else {
+              stillWaitingForExtras = true;
+            }
+          }
+          if (stillWaitingForExtras) {
+            extrasHtml += `<p style="margin-top:16px;">${t.extra_processing}</p>`;
+          }
+
           card.innerHTML = `
             <h1>${t.ready_title}</h1>
             <p>${t.for_label} ${escapeHtml(data.recipient)}</p>
             <audio controls src="${fullUrl}"></audio>
             <br>
             <a class="btn" href="${fullUrl}" download>${t.download}</a>
+            ${extrasHtml}
           `;
+
+          if (stillWaitingForExtras) setTimeout(checkStatus, 8000);
         } else if (data.status === 'generation_failed') {
           card.innerHTML = `
             <h1 class="err">${t.error_title}</h1>

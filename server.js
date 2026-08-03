@@ -371,6 +371,13 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, 
             console.error('Email de livrare esuat pentru comanda', orderId, err.message);
             // nu blocam livrarea — clientul tot poate lua melodia din pagina de succes
           });
+          // Extrasele de pachet (WAV pentru premium/video, videoclip pentru video) NU
+          // blocheaza livrarea MP3-ului, deja confirmata functionala — pornesc complet
+          // asincron, pot dura pana la cateva minute (encodare video reala). generatePremiumExtras
+          // insasi verifica order.plan si nu face nimic pentru "standard".
+          generatePremiumExtras(orderId).catch(err => {
+            console.error('Generarea extraselor de pachet a esuat pentru comanda', orderId, err.message);
+          });
         }
       }
     }
@@ -1110,7 +1117,11 @@ app.get('/api/orders/:orderId', async (req, res, next) => {
       id: v.id, previewUrl: v.previewUrl, durationSeconds: v.durationSeconds,
       originalLyrics: v.originalLyrics || null,
       editedLyrics: v.editedLyrics || null,
-      lyricsUpdatedAt: v.lyricsUpdatedAt || null
+      lyricsUpdatedAt: v.lyricsUpdatedAt || null,
+      // niciodata cheile de storage insele (interne, nu au ce cauta in raspuns) — doar
+      // daca extrasul de pachet (WAV/video, vezi generatePremiumExtras) e deja gata.
+      hasWav: !!v.wavKey,
+      hasVideo: !!v.videoKey
     }));
 
     // IMPORTANT: raspuns construit explicit, camp cu camp — NU facem spread pe `order`.
@@ -1318,6 +1329,60 @@ app.get('/media/full/:orderId', async (req, res, next) => {
 });
 
 // ==========================================================================================
+// Fisierul WAV (pachete premium + video) si videoclipul cu versuri (doar pachetul video) —
+// ACELASI tipar de securitate ca /media/full de mai sus (token obligatoriu, timing-safe,
+// 404 generic identic pentru comanda inexistenta/token gresit/extras neeligibil pentru
+// pachet — niciuna dintre aceste situatii nu trebuie sa se poata distinge de celelalte din
+// raspuns). Generate ASINCRON dupa plata (vezi generatePremiumExtras) — daca nu sunt inca
+// gata, raspundem 202 (nu 404: comanda si extra-ul EXISTA, doar nu s-a terminat inca).
+// ==========================================================================================
+app.get('/media/wav/:orderId', async (req, res, next) => {
+  try {
+    const denyGeneric = () => res.status(404).send('Resursa nu este disponibilă');
+    if (!UUID_RE.test(req.params.orderId)) return denyGeneric();
+
+    const order = await db.getOrderById(req.params.orderId);
+    const providedToken = typeof req.query.token === 'string' ? req.query.token : '';
+    const expectedToken = order ? order.accessToken : DUMMY_TOKEN_FOR_TIMING;
+    if (!order || !safeCompare(providedToken, expectedToken)) return denyGeneric();
+
+    if (order.status !== 'ready') return res.status(403).send('Fișierul WAV se deblochează după plată');
+    if (order.plan !== 'premium' && order.plan !== 'video') return denyGeneric();
+
+    const variant = (order.variants || []).find(v => v.id === order.selectedVariantId);
+    if (!variant || !variant.wavKey) return res.status(202).json({ status: 'processing' });
+
+    const signedUrl = await storage.getSignedDownloadUrl(variant.wavKey, 600);
+    return res.redirect(302, signedUrl);
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.get('/media/video/:orderId', async (req, res, next) => {
+  try {
+    const denyGeneric = () => res.status(404).send('Resursa nu este disponibilă');
+    if (!UUID_RE.test(req.params.orderId)) return denyGeneric();
+
+    const order = await db.getOrderById(req.params.orderId);
+    const providedToken = typeof req.query.token === 'string' ? req.query.token : '';
+    const expectedToken = order ? order.accessToken : DUMMY_TOKEN_FOR_TIMING;
+    if (!order || !safeCompare(providedToken, expectedToken)) return denyGeneric();
+
+    if (order.status !== 'ready') return res.status(403).send('Videoclipul se deblochează după plată');
+    if (order.plan !== 'video') return denyGeneric();
+
+    const variant = (order.variants || []).find(v => v.id === order.selectedVariantId);
+    if (!variant || !variant.videoKey) return res.status(202).json({ status: 'processing' });
+
+    const signedUrl = await storage.getSignedDownloadUrl(variant.videoKey, 600);
+    return res.redirect(302, signedUrl);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ==========================================================================================
 // Acces comanda prin COD UNIC (accessToken) — inlocuieste vechea cautare dupa email.
 // Cautarea dupa email permitea oricui stia adresa de email a cuiva sa-i vada toate
 // comenzile si povestile private. Acum accesul se face DOAR cu token-ul primit pe email,
@@ -1333,9 +1398,17 @@ app.get('/api/orders/access/:token', lookupLimiter, async (req, res, next) => {
     const order = await db.getOrderByToken(token);
     if (!order) return res.status(404).json({ error: 'Nicio comandă găsită pentru acest cod.' });
 
+    // hasWav/hasVideo ale variantei ALESE — niciodata cheile de storage insele — necesare
+    // ca pagina "comanda mea" sa poata arata extrasele de pachet (WAV/video) cand sunt gata,
+    // fara sa expuna nimic in plus fata de ce era deja expus aici.
+    const selectedVariant = (order.variants || []).find(v => v.id === order.selectedVariantId);
+
     res.json({
       id: order.id, recipient: order.recipient, status: order.status,
-      createdAt: order.createdAt
+      createdAt: order.createdAt,
+      plan: order.plan,
+      hasWav: !!(selectedVariant && selectedVariant.wavKey),
+      hasVideo: !!(selectedVariant && selectedVariant.videoKey)
     });
   } catch (err) {
     next(err);
@@ -1519,13 +1592,21 @@ async function finalizeVariantsIfNeeded(orderId, tracks, taskId) {
       console.warn(`SunoAPI a returnat ${tracks.length} piese in loc de 2, pentru comanda ${orderId}. Continui cu cate au venit.`);
     }
 
+    // Diferentiere REALA intre pachete (audit 2026-08-03): pachetul "standard" primeste o
+    // singura varianta (auto-aleasa), procesata singura — nu doar ascunsa in interfata dupa
+    // ce ambele au fost generate/urcate/verificate degeaba. "premium" si "video" pastreaza
+    // ambele variante, pentru alegere reala. Suno intoarce mereu 2 piese per apel (nu poate
+    // fi cerut sa genereze doar 1), deci a doua piesa e pur si simplu ignorata pentru
+    // standard — nu se descarca, nu se taie, nu se urca, niciun cost suplimentar.
+    const tracksToProcess = claimed.plan === 'standard' ? tracks.slice(0, 1) : tracks;
+
     // Promise.allSettled (nu Promise.all): daca o varianta esueaza la procesare
     // (descarcare/timestamp/ffmpeg/upload), NU intrerupe si NU corupe procesarea celeilalte
     // variante, care poate continua complet independent pana la capat. Deciziile de mai
     // jos (esec total vs. partial) se iau abia dupa ce AMBELE s-au terminat, indiferent
     // de rezultat.
     const settled = await Promise.allSettled(
-      tracks.map(track => buildVariantFromTrack(orderId, randomUUID().slice(0, 8), track, taskId))
+      tracksToProcess.map(track => buildVariantFromTrack(orderId, randomUUID().slice(0, 8), track, taskId))
     );
 
     const variants = [];
@@ -1860,6 +1941,12 @@ async function buildVariantFromTrack(orderId, variantId, track, taskId) {
     durationSeconds,
     fullKey: storedFullKey,       // null in fallback local; folosit de /media/full cand storage.CLOUD_ENABLED
     previewKey: storedPreviewKey, // null in fallback local; folosit de /media/preview cand storage.CLOUD_ENABLED
+    // ID-ul REAL Suno al piesei (UUID complet, diferit de variantId-ul nostru scurt/aleator
+    // de mai sus) — necesar pentru a putea cere din nou versurile cu marcaj de timp
+    // (get-timestamped-lyrics) DUPA plata, la generarea video-ului cu versuri (pachetul
+    // "video"). Fara el, nu am avea cum sa asociem inapoi varianta aleasa cu piesa reala
+    // Suno o data ce am trecut de acest moment.
+    sunoTrackId: track.id || null,
     // Versurile ORIGINALE, asa cum au fost extrase din raspunsul Suno (vezi caveatul din
     // extractSunoTracks — poate fi null daca providerul nu a inclus acest camp). editedLyrics
     // ramane null pana cand clientul salveaza o editare explicita (vezi endpoint-ul dedicat
@@ -1868,6 +1955,234 @@ async function buildVariantFromTrack(orderId, variantId, track, taskId) {
     editedLyrics: null,
     lyricsUpdatedAt: null
   };
+}
+
+// ==========================================================================================
+// EXTRASE PACHET PLATIT — WAV (premium + video) si videoclip cu versuri sincronizate (doar
+// video). Pornite ASINCRON DUPA confirmarea platii (webhook) — niciodata inainte (o comanda
+// neplatita/abandonata la checkout nu trebuie sa consume procesare pentru extrase pe care
+// clientul nu le-a platit inca). Nu blochează livrarea imediata a MP3-ului (deja dovedita) —
+// emailul de livrare mentioneaza ca aceste extrase apar in cateva minute la pagina comenzii.
+//
+// Verificat direct (2026-08-03, audit pachete): inainte de asta, cele 3 pachete (standard/
+// premium/video) erau IDENTICE in spate — order.plan nu influenta nimic in afara de pret.
+// Premium promitea WAV, Video promitea un videoclip — niciunul nu exista in cod.
+// ==========================================================================================
+
+async function generatePremiumExtras(orderId) {
+  const order = await db.getOrderById(orderId);
+  if (!order || order.plan === 'standard') return; // standard nu are extrase de generat
+  if (!storage.CLOUD_ENABLED) {
+    console.warn(`Comanda ${orderId}: extrase premium/video sarite — storage cloud nu e activat.`);
+    return;
+  }
+  const variant = (order.variants || []).find(v => v.id === order.selectedVariantId);
+  if (!variant || !variant.fullKey) {
+    console.error(`Comanda ${orderId}: nu pot genera extrase — varianta aleasa nu are fullKey.`);
+    return;
+  }
+
+  const tempFull = path.join(TEMP_DIR, `${orderId}-extras-full.mp3`);
+  try {
+    const signedUrl = await storage.getSignedDownloadUrl(variant.fullKey, 600);
+    await downloadFile(signedUrl, tempFull);
+    perfLog(orderId, 'extras_source_downloaded');
+
+    const patch = {};
+
+    if (order.plan === 'premium' || order.plan === 'video') {
+      try {
+        patch.wavKey = await generateWavExtra(orderId, variant.id, tempFull);
+        perfLog(orderId, 'wav_ready', `varianta=${variant.id}`);
+      } catch (err) {
+        console.error(`Comanda ${orderId}: generarea WAV a esuat:`, err.message);
+      }
+    }
+
+    if (order.plan === 'video') {
+      try {
+        patch.videoKey = await generateLyricVideo(order, variant, tempFull);
+        perfLog(orderId, 'video_ready', `varianta=${variant.id}`);
+      } catch (err) {
+        console.error(`Comanda ${orderId}: generarea videoclipului a esuat:`, err.message);
+      }
+    }
+
+    if (Object.keys(patch).length > 0) {
+      const fresh = await db.getOrderById(orderId);
+      if (fresh) {
+        const updatedVariants = (fresh.variants || []).map(v =>
+          v.id === order.selectedVariantId ? { ...v, ...patch } : v
+        );
+        await db.updateOrder(orderId, { variants: updatedVariants });
+      }
+    }
+  } catch (err) {
+    console.error(`Comanda ${orderId}: eroare generala la generarea extraselor platite:`, err.message);
+  } finally {
+    try { if (fs.existsSync(tempFull)) fs.unlinkSync(tempFull); } catch (e) { /* best-effort */ }
+  }
+}
+
+async function generateWavExtra(orderId, variantId, tempFullMp3Path) {
+  const tempWav = path.join(TEMP_DIR, `${orderId}-${variantId}-full.wav`);
+  await execFileAsync('ffmpeg', ['-y', '-i', tempFullMp3Path, tempWav]);
+  const wavKey = `orders/full-wav/${orderId}-${variantId}.wav`;
+  await storage.uploadPrivateFile(tempWav, wavKey, 'audio/wav');
+  try { fs.unlinkSync(tempWav); } catch (e) { /* best-effort */ }
+  return wavKey;
+}
+
+// Elimina segmente [Section] SAU (note de productie, ex. "(Gentle acoustic guitar
+// fingerpicking)") care se pot intinde pe MAI MULTE token-uri de cuvant — verificat direct
+// pe date reale Suno: "[Intro]\n\n\n(" ... "Gentle " ... "strums)\n\n\n", parantezele nu
+// sunt niciodata continute intr-un singur token. O masina de stari simpla urmareste daca
+// suntem "in interiorul" unei paranteze pe masura ce parcurgem cuvintele, ca acel text
+// (niciodata cantat efectiv) sa nu ajunga afisat in subtitrare ca si cum ar fi versuri.
+function stripSpanningNotes(alignedWords) {
+  const out = [];
+  let depth = 0;
+  for (const w of alignedWords) {
+    if (!w || typeof w.word !== 'string') { out.push(w); continue; }
+    const text = w.word.replace(/\[[^[\]]*\]/g, '');
+    let visible = '';
+    for (const ch of text) {
+      if (ch === '(') { depth++; continue; }
+      if (ch === ')') { depth = Math.max(0, depth - 1); continue; }
+      if (depth === 0) visible += ch;
+    }
+    out.push({ ...w, word: visible });
+  }
+  return out;
+}
+
+function srtTimestamp(seconds) {
+  const ms = Math.max(0, Math.round(seconds * 1000));
+  const h = Math.floor(ms / 3600000);
+  const m = Math.floor((ms % 3600000) / 60000);
+  const s = Math.floor((ms % 60000) / 1000);
+  const msRem = ms % 1000;
+  const pad = (n, len) => String(n).padStart(len, '0');
+  return `${pad(h, 2)}:${pad(m, 2)}:${pad(s, 2)},${pad(msRem, 3)}`;
+}
+
+// Grupeaza cuvintele aliniate in linii de caption, folosind salturile de linie naturale
+// din versuri (nu o limita fixa de cuvinte) — citeste mai natural, respecta structura
+// reala a versurilor scrise de Suno.
+function buildCaptionLines(rawAlignedWords, recipient) {
+  const alignedWords = stripSpanningNotes(rawAlignedWords);
+  const lines = [];
+  let buffer = [];
+  let bufferStart = null;
+  let lastRealEnd = null;
+
+  function flush(endS) {
+    if (buffer.length === 0) return;
+    // join('') NU join(' ') — fiecare token Suno isi contine deja propriul spatiu final
+    // acolo unde e cazul ("the ", "morning ") — un join fortat cu spatiu ar produce
+    // "you' ve" in loc de "you've" la contractii, verificat direct pe date reale.
+    const text = buffer.join('').replace(/\s+/g, ' ').trim();
+    if (text) lines.push({ start: bufferStart, end: endS, text });
+    buffer = [];
+    bufferStart = null;
+  }
+
+  for (const w of alignedWords) {
+    if (!w || w.success !== true || typeof w.startS !== 'number') continue;
+    const hasNewline = /\n/.test(w.word);
+    const clean = w.word.replace(/\n/g, ' ');
+    if (clean.trim()) {
+      if (bufferStart === null) bufferStart = w.startS;
+      buffer.push(clean);
+      lastRealEnd = w.endS;
+    }
+    if (hasNewline) flush(w.endS);
+  }
+  flush(lastRealEnd || bufferStart);
+
+  const introEnd = lines.length > 0 ? lines[0].start : 3;
+  const result = [];
+  if (introEnd > 1) {
+    result.push({ start: 0, end: Math.min(introEnd, 5), text: `For ${recipient}` });
+  }
+  result.push(...lines);
+
+  // preveni suprapunerea: end-ul unei linii nu trece peste start-ul urmatoarei
+  for (let i = 0; i < result.length - 1; i++) {
+    if (result[i].end > result[i + 1].start) result[i].end = result[i + 1].start;
+  }
+  // plasa de siguranta impotriva anomaliilor de aliniere Suno — verificat direct pe date
+  // reale ca API-ul poate raporta un endS aberant pentru un cuvant (un singur cuvant cu
+  // startS=0.58, endS=14.04 — aproape sigur un artefact, nu o nota reala tinuta 13+ secunde).
+  // Fara aceasta limita, o astfel de anomalie ar "inghetha" o linie de subtitrare pe ecran
+  // mult mai mult decat e firesc pentru cate cuvinte contine.
+  const MAX_LINE_DISPLAY_S = 7;
+  for (const l of result) {
+    if (l.end - l.start > MAX_LINE_DISPLAY_S) l.end = l.start + MAX_LINE_DISPLAY_S;
+  }
+  return result;
+}
+
+function toSrt(lines) {
+  return lines.map((l, i) => `${i + 1}\n${srtTimestamp(l.start)} --> ${srtTimestamp(l.end)}\n${l.text}\n`).join('\n');
+}
+
+// Culoare de fundal si stil de subtitrare aliniate la identitatea vizuala Naluna (crem/auriu
+// pe fond cald inchis — vezi paleta din public/index.html: --gold-deep:#8B6D3F, text pe
+// fond deschis #2B2B2B). Pentru un fundal video am ales o varianta INCHISA a acelorasi
+// tonuri calde (nu fundalul deschis al site-ului) — text deschis pe fond inchis se citeste
+// mult mai bine intr-un videoclip decat invers, mai ales pe telefon.
+const VIDEO_BG_COLOR = '0x2B2016'; // maro cald inchis, din aceeasi familie ca --gold-deep
+const VIDEO_TEXT_STYLE = "FontName=Arial,FontSize=26,PrimaryColour=&H00E8F0F6,OutlineColour=&H0016202B,BorderStyle=1,Outline=2,Alignment=2,MarginV=220";
+
+async function generateLyricVideo(order, variant, tempFullMp3Path) {
+  if (!variant.sunoTrackId || !order.musicTaskId) {
+    throw new Error('Lipseste sunoTrackId sau musicTaskId — nu pot cere versurile cu marcaj de timp.');
+  }
+
+  const outcome = await fetchTimestampedLyricsOnce(order.musicTaskId, variant.sunoTrackId);
+  if (!outcome.ok) {
+    throw new Error(`Nu am putut obtine versurile cu marcaj de timp: ${outcome.reason}`);
+  }
+  const body = await outcome.res.json();
+  if (!body || body.code !== 200 || !body.data || !Array.isArray(body.data.alignedWords) || body.data.alignedWords.length === 0) {
+    throw new Error('Raspunsul cu versuri sincronizate e gol sau are o structura neasteptata.');
+  }
+
+  const captionLines = buildCaptionLines(body.data.alignedWords, order.recipient || '');
+  if (captionLines.length === 0) {
+    throw new Error('Nicio linie de caption construita din versurile sincronizate.');
+  }
+
+  const srtPath = path.join(TEMP_DIR, `${order.id}-${variant.id}-captions.srt`);
+  fs.writeFileSync(srtPath, toSrt(captionLines), 'utf8');
+
+  const durationSeconds = Math.max(1, Math.ceil(variant.durationSeconds || await getAudioDuration(tempFullMp3Path)));
+  const tempVideo = path.join(TEMP_DIR, `${order.id}-${variant.id}-video.mp4`);
+  // subtitles= foloseste propria sintaxa cu ':' ca separator de optiuni — calea trebuie
+  // sa foloseasca '/' (nu '\'), iar orice ':' din cale (litera de disc pe Windows, irelevant
+  // pe Linux-ul de productie, dar sigur oricum) trebuie scapat explicit.
+  const srtForFilter = srtPath.replace(/\\/g, '/').replace(/:/g, '\\:');
+
+  try {
+    await execFileAsync('ffmpeg', [
+      '-y',
+      '-f', 'lavfi', '-i', `color=c=${VIDEO_BG_COLOR}:s=1080x1920:d=${durationSeconds}`,
+      '-i', tempFullMp3Path,
+      '-vf', `subtitles='${srtForFilter}':force_style='${VIDEO_TEXT_STYLE}'`,
+      '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+      '-c:a', 'aac', '-b:a', '192k',
+      '-shortest',
+      tempVideo
+    ], { timeout: 180000 });
+  } finally {
+    try { fs.unlinkSync(srtPath); } catch (e) { /* best-effort */ }
+  }
+
+  const videoKey = `orders/full-video/${order.id}-${variant.id}.mp4`;
+  await storage.uploadPrivateFile(tempVideo, videoKey, 'video/mp4');
+  try { fs.unlinkSync(tempVideo); } catch (e) { /* best-effort */ }
+  return videoKey;
 }
 
 // Citeste raspunsul unei cereri esuate ca text simplu, trunchiat, pentru loguri utile —
@@ -2212,28 +2527,41 @@ const RELATIONSHIP_MAX_LEN = 60;
 const STORY_MIN_RESERVE = 160;
 
 function buildPrompt(order, feedback) {
-  // Fiecare descriere stabileste compact: instrumentatie, tempo, atmosfera, tip de productie,
-  // nivel de energie, stil vocal, structura/comportament specific — cerinta explicita, ca
-  // Suno sa produca rezultate clar diferite per gen, nu doar cuvinte diferite pentru acelasi
-  // sunet. "manele" ramane mapat pe identitatea "Manele de jale" (asa cum e deja afisat
-  // clientului in comanda.html: "Manele de jale"), distinct de "manele_suflet" ("Manele de
-  // suflet") — confirmat explicit inainte de a scrie aceasta valoare, nu presupus.
+  // Rescris complet (2026-08-03, audit de calitate muzicala) — versiunea anterioara folosea
+  // mai ales cuvinte de atmosfera/mood, care se suprapuneau prea mult intre genuri inrudite
+  // (verificat direct: clientul a raportat ca "Manele de jale" si "Manele de suflet" sunau
+  // aproape identic). Fiecare descriere de mai jos foloseste acum INSTRUMENTATIE si TEHNICA
+  // VOCALA concrete (numele instrumentelor, tipul de scara/tonalitate, tehnica de ornamentare)
+  // — semnale mult mai puternice pentru un model de generare muzicala bazat pe prompt text
+  // decat adjective de atmosfera. Testat exhaustiv local impotriva logicii reale de trunchiere
+  // din buildPrompt() (45 combinatii: toate cele 15 genuri x cele mai grele 3 ocazii x campuri
+  // la lungime maxima x voce duet) — toate raman sub 500 caractere SI pastreaza intotdeauna
+  // povestea clientului. "manele" ramane mapat pe identitatea "Manele de jale" (asa cum e deja
+  // afisat clientului in comanda.html), distinct de "manele_suflet" ("Manele de suflet").
+  //
+  // LIMITARE CUNOSCUTA, de raportat explicit: nu putem verifica prin ascultare directa daca
+  // Suno reda autentic un gen regional de nisa precum manele — modelul poate avea date de
+  // antrenament mult mai limitate pentru manele decat pentru pop/rock/hip-hop mainstream.
+  // Aceasta rescriere imbunatateste semnificativ SPECIFICITATEA promptului trimis catre model
+  // (verificat: genul selectat chiar ajunge, corect si complet, in promptul final), dar nu
+  // poate garanta autenticitate muzicala perfecta daca modelul insusi nu are capacitatea sa
+  // o produca — o limitare a providerului, nu a codului.
   const genreMap = {
-    emotional: 'cinematic orchestral ballad, piano and strings, dynamic build, vulnerable vocal, emotional climax',
-    suflet: 'intimate de suflet style, warm sincere vocal, discreet acoustic, close organic production',
-    pop: 'commercial pop, verse-chorus structure, catchy hook, polished radio production, accessible energy',
-    acustic: 'acoustic folk, guitar-led, organic instruments, natural rhythm, warm authentic close vocal',
-    petrecere: 'fast danceable party tempo, festive horns, non-stop energy, big repeatable chorus, club production',
-    balada: 'slow piano-or-guitar ballad, vocal-centered, gradual build, no dance beat, no aggressive production',
-    manele: 'sad slow romanian manele, grave tonality, ornamented vocal, balkan strings, loss and longing themes',
-    copii: 'cheerful playful children\'s song, simple melody, bright instruments, easy rhythm, friendly vocal',
-    populara: 'authentic romanian folk, traditional instruments, folkloric rhythm, no manele production',
-    rock: 'rock, real electric guitars, driving bass, powerful drums, guitar riffs, raw vocal, explosive chorus',
-    colind: 'modern christmas carol, sleigh bells, warm choir, piano and strings, festive feeling',
-    modern: 'modern pop, elegant synths, deep bass, contemporary beat, premium atmosphere, sleeker than classic pop',
-    hiphop: 'modern hip-hop beat, punchy kick and snare, deep 808 bass, rap flow, catchy hook, no ballad structure',
-    manele_suflet: 'romantic romanian manele, heartfelt vocal, moderate tempo, emotional ornamentation, balkan instruments',
-    motivational: 'inspirational anthem, energetic build, driving percussion, triumphant chords, confident vocal, big chorus'
+    emotional: 'cinematic orchestral ballad, swelling strings and piano, rubato build, breathy vulnerable vocal, tearful climax',
+    suflet: 'intimate de suflet ballad, sparse guitar or piano, close warm vocal, quiet confessional unpolished mood',
+    pop: 'commercial pop, 100-120bpm, verse-chorus-bridge, synth hook, polished vocal, radio-ready energy',
+    acustic: 'unplugged acoustic folk, fingerpicked guitar, light percussion, natural room sound, plain sincere vocal',
+    petrecere: 'fast Romanian party beat, 130+bpm, syncopated dance rhythm, horns and synth stabs, shouted chorus, club energy',
+    balada: 'slow rubato piano ballad, sustained strings, no beat, dramatic dynamic swells, powerful sustained vocal',
+    manele: 'Romanian manele de jale, oriental scale, mournful clarinet, melismatic vocal slides, minor key grief',
+    copii: 'cheerful childrens song, simple major-key melody, glockenspiel and ukulele, bouncy rhythm, bright vocal',
+    populara: 'Romanian muzica populara, taraf violin and accordion, rustic dance rhythm, unornamented vocal, no autotune',
+    rock: 'driving rock, distorted electric guitar riff, live drums, powerful chest-voice vocal, big anthemic chorus',
+    colind: 'traditional Romanian carol, sleigh bells and choir, warm acoustic guitar, gentle festive reverent vocal',
+    modern: 'sleek modern pop-electronic, deep 808 sub bass, glossy synth pads, vocal chops, minimalist premium production',
+    hiphop: 'modern hip-hop, punchy 808 kick, hi-hat rolls, rap-sung flow, ad-libs, no ballad melody',
+    manele_suflet: 'Romanian manele de suflet, oriental scale, romantic clarinet, warm melismatic vocal, devoted love build',
+    motivational: 'inspirational anthem, driving toms, major-key triumphant chords, confident vocal, uplifting final chorus'
   };
 
   const languageNames = {
@@ -2443,23 +2771,51 @@ async function sendDeliveryEmail(order) {
   const accessUrl = `${DOMAIN}/comanda-mea.html?token=${order.accessToken}`;
   const safeRecipient = escapeHtmlForEmail(order.recipient);
 
+  // Nota despre extrasele de pachet (WAV pentru premium/video, videoclip pentru video) —
+  // generate ASINCRON dupa acest email (pot dura pana la cateva minute, vezi
+  // generatePremiumExtras), deci NU le promitem ca fiind deja disponibile in acest moment,
+  // doar ca vor aparea la pagina comenzii. "standard" nu are nicio nota suplimentara.
+  const EXTRAS_NOTE = {
+    premium: {
+      ro: ` Fișierul WAV descărcabil apare în câteva minute la <a href="${accessUrl}">pagina comenzii tale</a>.`,
+      en: ` Your downloadable WAV file will appear within a few minutes at <a href="${accessUrl}">your order page</a>.`,
+      de: ` Deine herunterladbare WAV-Datei erscheint in wenigen Minuten auf <a href="${accessUrl}">deiner Bestellseite</a>.`,
+      es: ` Tu archivo WAV descargable aparecerá en unos minutos en <a href="${accessUrl}">la página de tu pedido</a>.`,
+      it: ` Il tuo file WAV scaricabile apparirà tra qualche minuto nella <a href="${accessUrl}">pagina del tuo ordine</a>.`,
+      fr: ` Votre fichier WAV téléchargeable apparaîtra dans quelques minutes sur <a href="${accessUrl}">la page de votre commande</a>.`,
+      bg: ` Твоят WAV файл за изтегляне ще се появи след няколко минути на <a href="${accessUrl}">страницата на поръчката ти</a>.`,
+      tr: ` İndirilebilir WAV dosyanız birkaç dakika içinde <a href="${accessUrl}">sipariş sayfanızda</a> görünecek.`
+    },
+    video: {
+      ro: ` Videoclipul cu versuri apare în câteva minute la <a href="${accessUrl}">pagina comenzii tale</a>.`,
+      en: ` Your lyric video will appear within a few minutes at <a href="${accessUrl}">your order page</a>.`,
+      de: ` Dein Lyric-Video erscheint in wenigen Minuten auf <a href="${accessUrl}">deiner Bestellseite</a>.`,
+      es: ` Tu video lírico aparecerá en unos minutos en <a href="${accessUrl}">la página de tu pedido</a>.`,
+      it: ` Il tuo video con i testi apparirà tra qualche minuto nella <a href="${accessUrl}">pagina del tuo ordine</a>.`,
+      fr: ` Votre vidéo lyrique apparaîtra dans quelques minutes sur <a href="${accessUrl}">la page de votre commande</a>.`,
+      bg: ` Твоето лирик видео ще се появи след няколко минути на <a href="${accessUrl}">страницата на поръчката ти</a>.`,
+      tr: ` Söz videonuz birkaç dakika içinde <a href="${accessUrl}">sipariş sayfanızda</a> görünecek.`
+    }
+  };
+  const extrasNote = (EXTRAS_NOTE[order.plan] && EXTRAS_NOTE[order.plan][order.lang]) || '';
+
   const templates = {
     ro: { subject: `Cântecul tău pentru ${order.recipient} e gata`,
-      html: `<p>Salut,</p><p>Cântecul tău personalizat pentru <strong>${safeRecipient}</strong> e gata.</p><p><a href="${downloadUrl}">Descarcă melodia</a></p><p>O poți regăsi oricând la <a href="${accessUrl}">acest link</a>.</p><p>— NALUNA</p>` },
+      html: `<p>Salut,</p><p>Cântecul tău personalizat pentru <strong>${safeRecipient}</strong> e gata.</p><p><a href="${downloadUrl}">Descarcă melodia</a></p><p>O poți regăsi oricând la <a href="${accessUrl}">acest link</a>.${extrasNote}</p><p>— NALUNA</p>` },
     en: { subject: `Your song for ${order.recipient} is ready`,
-      html: `<p>Hi,</p><p>Your personalised song for <strong>${safeRecipient}</strong> is ready.</p><p><a href="${downloadUrl}">Download your song</a></p><p>You can find it anytime at <a href="${accessUrl}">this link</a>.</p><p>— NALUNA</p>` },
+      html: `<p>Hi,</p><p>Your personalised song for <strong>${safeRecipient}</strong> is ready.</p><p><a href="${downloadUrl}">Download your song</a></p><p>You can find it anytime at <a href="${accessUrl}">this link</a>.${extrasNote}</p><p>— NALUNA</p>` },
     de: { subject: `Dein Lied für ${order.recipient} ist fertig`,
-      html: `<p>Hallo,</p><p>Dein persönliches Lied für <strong>${safeRecipient}</strong> ist fertig.</p><p><a href="${downloadUrl}">Lied herunterladen</a></p><p>Du findest es jederzeit über <a href="${accessUrl}">diesen Link</a>.</p><p>— NALUNA</p>` },
+      html: `<p>Hallo,</p><p>Dein persönliches Lied für <strong>${safeRecipient}</strong> ist fertig.</p><p><a href="${downloadUrl}">Lied herunterladen</a></p><p>Du findest es jederzeit über <a href="${accessUrl}">diesen Link</a>.${extrasNote}</p><p>— NALUNA</p>` },
     es: { subject: `Tu canción para ${order.recipient} está lista`,
-      html: `<p>Hola,</p><p>Tu canción personalizada para <strong>${safeRecipient}</strong> está lista.</p><p><a href="${downloadUrl}">Descargar la canción</a></p><p>Puedes encontrarla siempre en <a href="${accessUrl}">este enlace</a>.</p><p>— NALUNA</p>` },
+      html: `<p>Hola,</p><p>Tu canción personalizada para <strong>${safeRecipient}</strong> está lista.</p><p><a href="${downloadUrl}">Descargar la canción</a></p><p>Puedes encontrarla siempre en <a href="${accessUrl}">este enlace</a>.${extrasNote}</p><p>— NALUNA</p>` },
     it: { subject: `La tua canzone per ${order.recipient} è pronta`,
-      html: `<p>Ciao,</p><p>La tua canzone personalizzata per <strong>${safeRecipient}</strong> è pronta.</p><p><a href="${downloadUrl}">Scarica la canzone</a></p><p>Puoi trovarla sempre su <a href="${accessUrl}">questo link</a>.</p><p>— NALUNA</p>` },
+      html: `<p>Ciao,</p><p>La tua canzone personalizzata per <strong>${safeRecipient}</strong> è pronta.</p><p><a href="${downloadUrl}">Scarica la canzone</a></p><p>Puoi trovarla sempre su <a href="${accessUrl}">questo link</a>.${extrasNote}</p><p>— NALUNA</p>` },
     fr: { subject: `Votre chanson pour ${order.recipient} est prête`,
-      html: `<p>Bonjour,</p><p>Votre chanson personnalisée pour <strong>${safeRecipient}</strong> est prête.</p><p><a href="${downloadUrl}">Télécharger la chanson</a></p><p>Vous pouvez la retrouver à tout moment via <a href="${accessUrl}">ce lien</a>.</p><p>— NALUNA</p>` },
+      html: `<p>Bonjour,</p><p>Votre chanson personnalisée pour <strong>${safeRecipient}</strong> est prête.</p><p><a href="${downloadUrl}">Télécharger la chanson</a></p><p>Vous pouvez la retrouver à tout moment via <a href="${accessUrl}">ce lien</a>.${extrasNote}</p><p>— NALUNA</p>` },
     bg: { subject: `Твоята песен за ${order.recipient} е готова`,
-      html: `<p>Здравей,</p><p>Твоята персонализирана песен за <strong>${safeRecipient}</strong> е готова.</p><p><a href="${downloadUrl}">Изтегли песента</a></p><p>Можеш да я намериш винаги на <a href="${accessUrl}">този линк</a>.</p><p>— NALUNA</p>` },
+      html: `<p>Здравей,</p><p>Твоята персонализирана песен за <strong>${safeRecipient}</strong> е готова.</p><p><a href="${downloadUrl}">Изтегли песента</a></p><p>Можеш да я намериш винаги на <a href="${accessUrl}">този линк</a>.${extrasNote}</p><p>— NALUNA</p>` },
     tr: { subject: `${order.recipient} için şarkınız hazır`,
-      html: `<p>Merhaba,</p><p><strong>${safeRecipient}</strong> için kişiselleştirilmiş şarkınız hazır.</p><p><a href="${downloadUrl}">Şarkınızı indirin</a></p><p><a href="${accessUrl}">Bu bağlantıdan</a> her zaman ulaşabilirsiniz.</p><p>— NALUNA</p>` }
+      html: `<p>Merhaba,</p><p><strong>${safeRecipient}</strong> için kişiselleştirilmiş şarkınız hazır.</p><p><a href="${downloadUrl}">Şarkınızı indirin</a></p><p><a href="${accessUrl}">Bu bağlantıdan</a> her zaman ulaşabilirsiniz.${extrasNote}</p><p>— NALUNA</p>` }
   };
 
   const template = templates[order.lang] || templates.ro;
