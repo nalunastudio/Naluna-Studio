@@ -20,6 +20,7 @@ const {
   extractSectionMarkersFromAlignedWords,
   deriveSectionTimings,
   computeSectionAwareSegmentDurations,
+  findRealWindowIndex,
   MEMORY_SECTION_ORDER,
   sortMediaBySection
 } = require('../lib/media-analysis');
@@ -133,35 +134,107 @@ test('deriveSectionTimings — FARA marcaje reale (0 sau 1), fallback CONTROLAT 
   }
 });
 
-test('computeSectionAwareSegmentDurations — aloca PROPORTIONAL cu ferestrele reale, nu egal', () => {
-  // 3 sectiuni reale: 20s, 5s, 25s (total 50s) — o sectiune scurta (5s) langa doua lungi.
-  // n=7 ales deliberat sa NU imparta exact ferestrele (evita o coincidenta numerica in care
-  // alocarea proportionala ar produce accidental exact aceeasi durata per element).
-  const sectionTimings = [
-    { alignmentStatus: 'aligned', startTime: 0, endTime: 20 },
-    { alignmentStatus: 'aligned', startTime: 20, endTime: 25 },
-    { alignmentStatus: 'aligned', startTime: 25, endTime: 50 }
+// Cerinta F11: daca primul marcaj real NU incepe la secunda 0 (ex. intro instrumental de
+// 8-10s inainte de primul cuvant etichetat), intervalul [0, primul marcaj) trebuie
+// REPREZENTAT EXPLICIT ca propria lui sectiune — nu absorbit tacit in ultima sectiune
+// (bug vechi) si nici marcajele reale nu trebuie mutate mai devreme.
+test('deriveSectionTimings — pastreaza timpii absoluti cand primul marcaj NU incepe la 0', () => {
+  const words = [
+    fakeAlignedWord('[Verse]', 9),   // primul marcaj real la 9s, NU la 0
+    fakeAlignedWord('[Chorus]', 30),
+    fakeAlignedWord('[Outro]', 50)
   ];
-  const n = 7;
-  const xfade = 0.6;
-  const durations = computeSectionAwareSegmentDurations(n, 50, sectionTimings, xfade);
+  const durationSeconds = 60;
+  const sections = deriveSectionTimings(words, durationSeconds, 'variant-gap');
 
-  assert.equal(durations.length, n);
-  // suma finala (dupa compensarea de crossfade) trebuie sa fie exact duratia + (n-1)*xfade
+  // 4 sectiuni: intervalul dedus [0,9) + cele 3 marcaje reale
+  assert.equal(sections.length, 4);
+  assert.deepEqual(sections.map(s => [s.sectionType, s.startTime, s.endTime]), [
+    ['intro', 0, 9],
+    ['verse', 9, 30],
+    ['chorus', 30, 50],
+    ['outro', 50, 60]
+  ]);
+  // sectiunea dedusa e marcata distinct (nu vine dintr-o eticheta Suno proprie), dar tot
+  // 'aligned' — granitele ei sunt certe (0 = inceput real, 9 = marcaj real Suno)
+  assert.equal(sections[0].source, 'leading_gap');
+  assert.equal(sections[0].alignmentStatus, 'aligned');
+  // marcajul real [Verse] NU a fost mutat mai devreme — startTime-ul lui ramane EXACT 9,
+  // dovada ca timpul lipsa nu a fost "imprumutat" din sectiunea reala
+  assert.equal(sections[1].startTime, 9);
+  // suma ferestrelor acopera EXACT toata durata melodiei, fara gol si fara suprapunere
+  assert.equal(sections[0].startTime, 0);
+  assert.equal(sections[sections.length - 1].endTime, durationSeconds);
+});
+
+test('deriveSectionTimings — primul marcaj chiar la 0, nicio sectiune dedusa suplimentar', () => {
+  const words = [fakeAlignedWord('[Intro]', 0), fakeAlignedWord('[Chorus]', 20)];
+  const sections = deriveSectionTimings(words, 40, 'v1');
+  assert.equal(sections.length, 2); // fara sectiune "leading_gap" — nu era niciun gol
+  assert.equal(sections[0].source, 'suno_section_marker');
+});
+
+test('computeSectionAwareSegmentDurations — aloca PROPORTIONAL cu ferestrele reale, nu egal (itemi neetichetati)', () => {
+  // 3 sectiuni reale: 20s, 5s, 25s (total 50s) — o sectiune scurta (5s) langa doua lungi.
+  // 7 itemi FARA eticheta (section: null), deliberat un numar care NU imparte exact
+  // ferestrele (evita o coincidenta numerica in care alocarea ar produce accidental
+  // exact aceeasi durata per element).
+  const sectionTimings = [
+    { alignmentStatus: 'aligned', sectionType: 'intro', startTime: 0, endTime: 20 },
+    { alignmentStatus: 'aligned', sectionType: 'chorus', startTime: 20, endTime: 25 },
+    { alignmentStatus: 'aligned', sectionType: 'outro', startTime: 25, endTime: 50 }
+  ];
+  const mediaItems = Array.from({ length: 7 }, () => ({ section: null }));
+  const xfade = 0.6;
+  const durations = computeSectionAwareSegmentDurations(mediaItems, 50, sectionTimings, xfade);
+
+  assert.equal(durations.length, 7);
   const total = durations.reduce((a, b) => a + b, 0);
-  assert.ok(Math.abs(total - (50 + (n - 1) * xfade)) < 1e-6, `total=${total}`);
-  // sectiunea scurta (5s) trebuie sa primeasca STRICT mai putini itemi decat cele lungi —
-  // dovada directa ca alocarea urmeaza ferestrele reale, nu o distributie egala pe elemente
-  const uniqueDurations = new Set(durations.map(d => Math.round((d - (n - 1) * xfade / n) * 1000)));
+  assert.ok(Math.abs(total - (50 + (7 - 1) * xfade)) < 1e-6, `total=${total}`);
+  const uniqueDurations = new Set(durations.map(d => Math.round((d - (7 - 1) * xfade / 7) * 1000)));
   assert.ok(uniqueDurations.size > 1, `ar trebui sa existe cel putin 2 durate distincte de fereastra, gasit: ${[...uniqueDurations]}`);
 });
 
-test('computeSectionAwareSegmentDurations — returneaza null (niciodata o presupunere tacita) fara date reale suficiente', () => {
-  assert.equal(computeSectionAwareSegmentDurations(5, 60, [], 0.6), null);
-  assert.equal(computeSectionAwareSegmentDurations(5, 60, null, 0.6), null);
-  assert.equal(computeSectionAwareSegmentDurations(5, 60, [{ alignmentStatus: 'fallback', startTime: 0, endTime: 60 }], 0.6), null);
-  // un singur marcaj real nu formeaza nicio fereastra utila
-  assert.equal(computeSectionAwareSegmentDurations(5, 60, [{ alignmentStatus: 'aligned', startTime: 0, endTime: 60 }], 0.6), null);
+// Cerinta F12: materialele ETICHETATE de client trebuie plasate in FEREASTRA REALA
+// corespunzatoare tipului lor, nu doar sortate global si impartite proportional.
+test('computeSectionAwareSegmentDurations — plaseaza materialele ETICHETATE in fereastra reala corecta', () => {
+  const sectionTimings = [
+    { alignmentStatus: 'aligned', sectionType: 'intro', startTime: 0, endTime: 10 },
+    { alignmentStatus: 'aligned', sectionType: 'verse', startTime: 10, endTime: 30 },
+    { alignmentStatus: 'aligned', sectionType: 'chorus', startTime: 30, endTime: 40 },
+    { alignmentStatus: 'aligned', sectionType: 'verse', startTime: 40, endTime: 55 }, // a doua strofa reala
+    { alignmentStatus: 'aligned', sectionType: 'outro', startTime: 55, endTime: 60 }
+  ];
+  // un singur item per eticheta — fiecare trebuie sa primeasca EXACT durata ferestrei lui
+  const mediaItems = [
+    { key: 'p1', section: 'beginning' },
+    { key: 'p2', section: 'verse1' },
+    { key: 'p3', section: 'chorus' },
+    { key: 'p4', section: 'verse2' },
+    { key: 'p5', section: 'ending' }
+  ];
+  const xfade = 0; // fara compensatie de tranzitie, ca sa verificam duratele "brute" direct
+  const durations = computeSectionAwareSegmentDurations(mediaItems, 60, sectionTimings, xfade);
+
+  assert.deepEqual(durations, [10, 20, 10, 15, 5]);
+});
+
+test('findRealWindowIndex — "verse2" prefera a DOUA aparitie reala a unei strofe', () => {
+  const sections = [
+    { sectionType: 'verse', startTime: 0, endTime: 10 },
+    { sectionType: 'chorus', startTime: 10, endTime: 20 },
+    { sectionType: 'verse', startTime: 20, endTime: 30 }
+  ];
+  assert.equal(findRealWindowIndex('verse1', sections), 0);
+  assert.equal(findRealWindowIndex('verse2', sections), 2);
+  assert.equal(findRealWindowIndex('chorus', sections), 1);
+});
+
+test('computeSectionAwareSegmentDurations — returneaza null (niciodata o presupunere tacita) fara date reale', () => {
+  const items5 = Array.from({ length: 5 }, () => ({ section: null }));
+  assert.equal(computeSectionAwareSegmentDurations(items5, 60, [], 0.6), null);
+  assert.equal(computeSectionAwareSegmentDurations(items5, 60, null, 0.6), null);
+  assert.equal(computeSectionAwareSegmentDurations(items5, 60, [{ alignmentStatus: 'fallback', startTime: 0, endTime: 60 }], 0.6), null);
 });
 
 test('sortMediaBySection — ordoneaza dupa eticheta clientului, pastreaza ordinea de incarcare in interior', () => {

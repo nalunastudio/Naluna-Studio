@@ -263,15 +263,54 @@ const ORDER_MEDIA_MIN_ITEMS = 3;
 const ORDER_MEDIA_MAX_VIDEO_SECONDS = Number(process.env.ORDER_MEDIA_MAX_VIDEO_SECONDS) > 0
   ? Number(process.env.ORDER_MEDIA_MAX_VIDEO_SECONDS) : 120;
 
+// Acelasi prag ca db.claimVideoRender (20 minute) — o randare video reala dureaza cateva
+// minute, niciodata atat. Folosit consecvent in toate cele 3 locuri care trebuie sa stie
+// daca lock-ul de randare e cu adevarat activ (checkout, create-video, starea expusa
+// clientului) sau doar un rest expirat dupa un crash/redeploy — cerinta E10.
+const VIDEO_LOCK_EXPIRY_MS = 20 * 60 * 1000;
+function isVideoLockActive(order) {
+  return !!order.videoRenderClaimedAt && (Date.now() - new Date(order.videoRenderClaimedAt).getTime()) < VIDEO_LOCK_EXPIRY_MS;
+}
+
+// STOCARE PE DISC, NU IN MEMORIE — cu memoryStorage(), pana la ORDER_MEDIA_MAX_ITEMS (10)
+// fisiere de ORDER_MEDIA_MAX_BYTES (150MB) fiecare puteau ajunge simultan in RAM-ul
+// procesului Node (pana la 1.5GB per cerere) — pe o instanta Railway obisnuita, asta putea
+// termina procesul (OOM kill) la un singur upload nefericit. diskStorage scrie fiecare
+// fisier direct pe disc (in TEMP_DIR, deja folosit ca spatiu de lucru ffmpeg), streamed,
+// fara sa retina niciodata continutul complet in memorie. `fileFilter` ramane PERMISIV —
+// respinge doar la nivel de extensie evident, nu de MIME — validarea REALA (magic bytes +
+// decodare ffprobe, vezi ruta POST /media) se face per-fisier in handler, ca sa putem
+// raporta fiecare fisier individual, fara sa aruncam tot batch-ul din cauza unuia singur
+// (vezi orderMediaErrorHandler mai jos pentru cazul in care chiar Multer respinge ceva,
+// ex. dimensiune peste limita).
 const orderMediaUpload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: ORDER_MEDIA_MAX_BYTES, files: ORDER_MEDIA_MAX_ITEMS },
-  fileFilter: (req, file, cb) => {
-    const allAllowed = [...ORDER_MEDIA_MIME_TYPES.photo, ...ORDER_MEDIA_MIME_TYPES.video];
-    if (allAllowed.includes(file.mimetype)) return cb(null, true);
-    cb(new Error(`Tip de fisier neacceptat: ${file.mimetype}`));
-  }
+  storage: multer.diskStorage({
+    destination: TEMP_DIR,
+    filename: (req, file, cb) => cb(null, `upload-${randomUUID()}${path.extname(file.originalname || '').slice(0, 10)}`)
+  }),
+  limits: { fileSize: ORDER_MEDIA_MAX_BYTES, files: ORDER_MEDIA_MAX_ITEMS }
 });
+
+// Multer, la depasirea unei limite (fisier prea mare, prea multe fisiere), arunca o eroare
+// care — daca ajunge nemodificata la middleware-ul central de erori — devine un 500 generic,
+// fara niciun mesaj util clientului (exact problema semnalata explicit: "nu transforma
+// erorile Multer in eroare generica 500"). Acest wrapper intercepteaza EXCLUSIV erorile
+// Multer si le traduce in 4xx cu mesaj clar in romana; orice alta eroare trece mai departe
+// neschimbata catre error handler-ul central.
+function handleOrderMediaUpload(req, res, next) {
+  orderMediaUpload.array('media', ORDER_MEDIA_MAX_ITEMS)(req, res, (err) => {
+    if (!err) return next();
+    if (err instanceof multer.MulterError) {
+      const messages = {
+        LIMIT_FILE_SIZE: `Un fișier depășește limita de ${Math.round(ORDER_MEDIA_MAX_BYTES / (1024 * 1024))}MB.`,
+        LIMIT_FILE_COUNT: `Poți încărca maximum ${ORDER_MEDIA_MAX_ITEMS} materiale odată.`,
+        LIMIT_UNEXPECTED_FILE: 'Prea multe fișiere trimise deodată.'
+      };
+      return res.status(400).json({ error: messages[err.code] || 'Eroare la încărcarea fișierului.' });
+    }
+    return res.status(400).json({ error: 'Eroare la încărcarea fișierului. Încearcă din nou.' });
+  });
+}
 
 // ==========================================================================================
 // Verificare REALA de decodare, prin ffprobe — validarea de mai sus (MIME declarat + magic
@@ -284,14 +323,14 @@ const orderMediaUpload = multer({
 // scenariul pe care auditul l-a semnalat ca risc real. Acum respingem explicit, la upload,
 // orice fisier pe care ffprobe nu poate sa-l citeasca, cu un mesaj clar in limba comenzii.
 // ==========================================================================================
-async function verifyMediaDecodable(buffer, mimetype, type) {
-  const tmpPath = path.join(TEMP_DIR, `probe-${randomUUID()}`);
+// Primeste direct CALEA fisierului de pe disc (scris deja de multer.diskStorage) — nu mai
+// scrie el insusi un fisier temporar suplimentar din buffer, cum facea inainte.
+async function verifyMediaDecodable(filePath, mimetype, type) {
   try {
-    fs.writeFileSync(tmpPath, buffer);
     const { stdout } = await execFileAsync('ffprobe', [
       '-v', 'error', '-print_format', 'json',
       '-show_entries', 'stream=codec_type,codec_name', '-show_entries', 'format=duration',
-      tmpPath
+      filePath
     ], { timeout: 20000 });
     let parsed;
     try { parsed = JSON.parse(stdout); } catch (e) { return { ok: false, reason: 'raspuns ffprobe invalid' }; }
@@ -310,8 +349,20 @@ async function verifyMediaDecodable(buffer, mimetype, type) {
     return { ok: true, durationSeconds };
   } catch (err) {
     return { ok: false, reason: 'fișier corupt sau imposibil de decodat' };
+  }
+}
+
+// Citeste doar primii `len` octeti ai unui fisier de pe disc — suficient pentru verificarea
+// de magic bytes (bufferMatchesDeclaredType se uita cel mult la primii 12 octeti), fara sa
+// incarce fisierul intreg in memorie doar pentru atat.
+async function readFileHeader(filePath, len = 16) {
+  const fh = await fs.promises.open(filePath, 'r');
+  try {
+    const buf = Buffer.alloc(len);
+    const { bytesRead } = await fh.read(buf, 0, len, 0);
+    return buf.subarray(0, bytesRead);
   } finally {
-    try { if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath); } catch (e) { /* best-effort */ }
+    await fh.close();
   }
 }
 
@@ -392,70 +443,162 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, 
   }
 
   try {
-    if (event.type === 'checkout.session.completed') {
+    if (event.type === 'checkout.session.completed' || event.type === 'checkout.session.async_payment_succeeded') {
+      const session = event.data.object;
+
+      // CERINTA D7: "checkout.session.completed" NU inseamna neaparat plata confirmata —
+      // pentru metode de plata cu decontare intarziata (ex. unele transferuri bancare),
+      // sesiunea se "completeaza" (clientul a terminat formularul), dar payment_status
+      // ramane 'unpaid' pana la confirmarea REALA, care vine separat, prin evenimentul
+      // "checkout.session.async_payment_succeeded". Livram DOAR cand payment_status==='paid' —
+      // pentru celelalte cazuri (payment_status==='unpaid' pe un completed initial), nu
+      // facem nimic acum; livrarea va veni din evenimentul async_payment_succeeded, cand/daca
+      // plata chiar se confirma.
+      if (session.payment_status !== 'paid') {
+        return res.json({ received: true, awaitingAsyncPayment: true });
+      }
+
+      const outcome = await processConfirmedPayment(event, session);
+      return res.status(outcome.httpStatus).json(outcome.body);
+    }
+
+    if (event.type === 'checkout.session.async_payment_failed') {
+      // Plata intarziata a esuat definitiv — nimic de livrat, doar log/dedup, ca sa nu
+      // ramana un eveniment "neprocesat" reincercat la infinit de Stripe.
       const session = event.data.object;
       const orderId = session.metadata && session.metadata.orderId;
-      if (orderId) {
-        // DEDUP ATOMIC la nivel de eveniment Stripe individual (event.id), NU doar la nivel
-        // de comanda — vezi comentariul din db.js (processed_stripe_events) pentru motiv
-        // exact. Garda existenta pe status !== 'ready' de mai jos ramane si ea (acopera
-        // corect reincercarile secventiale); aceasta acopera in plus fereastra teoretica de
-        // doua livrari ale aceluiasi eveniment aproape simultane.
-        const isNewEvent = await db.recordStripeEventIfNew(event.id, orderId);
-        if (!isNewEvent) {
-          return res.json({ received: true, duplicate: true });
-        }
-        const order = await db.getOrderById(orderId);
-        if (order && order.status !== 'ready') {
-          // Date de tranzactie pastrate pentru evidenta contabila si pregatire OSS —
-          // strict cele returnate de Stripe, fara nicio presupunere sau calcul propriu.
-          // NU logam sesiunea Stripe intreaga (contine date de client) — doar campurile
-          // specifice de care avem nevoie, si niciodata cheia secreta sau date de card.
-          const customerCountry = (session.customer_details && session.customer_details.address && session.customer_details.address.country) || null;
-          const paymentCurrency = session.currency || null;
-          const amountTotal = typeof session.amount_total === 'number' ? session.amount_total / 100 : null;
-          const taxAmount = (session.total_details && typeof session.total_details.amount_tax === 'number')
-            ? session.total_details.amount_tax / 100
-            : null;
-          const stripeSessionId = session.id || null;
-          const stripePaymentIntentId = typeof session.payment_intent === 'string'
-            ? session.payment_intent
-            : (session.payment_intent && session.payment_intent.id) || null;
-
-          const updated = await db.updateOrder(orderId, {
-            status: 'ready',
-            paidAt: new Date().toISOString(),
-            customerCountry,
-            paymentCurrency,
-            amountTotal,
-            taxAmount,
-            stripeSessionId,
-            stripePaymentIntentId
-          });
-          sendDeliveryEmail(updated).catch(err => {
-            console.error('Email de livrare esuat pentru comanda', orderId, err.message);
-            // nu blocam livrarea — clientul tot poate lua melodia din pagina de succes
-          });
-          // Extrasul WAV (premium/video) NU blocheaza livrarea MP3-ului, deja confirmata
-          // functionala — porneste complet asincron. generatePremiumExtras insasi verifica
-          // order.plan si nu face nimic pentru "standard". Videoclipul (plan "video") NU se
-          // genereaza aici — e declansat explicit de client din /create-video, dupa ce a avut
-          // ocazia sa incarce poze/videoclipuri (vezi generatePremiumExtras si comentariul de
-          // langa endpoint-ul /create-video pentru motiv).
-          generatePremiumExtras(orderId).catch(err => {
-            console.error('Generarea extraselor de pachet a esuat pentru comanda', orderId, err.message);
-          });
-        }
-      }
+      await db.recordStripeEventIfNew(event.id, orderId);
+      console.warn(`Comanda ${orderId || '(necunoscuta)'}: plata intarziata a esuat (checkout.session.async_payment_failed).`);
+      return res.json({ received: true });
     }
+
     res.json({ received: true });
   } catch (err) {
-    console.error('Eroare la procesarea webhook-ului:', err.message);
-    // raspundem 200 catre Stripe ca sa nu reincerce la infinit un eveniment pe care
-    // oricum nu il putem procesa corect fara interventie; eroarea ramane in log.
-    res.json({ received: true, processedWithError: true });
+    // CERINTA D8: la acest punct, orice caz "intelegem evenimentul dar refuzam sa livram"
+    // (suma/moneda/versiune nepotrivita, comanda inexistenta) a fost deja tratat explicit
+    // in processConfirmedPayment() cu un raspuns 200 — o eroare care ajunge AICI e una
+    // TRANZITORIE, neasteptata (DB indisponibila, storage picat etc). Raspundem NON-2xx
+    // intentionat: Stripe va reincerca automat evenimentul mai tarziu, in loc sa-l
+    // consideram "procesat" cand de fapt clientul ar ramane platit fara livrare.
+    console.error('Eroare tranzitorie la procesarea webhook-ului, Stripe va reincerca:', err.message);
+    res.status(500).json({ error: 'Eroare temporară la procesare — se va reîncerca automat.' });
   }
 });
+
+// ==========================================================================================
+// Proceseaza un eveniment Stripe care confirma o plata REALA (payment_status==='paid'),
+// fie din "checkout.session.completed" (metode instant), fie din
+// "checkout.session.async_payment_succeeded" (metode cu decontare intarziata).
+//
+// CERINTA D8 — ATOMICITATE: dedup-ul evenimentului (processed_stripe_events) si actualizarea
+// comenzii (status='ready') se intampla IN ACEEASI TRANZACTIE Postgres (db.recordPaidOrderAtomically)
+// — daca actualizarea comenzii esueaza din orice motiv tranzitoriu (DB, retea), tranzactia
+// intreaga se ROLLBACK, INCLUSIV dedup-ul — Stripe va vedea evenimentul ca neprocesat inca la
+// urmatoarea livrare/retry, deci NU exista nicio fereastra in care "am marcat procesat, dar
+// clientul a ramas neplatit in baza noastra de date, platit la Stripe".
+//
+// CERINTA C6/D7 — VERIFICARI DE VERSIUNE, sumă și monedă, INAINTE de a marca orice comanda
+// drept platita: suma si moneda platite chiar corespund pretului asteptat; sesiunea Stripe
+// e chiar CEA MAI RECENTA creata pentru aceasta comanda (checkout_session_id se potriveste);
+// varianta audio si (pentru pachetul video) revizia materialelor aprobate la checkout inca
+// se potrivesc cu starea CURENTA a comenzii; iar pentru pachetul video, videoclipul acelei
+// variante exacte e inca valid (nu a devenit between-timp "stale"). O sesiune veche — deschisa
+// pentru o versiune pe care clientul a schimbat-o intre timp in alt tab — nu poate debloca
+// sau livra versiunea gresita.
+// ==========================================================================================
+async function processConfirmedPayment(event, session) {
+  const orderId = session.metadata && session.metadata.orderId;
+  if (!orderId) return { httpStatus: 200, body: { received: true, noOrderId: true } };
+
+  const preCheckOrder = await db.getOrderById(orderId);
+  if (!preCheckOrder) return { httpStatus: 200, body: { received: true, orderNotFound: true } };
+
+  // Verificari de INTEGRITATE — respinse sigur, fara sa marcam NIMIC drept platit.
+  const expectedAmount = Number(session.metadata.expectedAmount);
+  const expectedCurrency = session.metadata.expectedCurrency || 'gbp';
+  if (Number.isFinite(expectedAmount) && session.amount_total !== expectedAmount) {
+    console.error(`Comanda ${orderId}: suma platita (${session.amount_total}) nu corespunde sumei asteptate (${expectedAmount}) — livrare refuzata.`);
+    await db.recordStripeEventIfNew(event.id, orderId);
+    return { httpStatus: 200, body: { received: true, rejected: 'amount_mismatch' } };
+  }
+  if (session.currency && session.currency.toLowerCase() !== expectedCurrency.toLowerCase()) {
+    console.error(`Comanda ${orderId}: moneda platita (${session.currency}) nu corespunde monedei asteptate (${expectedCurrency}) — livrare refuzata.`);
+    await db.recordStripeEventIfNew(event.id, orderId);
+    return { httpStatus: 200, body: { received: true, rejected: 'currency_mismatch' } };
+  }
+  // Sesiunea trebuie sa fie CEA MAI RECENTA creata pentru comanda — daca checkout_session_id
+  // din baza de date arata spre o alta sesiune, clientul a deschis un checkout nou (variant
+  // sau materiale schimbate) DUPA aceasta sesiune — aceasta a devenit veche/invalida.
+  if (preCheckOrder.checkoutSessionId && preCheckOrder.checkoutSessionId !== session.id) {
+    console.error(`Comanda ${orderId}: sesiunea Stripe ${session.id} nu mai e cea curenta (curenta: ${preCheckOrder.checkoutSessionId}) — livrare refuzata, posibila versiune veche.`);
+    await db.recordStripeEventIfNew(event.id, orderId);
+    return { httpStatus: 200, body: { received: true, rejected: 'stale_checkout_session' } };
+  }
+  const sessionVariantId = session.metadata.selectedVariantId;
+  if (sessionVariantId && preCheckOrder.selectedVariantId !== sessionVariantId) {
+    console.error(`Comanda ${orderId}: varianta din sesiune (${sessionVariantId}) nu mai corespunde variantei curente (${preCheckOrder.selectedVariantId}) — livrare refuzata.`);
+    await db.recordStripeEventIfNew(event.id, orderId);
+    return { httpStatus: 200, body: { received: true, rejected: 'stale_variant' } };
+  }
+  if (preCheckOrder.plan === 'video') {
+    const sessionMediaRevision = Number(session.metadata.mediaRevision);
+    if (Number.isFinite(sessionMediaRevision) && preCheckOrder.mediaRevision !== sessionMediaRevision) {
+      console.error(`Comanda ${orderId}: revizia materialelor din sesiune (${sessionMediaRevision}) nu mai corespunde reviziei curente (${preCheckOrder.mediaRevision}) — livrare refuzata.`);
+      await db.recordStripeEventIfNew(event.id, orderId);
+      return { httpStatus: 200, body: { received: true, rejected: 'stale_media_revision' } };
+    }
+    const videoVariant = (preCheckOrder.variants || []).find(v => v.id === preCheckOrder.selectedVariantId);
+    if (preCheckOrder.videoStaleReason || !videoVariant || !videoVariant.videoKey) {
+      console.error(`Comanda ${orderId}: videoclipul variantei curente nu (mai) e valid la momentul confirmarii platii — livrare refuzata.`);
+      await db.recordStripeEventIfNew(event.id, orderId);
+      return { httpStatus: 200, body: { received: true, rejected: 'video_not_valid' } };
+    }
+  }
+
+  // Date de tranzactie pastrate pentru evidenta contabila si pregatire OSS — strict cele
+  // returnate de Stripe, fara nicio presupunere sau calcul propriu. NU logam sesiunea Stripe
+  // intreaga (contine date de client) — doar campurile specifice de care avem nevoie.
+  const customerCountry = (session.customer_details && session.customer_details.address && session.customer_details.address.country) || null;
+  const paymentCurrency = session.currency || null;
+  const amountTotal = typeof session.amount_total === 'number' ? session.amount_total / 100 : null;
+  const taxAmount = (session.total_details && typeof session.total_details.amount_tax === 'number')
+    ? session.total_details.amount_tax / 100
+    : null;
+  const stripePaymentIntentId = typeof session.payment_intent === 'string'
+    ? session.payment_intent
+    : (session.payment_intent && session.payment_intent.id) || null;
+
+  const result = await db.recordPaidOrderAtomically(event.id, orderId, {
+    status: 'ready',
+    paidAt: new Date().toISOString(),
+    customerCountry,
+    paymentCurrency,
+    amountTotal,
+    taxAmount,
+    stripeSessionId: session.id,
+    stripePaymentIntentId
+  });
+
+  if (!result.isNewEvent) return { httpStatus: 200, body: { received: true, duplicate: true } };
+  if (!result.order) return { httpStatus: 200, body: { received: true, orderNotFound: true } };
+  if (result.alreadyPaid) return { httpStatus: 200, body: { received: true, alreadyPaid: true } };
+
+  const updated = result.order;
+  sendDeliveryEmail(updated).catch(err => {
+    console.error('Email de livrare esuat pentru comanda', orderId, err.message);
+    // nu blocam livrarea — clientul tot poate lua melodia din pagina de succes
+  });
+  // Extrasul WAV (premium/video) porneste asincron dupa plata — generatePremiumExtras insasi
+  // verifica order.plan si nu face nimic pentru "standard". Videoclipul (plan "video") NU
+  // se genereaza aici — la acest punct e DEJA gata (relansare 2026-08-06: randarea video
+  // se face automat INAINTE de plata; checkout-ul de mai sus refuza plata daca nu e gata),
+  // deci aici doar WAV-ul mai poate lipsi.
+  generatePremiumExtras(orderId).catch(err => {
+    console.error('Generarea extraselor de pachet a esuat pentru comanda', orderId, err.message);
+  });
+
+  return { httpStatus: 200, body: { received: true } };
+}
 
 // -------- securitate: headere HTTP standard. CSP dezactivat explicit — paginile folosesc
 // script/style inline, o politica CSP stricta le-ar rupe fara o refactorizare separata. --------
@@ -640,6 +783,59 @@ app.post('/api/admin/orders/:orderId/retry-extras', async (req, res, next) => {
     const fresh = await db.getOrderById(req.params.orderId);
     const variant = (fresh.variants || []).find(v => v.id === fresh.selectedVariantId);
     res.json({ retried: true, hasWav: !!(variant && variant.wavKey), hasVideo: !!(variant && variant.videoKey), videoFailedReason: variant ? variant.videoFailedReason || null : null });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ==========================================================================================
+// CERINTA G14 — curatare comenzi ABANDONATE (pachetul video, upload de materiale inceput dar
+// niciodata dus la capat — client a incarcat poze, apoi a parasit pagina definitiv, comanda
+// ramane 'draft' la nesfarsit, materialele raman platite in R2 fara sa fie vreodata folosite).
+//
+// INTENTIONAT declansata manual de admin (nu un cron automat) — o stergere gresita de date de
+// client, chiar orfane, e o actiune ireversibila cu consecinte reale; un admin uman decide
+// cand si daca ruleaza, dupa ce vede exact ce ar fi afectat (implicit `dryRun: true`).
+//
+// Criteriu: plan='video', status='draft' (melodia nu a inceput niciodata sa se genereze —
+// nu atinge NICIODATA comenzi cu o melodie sau plata reala), creata cu mai mult de
+// `olderThanDays` zile in urma (implicit 14). NU sterge NICIODATA comenzi 'ready' (platite)
+// sau cu variante deja generate — acelea sunt livrabile valide ale unor comenzi existente,
+// exact ce cerinta G14 interzice explicit sa fie sterse.
+// ==========================================================================================
+app.post('/api/admin/cleanup/abandoned-uploads', express.json(), async (req, res, next) => {
+  try {
+    const olderThanDays = Number(req.body?.olderThanDays) > 0 ? Number(req.body.olderThanDays) : 14;
+    const dryRun = req.body?.dryRun !== false; // implicit TRUE — trebuie cerut explicit dryRun:false pentru stergere reala
+
+    const allOrders = await db.listOrders();
+    const cutoff = Date.now() - olderThanDays * 24 * 60 * 60 * 1000;
+    const candidates = allOrders.filter(o =>
+      o.plan === 'video' &&
+      o.status === 'draft' &&
+      (o.variants || []).length === 0 &&
+      (o.uploadedMedia || []).length > 0 &&
+      new Date(o.createdAt).getTime() < cutoff
+    );
+
+    if (dryRun) {
+      return res.json({
+        dryRun: true,
+        candidateCount: candidates.length,
+        candidates: candidates.map(o => ({ id: o.id, createdAt: o.createdAt, mediaCount: (o.uploadedMedia || []).length }))
+      });
+    }
+
+    let deletedOrders = 0;
+    let deletedFiles = 0;
+    for (const order of candidates) {
+      const files = order.uploadedMedia || [];
+      const results = await Promise.allSettled(files.map(f => storage.deletePrivateFile(f.key)));
+      deletedFiles += results.filter(r => r.status === 'fulfilled').length;
+      await db.updateOrder(order.id, { uploadedMedia: [] });
+      deletedOrders++;
+    }
+    res.json({ dryRun: false, deletedOrders, deletedFiles });
   } catch (err) {
     next(err);
   }
@@ -1278,10 +1474,11 @@ app.get('/api/orders/:orderId', async (req, res, next) => {
     const currentVariant = (order.variants || []).find(v => v.id === order.selectedVariantId);
     let videoStatus = 'none';
     if (order.plan === 'video') {
-      if (order.videoStaleReason) videoStatus = 'stale';
-      else if (order.videoRenderClaimedAt) videoStatus = 'generating';
+      if (isVideoLockActive(order)) videoStatus = 'generating';
+      else if (order.videoStaleReason) videoStatus = 'stale';
       else if (currentVariant && currentVariant.videoKey) videoStatus = 'ready';
       else if (currentVariant && currentVariant.videoFailedReason) videoStatus = 'failed';
+      else if (order.videoRenderClaimedAt) videoStatus = 'failed'; // lock expirat fara rezultat -> recuperabil, nu "generating" etern
     }
 
     // IMPORTANT: raspuns construit explicit, camp cu camp — NU facem spread pe `order`.
@@ -1352,7 +1549,7 @@ app.post('/api/orders/:orderId/checkout', requireOrderToken, async (req, res, ne
       if (mediaCount < ORDER_MEDIA_MIN_ITEMS || mediaCount > ORDER_MEDIA_MAX_ITEMS) {
         return res.status(400).json({ error: `Numărul de materiale salvate trebuie să fie între ${ORDER_MEDIA_MIN_ITEMS} și ${ORDER_MEDIA_MAX_ITEMS}.` });
       }
-      if (order.videoRenderClaimedAt) {
+      if (isVideoLockActive(order)) {
         return res.status(409).json({ error: 'Videoclipul se creează chiar acum — te rugăm încearcă din nou în câteva momente.' });
       }
       if (order.videoStaleReason) {
@@ -1382,6 +1579,24 @@ app.post('/api/orders/:orderId/checkout', requireOrderToken, async (req, res, ne
     // relevante puse la punct). Nu schimba aceasta valoare fara acea configurare prealabila.
     const automaticTaxEnabled = process.env.STRIPE_AUTOMATIC_TAX_ENABLED === 'true';
 
+    // ======================================================================================
+    // Cerinta C6 — sesiunea Stripe trebuie legata de VERSIUNEA EXACTA aprobata acum, nu doar
+    // de orderId. Amprenta = (selectedVariantId, mediaRevision) — salvata atat in metadata
+    // Stripe (verificabila la webhook fara sa ai incredere doar in baza de date), CAT SI in
+    // baza de date (checkout_session_id/variant_id/media_revision), ca sa putem detecta la
+    // webhook o sesiune DEVENITA VECHE intre timp (clientul a deschis checkout, s-a intors,
+    // a ales alta varianta sau a modificat materialele, apoi incearca sa plateasca link-ul
+    // vechi — vezi verificarea explicita din /api/webhook).
+    //
+    // Idempotency key VERSIONATA (nu doar orderId): un dublu-click sau retry pe ACEEASI
+    // versiune tot returneaza aceeasi sesiune Stripe (fara taxare dubla). Dar dupa ce
+    // versiunea aprobata se schimba, o cerere noua de checkout TREBUIE sa produca o sesiune
+    // Stripe noua, distincta — cu cheia veche (doar orderId), Stripe ar fi returnat din nou
+    // sesiunea originala, pentru VECHEA versiune, chiar daca clientul between-timp a ales
+    // alta varianta.
+    // ======================================================================================
+    const versionFingerprint = `${order.selectedVariantId}-${order.mediaRevision}`;
+
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       // FARA payment_method_types fixat la ['card']: neprecizat, Checkout ofera automat
@@ -1408,20 +1623,30 @@ app.post('/api/orders/:orderId/checkout', requireOrderToken, async (req, res, ne
       // restrictionam o adresa de livrare. Asta elimina si blocajul tehnic care limita
       // anterior cumpararea doar la clienti din UK.
       automatic_tax: { enabled: automaticTaxEnabled },
-      metadata: { orderId: order.id },
+      metadata: {
+        orderId: order.id,
+        selectedVariantId: order.selectedVariantId,
+        mediaRevision: String(order.mediaRevision),
+        expectedAmount: String(Math.round(order.price * 100)),
+        expectedCurrency: 'gbp'
+      },
       success_url: `${DOMAIN}/succes.html?order=${order.id}&token=${order.accessToken}`,
       // plata abandonata sau esuata -> revine la pagina dedicata melodiei (nu la formular),
       // cu comanda deja generata si token-ul de acces inclus
       cancel_url: `${DOMAIN}/melodia-mea.html?id=${order.id}&token=${order.accessToken}&resume=1`
     }, {
-      // Idempotency key legata de comanda: un dublu-click, un al doilea tab, sau un retry
-      // client dupa o eroare de retea nu mai creeaza o A DOUA sesiune Stripe independenta
-      // pentru aceeasi comanda — Stripe returneaza exact aceeasi sesiune/URL la cereri
-      // repetate in fereastra sa de idempotenta (~24h). Fara asta, doua sesiuni platite
-      // separat pentru aceeasi comanda ar insemna client taxat de doua ori — garda noastra
-      // interna (status !== 'ready' in webhook) previne doar livrarea/procesarea dubla,
-      // nu si taxarea dubla efectiva la Stripe.
-      idempotencyKey: `checkout-${order.id}`
+      // Idempotency key legata de comanda SI de versiunea aprobata (vezi comentariul de mai
+      // sus) — un dublu-click, un al doilea tab, sau un retry client dupa o eroare de retea,
+      // PENTRU ACEEASI versiune, tot nu mai creeaza o a doua sesiune Stripe independenta.
+      idempotencyKey: `checkout-${order.id}-${versionFingerprint}`
+    });
+
+    // Salvam amprenta EXACT a sesiunii create — folosita la webhook pentru a respinge sigur
+    // orice sesiune care nu mai corespunde versiunii curente a comenzii.
+    await db.updateOrder(order.id, {
+      checkoutSessionId: session.id,
+      checkoutVariantId: order.selectedVariantId,
+      checkoutMediaRevision: order.mediaRevision
     });
 
     res.json({ url: session.url });
@@ -1446,17 +1671,21 @@ app.post('/api/orders/:orderId/checkout', requireOrderToken, async (req, res, ne
 // Raspunsul intoarce explicit ce a reusit si ce nu, cu motiv, ca frontend-ul sa poata arata
 // fiecare fisier cu starea lui reala, fara sa piarda restul batch-ului.
 const ORDER_MEDIA_UPLOADABLE_STATUSES = ['draft', 'preview_ready', 'generation_failed', 'ready'];
-app.post('/api/orders/:orderId/media', requireOrderToken, orderMediaUpload.array('media', ORDER_MEDIA_MAX_ITEMS), async (req, res, next) => {
+app.post('/api/orders/:orderId/media', requireOrderToken, handleOrderMediaUpload, async (req, res, next) => {
+  const files = req.files || [];
+  // curatare INCONDITIONATA a fisierelor temporare de pe disc la iesire — reusite (deja
+  // urcate in R2, copia locala nu mai e necesara) sau esuate deopotriva. Fara asta, fisiere
+  // respinse/esuate s-ar acumula la nesfarsit in TEMP_DIR.
+  const cleanup = () => files.forEach(f => { try { fs.unlinkSync(f.path); } catch (e) { /* best-effort */ } });
+
   try {
     const order = req.order;
-    if (order.plan !== 'video') return res.status(400).json({ error: 'Doar pachetul video acceptă fotografii/videoclipuri.' });
+    if (order.plan !== 'video') { cleanup(); return res.status(400).json({ error: 'Doar pachetul video acceptă fotografii/videoclipuri.' }); }
     if (!ORDER_MEDIA_UPLOADABLE_STATUSES.includes(order.status)) {
+      cleanup();
       return res.status(403).json({ error: 'Nu poți încărca materiale în acest moment — melodia se generează chiar acum.' });
     }
-
-    const existing = order.uploadedMedia || [];
-    const files = req.files || [];
-    if (files.length === 0) return res.status(400).json({ error: 'Niciun fișier primit.' });
+    if (files.length === 0) { cleanup(); return res.status(400).json({ error: 'Niciun fișier primit.' }); }
 
     // "sections" (optional) vine ca un camp text unic in form-data, continand un array JSON
     // de string-uri — ex. '["Copilarie","Prieteni"]' — cate un element per fisier incarcat,
@@ -1470,28 +1699,23 @@ app.post('/api/orders/:orderId/media', requireOrderToken, orderMediaUpload.array
       } catch (e) { /* ramane [] — organizare automata */ }
     }
 
+    // Validare (magic bytes + decodare ffprobe REALA de pe disc) — inainte de orice scriere
+    // in baza de date, deci nu blocheaza tranzactia atomica de mai jos cu I/O lent.
     const uploaded = [];
     const failed = [];
-    let remainingSlots = ORDER_MEDIA_MAX_ITEMS - existing.length;
-
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       const label = file.originalname || `fișier ${i + 1}`;
-      if (remainingSlots <= 0) {
-        failed.push({ filename: label, reason: `Ai atins limita de ${ORDER_MEDIA_MAX_ITEMS} materiale.` });
-        continue;
-      }
       const type = ORDER_MEDIA_MIME_TYPES.photo.includes(file.mimetype) ? 'photo'
         : ORDER_MEDIA_MIME_TYPES.video.includes(file.mimetype) ? 'video' : null;
-      if (!type) {
-        failed.push({ filename: label, reason: `Tip de fișier neacceptat: ${file.mimetype}` });
-        continue;
-      }
-      if (!bufferMatchesDeclaredType(file.buffer, file.mimetype)) {
+      if (!type) { failed.push({ filename: label, reason: `Tip de fișier neacceptat: ${file.mimetype}` }); continue; }
+
+      const header = await readFileHeader(file.path, 16);
+      if (!bufferMatchesDeclaredType(header, file.mimetype)) {
         failed.push({ filename: label, reason: 'Conținutul fișierului nu corespunde tipului declarat.' });
         continue;
       }
-      const decodable = await verifyMediaDecodable(file.buffer, file.mimetype, type);
+      const decodable = await verifyMediaDecodable(file.path, file.mimetype, type);
       if (!decodable.ok) {
         failed.push({ filename: label, reason: `Fișierul nu poate fi procesat (${decodable.reason}). Încearcă alt fișier sau alt format.` });
         continue;
@@ -1499,25 +1723,49 @@ app.post('/api/orders/:orderId/media', requireOrderToken, orderMediaUpload.array
       const ext = path.extname(file.originalname).toLowerCase() || (type === 'photo' ? '.jpg' : '.mp4');
       const key = `orders/memories/${order.id}/${randomUUID()}${ext}`;
       try {
-        await storage.uploadPrivateBuffer(file.buffer, key, file.mimetype);
+        await storage.uploadPrivateFile(file.path, key, file.mimetype);
       } catch (err) {
         failed.push({ filename: label, reason: 'Eroare la salvare — te rugăm încearcă din nou.' });
         continue;
       }
       uploaded.push({ key, type, section: (typeof sections[i] === 'string' && sections[i].trim()) ? sections[i].trim() : null, filename: label });
-      remainingSlots--;
+    }
+    cleanup();
+
+    if (uploaded.length === 0) {
+      return res.json({ uploaded: [], failed, total: (order.uploadedMedia || []).length });
     }
 
-    const updatedMedia = [...existing, ...uploaded];
-    if (uploaded.length > 0) {
-      await db.updateOrder(order.id, { uploadedMedia: updatedMedia });
+    // PERSISTENTA ATOMICA — SELECT ... FOR UPDATE (vezi db.mutateOrderMediaAtomically)
+    // serializeaza aceasta scriere fata de orice alta mutatie concurenta a acestei comenzi
+    // (alt fisier din acelasi lot, sau o stergere/reordonare aproape simultana), citind
+    // starea REALA chiar in momentul scrierii — nu mai exista cursa in care doua cereri
+    // citesc acelasi uploadedMedia "vechi" si una suprascrie rezultatul celeilalte.
+    const mutation = await db.mutateOrderMediaAtomically(order.id, (current) => {
+      const existing = current.uploadedMedia || [];
+      const room = ORDER_MEDIA_MAX_ITEMS - existing.length;
+      if (room <= 0) return null; // deja plin — nimic din acest lot nu mai incape
+      const accepted = uploaded.slice(0, room);
+      const overflow = uploaded.slice(room);
+      overflow.forEach(u => failed.push({ filename: u.filename, reason: `Ai atins limita de ${ORDER_MEDIA_MAX_ITEMS} materiale.` }));
+      return { uploadedMedia: [...existing, ...accepted] };
+    });
+
+    if (!mutation.ok) {
+      // limita era deja atinsa de o alta cerere concurenta intre timp — fisierele erau deja
+      // urcate in R2 (irosite, dar nu corupem nimic); le stergem din storage.
+      uploaded.forEach(u => storage.deletePrivateFile(u.key).catch(() => {}));
+      uploaded.forEach(u => failed.push({ filename: u.filename, reason: `Ai atins limita de ${ORDER_MEDIA_MAX_ITEMS} materiale.` }));
+      return res.json({ uploaded: [], failed, total: (order.uploadedMedia || []).length });
     }
+
     res.json({
-      uploaded: uploaded.map(u => ({ type: u.type, filename: u.filename, section: u.section })),
+      uploaded: uploaded.filter(u => (mutation.order.uploadedMedia || []).some(m => m.key === u.key)).map(u => ({ type: u.type, filename: u.filename, section: u.section })),
       failed,
-      total: updatedMedia.length
+      total: mutation.order.uploadedMedia.length
     });
   } catch (err) {
+    cleanup();
     next(err);
   }
 });
@@ -1546,22 +1794,29 @@ app.get('/api/orders/:orderId/media/:index/preview-url', requireOrderToken, asyn
   }
 });
 
+// Toate cele 3 rute de mai jos (eliminare/schimbare sectiune/reordonare) trec acum prin
+// db.mutateOrderMediaAtomically — aceeasi rezervare SELECT ... FOR UPDATE ca la upload,
+// deci nu mai pot rula "peste" un upload concurent aflat in curs. Fiecare mutatie reusita
+// creste automat media_revision, sterge media_confirmed_at (cere reconfirmare) si marcheaza
+// video_stale_reason='media_changed' daca exista deja un videoclip gata — vezi cerinta B3.
 app.delete('/api/orders/:orderId/media/:index', requireOrderToken, async (req, res, next) => {
   try {
     const order = req.order;
     if (order.plan !== 'video') return res.status(400).json({ error: 'Doar pachetul video are fotografii/videoclipuri.' });
     const idx = Number(req.params.index);
-    const existing = order.uploadedMedia || [];
-    if (!Number.isInteger(idx) || idx < 0 || idx >= existing.length) {
-      return res.status(400).json({ error: 'Index invalid.' });
-    }
-    const removed = existing[idx];
-    const updatedMedia = existing.filter((_, i) => i !== idx);
-    await db.updateOrder(order.id, { uploadedMedia: updatedMedia });
+
+    let removed = null;
+    const mutation = await db.mutateOrderMediaAtomically(order.id, (current) => {
+      const existing = current.uploadedMedia || [];
+      if (!Number.isInteger(idx) || idx < 0 || idx >= existing.length) return null;
+      removed = existing[idx];
+      return { uploadedMedia: existing.filter((_, i) => i !== idx) };
+    });
+    if (!mutation.ok) return res.status(400).json({ error: 'Index invalid.' });
     if (removed && removed.key) {
       storage.deletePrivateFile(removed.key).catch(err => console.error('Nu am putut sterge fisierul de amintiri:', err.message));
     }
-    res.json({ ok: true, total: updatedMedia.length });
+    res.json({ ok: true, total: mutation.order.uploadedMedia.length });
   } catch (err) {
     next(err);
   }
@@ -1574,13 +1829,14 @@ app.put('/api/orders/:orderId/media/:index/section', express.json(), requireOrde
     const order = req.order;
     if (order.plan !== 'video') return res.status(400).json({ error: 'Doar pachetul video are fotografii/videoclipuri.' });
     const idx = Number(req.params.index);
-    const existing = order.uploadedMedia || [];
-    if (!Number.isInteger(idx) || idx < 0 || idx >= existing.length) {
-      return res.status(400).json({ error: 'Index invalid.' });
-    }
     const section = (typeof req.body?.section === 'string' && req.body.section.trim()) ? req.body.section.trim() : null;
-    const updatedMedia = existing.map((m, i) => i === idx ? { ...m, section } : m);
-    await db.updateOrder(order.id, { uploadedMedia: updatedMedia });
+
+    const mutation = await db.mutateOrderMediaAtomically(order.id, (current) => {
+      const existing = current.uploadedMedia || [];
+      if (!Number.isInteger(idx) || idx < 0 || idx >= existing.length) return null;
+      return { uploadedMedia: existing.map((m, i) => i === idx ? { ...m, section } : m) };
+    });
+    if (!mutation.ok) return res.status(400).json({ error: 'Index invalid.' });
     res.json({ ok: true });
   } catch (err) {
     next(err);
@@ -1594,20 +1850,19 @@ app.put('/api/orders/:orderId/media/reorder', express.json(), requireOrderToken,
   try {
     const order = req.order;
     if (order.plan !== 'video') return res.status(400).json({ error: 'Doar pachetul video are fotografii/videoclipuri.' });
-    const existing = order.uploadedMedia || [];
     const newOrder = Array.isArray(req.body?.order) ? req.body.order : null;
-    if (!newOrder || newOrder.length !== existing.length) {
-      return res.status(400).json({ error: 'Ordine invalidă.' });
-    }
-    const seen = new Set();
-    for (const idx of newOrder) {
-      if (!Number.isInteger(idx) || idx < 0 || idx >= existing.length || seen.has(idx)) {
-        return res.status(400).json({ error: 'Ordine invalidă.' });
+
+    const mutation = await db.mutateOrderMediaAtomically(order.id, (current) => {
+      const existing = current.uploadedMedia || [];
+      if (!newOrder || newOrder.length !== existing.length) return null;
+      const seen = new Set();
+      for (const idx of newOrder) {
+        if (!Number.isInteger(idx) || idx < 0 || idx >= existing.length || seen.has(idx)) return null;
+        seen.add(idx);
       }
-      seen.add(idx);
-    }
-    const reordered = newOrder.map(idx => existing[idx]);
-    await db.updateOrder(order.id, { uploadedMedia: reordered });
+      return { uploadedMedia: newOrder.map(idx => existing[idx]) };
+    });
+    if (!mutation.ok) return res.status(400).json({ error: 'Ordine invalidă.' });
     res.json({ ok: true });
   } catch (err) {
     next(err);
@@ -1619,16 +1874,32 @@ app.put('/api/orders/:orderId/media/reorder', express.json(), requireOrderToken,
 // pentru pachetul video (vezi verificarea order.mediaConfirmedAt in POST /generate mai jos).
 // Cere intre ORDER_MEDIA_MIN_ITEMS si ORDER_MEDIA_MAX_ITEMS materiale deja salvate cu succes —
 // re-confirmabil oricand (ex. clientul mai adauga/elimina materiale si confirma din nou).
+// Foloseste SELECT ... FOR UPDATE (transactie dedicata) — confirmarea trebuie sa vada
+// numarul REAL de materiale, nu unul citit inainte ca un upload concurent sa se termine.
 app.post('/api/orders/:orderId/media/confirm', requireOrderToken, async (req, res, next) => {
   try {
     const order = req.order;
     if (order.plan !== 'video') return res.status(400).json({ error: 'Doar pachetul video necesită confirmarea materialelor.' });
-    const count = (order.uploadedMedia || []).length;
-    if (count < ORDER_MEDIA_MIN_ITEMS || count > ORDER_MEDIA_MAX_ITEMS) {
+
+    const result = await db.confirmMediaSelection(order.id, ORDER_MEDIA_MIN_ITEMS, ORDER_MEDIA_MAX_ITEMS);
+
+    if (!result.ok) {
+      const count = result.count ?? (order.uploadedMedia || []).length;
       return res.status(400).json({ error: `Ai nevoie de între ${ORDER_MEDIA_MIN_ITEMS} și ${ORDER_MEDIA_MAX_ITEMS} materiale pentru a continua (ai ${count}).` });
     }
-    await db.updateOrder(order.id, { mediaConfirmedAt: new Date().toISOString() });
-    res.json({ ok: true, confirmed: true, total: count });
+
+    // Cerinta B3: reconfirmarea materialelor, cand melodia e DEJA generata (comanda nu mai e
+    // 'draft'), trebuie sa declanseze regenerarea videoclipului pentru selectia noua — clientul
+    // a modificat materialele DUPA ce videoclipul initial exista deja, apoi a reconfirmat.
+    // Daca melodia inca nu exista (status 'draft'), nu e nimic de declansat aici — /generate
+    // porneste totul, imediat ce clientul apasa "Continua si creeaza cadoul".
+    if (result.order.status === 'preview_ready' && result.order.selectedVariantId) {
+      triggerVideoGeneration(result.order.id, result.order.selectedVariantId).catch(err => {
+        console.error('Regenerarea videoclipului dupa reconfirmarea materialelor a esuat pentru comanda', order.id, err.message);
+      });
+    }
+
+    res.json({ ok: true, confirmed: true, total: result.order.uploadedMedia.length });
   } catch (err) {
     next(err);
   }
@@ -1666,7 +1937,7 @@ app.post('/api/orders/:orderId/create-video', requireOrderToken, async (req, res
     if (variant && variant.videoKey && !order.videoStaleReason) {
       return res.json({ started: false, alreadyReady: true });
     }
-    if (order.videoRenderClaimedAt) {
+    if (isVideoLockActive(order)) {
       return res.status(409).json({ error: 'Videoclipul este deja în curs de creare.' });
     }
 
@@ -1690,22 +1961,52 @@ app.post('/api/orders/:orderId/create-video', requireOrderToken, async (req, res
 // valabil pentru variantId cerut, nu porneste o a doua randare.
 // ==========================================================================================
 async function triggerVideoGeneration(orderId, variantId) {
-  const claimedOrder = await db.claimVideoRender(orderId, variantId);
+  const orderAtStart = await db.getOrderById(orderId);
+  if (!orderAtStart) return;
+  const mediaRevisionAtStart = orderAtStart.mediaRevision;
+
+  // Lock-ul e legat de (orderId, variantId, mediaRevision) — vezi cerinta E9 ("un render
+  // pentru A nu poate sterge staleReason pentru B"). Rezultatul acestei randari va fi scris
+  // DOAR daca aceasta tripleta inca reprezinta versiunea curenta la momentul finalizarii —
+  // verificat explicit in generatePremiumExtras() inainte de orice scriere a videoKey.
+  const claimedOrder = await db.claimVideoRender(orderId, variantId, mediaRevisionAtStart);
   if (!claimedOrder) return; // randare deja activa (lock neexpirat) — no-op sigur
 
+  let versionChangedDuringRender = false;
   try {
-    await generatePremiumExtras(orderId, { forceVideo: true });
-    const fresh = await db.getOrderById(orderId);
-    const variant = fresh && (fresh.variants || []).find(v => v.id === variantId);
-    if (variant && variant.videoKey) {
-      // succes: videoclipul curent redevine valabil pentru varianta curenta —
-      // orice marcaj anterior de "depasit" nu mai are sens, il curatam.
-      await db.updateOrder(orderId, { videoStaleReason: null });
+    await generatePremiumExtras(orderId, { forceVideo: true, forVariantId: variantId, forMediaRevision: mediaRevisionAtStart });
+
+    const stillCurrent = await db.isVideoClaimStillCurrent(orderId, variantId, mediaRevisionAtStart);
+    if (!stillCurrent) {
+      versionChangedDuringRender = true;
+    } else {
+      const fresh = await db.getOrderById(orderId);
+      const variant = fresh && (fresh.variants || []).find(v => v.id === variantId);
+      if (variant && variant.videoKey) {
+        // succes, si versiunea inca e cea curenta: videoclipul redevine valabil —
+        // orice marcaj anterior de "depasit" nu mai are sens, il curatam.
+        await db.updateOrder(orderId, { videoStaleReason: null });
+      }
     }
   } catch (err) {
     console.error(`Comanda ${orderId}: triggerVideoGeneration a esuat pentru varianta ${variantId}:`, err.message);
   } finally {
     await db.releaseVideoRender(orderId);
+  }
+
+  // Cerinta E9/E10: dupa eliberarea lock-ului, reevaluam versiunea CURENTA (clientul a
+  // putut schimba varianta sau materialele cat randarea era in desfasurare) si pornim
+  // automat randarea necesara pentru ea, daca nu exista deja un videoclip valid.
+  if (versionChangedDuringRender) {
+    const current = await db.getOrderById(orderId);
+    if (current && current.plan === 'video' && current.selectedVariantId && current.mediaConfirmedAt) {
+      const currentVariant = (current.variants || []).find(v => v.id === current.selectedVariantId);
+      if (!currentVariant || !currentVariant.videoKey) {
+        triggerVideoGeneration(orderId, current.selectedVariantId).catch(err => {
+          console.error(`Comanda ${orderId}: re-randare dupa schimbare de versiune a esuat:`, err.message);
+        });
+      }
+    }
   }
 }
 
@@ -2128,19 +2429,31 @@ async function finalizeVariantsIfNeeded(orderId, tracks, taskId) {
       }
     }
 
-    // La o REGENERARE (nu la generarea initiala, unde claimed.variants e []), variantele
-    // vechi tocmai inlocuite mai sus raman orfane in bucket-urile R2/S3 daca nu le stergem
-    // explicit — nimic altceva nu le mai atinge vreodata. Curatare best-effort, DUPA ce noile
-    // variante sunt deja salvate cu succes (niciodata invers — nu stergem fisiere vechi inainte
-    // sa fie sigur ca inlocuitorii lor exista), si niciodata pentru comenzi deja 'ready'
-    // (regenerarea e blocata dupa plata, deci nu atinge niciodata fisierul livrat clientului).
-    // Doar bucket-urile cloud — fallback-ul local nu e productie recomandata, nu adaugam
-    // aceeasi complexitate acolo.
+    // ======================================================================================
+    // CERINTA G14 — politica de curatare pentru versiuni audio inlocuite. La o REGENERARE
+    // (nu la generarea initiala, unde claimed.variants e []), variantele vechi tocmai
+    // inlocuite mai sus raman orfane in bucket-urile R2/S3 daca nu le stergem explicit —
+    // nimic altceva nu le mai atinge vreodata (variants[] a fost deja INLOCUIT COMPLET cu
+    // array-ul nou, cateva linii mai sus). Stergem acum fullKey/previewKey SI wavKey/videoKey
+    // — cu noua arhitectura de versionare (mediaRevision/selectedVariantId + sesiuni Stripe
+    // legate strict de versiunea aprobata, vezi checkout/webhook), un videoclip/WAV al unei
+    // variante INLOCUITE nu mai poate fi livrat legitim niciodata (nu exista nicio cale in
+    // aplicatie care sa mai citeasca acele chei) — pastrarea lor "pentru rollback" nu mai are
+    // sens functional, doar ocupa spatiu de stocare la nesfarsit.
+    //
+    // Curatare best-effort, DUPA ce noile variante sunt deja salvate cu succes (niciodata
+    // invers — nu stergem fisiere vechi inainte sa fie sigur ca inlocuitorii lor exista), si
+    // niciodata pentru comenzi deja 'ready' (regenerarea e blocata dupa plata, deci nu atinge
+    // niciodata fisierul livrat clientului). Doar bucket-urile cloud — fallback-ul local nu e
+    // productie recomandata, nu adaugam aceeasi complexitate acolo.
+    // ======================================================================================
     if (storage.CLOUD_ENABLED && claimed.variants && claimed.variants.length > 0) {
       const oldVariants = claimed.variants;
       Promise.allSettled(oldVariants.flatMap(v => [
         v.fullKey ? storage.deletePrivateFile(v.fullKey) : null,
-        v.previewKey ? storage.deletePublicFile(v.previewKey) : null
+        v.previewKey ? storage.deletePublicFile(v.previewKey) : null,
+        v.wavKey ? storage.deletePrivateFile(v.wavKey) : null,
+        v.videoKey ? storage.deletePrivateFile(v.videoKey) : null
       ].filter(Boolean))).then(results => {
         const failed = results.filter(r => r.status === 'rejected');
         if (failed.length > 0) {
@@ -2464,7 +2777,7 @@ async function buildVariantFromTrack(orderId, variantId, track, taskId) {
 // WAV, care ramane mereu automat) — motivul e sa nu existe nicio cursa intre "clientul inca
 // incarca poze/videoclipuri" si randarea care ar porni oricum, fara ele, daca ar fi automata.
 async function generatePremiumExtras(orderId, options = {}) {
-  const { forceVideo = false } = options;
+  const { forceVideo = false, forVariantId = null, forMediaRevision = null } = options;
   const order = await db.getOrderById(orderId);
   if (!order || order.plan === 'standard') return; // standard nu are extrase de generat
   if (!storage.CLOUD_ENABLED) {
@@ -2508,12 +2821,30 @@ async function generatePremiumExtras(orderId, options = {}) {
     }
 
     if (Object.keys(patch).length > 0) {
-      const fresh = await db.getOrderById(orderId);
-      if (fresh) {
-        const updatedVariants = (fresh.variants || []).map(v =>
-          v.id === order.selectedVariantId ? { ...v, ...patch } : v
-        );
-        await db.updateOrder(orderId, { variants: updatedVariants });
+      // Cerinta E9: daca acest apel a fost facut PENTRU o versiune specifica (variantId +
+      // mediaRevision, vezi triggerVideoGeneration), verificam ca acea versiune INCA e
+      // cea curenta inainte de a scrie rezultatul — un randare care se termina dupa ce
+      // clientul a schimbat deja varianta sau materialele NU are voie sa scrie peste
+      // versiunea noua. WAV-ul (nu depinde de materiale/mediaRevision) se scrie oricum;
+      // doar videoKey/sectionTimings/videoFailedReason sunt conditionate de versiune.
+      let allowVideoWrite = true;
+      if (forVariantId !== null && forMediaRevision !== null) {
+        allowVideoWrite = await db.isVideoClaimStillCurrent(orderId, forVariantId, forMediaRevision);
+        if (!allowVideoWrite) {
+          console.warn(`Comanda ${orderId}: rezultatul video pentru varianta ${forVariantId}/revizia ${forMediaRevision} a fost aruncat — versiunea nu mai e cea curenta.`);
+        }
+      }
+      const videoOnlyKeys = ['videoKey', 'sectionTimings', 'videoFailedReason'];
+      const finalPatch = allowVideoWrite ? patch : Object.fromEntries(Object.entries(patch).filter(([k]) => !videoOnlyKeys.includes(k)));
+
+      if (Object.keys(finalPatch).length > 0) {
+        const fresh = await db.getOrderById(orderId);
+        if (fresh) {
+          const updatedVariants = (fresh.variants || []).map(v =>
+            v.id === order.selectedVariantId ? { ...v, ...finalPatch } : v
+          );
+          await db.updateOrder(orderId, { variants: updatedVariants });
+        }
       }
     }
   } catch (err) {
@@ -2775,11 +3106,12 @@ async function buildMemoryBackground(order, mediaItems, durationSeconds, section
 
     const n = downloaded.length;
     // Faza 2 (implementata): daca exista sectiuni REALE (marcaje Suno, nu presupuneri),
-    // alocam durata fiecarui segment proportional cu ferestrele reale ale melodiei — vezi
-    // computeSectionAwareSegmentDurations(). FARA date reale suficiente, revenim explicit
-    // la Faza 1 (distributie egala), clar etichetata in log ca fallback, niciodata
-    // prezentata drept aliniere reala pe sectiuni.
-    let segDurations = computeSectionAwareSegmentDurations(n, durationSeconds, sectionTimings, MEMORY_XFADE_SECONDS);
+    // plasam fiecare material CU eticheta de sectiune in fereastra reala corespunzatoare
+    // (cerinta F12 — nu doar sortate global si impartite proportional cu marimea
+    // ferestrelor) — vezi computeSectionAwareSegmentDurations(). FARA date reale
+    // suficiente, revenim explicit la distributia egala, clar etichetata in log ca
+    // fallback, niciodata prezentata drept aliniere reala pe sectiuni.
+    let segDurations = computeSectionAwareSegmentDurations(downloaded, durationSeconds, sectionTimings, MEMORY_XFADE_SECONDS);
     const usedRealTiming = !!segDurations;
     if (!segDurations) {
       const equalDuration = (durationSeconds + (n - 1) * MEMORY_XFADE_SECONDS) / n;
@@ -2849,13 +3181,17 @@ async function generateLyricVideo(order, variant, tempFullMp3Path) {
   try {
     const mediaItems = order.uploadedMedia || [];
     if (mediaItems.length > 0) {
-      try {
-        memoryBackground = await buildMemoryBackground(order, mediaItems, durationSeconds, sectionTimings);
-        perfLog(order.id, 'memory_background_ready', `elemente=${mediaItems.length}`);
-      } catch (err) {
-        console.error(`Comanda ${order.id}: pipeline-ul cinematic cu amintiri a esuat, revin la fundalul solid:`, err.message);
-        memoryBackground = null;
-      }
+      // CERINTA B4: pentru pachetul "video", clientul a incarcat materiale reale — un
+      // videoclip cu fundal solid (fara pozele/filmarile lui) NU e un rezultat acceptabil
+      // ca livrabil final, indiferent cat de robust ar parea tehnic. Daca pipeline-ul
+      // cinematic esueaza, NU mai facem fallback silentios pe fundal solid — aruncam mai
+      // departe, generateLyricVideo esueaza complet, iar generatePremiumExtras marcheaza
+      // explicit videoStatus='failed' cu motiv, pastreaza melodia si permite retry doar
+      // pentru video. Fundalul solid ramane folosit DOAR cand clientul chiar nu are
+      // materiale incarcate (mediaItems.length === 0) — caz limita pentru comenzi vechi,
+      // nu un fallback de eroare.
+      memoryBackground = await buildMemoryBackground(order, mediaItems, durationSeconds, sectionTimings);
+      perfLog(order.id, 'memory_background_ready', `elemente=${mediaItems.length}`);
     }
 
     // Verificat direct pe Railway (2026-08-03, comanda 59ae99f9, plata reala): libass,

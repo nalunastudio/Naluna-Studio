@@ -1059,19 +1059,34 @@
     return div.innerHTML;
   }
 
-  function selectVariant(index) {
-    selectedVariantIndex = index;
+  // Elimina cursa dintre selectarea variantei si plata: butonul de checkout se
+  // DEZACTIVEAZA imediat si ramane asa pana cand serverul confirma explicit ca
+  // selectedVariantId a fost salvat SI starea reala a comenzii (inclusiv videoStatus,
+  // pentru pachetul video) a fost reincarcata — niciodata pe baza unei presupuneri optimiste
+  // facute inainte ca raspunsul sa fi ajuns.
+  async function selectVariant(index) {
     document.querySelectorAll('.variant-card').forEach((card, i) => card.classList.toggle('selected', i === index));
     selectedVariantLabelEl.textContent = index + 1;
 
     const v = currentOrder && currentOrder.variants && currentOrder.variants[index];
-    if (v) {
-      fetch(`/api/orders/${orderId}/select`, {
+    if (!v) return;
+    selectedVariantIndex = index;
+
+    checkoutBtn.disabled = true;
+    try {
+      const res = await fetch(`/api/orders/${orderId}/select`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Access-Token': accessToken },
         body: JSON.stringify({ variantId: v.id })
       });
+      if (!res.ok) throw new Error('select failed');
+    } catch (e) {
+      statusMsgEl.textContent = t.msg_conn_error;
+      statusMsgEl.className = 'status-err';
     }
+    // Reincarca starea REALA a comenzii de pe server (inclusiv videoStatus) — checkoutBtn
+    // e re-activat DOAR daca starea confirmata chiar il permite (vezi updateVideoStatusUI).
+    await loadOrder();
   }
 
   function openLyricsEditor(variant) {
