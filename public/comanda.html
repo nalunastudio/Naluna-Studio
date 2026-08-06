@@ -124,14 +124,28 @@
 
   .plan-list{ display:flex; flex-direction:column; gap:12px; }
   .plan{
-    border:1px solid var(--line); border-radius:14px; padding:19px 21px;
-    display:flex; align-items:center; justify-content:space-between; cursor:pointer;
-    transition:border-color .2s ease, background-color .2s ease;
+    border:2px solid var(--line); border-radius:14px; padding:19px 21px;
+    display:flex; align-items:center; justify-content:space-between; gap:14px; cursor:pointer;
+    transition:border-color .2s ease, background-color .2s ease; position:relative;
   }
-  .plan.active{ border-color:var(--gold); background:rgba(168,131,75,.06); }
-  .plan-name{ font-weight:600; font-size:15px; }
-  .plan-desc{ color:var(--text-secondary); font-size:13px; margin-top:2px; }
-  .plan-price{ font-family:'Fraunces', serif; font-size:22px; color:var(--gold-deep); }
+  .plan:focus-visible{ outline:2px solid var(--gold-deep); outline-offset:2px; }
+  /* Contrast mai puternic la selectie decat doar o tenta de fundal 6% — bordura ingrosata
+     (2px) + bifa vizibila fac starea "selectat" clara si fara culoare, pentru accesibilitate. */
+  .plan.active{ border-color:var(--gold-deep); background:rgba(168,131,75,.09); }
+  .plan-check{
+    flex-shrink:0; width:22px; height:22px; border-radius:50%; border:2px solid var(--line);
+    display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700;
+    color:transparent; background:var(--surface); transition:all .2s ease;
+  }
+  .plan.active .plan-check{ border-color:var(--gold-deep); background:var(--gold-deep); color:#fff; }
+  .plan-body{ flex:1; }
+  .plan-name{ font-weight:700; font-size:15px; }
+  .plan-subtitle{ color:var(--gold-deep); font-size:12.5px; font-weight:600; margin-top:2px; }
+  .plan-desc{ color:var(--text-secondary); font-size:13px; margin-top:4px; line-height:1.5; }
+  .plan-price{ font-family:'Fraunces', serif; font-size:22px; color:var(--gold-deep); flex-shrink:0; }
+  @media (max-width: 480px){
+    .plan{ flex-wrap:wrap; }
+  }
 
   .order-summary{ margin-top:22px; padding-top:22px; border-top:1px solid var(--line); }
 
@@ -341,25 +355,31 @@
     <div class="step-card" data-step="4" style="display:none;">
       <h1 data-i18n="wizard_step4_title">Alege pachetul</h1>
 
-      <div class="plan-list" id="plan-list">
-        <div class="plan active" data-plan="standard" data-price="15">
-          <div>
+      <div class="plan-list" id="plan-list" role="radiogroup" aria-label="Pachet">
+        <div class="plan active" data-plan="standard" data-price="15" role="radio" aria-selected="true" tabindex="0">
+          <span class="plan-check">✓</span>
+          <div class="plan-body">
             <div class="plan-name" data-i18n="plan_standard_name">Standard</div>
+            <div class="plan-subtitle" data-i18n="plan_standard_subtitle">O melodie personalizată</div>
             <div class="plan-desc" data-i18n="plan_standard_desc">1 versiune, ~2 minute, livrare pe email</div>
           </div>
           <div class="plan-price">£15</div>
         </div>
-        <div class="plan" data-plan="premium" data-price="25">
-          <div>
+        <div class="plan" data-plan="premium" data-price="25" role="radio" aria-selected="false" tabindex="0">
+          <span class="plan-check">✓</span>
+          <div class="plan-body">
             <div class="plan-name" data-i18n="plan_premium_name">Premium</div>
-            <div class="plan-desc" data-i18n="plan_premium_desc">2 versiuni la alegere + fișier WAV descărcabil</div>
+            <div class="plan-subtitle" data-i18n="plan_premium_subtitle">Două variante ale melodiei</div>
+            <div class="plan-desc" data-i18n="plan_premium_desc">2 versiuni la alegere + fișier audio la calitate înaltă</div>
           </div>
           <div class="plan-price">£25</div>
         </div>
-        <div class="plan" data-plan="video" data-price="35">
-          <div>
+        <div class="plan" data-plan="video" data-price="35" role="radio" aria-selected="false" tabindex="0">
+          <span class="plan-check">✓</span>
+          <div class="plan-body">
             <div class="plan-name" data-i18n="plan_video_name">Cadou video</div>
-            <div class="plan-desc" data-i18n="plan_video_desc">Melodie + video cu versuri pentru social/WhatsApp</div>
+            <div class="plan-subtitle" data-i18n="plan_video_subtitle">Melodie personalizată cu videoclip</div>
+            <div class="plan-desc" data-i18n="plan_video_desc">Melodie + videoclip sincronizat, cu pozele și filmările tale</div>
           </div>
           <div class="plan-price">£35</div>
         </div>
@@ -370,13 +390,10 @@
         <div class="row total"><span data-i18n="sum_total">Total</span><span id="sum-total">£15</span></div>
       </div>
 
+      <!-- Dinamic — populat de renderBenefits() cu beneficiile REALE ale pachetului
+           selectat curent (nu un text static identic pentru toate pachetele). -->
       <div class="benefits-card">
-        <div class="benefits-list">
-          <div class="benefit-item"><span class="benefit-check">✓</span><span class="benefit-text" data-i18n="benefit_1">Primești 2 variante gratuite.</span></div>
-          <div class="benefit-item"><span class="benefit-check">✓</span><span class="benefit-text" data-i18n="benefit_2">Dacă niciuna nu este exact cum îți dorești, poți face o editare gratuită și vom crea încă 2 variante noi pentru povestea ta.</span></div>
-          <div class="benefit-item"><span class="benefit-check">✓</span><span class="benefit-text" data-i18n="benefit_3">Nu plătești acum. Plătești doar dacă îți place rezultatul.</span></div>
-          <div class="benefit-item"><span class="benefit-check">✓</span><span class="benefit-text" data-i18n="benefit_4">Dacă apare o problemă tehnică cu comanda ta, te contactăm pentru remediere sau rambursare.</span></div>
-        </div>
+        <div class="benefits-list" id="benefits-list"></div>
       </div>
 
       <button type="submit" class="btn btn-primary" id="generate-btn" style="width:100%; justify-content:center; margin-top:20px;">
@@ -450,11 +467,38 @@
       voice_note: 'Vom alege vocea care se potrivește cel mai bine poveștii tale',
       label_package: 'Alege pachetul',
       plan_standard_name: 'Standard',
+      plan_standard_subtitle: 'O melodie personalizată',
       plan_standard_desc: '1 versiune, ~2 minute, livrare pe email',
       plan_premium_name: 'Premium',
-      plan_premium_desc: '2 versiuni la alegere + fișier WAV descărcabil',
+      plan_premium_subtitle: 'Două variante ale melodiei',
+      plan_premium_desc: '2 versiuni la alegere + fișier audio la calitate înaltă',
       plan_video_name: 'Cadou video',
-      plan_video_desc: 'Melodie + video cu versuri pentru social/WhatsApp',
+      plan_video_subtitle: 'Melodie personalizată cu videoclip',
+      plan_video_desc: 'Melodie + videoclip sincronizat, cu pozele și filmările tale',
+      benefits_standard: [
+        'Primești o versiune a melodiei, creată din povestea și preferințele tale',
+        'Durată aproximativă de 2 minute',
+        'O poți asculta și descărca după plată',
+        'Primești melodia și pe email',
+        'Ai dreptul la o editare gratuită, dacă nu e exact cum vrei'
+      ],
+      benefits_premium: [
+        'Primești două versiuni diferite ale melodiei',
+        'Alegi varianta care îți place mai mult',
+        'Ai inclusă o modificare gratuită',
+        'Audio la calitate înaltă (fișier WAV) — păstrează mai bine claritatea sunetului și e potrivit pentru păstrare sau editare; nu ai nevoie de cunoștințe tehnice ca să-l folosești',
+        'Poți asculta și descărca rezultatul după plată'
+      ],
+      benefits_video: [
+        'Încarci între 3 și 10 fotografii sau videoclipuri înainte de creare',
+        'Primești două variante ale melodiei, la fel ca la Premium',
+        'Alegi versiunea preferată',
+        'Creăm un videoclip sincronizat cu aceeași melodie, folosind fotografiile și filmările tale',
+        'Videoclipul include versuri și tranziții potrivite muzicii',
+        'Este pregătit pentru WhatsApp și rețelele sociale',
+        'Ai inclusă o modificare gratuită',
+        'După plată primești melodia completă și videoclipul complet, separat'
+      ],
       sum_package: 'Pachet',
       sum_total: 'Total',
       btn_generate: 'Generează previzualizarea gratuit →',
@@ -535,11 +579,38 @@
       voice_note: 'We\'ll choose the voice that best fits your story',
       label_package: 'Choose your package',
       plan_standard_name: 'Standard',
+      plan_standard_subtitle: 'A personalised song',
       plan_standard_desc: '1 version, ~2 minutes, delivered by email',
       plan_premium_name: 'Premium',
-      plan_premium_desc: '2 versions to choose from + downloadable WAV file',
+      plan_premium_subtitle: 'Two versions of the song',
+      plan_premium_desc: '2 versions to choose from + high-quality audio file',
       plan_video_name: 'Video gift',
-      plan_video_desc: 'Song + lyric video for social/WhatsApp',
+      plan_video_subtitle: 'Personalised song with video',
+      plan_video_desc: 'Song + synced video with your own photos and clips',
+      benefits_standard: [
+        'You get one version of the song, written from your story and preferences',
+        'About 2 minutes long',
+        'You can listen to and download it after payment',
+        'We also send the song to your email',
+        "You get one free edit if it's not quite right"
+      ],
+      benefits_premium: [
+        'You get two different versions of the song',
+        'You choose the one you like best',
+        'One free edit is included',
+        "High-quality audio file (WAV) — keeps the sound clearer and is better for keeping or editing; you don't need any technical knowledge to use it",
+        'You can listen to and download the result after payment'
+      ],
+      benefits_video: [
+        'Upload 3 to 10 photos or video clips before we start',
+        'You get two versions of the song, just like Premium',
+        'You choose your favourite version',
+        'We create a video synced to that same song, using your own photos and clips',
+        'The video includes lyrics and transitions that follow the music',
+        'Ready to share on WhatsApp and social media',
+        'One free edit is included',
+        'After payment you get the full song and the full video, delivered separately'
+      ],
       sum_package: 'Package',
       sum_total: 'Total',
       btn_generate: 'Generate your free preview →',
@@ -620,11 +691,38 @@
       voice_note: 'Wir wählen die Stimme, die am besten zu deiner Geschichte passt',
       label_package: 'Paket wählen',
       plan_standard_name: 'Standard',
+      plan_standard_subtitle: 'Ein persönliches Lied',
       plan_standard_desc: '1 Version, ca. 2 Minuten, per E-Mail geliefert',
       plan_premium_name: 'Premium',
-      plan_premium_desc: '2 Versionen zur Wahl + herunterladbare WAV-Datei',
+      plan_premium_subtitle: 'Zwei Versionen des Liedes',
+      plan_premium_desc: '2 Versionen zur Wahl + hochwertige Audiodatei',
       plan_video_name: 'Video-Geschenk',
-      plan_video_desc: 'Lied + Lyric-Video für Social Media/WhatsApp',
+      plan_video_subtitle: 'Persönliches Lied mit Video',
+      plan_video_desc: 'Lied + synchronisiertes Video mit deinen eigenen Fotos und Clips',
+      benefits_standard: [
+        'Du bekommst eine Version des Liedes, geschrieben nach deiner Geschichte und deinen Wünschen',
+        'Etwa 2 Minuten lang',
+        'Du kannst es nach der Zahlung anhören und herunterladen',
+        'Wir schicken dir das Lied auch per E-Mail',
+        'Du hast eine kostenlose Änderung, falls es nicht ganz passt'
+      ],
+      benefits_premium: [
+        'Du bekommst zwei verschiedene Versionen des Liedes',
+        'Du wählst die aus, die dir am besten gefällt',
+        'Eine kostenlose Änderung ist inbegriffen',
+        'Hochwertige Audiodatei (WAV) — klingt klarer und eignet sich besser zum Aufbewahren oder Bearbeiten; du brauchst kein technisches Wissen dafür',
+        'Du kannst das Ergebnis nach der Zahlung anhören und herunterladen'
+      ],
+      benefits_video: [
+        'Lade 3 bis 10 Fotos oder Videoclips hoch, bevor wir starten',
+        'Du bekommst zwei Versionen des Liedes, genau wie bei Premium',
+        'Du wählst deine bevorzugte Version',
+        'Wir erstellen ein Video, das genau auf dieses Lied abgestimmt ist, mit deinen eigenen Fotos und Clips',
+        'Das Video enthält den Liedtext und Übergänge, die zur Musik passen',
+        'Bereit zum Teilen auf WhatsApp und in sozialen Medien',
+        'Eine kostenlose Änderung ist inbegriffen',
+        'Nach der Zahlung bekommst du das vollständige Lied und das vollständige Video, getrennt geliefert'
+      ],
       sum_package: 'Paket',
       sum_total: 'Gesamt',
       btn_generate: 'Kostenlose Vorschau erstellen →',
@@ -705,11 +803,38 @@
       voice_note: 'Elegiremos la voz que mejor se adapte a tu historia',
       label_package: 'Elige tu paquete',
       plan_standard_name: 'Estándar',
+      plan_standard_subtitle: 'Una canción personalizada',
       plan_standard_desc: '1 versión, ~2 minutos, entrega por email',
       plan_premium_name: 'Premium',
-      plan_premium_desc: '2 versiones a elegir + archivo WAV descargable',
+      plan_premium_subtitle: 'Dos versiones de la canción',
+      plan_premium_desc: '2 versiones a elegir + archivo de audio de alta calidad',
       plan_video_name: 'Regalo en video',
-      plan_video_desc: 'Canción + video lírico para redes/WhatsApp',
+      plan_video_subtitle: 'Canción personalizada con video',
+      plan_video_desc: 'Canción + video sincronizado con tus propias fotos y videos',
+      benefits_standard: [
+        'Recibes una versión de la canción, creada a partir de tu historia y tus preferencias',
+        'Duración aproximada de 2 minutos',
+        'Puedes escucharla y descargarla después del pago',
+        'También te enviamos la canción por email',
+        'Tienes derecho a una edición gratuita si no queda exactamente como quieres'
+      ],
+      benefits_premium: [
+        'Recibes dos versiones diferentes de la canción',
+        'Eliges la que más te guste',
+        'Incluye una modificación gratuita',
+        'Archivo de audio de alta calidad (WAV) — conserva mejor la claridad del sonido y es adecuado para guardar o editar; no necesitas conocimientos técnicos para usarlo',
+        'Puedes escuchar y descargar el resultado después del pago'
+      ],
+      benefits_video: [
+        'Subes entre 3 y 10 fotos o videos antes de empezar',
+        'Recibes dos versiones de la canción, igual que en Premium',
+        'Eliges la versión que prefieras',
+        'Creamos un video sincronizado con esa misma canción, usando tus propias fotos y videos',
+        'El video incluye la letra y transiciones acordes a la música',
+        'Listo para compartir en WhatsApp y redes sociales',
+        'Incluye una modificación gratuita',
+        'Después del pago recibes la canción completa y el video completo, por separado'
+      ],
       sum_package: 'Paquete',
       sum_total: 'Total',
       btn_generate: 'Generar previsualización gratis →',
@@ -790,11 +915,38 @@
       voice_note: 'Sceglieremo la voce più adatta alla tua storia',
       label_package: 'Scegli il pacchetto',
       plan_standard_name: 'Standard',
+      plan_standard_subtitle: 'Una canzone personalizzata',
       plan_standard_desc: '1 versione, ~2 minuti, consegna via email',
       plan_premium_name: 'Premium',
-      plan_premium_desc: '2 versioni a scelta + file WAV scaricabile',
+      plan_premium_subtitle: 'Due versioni della canzone',
+      plan_premium_desc: '2 versioni a scelta + file audio ad alta qualità',
       plan_video_name: 'Regalo video',
-      plan_video_desc: 'Canzone + video con testo per social/WhatsApp',
+      plan_video_subtitle: 'Canzone personalizzata con video',
+      plan_video_desc: 'Canzone + video sincronizzato con le tue foto e i tuoi video',
+      benefits_standard: [
+        'Ricevi una versione della canzone, scritta a partire dalla tua storia e dalle tue preferenze',
+        'Durata di circa 2 minuti',
+        'Puoi ascoltarla e scaricarla dopo il pagamento',
+        'Ti inviamo la canzone anche via email',
+        'Hai diritto a una modifica gratuita se non è esattamente come desideri'
+      ],
+      benefits_premium: [
+        'Ricevi due versioni diverse della canzone',
+        'Scegli quella che preferisci',
+        'È inclusa una modifica gratuita',
+        'File audio ad alta qualità (WAV) — mantiene il suono più chiaro ed è adatto per conservare o modificare; non servono competenze tecniche per usarlo',
+        'Puoi ascoltare e scaricare il risultato dopo il pagamento'
+      ],
+      benefits_video: [
+        'Carichi da 3 a 10 foto o video prima di iniziare',
+        'Ricevi due versioni della canzone, come nel Premium',
+        'Scegli la versione che preferisci',
+        'Creiamo un video sincronizzato con quella stessa canzone, usando le tue foto e i tuoi video',
+        'Il video include il testo e transizioni in sintonia con la musica',
+        'Pronto da condividere su WhatsApp e sui social',
+        'È inclusa una modifica gratuita',
+        'Dopo il pagamento ricevi la canzone completa e il video completo, consegnati separatamente'
+      ],
       sum_package: 'Pacchetto',
       sum_total: 'Totale',
       btn_generate: 'Genera l\'anteprima gratis →',
@@ -875,11 +1027,38 @@
       voice_note: 'Nous choisirons la voix qui convient le mieux à votre histoire',
       label_package: 'Choisissez votre pack',
       plan_standard_name: 'Standard',
+      plan_standard_subtitle: 'Une chanson personnalisée',
       plan_standard_desc: '1 version, ~2 minutes, livrée par email',
       plan_premium_name: 'Premium',
-      plan_premium_desc: '2 versions au choix + fichier WAV téléchargeable',
+      plan_premium_subtitle: 'Deux versions de la chanson',
+      plan_premium_desc: '2 versions au choix + fichier audio haute qualité',
       plan_video_name: 'Cadeau vidéo',
-      plan_video_desc: 'Chanson + vidéo lyrics pour réseaux sociaux/WhatsApp',
+      plan_video_subtitle: 'Chanson personnalisée avec vidéo',
+      plan_video_desc: 'Chanson + vidéo synchronisée avec vos propres photos et vidéos',
+      benefits_standard: [
+        'Vous recevez une version de la chanson, écrite à partir de votre histoire et de vos préférences',
+        'Environ 2 minutes',
+        "Vous pouvez l'écouter et la télécharger après le paiement",
+        'Nous vous envoyons aussi la chanson par email',
+        "Vous avez droit à une modification gratuite si ce n'est pas tout à fait ce que vous souhaitez"
+      ],
+      benefits_premium: [
+        'Vous recevez deux versions différentes de la chanson',
+        'Vous choisissez celle que vous préférez',
+        'Une modification gratuite est incluse',
+        "Fichier audio haute qualité (WAV) — un son plus clair, adapté pour la conservation ou le montage; aucune connaissance technique n'est nécessaire pour l'utiliser",
+        'Vous pouvez écouter et télécharger le résultat après le paiement'
+      ],
+      benefits_video: [
+        'Téléversez 3 à 10 photos ou vidéos avant de commencer',
+        'Vous recevez deux versions de la chanson, comme avec Premium',
+        'Vous choisissez votre version préférée',
+        'Nous créons une vidéo synchronisée avec cette même chanson, à partir de vos propres photos et vidéos',
+        'La vidéo inclut les paroles et des transitions adaptées à la musique',
+        'Prête à partager sur WhatsApp et les réseaux sociaux',
+        'Une modification gratuite est incluse',
+        'Après le paiement, vous recevez la chanson complète et la vidéo complète, livrées séparément'
+      ],
       sum_package: 'Pack',
       sum_total: 'Total',
       btn_generate: 'Générer l\'aperçu gratuit →',
@@ -960,11 +1139,38 @@
       voice_note: 'Ще изберем гласа, който пасва най-добре на историята ти',
       label_package: 'Избери пакет',
       plan_standard_name: 'Стандартен',
+      plan_standard_subtitle: 'Персонализирана песен',
       plan_standard_desc: '1 версия, ~2 минути, доставка по имейл',
       plan_premium_name: 'Премиум',
-      plan_premium_desc: '2 версии за избор + файл WAV за изтегляне',
+      plan_premium_subtitle: 'Две версии на песента',
+      plan_premium_desc: '2 версии за избор + аудио файл с високо качество',
       plan_video_name: 'Видео подарък',
-      plan_video_desc: 'Песен + видео с текст за социални мрежи/WhatsApp',
+      plan_video_subtitle: 'Персонализирана песен с видео',
+      plan_video_desc: 'Песен + синхронизирано видео с твоите снимки и видеоклипове',
+      benefits_standard: [
+        'Получаваш една версия на песента, създадена по твоята история и предпочитания',
+        'Продължителност около 2 минути',
+        'Можеш да я слушаш и изтеглиш след плащане',
+        'Изпращаме песента и на имейла ти',
+        'Имаш право на една безплатна редакция, ако не е точно както искаш'
+      ],
+      benefits_premium: [
+        'Получаваш две различни версии на песента',
+        'Избираш тази, която ти харесва повече',
+        'Включена е една безплатна промяна',
+        'Аудио файл с високо качество (WAV) — запазва по-добре яснотата на звука и е подходящ за съхранение или редактиране; не са нужни технически познания, за да го използваш',
+        'Можеш да слушаш и изтеглиш резултата след плащане'
+      ],
+      benefits_video: [
+        'Качваш между 3 и 10 снимки или видеоклипа преди създаването',
+        'Получаваш две версии на песента, както при Премиум',
+        'Избираш предпочитаната версия',
+        'Създаваме видео, синхронизирано със същата песен, с твоите снимки и видеоклипове',
+        'Видеото включва текста на песента и преходи, съобразени с музиката',
+        'Готово за споделяне в WhatsApp и социалните мрежи',
+        'Включена е една безплатна промяна',
+        'След плащането получаваш пълната песен и пълното видео, доставени отделно'
+      ],
       sum_package: 'Пакет',
       sum_total: 'Общо',
       btn_generate: 'Генерирай безплатен преглед →',
@@ -1045,11 +1251,38 @@
       voice_note: 'Hikayenize en uygun sesi biz seçeceğiz',
       label_package: 'Paketinizi seçin',
       plan_standard_name: 'Standart',
+      plan_standard_subtitle: 'Kişiye özel bir şarkı',
       plan_standard_desc: '1 versiyon, ~2 dakika, e-posta ile teslim',
       plan_premium_name: 'Premium',
-      plan_premium_desc: 'Seçilecek 2 versiyon + indirilebilir WAV dosyası',
+      plan_premium_subtitle: 'Şarkının iki versiyonu',
+      plan_premium_desc: 'Seçilecek 2 versiyon + yüksek kaliteli ses dosyası',
       plan_video_name: 'Video hediye',
-      plan_video_desc: 'Şarkı + sosyal medya/WhatsApp için sözlü video',
+      plan_video_subtitle: 'Videolu kişiye özel şarkı',
+      plan_video_desc: 'Şarkı + kendi fotoğraf ve videolarınızla senkronize video',
+      benefits_standard: [
+        'Hikayenize ve tercihlerinize göre yazılmış bir şarkı versiyonu alırsınız',
+        'Yaklaşık 2 dakika uzunluğunda',
+        'Ödemeden sonra dinleyebilir ve indirebilirsiniz',
+        'Şarkıyı e-postanıza da gönderiyoruz',
+        'Tam istediğiniz gibi değilse bir ücretsiz düzenleme hakkınız var'
+      ],
+      benefits_premium: [
+        'Şarkının iki farklı versiyonunu alırsınız',
+        'En çok beğendiğinizi seçersiniz',
+        'Bir ücretsiz düzenleme dahildir',
+        'Yüksek kaliteli ses dosyası (WAV) — sesi daha net tutar, saklamak veya düzenlemek için uygundur; kullanmak için teknik bilgiye ihtiyacınız yoktur',
+        'Ödemeden sonra sonucu dinleyebilir ve indirebilirsiniz'
+      ],
+      benefits_video: [
+        'Başlamadan önce 3 ile 10 arası fotoğraf veya video yüklersiniz',
+        "Premium'da olduğu gibi şarkının iki versiyonunu alırsınız",
+        'Tercih ettiğiniz versiyonu seçersiniz',
+        'Kendi fotoğraf ve videolarınızı kullanarak bu şarkıyla senkronize bir video oluştururuz',
+        'Video, şarkı sözlerini ve müziğe uygun geçişleri içerir',
+        "WhatsApp ve sosyal medyada paylaşıma hazırdır",
+        'Bir ücretsiz düzenleme dahildir',
+        'Ödemeden sonra tam şarkıyı ve tam videoyu ayrı ayrı alırsınız'
+      ],
       sum_package: 'Paket',
       sum_total: 'Toplam',
       btn_generate: 'Ücretsiz ön izlemeyi oluştur →',
@@ -1315,20 +1548,39 @@
   const plans = document.querySelectorAll('.plan');
   const sumPlan = document.getElementById('sum-plan');
   const sumTotal = document.getElementById('sum-total');
+  const benefitsListEl = document.getElementById('benefits-list');
   let selectedPlan = { id: 'standard', price: 15, label: 'Standard' };
 
+  // Beneficiile REALE ale pachetului curent — sursa unica e obiectul de traduceri
+  // (t.benefits_standard/premium/video), acelasi obiect din care se randeaza si restul
+  // textelor paginii, ca sa nu poata exista o lista veche/gresita afisata pentru un plan.
+  function renderBenefits(planId) {
+    const key = `benefits_${planId}`;
+    const items = (translations[currentLang] && translations[currentLang][key]) || translations.ro[key] || [];
+    benefitsListEl.innerHTML = items.map(text => `
+      <div class="benefit-item"><span class="benefit-check">✓</span><span class="benefit-text">${text}</span></div>
+    `).join('');
+  }
+
+  function selectPlan(p) {
+    plans.forEach(x => { x.classList.remove('active'); x.setAttribute('aria-selected', 'false'); });
+    p.classList.add('active');
+    p.setAttribute('aria-selected', 'true');
+    selectedPlan = {
+      id: p.dataset.plan,
+      price: Number(p.dataset.price),
+      label: p.querySelector('.plan-name').textContent
+    };
+    sumPlan.textContent = selectedPlan.label;
+    sumTotal.textContent = '£' + selectedPlan.price;
+    renderBenefits(selectedPlan.id);
+    saveDraft();
+  }
+
   plans.forEach(p => {
-    p.addEventListener('click', () => {
-      plans.forEach(x => x.classList.remove('active'));
-      p.classList.add('active');
-      selectedPlan = {
-        id: p.dataset.plan,
-        price: Number(p.dataset.price),
-        label: p.querySelector('.plan-name').textContent
-      };
-      sumPlan.textContent = selectedPlan.label;
-      sumTotal.textContent = '£' + selectedPlan.price;
-      saveDraft();
+    p.addEventListener('click', () => selectPlan(p));
+    p.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectPlan(p); }
     });
   });
 
@@ -1404,8 +1656,9 @@
     if (draft.plan) {
       const planEl = document.querySelector(`.plan[data-plan="${draft.plan}"]`);
       if (planEl) {
-        plans.forEach(x => x.classList.remove('active'));
+        plans.forEach(x => { x.classList.remove('active'); x.setAttribute('aria-selected', 'false'); });
         planEl.classList.add('active');
+        planEl.setAttribute('aria-selected', 'true');
         selectedPlan = {
           id: planEl.dataset.plan,
           price: Number(planEl.dataset.price),
@@ -1429,6 +1682,7 @@
   form.addEventListener('input', saveDraft);
 
   applyLang(currentLang);
+  renderBenefits(selectedPlan.id);
   showStep(restoredStep);
 
   const statusMsg = document.getElementById('status-msg');
@@ -1481,6 +1735,22 @@
         currentAccessToken = createData.accessToken || '';
         pendingOrderId = currentOrderId;
         pendingAccessToken = currentAccessToken;
+      }
+
+      // ======================================================================================
+      // FLUXUL OBLIGATORIU "CADOU VIDEO": materialele trebuie incarcate SI confirmate explicit
+      // INAINTE ca melodia sa inceapa sa se genereze (cerintele 5-6 din fluxul obligatoriu) —
+      // deci pentru acest pachet NU apelam /generate aici. Redirectionam direct catre
+      // melodia-mea.html, care recunoaste o comanda 'draft' cu plan==='video' si arata
+      // ecranul dedicat de upload; /generate e apelat de ACEA pagina, abia dupa confirmare.
+      // Standard/Premium raman neschimbate: /generate porneste imediat, ca inainte.
+      // ======================================================================================
+      if (selectedPlan.id === 'video') {
+        localStorage.removeItem(DRAFT_KEY);
+        localStorage.removeItem(STEP_KEY);
+        const tokenParam = encodeURIComponent(currentAccessToken);
+        window.location.href = `/melodia-mea.html?id=${currentOrderId}&token=${tokenParam}`;
+        return;
       }
 
       // IMPORTANT: verificam raspunsul lui /generate explicit — inainte, cererea era

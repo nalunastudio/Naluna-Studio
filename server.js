@@ -7,7 +7,7 @@
 //    server-side dupa pachet — pretul trimis de client NU e niciodata folosit direct).
 // 3. POST /api/orders/:id/generate trimite UN SINGUR apel catre SunoAPI, care returneaza
 //    de obicei 2 piese per task — folosite ca cele 2 variante. Pentru fiecare, descarca
-//    fisierul complet (privat), taie un preview de 55 sec cu ffmpeg, citeste durata reala.
+//    fisierul complet (privat), taie un preview de PREVIEW_SECONDS (40 sec) cu ffmpeg, citeste durata reala.
 // 4. Clientul asculta, alege o varianta (POST /api/orders/:id/select), sau cere editari
 //    (POST /api/orders/:id/regenerate) — 3 runde gratuite.
 // 5. POST /api/orders/:id/checkout creeaza sesiunea Stripe — vanzare internationala, fara
@@ -53,6 +53,15 @@ const execFileAsync = promisify(execFile);
 const db = require('./db');
 const storage = require('./storage');
 const credits = require('./credits');
+const {
+  bufferMatchesDeclaredType,
+  normalizeSectionType,
+  extractSectionMarkersFromAlignedWords,
+  deriveSectionTimings,
+  computeSectionAwareSegmentDurations,
+  MEMORY_SECTION_ORDER,
+  sortMediaBySection
+} = require('./lib/media-analysis');
 
 // -------- Validare stricta a variabilelor de mediu obligatorii, la pornire --------
 // Mai bine esueaza clar la boot decat sa porneasca "pe jumatate" si sa pice abia la prima comanda.
@@ -237,31 +246,6 @@ const TESTIMONIAL_MIME_TYPES = {
 };
 const TESTIMONIAL_MAX_BYTES = 60 * 1024 * 1024; // 60MB — suficient pentru un video scurt de telefon
 
-// Verificare "magic bytes" — validarea de mai sus (file.mimetype) se bazeaza STRICT pe
-// Content-Type-ul declarat de clientul care trimite cererea (usor de falsificat, verificat
-// direct in auditul de securitate 2026-08-03: un fisier arbitrar cu Content-Type "image/png"
-// declarat manual trece validarea, indiferent de continutul real). Aceasta verificare
-// suplimentara citeste primii octeti REALI ai fisierului si confirma ca formatul declarat
-// chiar corespunde continutului. Nu inlocuieste validarea de mimetype, o completeaza.
-function bufferMatchesDeclaredType(buffer, mimetype) {
-  const sig = (bytes) => bytes.every((b, i) => buffer[i] === b);
-  switch (mimetype) {
-    case 'image/jpeg': return sig([0xFF, 0xD8, 0xFF]);
-    case 'image/png': return sig([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
-    case 'image/webp': return sig([0x52, 0x49, 0x46, 0x46]) && buffer.slice(8, 12).toString('ascii') === 'WEBP';
-    case 'video/webm': return sig([0x1A, 0x45, 0xDF, 0xA3]);
-    case 'video/mp4':
-    case 'video/quicktime':
-    case 'image/heic':
-    case 'image/heif':
-    case 'audio/mp4':
-    case 'audio/x-m4a': return buffer.slice(4, 8).toString('ascii') === 'ftyp'; // container ISO-BMFF comun (MP4/MOV/HEIC/HEIF)
-    case 'audio/wav': return sig([0x52, 0x49, 0x46, 0x46]) && buffer.slice(8, 12).toString('ascii') === 'WAVE';
-    case 'audio/mpeg': return sig([0x49, 0x44, 0x33]) || (buffer[0] === 0xFF && (buffer[1] & 0xE0) === 0xE0);
-    default: return false;
-  }
-}
-
 // -------- incarcare fotografii/videoclipuri client, pentru pachetul "video" (memorii) --------
 const ORDER_MEDIA_MIME_TYPES = {
   photo: ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'],
@@ -269,6 +253,15 @@ const ORDER_MEDIA_MIME_TYPES = {
 };
 const ORDER_MEDIA_MAX_BYTES = 150 * 1024 * 1024; // 150MB — suficient pentru un videoclip scurt de telefon la calitate buna
 const ORDER_MEDIA_MAX_ITEMS = 10;
+// Minimul cerut de fluxul "Cadou video" (cerinta de business, nu doar text in UI) —
+// vezi POST /api/orders/:orderId/media/confirm si /checkout, care il aplica server-side.
+const ORDER_MEDIA_MIN_ITEMS = 3;
+// Durata maxima acceptata per videoclip incarcat de client — configurabila, ca sa poata
+// fi ajustata fara redeploy de cod daca decizia de business se schimba. Documentata in
+// README/.env.example. Implicit 120s (2 minute) — suficient pentru un clip de telefon,
+// suficient de mic sa nu domine disproportionat durata finala a videoclipului cadou.
+const ORDER_MEDIA_MAX_VIDEO_SECONDS = Number(process.env.ORDER_MEDIA_MAX_VIDEO_SECONDS) > 0
+  ? Number(process.env.ORDER_MEDIA_MAX_VIDEO_SECONDS) : 120;
 
 const orderMediaUpload = multer({
   storage: multer.memoryStorage(),
@@ -279,6 +272,48 @@ const orderMediaUpload = multer({
     cb(new Error(`Tip de fisier neacceptat: ${file.mimetype}`));
   }
 });
+
+// ==========================================================================================
+// Verificare REALA de decodare, prin ffprobe — validarea de mai sus (MIME declarat + magic
+// bytes) confirma doar ca fisierul are FORMATUL corect (container-ul), nu ca serverul chiar
+// poate sa-l DECODEZE. Un HEIC valid ca fisier poate folosi un profil de compresie pe care
+// build-ul de ffmpeg din productie nu-l suporta; un MOV/MP4 cu codec HEVC valid ca si container
+// poate esua identic la decodare. FARA aceasta verificare, un asemenea fisier era acceptat la
+// upload si esua abia mult mai tarziu, in tacere, la randarea videoclipului final (fallback pe
+// fundal solid, fara nicio poza a clientului si fara nicio eroare vizibila lui) — exact
+// scenariul pe care auditul l-a semnalat ca risc real. Acum respingem explicit, la upload,
+// orice fisier pe care ffprobe nu poate sa-l citeasca, cu un mesaj clar in limba comenzii.
+// ==========================================================================================
+async function verifyMediaDecodable(buffer, mimetype, type) {
+  const tmpPath = path.join(TEMP_DIR, `probe-${randomUUID()}`);
+  try {
+    fs.writeFileSync(tmpPath, buffer);
+    const { stdout } = await execFileAsync('ffprobe', [
+      '-v', 'error', '-print_format', 'json',
+      '-show_entries', 'stream=codec_type,codec_name', '-show_entries', 'format=duration',
+      tmpPath
+    ], { timeout: 20000 });
+    let parsed;
+    try { parsed = JSON.parse(stdout); } catch (e) { return { ok: false, reason: 'raspuns ffprobe invalid' }; }
+    const streams = Array.isArray(parsed.streams) ? parsed.streams : [];
+    if (type === 'photo') {
+      const hasImage = streams.some(s => s.codec_type === 'video' || s.codec_type === 'image');
+      if (!hasImage) return { ok: false, reason: 'niciun flux de imagine decodabil' };
+      return { ok: true };
+    }
+    const videoStream = streams.find(s => s.codec_type === 'video');
+    if (!videoStream) return { ok: false, reason: 'niciun flux video decodabil' };
+    const durationSeconds = parsed.format && parsed.format.duration ? Number(parsed.format.duration) : null;
+    if (durationSeconds && durationSeconds > ORDER_MEDIA_MAX_VIDEO_SECONDS) {
+      return { ok: false, reason: `durata (${Math.round(durationSeconds)}s) depășește limita de ${ORDER_MEDIA_MAX_VIDEO_SECONDS}s` };
+    }
+    return { ok: true, durationSeconds };
+  } catch (err) {
+    return { ok: false, reason: 'fișier corupt sau imposibil de decodat' };
+  } finally {
+    try { if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath); } catch (e) { /* best-effort */ }
+  }
+}
 
 // memoryStorage — fisierul ajunge in req.file.buffer, ca sa-l putem urca direct in cloud
 // fara sa-l scriem intai pe disc. Pentru fallback local, il scriem noi manual din buffer.
@@ -361,6 +396,15 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, 
       const session = event.data.object;
       const orderId = session.metadata && session.metadata.orderId;
       if (orderId) {
+        // DEDUP ATOMIC la nivel de eveniment Stripe individual (event.id), NU doar la nivel
+        // de comanda — vezi comentariul din db.js (processed_stripe_events) pentru motiv
+        // exact. Garda existenta pe status !== 'ready' de mai jos ramane si ea (acopera
+        // corect reincercarile secventiale); aceasta acopera in plus fereastra teoretica de
+        // doua livrari ale aceluiasi eveniment aproape simultane.
+        const isNewEvent = await db.recordStripeEventIfNew(event.id, orderId);
+        if (!isNewEvent) {
+          return res.json({ received: true, duplicate: true });
+        }
         const order = await db.getOrderById(orderId);
         if (order && order.status !== 'ready') {
           // Date de tranzactie pastrate pentru evidenta contabila si pregatire OSS —
@@ -581,14 +625,21 @@ app.post('/api/admin/orders/:orderId/retry-extras', async (req, res, next) => {
     if (!UUID_RE.test(req.params.orderId)) return res.status(400).json({ error: 'ID comandă invalid.' });
     const order = await db.getOrderById(req.params.orderId);
     if (!order) return res.status(404).json({ error: 'Comanda nu există.' });
-    if (order.status !== 'ready') return res.status(400).json({ error: 'Comanda nu e încă plătită.' });
+    if (order.status !== 'ready' && order.status !== 'preview_ready') return res.status(400).json({ error: 'Comanda nu e încă plătită.' });
 
-    // forceVideo:true aici — spre deosebire de declansarea automata din webhook, acesta e un
-    // instrument de recuperare manuala si trebuie sa poata reincerca si videoclipul, nu doar WAV.
-    await generatePremiumExtras(req.params.orderId, { forceVideo: true });
+    // Pachetul "video" trece prin acelasi punct unic de intrare (triggerVideoGeneration),
+    // cu rezervarea atomica persistenta — un admin care da retry nu trebuie sa poata porni
+    // o a doua randare in paralel cu una deja in curs, declansata automat de flux.
+    // generatePremiumExtras() genereaza si WAV-ul in acelasi apel (comun premium/video),
+    // deci un singur retry acopera ambele extrase pentru pachetul video.
+    if (order.plan === 'video' && order.selectedVariantId) {
+      await triggerVideoGeneration(order.id, order.selectedVariantId);
+    } else {
+      await generatePremiumExtras(req.params.orderId, { forceVideo: false });
+    }
     const fresh = await db.getOrderById(req.params.orderId);
     const variant = (fresh.variants || []).find(v => v.id === fresh.selectedVariantId);
-    res.json({ retried: true, hasWav: !!(variant && variant.wavKey), hasVideo: !!(variant && variant.videoKey) });
+    res.json({ retried: true, hasWav: !!(variant && variant.wavKey), hasVideo: !!(variant && variant.videoKey), videoFailedReason: variant ? variant.videoFailedReason || null : null });
   } catch (err) {
     next(err);
   }
@@ -924,6 +975,15 @@ app.post('/api/orders/:orderId/generate', generationLimiter, requireOrderToken, 
     if (!order) return res.status(404).json({ error: 'Comanda nu există.' });
     if (order.status === 'ready') return res.status(400).json({ error: 'Comanda e deja plătită și finalizată.' });
 
+    // Fluxul obligatoriu "Cadou video": materialele trebuie incarcate SI confirmate explicit
+    // ("5. Confirmă selecția materialelor") INAINTE ca generarea gratuita a melodiei sa
+    // poata porni ("6. Numai după salvarea tuturor materialelor începe generarea melodiei") —
+    // verificare server-side, nu doar ordine sugerata in interfata (un client care ar apela
+    // acest endpoint direct, fara sa fi trecut prin UI, nu poate ocoli pasul de upload).
+    if (order.plan === 'video' && !order.mediaConfirmedAt) {
+      return res.status(400).json({ error: 'Încarcă și confirmă fotografiile/videoclipurile înainte de a genera melodia.' });
+    }
+
     // Blocaj impotriva a doua generari in paralel pentru aceeasi comanda — fara asta,
     // un dublu-click sau un retry de pe client ar putea porni un al doilea task SunoAPI
     // in timp ce primul e inca activ, consumand credite degeaba pentru aceeasi comanda.
@@ -1045,6 +1105,16 @@ app.post('/api/orders/:orderId/regenerate', generationLimiter, requireOrderToken
       return res.status(409).json({ error: 'Generarea este deja în desfășurare.' });
     }
 
+    // Pachetul "video": daca varianta care tocmai a fost inlocuita avea un videoclip gata,
+    // marcam explicit comanda ca avand un videoclip depasit — vezi cerinta 10 a fluxului
+    // obligatoriu ("editarea melodiei invalidează videoclipul vechi"). variants[] va fi
+    // inlocuit COMPLET la finalul acestei regenerari (finalizeVariantsIfNeeded), deci
+    // referinta veche la videoKey oricum dispare din order.variants — acest flag doar face
+    // explicit, imediat (inainte ca regenerarea sa se termine), ca plata trebuie blocata.
+    if (order.plan === 'video' && sourceVariant.videoKey) {
+      await db.updateOrder(order.id, { videoStaleReason: 'song_regenerated' });
+    }
+
     // Daca varianta aleasa are versuri editate manual (melodia-mea.html), le folosim ca
     // instructiune puternica pentru urmatoarea generare. IMPORTANT (vezi si comentariul
     // din extractSunoTracks): SunoAPI, in configuratia confirmata (customMode:false), NU
@@ -1121,10 +1191,39 @@ app.post('/api/orders/:orderId/select', requireOrderToken, async (req, res, next
     const order = req.order;
 
     const { variantId } = req.body || {};
-    const exists = (order.variants || []).some(v => v.id === variantId);
-    if (!exists) return res.status(400).json({ error: 'Varianta nu există.' });
+    const newVariant = (order.variants || []).find(v => v.id === variantId);
+    if (!newVariant) return res.status(400).json({ error: 'Varianta nu există.' });
 
-    await db.updateOrder(order.id, { selectedVariantId: variantId });
+    const patch = { selectedVariantId: variantId };
+
+    // Pachetul "video": schimbarea variantei audio active poate lasa un videoclip deja gata
+    // "in urma" — legat inca de varianta PARASITA, nu de cea nou aleasa. Vezi cerinta 10 a
+    // fluxului obligatoriu: "Dacă utilizatorul schimbă varianta... videoclipul anterior este
+    // marcat ca depășit". Fisierul videoclipului vechi ramane neatins (stocat sub cheia
+    // variantei vechi, in variants[]) — doar marcam explicit, la nivel de comanda, ca nu mai
+    // poate fi livrat/platit ca fiind "al variantei curente", si declansam automat o randare
+    // noua pentru varianta nou aleasa.
+    if (order.plan === 'video') {
+      const oldVariant = (order.variants || []).find(v => v.id === order.selectedVariantId);
+      const oldHadVideo = !!(oldVariant && oldVariant.videoKey);
+      const newAlreadyHasVideo = !!newVariant.videoKey;
+      if (newAlreadyHasVideo) {
+        // clientul revine la o varianta care avea deja un videoclip gata (ex. comuta inainte
+        // si inapoi intre cele 2 variante) — redevine valabil imediat, nimic de regenerat.
+        patch.videoStaleReason = null;
+      } else if (oldHadVideo) {
+        patch.videoStaleReason = 'variant_changed';
+      }
+    }
+
+    await db.updateOrder(order.id, patch);
+
+    if (order.plan === 'video' && patch.videoStaleReason === 'variant_changed') {
+      triggerVideoGeneration(order.id, variantId).catch(err => {
+        console.error('Regenerarea videoclipului dupa schimbarea variantei a esuat pentru comanda', order.id, err.message);
+      });
+    }
+
     res.json({ ok: true });
   } catch (err) {
     next(err);
@@ -1167,8 +1266,23 @@ app.get('/api/orders/:orderId', async (req, res, next) => {
       // niciodata cheile de storage insele (interne, nu au ce cauta in raspuns) — doar
       // daca extrasul de pachet (WAV/video, vezi generatePremiumExtras) e deja gata.
       hasWav: !!v.wavKey,
-      hasVideo: !!v.videoKey
+      hasVideo: !!v.videoKey,
+      videoFailedReason: v.videoFailedReason || null
     }));
+
+    // Stare video derivata, expusa explicit clientului — vezi cerinta "A. Arhitectura si
+    // starile comenzii" (starea videoclipului separata de starea platii). 'stale' ia
+    // prioritate (chiar daca un videoKey vechi mai exista pe alta varianta, nu mai e
+    // valabil pentru cea curenta); 'generating' reflecta rezervarea atomica persistenta
+    // (db.claimVideoRender), nu o stare doar in memorie.
+    const currentVariant = (order.variants || []).find(v => v.id === order.selectedVariantId);
+    let videoStatus = 'none';
+    if (order.plan === 'video') {
+      if (order.videoStaleReason) videoStatus = 'stale';
+      else if (order.videoRenderClaimedAt) videoStatus = 'generating';
+      else if (currentVariant && currentVariant.videoKey) videoStatus = 'ready';
+      else if (currentVariant && currentVariant.videoFailedReason) videoStatus = 'failed';
+    }
 
     // IMPORTANT: raspuns construit explicit, camp cu camp — NU facem spread pe `order`.
     // Un spread complet ar fi scurs accessToken si email-ul catre oricine stie/ghiceste
@@ -1192,6 +1306,10 @@ app.get('/api/orders/:orderId', async (req, res, next) => {
       // tip+sectiune per element, NICIODATA cheia de storage — clientul are nevoie sa vada
       // ce a incarcat deja (ca sa poata sterge dupa index) inainte sa apese "creeaza videoclipul"
       uploadedMedia: (order.uploadedMedia || []).map(m => ({ type: m.type, section: m.section || null })),
+      mediaConfirmedAt: order.mediaConfirmedAt || null,
+      mediaMinItems: ORDER_MEDIA_MIN_ITEMS,
+      mediaMaxItems: ORDER_MEDIA_MAX_ITEMS,
+      videoStatus,
       createdAt: order.createdAt
     });
   } catch (err) {
@@ -1216,6 +1334,34 @@ app.post('/api/orders/:orderId/checkout', requireOrderToken, async (req, res, ne
     }
     if (!order.selectedVariantId) {
       return res.status(400).json({ error: 'Alege o variantă înainte de plată.' });
+    }
+
+    // ======================================================================================
+    // Fluxul obligatoriu "Cadou video" — cerinta 11: plata e permisa NUMAI cand: varianta
+    // audio finala e selectata (verificat mai sus, comun tuturor pachetelor); videoclipul
+    // ACELEI variante e finalizat; videoclipul nu e marcat depasit; toate materialele sunt
+    // salvate fara erori. Aceasta e bariera server-side care inlocuieste vechea conditie
+    // gresita ("status==='ready'" = platit) — vezi comentariul din create-video/webhook
+    // pentru contextul complet al schimbarii.
+    // ======================================================================================
+    if (order.plan === 'video') {
+      if (!order.mediaConfirmedAt) {
+        return res.status(400).json({ error: 'Confirmă fotografiile/videoclipurile înainte de a plăti.' });
+      }
+      const mediaCount = (order.uploadedMedia || []).length;
+      if (mediaCount < ORDER_MEDIA_MIN_ITEMS || mediaCount > ORDER_MEDIA_MAX_ITEMS) {
+        return res.status(400).json({ error: `Numărul de materiale salvate trebuie să fie între ${ORDER_MEDIA_MIN_ITEMS} și ${ORDER_MEDIA_MAX_ITEMS}.` });
+      }
+      if (order.videoRenderClaimedAt) {
+        return res.status(409).json({ error: 'Videoclipul se creează chiar acum — te rugăm încearcă din nou în câteva momente.' });
+      }
+      if (order.videoStaleReason) {
+        return res.status(409).json({ error: 'Videoclipul se regenerează după ultima modificare — te rugăm încearcă din nou în câteva momente.' });
+      }
+      const videoVariant = (order.variants || []).find(v => v.id === order.selectedVariantId);
+      if (!videoVariant || !videoVariant.videoKey) {
+        return res.status(400).json({ error: 'Videoclipul tău nu este încă gata. Te rugăm așteaptă finalizarea lui înainte de a plăti.' });
+      }
     }
 
     // Protectie credite Suno — vezi credits.js. Aceasta comanda specifica NU mai are nevoie
@@ -1286,34 +1432,31 @@ app.post('/api/orders/:orderId/checkout', requireOrderToken, async (req, res, ne
 });
 
 // ==========================================================================================
-// 6b. Fotografii/videoclipuri client pentru pachetul "video" (videoclip cu memorii) — DOAR
-// dupa plata (status='ready'), niciodata inainte (o comanda neplatita/abandonata nu trebuie
-// sa poata acumula upload-uri mari inainte de a exista macar o previzualizare). Fisierele
-// merg STRICT in bucket-ul privat — amintiri personale ale clientului, la fel de private ca
-// melodia completa.
+// 6b. Fotografii/videoclipuri client pentru pachetul "video" (videoclip cu memorii).
 //
-// STATUS ACCEPTAT: 'preview_ready' SAU 'ready' — INTENTIONAT, nu doar 'ready'. Testare reala
-// (2026-08-03) a aratat ca a limita incarcarea la strict dupa plata ascundea complet acest pas
-// din experienta clientului: pagina de checkout (melodia-mea.html) e unde clientul alege
-// pachetul video si e gata sa plateasca, deci acolo trebuie sa poata incarca pozele/
-// videoclipurile INAINTE de a apasa "Finalizeaza cadoul" — nu doar dupa, pe o pagina separata
-// pe care s-ar putea sa nu o mai viziteze niciodata. Randarea video propriu-zisa tot nu poate
-// porni inainte de plata (melodia completa nu exista inca la 'preview_ready'), dar incarcarea
-// fisierelor nu are aceasta dependinta.
+// RELANSARE 2026-08-06: incarcarea trebuie sa poata incepe INAINTE ca melodia sa fie
+// generata (fluxul obligatoriu cere upload -> confirmare -> ABIA APOI generarea melodiei
+// gratuita) — deci acceptam si status 'draft', nu doar 'preview_ready'/'ready'. Ramane
+// respins doar in timpul unei generari efective (status-uri in care variants/selectedVariantId
+// se pot schimba sub picioarele clientului) — 'generating' si 'processing_provider_result'.
+//
+// PER-FISIER, NU TOT-SAU-NIMIC: fiecare fisier din batch e validat si urcat independent —
+// fisierele valide raman salvate chiar daca alte fisiere din aceeasi cerere esueaza (format
+// neacceptat, continut care nu corespunde tipului declarat, sau nedecodabil real de ffprobe).
+// Raspunsul intoarce explicit ce a reusit si ce nu, cu motiv, ca frontend-ul sa poata arata
+// fiecare fisier cu starea lui reala, fara sa piarda restul batch-ului.
+const ORDER_MEDIA_UPLOADABLE_STATUSES = ['draft', 'preview_ready', 'generation_failed', 'ready'];
 app.post('/api/orders/:orderId/media', requireOrderToken, orderMediaUpload.array('media', ORDER_MEDIA_MAX_ITEMS), async (req, res, next) => {
   try {
     const order = req.order;
     if (order.plan !== 'video') return res.status(400).json({ error: 'Doar pachetul video acceptă fotografii/videoclipuri.' });
-    if (order.status !== 'preview_ready' && order.status !== 'ready') {
-      return res.status(403).json({ error: 'Poți încărca fotografii după ce ai auzit previzualizarea.' });
+    if (!ORDER_MEDIA_UPLOADABLE_STATUSES.includes(order.status)) {
+      return res.status(403).json({ error: 'Nu poți încărca materiale în acest moment — melodia se generează chiar acum.' });
     }
 
     const existing = order.uploadedMedia || [];
     const files = req.files || [];
     if (files.length === 0) return res.status(400).json({ error: 'Niciun fișier primit.' });
-    if (existing.length + files.length > ORDER_MEDIA_MAX_ITEMS) {
-      return res.status(400).json({ error: `Poți încărca maximum ${ORDER_MEDIA_MAX_ITEMS} fotografii/videoclipuri în total.` });
-    }
 
     // "sections" (optional) vine ca un camp text unic in form-data, continand un array JSON
     // de string-uri — ex. '["Copilarie","Prieteni"]' — cate un element per fisier incarcat,
@@ -1328,23 +1471,76 @@ app.post('/api/orders/:orderId/media', requireOrderToken, orderMediaUpload.array
     }
 
     const uploaded = [];
+    const failed = [];
+    let remainingSlots = ORDER_MEDIA_MAX_ITEMS - existing.length;
+
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
+      const label = file.originalname || `fișier ${i + 1}`;
+      if (remainingSlots <= 0) {
+        failed.push({ filename: label, reason: `Ai atins limita de ${ORDER_MEDIA_MAX_ITEMS} materiale.` });
+        continue;
+      }
       const type = ORDER_MEDIA_MIME_TYPES.photo.includes(file.mimetype) ? 'photo'
         : ORDER_MEDIA_MIME_TYPES.video.includes(file.mimetype) ? 'video' : null;
-      if (!type) return res.status(400).json({ error: `Tip de fișier neacceptat: ${file.mimetype}` });
+      if (!type) {
+        failed.push({ filename: label, reason: `Tip de fișier neacceptat: ${file.mimetype}` });
+        continue;
+      }
       if (!bufferMatchesDeclaredType(file.buffer, file.mimetype)) {
-        return res.status(400).json({ error: 'Conținutul unui fișier nu corespunde tipului declarat.' });
+        failed.push({ filename: label, reason: 'Conținutul fișierului nu corespunde tipului declarat.' });
+        continue;
+      }
+      const decodable = await verifyMediaDecodable(file.buffer, file.mimetype, type);
+      if (!decodable.ok) {
+        failed.push({ filename: label, reason: `Fișierul nu poate fi procesat (${decodable.reason}). Încearcă alt fișier sau alt format.` });
+        continue;
       }
       const ext = path.extname(file.originalname).toLowerCase() || (type === 'photo' ? '.jpg' : '.mp4');
       const key = `orders/memories/${order.id}/${randomUUID()}${ext}`;
-      await storage.uploadPrivateBuffer(file.buffer, key, file.mimetype);
-      uploaded.push({ key, type, section: (typeof sections[i] === 'string' && sections[i].trim()) ? sections[i].trim() : null });
+      try {
+        await storage.uploadPrivateBuffer(file.buffer, key, file.mimetype);
+      } catch (err) {
+        failed.push({ filename: label, reason: 'Eroare la salvare — te rugăm încearcă din nou.' });
+        continue;
+      }
+      uploaded.push({ key, type, section: (typeof sections[i] === 'string' && sections[i].trim()) ? sections[i].trim() : null, filename: label });
+      remainingSlots--;
     }
 
     const updatedMedia = [...existing, ...uploaded];
-    await db.updateOrder(order.id, { uploadedMedia: updatedMedia });
-    res.json({ uploaded: uploaded.length, total: updatedMedia.length });
+    if (uploaded.length > 0) {
+      await db.updateOrder(order.id, { uploadedMedia: updatedMedia });
+    }
+    res.json({
+      uploaded: uploaded.map(u => ({ type: u.type, filename: u.filename, section: u.section })),
+      failed,
+      total: updatedMedia.length
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// URL semnat, de scurta durata (5 minute), pentru PREVIZUALIZAREA unui material deja
+// incarcat (thumbnail poza / player video) — materialele raman intotdeauna in bucket-ul
+// PRIVAT (amintiri personale ale clientului), deci un preview real necesita un URL semnat
+// generat la cerere, nu un URL public direct. Acelasi requireOrderToken ca restul rutelor
+// de materiale — nimeni fara access token-ul comenzii nu poate vedea aceste fisiere.
+app.get('/api/orders/:orderId/media/:index/preview-url', requireOrderToken, async (req, res, next) => {
+  try {
+    const order = req.order;
+    const idx = Number(req.params.index);
+    const existing = order.uploadedMedia || [];
+    if (!Number.isInteger(idx) || idx < 0 || idx >= existing.length) {
+      return res.status(400).json({ error: 'Index invalid.' });
+    }
+    if (!storage.CLOUD_ENABLED) {
+      return res.status(503).json({ error: 'Previzualizarea necesită stocare cloud activată.' });
+    }
+    const item = existing[idx];
+    const url = await storage.getSignedDownloadUrl(item.key, 300);
+    res.json({ url, type: item.type });
   } catch (err) {
     next(err);
   }
@@ -1371,40 +1567,150 @@ app.delete('/api/orders/:orderId/media/:index', requireOrderToken, async (req, r
   }
 });
 
-// Declanseaza EXPLICIT crearea videoclipului cu memorii — separat intentionat de webhook-ul
-// de plata (care declanseaza doar WAV-ul, automat), tocmai ca sa nu existe nicio cursa intre
-// "clientul inca incarca poze" si "randarea a pornit deja fara ele". Clientul apasa un buton
-// abia dupa ce a terminat de incarcat (sau alege sa sara peste si sa primeasca fundalul
-// implicit). Idempotent: daca videoclipul exista deja, nu-l regenereaza; daca o generare e
-// deja in curs pentru aceeasi comanda, respinge o a doua incercare in loc sa porneasca doua
-// randari simultane (server single-instance — o garda in memorie e suficienta si sigura).
-const activeVideoRenders = new Set();
-app.post('/api/orders/:orderId/create-video', requireOrderToken, async (req, res, next) => {
+// Actualizeaza eticheta de sectiune a unui material DEJA incarcat — clientul poate eticheta
+// materialul fie inainte, fie oricand dupa upload, pana la confirmarea finala a selectiei.
+app.put('/api/orders/:orderId/media/:index/section', express.json(), requireOrderToken, async (req, res, next) => {
   try {
     const order = req.order;
-    if (order.plan !== 'video') return res.status(400).json({ error: 'Doar pachetul video poate crea un videoclip.' });
-    if (order.status !== 'ready') return res.status(403).json({ error: 'Poți crea videoclipul după finalizarea plății.' });
-
-    const variant = (order.variants || []).find(v => v.id === order.selectedVariantId);
-    if (variant && variant.videoKey) return res.json({ started: false, alreadyReady: true });
-    if (activeVideoRenders.has(order.id)) return res.status(409).json({ error: 'Videoclipul este deja în curs de creare.' });
-
-    activeVideoRenders.add(order.id);
-    res.json({ started: true });
-
-    generatePremiumExtras(order.id, { forceVideo: true }).catch(err => {
-      console.error('Crearea videoclipului cu memorii a esuat pentru comanda', order.id, err.message);
-    }).finally(() => {
-      activeVideoRenders.delete(order.id);
-    });
+    if (order.plan !== 'video') return res.status(400).json({ error: 'Doar pachetul video are fotografii/videoclipuri.' });
+    const idx = Number(req.params.index);
+    const existing = order.uploadedMedia || [];
+    if (!Number.isInteger(idx) || idx < 0 || idx >= existing.length) {
+      return res.status(400).json({ error: 'Index invalid.' });
+    }
+    const section = (typeof req.body?.section === 'string' && req.body.section.trim()) ? req.body.section.trim() : null;
+    const updatedMedia = existing.map((m, i) => i === idx ? { ...m, section } : m);
+    await db.updateOrder(order.id, { uploadedMedia: updatedMedia });
+    res.json({ ok: true });
   } catch (err) {
-    activeVideoRenders.delete(req.params.orderId);
+    next(err);
+  }
+});
+
+// Reordoneaza materialele deja incarcate — clientul trimite indexii curenti in noua ordine
+// dorita (ex. [2,0,1]). Validam ca e o PERMUTARE completa a indexilor existenti — nu accepta
+// adaugare/eliminare pe aceasta cale (asta ramane treaba rutelor POST/DELETE de mai sus).
+app.put('/api/orders/:orderId/media/reorder', express.json(), requireOrderToken, async (req, res, next) => {
+  try {
+    const order = req.order;
+    if (order.plan !== 'video') return res.status(400).json({ error: 'Doar pachetul video are fotografii/videoclipuri.' });
+    const existing = order.uploadedMedia || [];
+    const newOrder = Array.isArray(req.body?.order) ? req.body.order : null;
+    if (!newOrder || newOrder.length !== existing.length) {
+      return res.status(400).json({ error: 'Ordine invalidă.' });
+    }
+    const seen = new Set();
+    for (const idx of newOrder) {
+      if (!Number.isInteger(idx) || idx < 0 || idx >= existing.length || seen.has(idx)) {
+        return res.status(400).json({ error: 'Ordine invalidă.' });
+      }
+      seen.add(idx);
+    }
+    const reordered = newOrder.map(idx => existing[idx]);
+    await db.updateOrder(order.id, { uploadedMedia: reordered });
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Confirma explicit selectia de materiale — pasul obligatoriu ("5. Confirmă selecția
+// materialelor") DUPA care, si NUMAI dupa care, poate porni generarea gratuita a melodiei
+// pentru pachetul video (vezi verificarea order.mediaConfirmedAt in POST /generate mai jos).
+// Cere intre ORDER_MEDIA_MIN_ITEMS si ORDER_MEDIA_MAX_ITEMS materiale deja salvate cu succes —
+// re-confirmabil oricand (ex. clientul mai adauga/elimina materiale si confirma din nou).
+app.post('/api/orders/:orderId/media/confirm', requireOrderToken, async (req, res, next) => {
+  try {
+    const order = req.order;
+    if (order.plan !== 'video') return res.status(400).json({ error: 'Doar pachetul video necesită confirmarea materialelor.' });
+    const count = (order.uploadedMedia || []).length;
+    if (count < ORDER_MEDIA_MIN_ITEMS || count > ORDER_MEDIA_MAX_ITEMS) {
+      return res.status(400).json({ error: `Ai nevoie de între ${ORDER_MEDIA_MIN_ITEMS} și ${ORDER_MEDIA_MAX_ITEMS} materiale pentru a continua (ai ${count}).` });
+    }
+    await db.updateOrder(order.id, { mediaConfirmedAt: new Date().toISOString() });
+    res.json({ ok: true, confirmed: true, total: count });
+  } catch (err) {
     next(err);
   }
 });
 
 // ==========================================================================================
-// 7. Fisierul PREVIEW (55 sec) al unei variante — accesibil oricui, fara plata (era deja
+// Declanseaza (sau reia) crearea videoclipului cu memorii pentru varianta audio SELECTATA
+// ACUM. Idempotent si sigur la reincercare/dublu-click/multi-instanta: foloseste o rezervare
+// ATOMICA persistenta in Postgres (db.claimVideoRender), nu o garda in memoria procesului —
+// vezi comentariul din db.js pentru motiv exact. Daca videoclipul exista deja pentru varianta
+// curenta si nu e marcat depasit, e un no-op sigur (raspunde imediat, nu porneste o randare).
+//
+// RELANSARE 2026-08-06: acceptat la 'preview_ready' (INAINTE de plata) — nu doar la 'ready'
+// (dupa plata, cum era inainte). E chemat automat de restul fluxului (dupa confirmarea
+// materialelor + generarea melodiei, dupa schimbarea variantei, sau dupa o editare a
+// melodiei — vezi triggerVideoGeneration mai jos), dar ramane apelabil si manual, ca
+// mecanism de reincercare explicita daca o randare anterioara a esuat.
+// ==========================================================================================
+app.post('/api/orders/:orderId/create-video', requireOrderToken, async (req, res, next) => {
+  try {
+    const order = req.order;
+    if (order.plan !== 'video') return res.status(400).json({ error: 'Doar pachetul video poate crea un videoclip.' });
+    if (!['preview_ready', 'ready'].includes(order.status)) {
+      return res.status(403).json({ error: 'Generează mai întâi o previzualizare a melodiei.' });
+    }
+    if (!order.selectedVariantId) {
+      return res.status(400).json({ error: 'Alege o variantă audio înainte de a crea videoclipul.' });
+    }
+    const mediaCount = (order.uploadedMedia || []).length;
+    if (!order.mediaConfirmedAt && mediaCount < ORDER_MEDIA_MIN_ITEMS) {
+      return res.status(400).json({ error: `Încarcă și confirmă cel puțin ${ORDER_MEDIA_MIN_ITEMS} materiale înainte de a crea videoclipul.` });
+    }
+
+    const variant = (order.variants || []).find(v => v.id === order.selectedVariantId);
+    if (variant && variant.videoKey && !order.videoStaleReason) {
+      return res.json({ started: false, alreadyReady: true });
+    }
+    if (order.videoRenderClaimedAt) {
+      return res.status(409).json({ error: 'Videoclipul este deja în curs de creare.' });
+    }
+
+    res.json({ started: true });
+    triggerVideoGeneration(order.id, order.selectedVariantId).catch(err => {
+      console.error('Crearea videoclipului cu memorii a esuat pentru comanda', order.id, err.message);
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ==========================================================================================
+// Declanseaza randarea video cu rezervare ATOMICA persistenta (vezi db.claimVideoRender) —
+// punct UNIC de intrare pentru orice randare video, apelat automat de:
+//   1) finalizeVariantsIfNeeded(), dupa ce melodia (initiala SAU regenerata) ajunge
+//      'preview_ready' pentru un pachet "video" cu materiale deja confirmate;
+//   2) POST /select, cand clientul schimba varianta audio activa;
+//   3) POST /create-video, ca reincercare manuala explicita.
+// Idempotent: daca lock-ul e deja detinut (randare activa) sau videoclipul curent e deja
+// valabil pentru variantId cerut, nu porneste o a doua randare.
+// ==========================================================================================
+async function triggerVideoGeneration(orderId, variantId) {
+  const claimedOrder = await db.claimVideoRender(orderId, variantId);
+  if (!claimedOrder) return; // randare deja activa (lock neexpirat) — no-op sigur
+
+  try {
+    await generatePremiumExtras(orderId, { forceVideo: true });
+    const fresh = await db.getOrderById(orderId);
+    const variant = fresh && (fresh.variants || []).find(v => v.id === variantId);
+    if (variant && variant.videoKey) {
+      // succes: videoclipul curent redevine valabil pentru varianta curenta —
+      // orice marcaj anterior de "depasit" nu mai are sens, il curatam.
+      await db.updateOrder(orderId, { videoStaleReason: null });
+    }
+  } catch (err) {
+    console.error(`Comanda ${orderId}: triggerVideoGeneration a esuat pentru varianta ${variantId}:`, err.message);
+  } finally {
+    await db.releaseVideoRender(orderId);
+  }
+}
+
+// ==========================================================================================
+// 7. Fisierul PREVIEW (PREVIEW_SECONDS = 40 sec) al unei variante — accesibil oricui, fara plata (era deja
 // gratuit). In modul cloud, fisierul e in bucket-ul PUBLIC — redirectionam catre URL-ul
 // public, reconstituit din previewKey, si nu atingem deloc discul local al serverului.
 // In fallback local (fara storage cloud configurat), servim direct de pe disc, ca inainte.
@@ -1795,16 +2101,32 @@ async function finalizeVariantsIfNeeded(orderId, tracks, taskId) {
       );
     }
 
+    const newSelectedVariantId = variants[0]?.id || null;
     await db.updateOrder(orderId, {
       status: 'preview_ready',
       variants,
-      selectedVariantId: variants[0]?.id || null,
+      selectedVariantId: newSelectedVariantId,
       generatedAt: new Date().toISOString(),
       // succes: eliberam marcajul de rezervare a editarii (daca exista) FARA sa atingem
       // edits_used — editarea a fost folosita legitim, ramane consumata definitiv. Pentru
       // o generare INITIALA, editReserved era deja false — actualizarea e un no-op sigur.
       editReserved: false
     });
+
+    // Fluxul obligatoriu "Cadou video" (cerintele 6-9): imediat ce melodia (initiala SAU
+    // regenerata dupa o editare) ajunge 'preview_ready', si DOAR daca materialele au fost
+    // deja confirmate, declansam AUTOMAT randarea videoclipului pentru varianta curenta —
+    // inainte de plata, fara sa astepte niciun buton aditional. Complet asincron (nu
+    // blocheaza raspunsul catre client, care vede preview-ul audio imediat); esecul aici
+    // se vede in videoStaleReason/lipsa videoKey si poate fi reincercat din /create-video.
+    if (claimed.plan === 'video' && newSelectedVariantId) {
+      const freshOrder = await db.getOrderById(orderId);
+      if (freshOrder && freshOrder.mediaConfirmedAt) {
+        triggerVideoGeneration(orderId, newSelectedVariantId).catch(err => {
+          console.error(`Comanda ${orderId}: randarea automata a videoclipului a esuat:`, err.message);
+        });
+      }
+    }
 
     // La o REGENERARE (nu la generarea initiala, unde claimed.variants e []), variantele
     // vechi tocmai inlocuite mai sus raman orfane in bucket-urile R2/S3 daca nu le stergem
@@ -2174,10 +2496,14 @@ async function generatePremiumExtras(orderId, options = {}) {
 
     if (order.plan === 'video' && forceVideo && !variant.videoKey) {
       try {
-        patch.videoKey = await generateLyricVideo(order, variant, tempFull);
+        const videoResult = await generateLyricVideo(order, variant, tempFull);
+        patch.videoKey = videoResult.videoKey;
+        patch.sectionTimings = videoResult.sectionTimings;
+        patch.videoFailedReason = null;
         perfLog(orderId, 'video_ready', `varianta=${variant.id}`);
       } catch (err) {
         console.error(`Comanda ${orderId}: generarea videoclipului a esuat:`, err.message);
+        patch.videoFailedReason = String(err.message || err).slice(0, 300);
       }
     }
 
@@ -2300,6 +2626,21 @@ function toSrt(lines) {
   return lines.map((l, i) => `${i + 1}\n${srtTimestamp(l.start)} --> ${srtTimestamp(l.end)}\n${l.text}\n`).join('\n');
 }
 
+// ==========================================================================================
+// TRUE SECTION TIMING ALIGNMENT — implementarea (normalizeSectionType,
+// extractSectionMarkersFromAlignedWords, deriveSectionTimings,
+// computeSectionAwareSegmentDurations) traieste acum in lib/media-analysis.js, importata mai
+// sus — extrasa acolo ca sa fie testabila izolat (vezi test/media-analysis.test.js), fara
+// Postgres/Stripe/Suno pornite. Sursa datelor ramane aceeasi: marcajele de structura ([Verse],
+// [Chorus], [Intro], [Bridge], [Outro] etc.) pe care Suno le include DIRECT in fluxul de
+// cuvinte aliniate (alignedWords) intors de get-timestamped-lyrics — acelasi raspuns folosit
+// deja pentru pozitionarea preview-ului si pentru caption-uri. Fiecare granita de sectiune
+// vine dintr-un cuvant cu timestamp confirmat de Suno, cu propriul flag `success` — NU o
+// distributie egala a duratei. Daca o melodie nu contine deloc astfel de etichete, apelantul
+// (deriveSectionTimings) intra explicit intr-un fallback controlat si clar etichetat,
+// niciodata in tacere.
+// ==========================================================================================
+
 // Culoare de fundal si stil de subtitrare aliniate la identitatea vizuala Naluna (crem/auriu
 // pe fond cald inchis — vezi paleta din public/index.html: --gold-deep:#8B6D3F, text pe
 // fond deschis #2B2B2B). Pentru un fundal video am ales o varianta INCHISA a acelorasi
@@ -2326,37 +2667,18 @@ const VIDEO_TEXT_STYLE = "FontName=Arial,FontSize=18,PrimaryColour=&H00E8F0F6,Ou
 // primeste intotdeauna un videoclip, chiar daca nu cel cinematic. Aceasta e prioritatea
 // explicita a clientului: robustete inainte de efecte avansate.
 //
-// Faza 2 (neimplementata inca — vezi task separat): aliniere reala pe sectiuni ([Verse 1],
-// [Chorus] etc, cu marcaje de timp reale din alignedWords) in loc de distributia egala de
-// mai jos. MEMORY_SECTION_ORDER e pregatit pentru asta — clientul poate deja eticheta
-// elementele cu o sectiune la incarcare (vezi POST /api/orders/:orderId/media), iar aici
-// folosim deja acea eticheta pentru A ORDONA elementele (nu inca pentru a le sincroniza cu
-// momentul exact al sectiunii in melodie — asta ramane pentru faza 2).
+// Faza 2 (IMPLEMENTATA — 2026-08-06): aliniere reala pe sectiuni ([Verse 1], [Chorus] etc,
+// cu marcaje de timp reale din alignedWords), in loc de distributia egala folosita ca
+// fallback in Faza 1. Vezi deriveSectionTimings/computeSectionAwareSegmentDurations in
+// lib/media-analysis.js — MEMORY_SECTION_ORDER de mai jos ramane folosit pentru a ORDONA
+// elementele dupa eticheta aleasa de client la incarcare; ferestrele REALE de timp vin acum
+// din sectiunile detectate de Suno, nu doar din ordine.
 // ==========================================================================================
 
 const MEMORY_VIDEO_WIDTH = 720;
 const MEMORY_VIDEO_HEIGHT = 1280;
 const MEMORY_VIDEO_FPS = 25;
 const MEMORY_XFADE_SECONDS = 0.6; // tranzitie scurta — eleganta, fara sa incarce randarea
-
-const MEMORY_SECTION_ORDER = ['beginning', 'verse1', 'chorus', 'verse2', 'ending'];
-
-// Ordoneaza elementele dupa eticheta de sectiune aleasa de client (dupa cheile canonice de
-// mai sus), pastrand ordinea de incarcare intre elementele din aceeasi sectiune sau fara
-// sectiune. Etichete necunoscute/lipsa merg la coada, in ordinea in care au fost incarcate.
-function sortMediaBySection(items) {
-  return items
-    .map((item, i) => ({ item, i }))
-    .sort((a, b) => {
-      const ra = a.item.section ? MEMORY_SECTION_ORDER.indexOf(a.item.section) : -1;
-      const rb = b.item.section ? MEMORY_SECTION_ORDER.indexOf(b.item.section) : -1;
-      const ea = ra === -1 ? MEMORY_SECTION_ORDER.length : ra;
-      const eb = rb === -1 ? MEMORY_SECTION_ORDER.length : rb;
-      if (ea !== eb) return ea - eb;
-      return a.i - b.i;
-    })
-    .map(x => x.item);
-}
 
 // Descarca toate elementele uploadedMedia ale comenzii din bucket-ul PRIVAT, in fisiere
 // locale temporare. O eroare la orice element opreste tot pipeline-ul cinematic — apelantul
@@ -2410,7 +2732,7 @@ async function renderMemorySegment(item, index, segDurationSeconds, order) {
 // elemente consecutive. Fiecare segment e alocat exact (total + (N-1)*tranzitie) / N secunde
 // (vezi buildMemoryBackground) — asta compenseaza suprapunerea introdusa de fiecare tranzitie,
 // ca durata FINALA a fundalului sa fie exact egala cu durata melodiei, nu mai scurta.
-async function concatWithCrossfades(segmentPaths, segDurationSeconds, order) {
+async function concatWithCrossfades(segmentPaths, segDurations, order) {
   if (segmentPaths.length === 1) return segmentPaths[0];
 
   const outPath = path.join(TEMP_DIR, `${order.id}-memory-background.mp4`);
@@ -2419,13 +2741,13 @@ async function concatWithCrossfades(segmentPaths, segDurationSeconds, order) {
 
   let filter = '';
   let lastLabel = '0:v';
-  let cumulative = segDurationSeconds;
+  let cumulative = segDurations[0];
   for (let i = 1; i < segmentPaths.length; i++) {
     const offset = Math.max(0, cumulative - MEMORY_XFADE_SECONDS);
     const outLabel = i === segmentPaths.length - 1 ? 'vout' : `x${i}`;
     filter += `[${lastLabel}][${i}:v]xfade=transition=fade:duration=${MEMORY_XFADE_SECONDS}:offset=${offset.toFixed(3)}[${outLabel}];`;
     lastLabel = outLabel;
-    cumulative += segDurationSeconds - MEMORY_XFADE_SECONDS;
+    cumulative += segDurations[i] - MEMORY_XFADE_SECONDS;
   }
   filter = filter.replace(/;$/, '');
 
@@ -2444,26 +2766,35 @@ async function concatWithCrossfades(segmentPaths, segDurationSeconds, order) {
 // randeaza fiecare segment, le concateneaza cu tranzitii. Curata singura toate fisierele
 // intermediare proprii (sursele descarcate, segmentele) inainte sa iasa, indiferent de
 // rezultat — doar fundalul final ramane (returnat apelantului, care il curata la randul lui).
-async function buildMemoryBackground(order, mediaItems, durationSeconds) {
+async function buildMemoryBackground(order, mediaItems, durationSeconds, sectionTimings) {
   const ordered = sortMediaBySection(mediaItems);
   const cleanupPaths = [];
   try {
     const downloaded = await downloadOrderMedia(order, ordered);
     downloaded.forEach(d => cleanupPaths.push(d.localPath));
 
-    // segDurationSeconds egal pentru toate elementele in Faza 1 (distributie egala) —
-    // formula compenseaza suprapunerea tranzitiilor, vezi concatWithCrossfades()
     const n = downloaded.length;
-    const segDurationSeconds = (durationSeconds + (n - 1) * MEMORY_XFADE_SECONDS) / n;
+    // Faza 2 (implementata): daca exista sectiuni REALE (marcaje Suno, nu presupuneri),
+    // alocam durata fiecarui segment proportional cu ferestrele reale ale melodiei — vezi
+    // computeSectionAwareSegmentDurations(). FARA date reale suficiente, revenim explicit
+    // la Faza 1 (distributie egala), clar etichetata in log ca fallback, niciodata
+    // prezentata drept aliniere reala pe sectiuni.
+    let segDurations = computeSectionAwareSegmentDurations(n, durationSeconds, sectionTimings, MEMORY_XFADE_SECONDS);
+    const usedRealTiming = !!segDurations;
+    if (!segDurations) {
+      const equalDuration = (durationSeconds + (n - 1) * MEMORY_XFADE_SECONDS) / n;
+      segDurations = new Array(n).fill(equalDuration);
+    }
+    perfLog(order.id, 'memory_segment_timing', usedRealTiming ? 'sursa=sectiuni_reale_suno' : 'sursa=distributie_egala_fallback');
 
     const segments = [];
     for (let i = 0; i < downloaded.length; i++) {
-      const segPath = await renderMemorySegment(downloaded[i], i, segDurationSeconds, order);
+      const segPath = await renderMemorySegment(downloaded[i], i, segDurations[i], order);
       segments.push(segPath);
       cleanupPaths.push(segPath);
     }
 
-    const backgroundPath = await concatWithCrossfades(segments, segDurationSeconds, order);
+    const backgroundPath = await concatWithCrossfades(segments, segDurations, order);
     // fundalul final nu trebuie sters aici daca a fost produs de concat (dar TREBUIE sters
     // daca era un singur segment, caz in care concatWithCrossfades a returnat direct
     // segmentul — deja in cleanupPaths, l-am scoate de acolo ca sa nu-l stergem prea devreme)
@@ -2500,6 +2831,14 @@ async function generateLyricVideo(order, variant, tempFullMp3Path) {
   fs.writeFileSync(srtPath, toSrt(captionLines), 'utf8');
 
   const durationSeconds = Math.max(1, Math.ceil(variant.durationSeconds || await getAudioDuration(tempFullMp3Path)));
+
+  // TRUE SECTION TIMING ALIGNMENT — deriva sectiunile REALE (sau fallback controlat, clar
+  // etichetat) din ACELASI raspuns alignedWords deja obtinut mai sus pentru caption-uri —
+  // nicio cerere suplimentara catre Suno. Recalculat la FIECARE generare de videoclip, deci
+  // o melodie editata/regenerata primeste automat propriile ei timestamp-uri noi (variant.id
+  // diferit -> sunoTrackId diferit -> alignedWords diferit), niciodata pe cele vechi.
+  const sectionTimings = deriveSectionTimings(body.data.alignedWords, durationSeconds, variant.id);
+  perfLog(order.id, 'section_timing_derived', `varianta=${variant.id}, sectiuni=${sectionTimings.length}, sursa=${sectionTimings[0] ? sectionTimings[0].source : 'n/a'}`);
   const tempVideo = path.join(TEMP_DIR, `${order.id}-${variant.id}-video.mp4`);
   // subtitles= foloseste propria sintaxa cu ':' ca separator de optiuni — calea trebuie
   // sa foloseasca '/' (nu '\'), iar orice ':' din cale (litera de disc pe Windows, irelevant
@@ -2511,7 +2850,7 @@ async function generateLyricVideo(order, variant, tempFullMp3Path) {
     const mediaItems = order.uploadedMedia || [];
     if (mediaItems.length > 0) {
       try {
-        memoryBackground = await buildMemoryBackground(order, mediaItems, durationSeconds);
+        memoryBackground = await buildMemoryBackground(order, mediaItems, durationSeconds, sectionTimings);
         perfLog(order.id, 'memory_background_ready', `elemente=${mediaItems.length}`);
       } catch (err) {
         console.error(`Comanda ${order.id}: pipeline-ul cinematic cu amintiri a esuat, revin la fundalul solid:`, err.message);
@@ -2554,7 +2893,7 @@ async function generateLyricVideo(order, variant, tempFullMp3Path) {
   const videoKey = `orders/full-video/${order.id}-${variant.id}.mp4`;
   await storage.uploadPrivateFile(tempVideo, videoKey, 'video/mp4');
   try { fs.unlinkSync(tempVideo); } catch (e) { /* best-effort */ }
-  return videoKey;
+  return { videoKey, sectionTimings };
 }
 
 // Citeste raspunsul unei cereri esuate ca text simplu, trunchiat, pentru loguri utile —
@@ -3147,26 +3486,28 @@ async function sendDeliveryEmail(order) {
   // generate ASINCRON dupa acest email (pot dura pana la cateva minute, vezi
   // generatePremiumExtras), deci NU le promitem ca fiind deja disponibile in acest moment,
   // doar ca vor aparea la pagina comenzii. "standard" nu are nicio nota suplimentara.
+  // Termenul tehnic "WAV" apare NUMAI dupa o explicatie in limbaj simplu (aceeasi regula
+  // ca pe cardul de pachet Premium din comanda.html) — niciodata neexplicat, izolat.
   const EXTRAS_NOTE = {
     premium: {
-      ro: ` Fișierul WAV descărcabil apare în câteva minute la <a href="${accessUrl}">pagina comenzii tale</a>.`,
-      en: ` Your downloadable WAV file will appear within a few minutes at <a href="${accessUrl}">your order page</a>.`,
-      de: ` Deine herunterladbare WAV-Datei erscheint in wenigen Minuten auf <a href="${accessUrl}">deiner Bestellseite</a>.`,
-      es: ` Tu archivo WAV descargable aparecerá en unos minutos en <a href="${accessUrl}">la página de tu pedido</a>.`,
-      it: ` Il tuo file WAV scaricabile apparirà tra qualche minuto nella <a href="${accessUrl}">pagina del tuo ordine</a>.`,
-      fr: ` Votre fichier WAV téléchargeable apparaîtra dans quelques minutes sur <a href="${accessUrl}">la page de votre commande</a>.`,
-      bg: ` Твоят WAV файл за изтегляне ще се появи след няколко минути на <a href="${accessUrl}">страницата на поръчката ти</a>.`,
-      tr: ` İndirilebilir WAV dosyanız birkaç dakika içinde <a href="${accessUrl}">sipariş sayfanızda</a> görünecek.`
+      ro: ` Vei primi și fișierul audio la calitate înaltă (WAV) — păstrează mai bine claritatea sunetului, potrivit pentru păstrare sau editare. Apare în câteva minute la <a href="${accessUrl}">pagina comenzii tale</a>.`,
+      en: ` You'll also get the high-quality audio file (WAV) — it keeps the sound clearer and is better for keeping or editing. It'll appear within a few minutes at <a href="${accessUrl}">your order page</a>.`,
+      de: ` Du erhältst außerdem die hochwertige Audiodatei (WAV) — sie klingt klarer und eignet sich besser zum Aufbewahren oder Bearbeiten. Sie erscheint in wenigen Minuten auf <a href="${accessUrl}">deiner Bestellseite</a>.`,
+      es: ` También recibirás el archivo de audio de alta calidad (WAV) — conserva mejor la claridad del sonido y es adecuado para guardar o editar. Aparecerá en unos minutos en <a href="${accessUrl}">la página de tu pedido</a>.`,
+      it: ` Riceverai anche il file audio ad alta qualità (WAV) — mantiene il suono più chiaro ed è adatto per conservare o modificare. Apparirà tra qualche minuto nella <a href="${accessUrl}">pagina del tuo ordine</a>.`,
+      fr: ` Vous recevrez aussi le fichier audio haute qualité (WAV) — un son plus clair, adapté pour la conservation ou le montage. Il apparaîtra dans quelques minutes sur <a href="${accessUrl}">la page de votre commande</a>.`,
+      bg: ` Ще получиш и аудио файла с високо качество (WAV) — запазва по-добре яснотата на звука, подходящ за съхранение или редактиране. Ще се появи след няколко минути на <a href="${accessUrl}">страницата на поръчката ти</a>.`,
+      tr: ` Ayrıca yüksek kaliteli ses dosyasını da (WAV) alacaksınız — sesi daha net tutar, saklamak veya düzenlemek için uygundur. Birkaç dakika içinde <a href="${accessUrl}">sipariş sayfanızda</a> görünecek.`
     },
     video: {
-      ro: ` Videoclipul cu versuri apare în câteva minute la <a href="${accessUrl}">pagina comenzii tale</a>.`,
-      en: ` Your lyric video will appear within a few minutes at <a href="${accessUrl}">your order page</a>.`,
-      de: ` Dein Lyric-Video erscheint in wenigen Minuten auf <a href="${accessUrl}">deiner Bestellseite</a>.`,
-      es: ` Tu video lírico aparecerá en unos minutos en <a href="${accessUrl}">la página de tu pedido</a>.`,
-      it: ` Il tuo video con i testi apparirà tra qualche minuto nella <a href="${accessUrl}">pagina del tuo ordine</a>.`,
-      fr: ` Votre vidéo lyrique apparaîtra dans quelques minutes sur <a href="${accessUrl}">la page de votre commande</a>.`,
-      bg: ` Твоето лирик видео ще се появи след няколко минути на <a href="${accessUrl}">страницата на поръчката ти</a>.`,
-      tr: ` Söz videonuz birkaç dakika içinde <a href="${accessUrl}">sipariş sayfanızda</a> görünecek.`
+      ro: ` Vei primi și fișierul audio la calitate înaltă (WAV) și videoclipul complet, cu aceeași melodie. Ambele apar în câteva minute la <a href="${accessUrl}">pagina comenzii tale</a>.`,
+      en: ` You'll also get the high-quality audio file (WAV) and the full video, using the same song. Both will appear within a few minutes at <a href="${accessUrl}">your order page</a>.`,
+      de: ` Du erhältst außerdem die hochwertige Audiodatei (WAV) und das vollständige Video mit demselben Lied. Beides erscheint in wenigen Minuten auf <a href="${accessUrl}">deiner Bestellseite</a>.`,
+      es: ` También recibirás el archivo de audio de alta calidad (WAV) y el video completo, con la misma canción. Ambos aparecerán en unos minutos en <a href="${accessUrl}">la página de tu pedido</a>.`,
+      it: ` Riceverai anche il file audio ad alta qualità (WAV) e il video completo, con la stessa canzone. Entrambi appariranno tra qualche minuto nella <a href="${accessUrl}">pagina del tuo ordine</a>.`,
+      fr: ` Vous recevrez aussi le fichier audio haute qualité (WAV) et la vidéo complète, avec la même chanson. Les deux apparaîtront dans quelques minutes sur <a href="${accessUrl}">la page de votre commande</a>.`,
+      bg: ` Ще получиш и аудио файла с високо качество (WAV), и пълното видео, със същата песен. И двете ще се появят след няколко минути на <a href="${accessUrl}">страницата на поръчката ти</a>.`,
+      tr: ` Ayrıca yüksek kaliteli ses dosyasını (WAV) ve aynı şarkıyla tam videoyu da alacaksınız. İkisi de birkaç dakika içinde <a href="${accessUrl}">sipariş sayfanızda</a> görünecek.`
     }
   };
   const extrasNote = (EXTRAS_NOTE[order.plan] && EXTRAS_NOTE[order.plan][order.lang]) || '';

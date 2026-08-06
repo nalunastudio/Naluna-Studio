@@ -120,6 +120,54 @@ async function initDb() {
   // ramane null daca clientul nu organizeaza manual (server-ul distribuie automat).
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS uploaded_media JSONB NOT NULL DEFAULT '[]'::jsonb;`);
 
+  // ==================================================================================
+  // RELANSARE "CADOU VIDEO" (2026-08-06) — separa explicit starea materialelor, a
+  // randarii video si a platii, in loc sa suprascarca semantica lui `status` (care
+  // ramane, neschimbat, pentru ciclul de generare a melodiei: draft/generating/
+  // processing_provider_result/preview_ready/generation_failed/ready). Coloane noi,
+  // toate aditive si NULL/DEFAULT sigure pentru comenzile existente — nicio comanda
+  // veche nu se rupe, pur si simplu nu are inca aceste campuri populate.
+  //
+  // media_confirmed_at: momentul in care clientul a confirmat explicit selectia de
+  // materiale (POST /api/orders/:orderId/media/confirm) — DUPA aceasta, si NUMAI dupa
+  // aceasta, poate porni generarea melodiei pentru pachetul "video" (vezi POST /generate).
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS media_confirmed_at TIMESTAMPTZ;`);
+
+  // video_render_claimed_at / video_render_variant_id: rezervare ATOMICA, persistenta
+  // in Postgres, pentru randarea videoclipului cu memorii — inlocuieste garda anterioara
+  // `activeVideoRenders` (un Set doar in memoria procesului Node), care nu proteja
+  // impotriva a doua randari simultane daca Railway ar rula vreodata mai multe instante.
+  // Lock-ul expira automat dupa 20 minute (vezi db.claimVideoRender) — daca procesul
+  // pica la mijlocul unei randari, comanda nu ramane blocata permanent.
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS video_render_claimed_at TIMESTAMPTZ;`);
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS video_render_variant_id TEXT;`);
+
+  // video_stale_reason: NULL = videoclipul curent (daca exista) e valabil pentru
+  // varianta audio selectata acum. Se seteaza explicit ('song_regenerated' sau
+  // 'variant_changed') exact in momentul in care clientul schimba varianta audio sau
+  // cere o editare a melodiei DUPA ce un videoclip fusese deja gata — semnal clar,
+  // persistent, ca videoclipul anterior nu mai poate fi livrat/platit, chiar daca
+  // fisierul lui ramane inca in storage (pastrat pentru rollback, nu sters imediat).
+  // Se sterge (NULL) cand un videoclip nou, pentru varianta curenta, devine gata.
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS video_stale_reason TEXT;`);
+
+  // processed_stripe_events: dedup persistent, la nivel de eveniment Stripe individual
+  // (event.id, ex. "evt_1Abc..."), NU doar la nivel de comanda. Garda existenta
+  // (`status !== 'ready'` in handler-ul webhook-ului) ramane si ea — protejeaza corect
+  // impotriva reincercarilor Stripe care ajung SECVENTIAL, dupa ce prima a fost deja
+  // procesata. Tabela de mai jos acopera in plus fereastra teoretica de cursa in care
+  // Stripe ar trimite (foarte rar, dar posibil) doua livrari ale ACELUIASI eveniment
+  // aproape simultan: INSERT ... ON CONFLICT (event_id) DO NOTHING e o operatie atomica
+  // unica in Postgres — a doua livrare gaseste deja randul si stie sigur ca nu mai are
+  // nimic de procesat, indiferent de starea curenta a comenzii in acel moment exact.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS processed_stripe_events (
+      event_id TEXT PRIMARY KEY,
+      order_id UUID,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `);
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS testimonials (
       id UUID PRIMARY KEY,
@@ -233,7 +281,11 @@ function rowToOrder(row) {
     voicePreference: row.voice_preference || 'auto',
     phone: row.phone || null,
     generationAttempts: row.generation_attempts || 0,
-    uploadedMedia: row.uploaded_media || []
+    uploadedMedia: row.uploaded_media || [],
+    mediaConfirmedAt: row.media_confirmed_at || null,
+    videoRenderClaimedAt: row.video_render_claimed_at || null,
+    videoRenderVariantId: row.video_render_variant_id || null,
+    videoStaleReason: row.video_stale_reason || null
   };
 }
 
@@ -386,6 +438,57 @@ async function refundEditIfReserved(orderId) {
 }
 
 // ==================================================================================
+// PRELUARE ATOMICA, PERSISTENTA IN POSTGRES, a randarii videoclipului cu memorii —
+// inlocuieste garda anterioara bazata pe un Set in memoria procesului Node (sigura doar
+// pe o singura instanta a serverului). UPDATE ... WHERE ... RETURNING e o singura
+// instructiune atomica: doua cereri "simultane" (dublu-click, retry, sau doua instante
+// separate ale serverului) sunt serializate de Postgres — doar una poate "castiga"
+// tranzitia, cealalta gaseste deja un lock activ si nu returneaza niciun rand.
+//
+// Lock-ul expira SINGUR dupa 20 de minute (o randare video reala dureaza cateva minute,
+// niciodata atat) — daca procesul pica la mijlocul unei randari, comanda nu ramane
+// blocata permanent; o cerere ulterioara poate relua randarea in siguranta.
+// ==================================================================================
+async function claimVideoRender(orderId, variantId) {
+  const result = await pool.query(
+    `UPDATE orders
+     SET video_render_claimed_at = now(), video_render_variant_id = $2
+     WHERE id = $1
+       AND (video_render_claimed_at IS NULL OR video_render_claimed_at < now() - interval '20 minutes')
+     RETURNING *`,
+    [orderId, variantId]
+  );
+  return rowToOrder(result.rows[0]); // null daca o randare e deja activa (lock neexpirat)
+}
+
+// Elibereaza lock-ul de randare video, INDIFERENT de rezultat (succes sau esec) — apelantul
+// (generatePremiumExtras / triggerVideoGeneration in server.js) il apeleaza mereu intr-un
+// bloc finally. Idempotent: eliberarea unui lock deja eliberat e un no-op sigur.
+async function releaseVideoRender(orderId) {
+  await pool.query(
+    `UPDATE orders SET video_render_claimed_at = NULL, video_render_variant_id = NULL WHERE id = $1`,
+    [orderId]
+  );
+}
+
+// ==================================================================================
+// DEDUP ATOMIC, la nivel de eveniment Stripe individual (event.id) — vezi comentariul
+// coloanei/tabelei processed_stripe_events in initDb() pentru motivul exact. Foloseste
+// INSERT ... ON CONFLICT DO NOTHING: primul apel pentru un event_id dat insereaza randul
+// si returneaza true (eveniment nou, de procesat); orice apel ulterior pentru ACELASI
+// event_id gaseste conflictul, nu insereaza nimic, returneaza false (deja procesat).
+// ==================================================================================
+async function recordStripeEventIfNew(eventId, orderId) {
+  const result = await pool.query(
+    `INSERT INTO processed_stripe_events (event_id, order_id) VALUES ($1, $2)
+     ON CONFLICT (event_id) DO NOTHING
+     RETURNING event_id`,
+    [eventId, orderId || null]
+  );
+  return result.rows.length > 0; // true = eveniment nou (de procesat), false = deja procesat
+}
+
+// ==================================================================================
 // SISTEM DE PROTECTIE A CREDITELOR — jurnal de evenimente + setari persistente.
 // Vezi credits.js pentru logica de decizie (praguri, alerte, mod de urgenta);
 // functiile de mai jos sunt strict acces la date, fara nicio logica de business.
@@ -528,7 +631,9 @@ const COLUMN_MAP = {
   editReserved: 'edit_reserved',
   voicePreference: 'voice_preference',
   generationAttempts: 'generation_attempts',
-  uploadedMedia: 'uploaded_media'
+  uploadedMedia: 'uploaded_media',
+  mediaConfirmedAt: 'media_confirmed_at',
+  videoStaleReason: 'video_stale_reason'
 };
 
 async function updateOrder(id, patch) {
@@ -706,6 +811,7 @@ module.exports = {
   pool, initDb, createOrder, getOrderById, getOrderByToken, getOrderByMusicTaskId,
   claimOrderForProviderFinalization, claimOrderForRegeneration, claimOrderForInitialGeneration,
   refundEditIfReserved,
+  claimVideoRender, releaseVideoRender, recordStripeEventIfNew,
   updateOrder, listOrders, computeRevenue,
   logCreditEvent, getCreditEventsSince, getSetting, setSetting,
   claimCreditAlertTransition, getCreditAlertState, getCompletedOrdersSince, getAverageCreditsPerCompletedOrder,
