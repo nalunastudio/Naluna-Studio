@@ -50,6 +50,25 @@ const { pipeline } = require('stream/promises');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
 const execFileAsync = promisify(execFile);
+
+// ==========================================================================================
+// HOTFIX 2026-08-08: randarea videoclipului esua intermitent cu "Command failed" desi ffmpeg
+// insusi rula corect (confirmat in loguri: incadrele avansau normal, fisierul de iesire
+// crestea normal) — cauza reala: execFileAsync (Node) are un maxBuffer IMPLICIT de doar 1MB
+// pentru stdout+stderr combinate, iar ffmpeg tipareste pe stderr o linie de progres PENTRU
+// FIECARE CADRU codat by default — pentru un encode de cateva minute (normal pentru
+// concatWithCrossfades, care combina 5-10 segmente), acel text de progres singur depaseste
+// usor 1MB, iar Node omoara procesul si arunca eroarea generica "Command failed", fara nicio
+// legatura cu vreun fisier de intrare invalid. Wrapper unic pentru TOATE apelurile ffmpeg din
+// pipeline-ul video: '-hide_banner -loglevel error -nostats' elimina aproape complet spam-ul
+// de progres (pastreaza doar erorile reale), iar maxBuffer generos ramane ca plasa de
+// siguranta suplimentara.
+async function execFfmpeg(args, options = {}) {
+  return execFileAsync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostats', ...args], {
+    maxBuffer: 20 * 1024 * 1024,
+    ...options
+  });
+}
 const db = require('./db');
 const storage = require('./storage');
 const credits = require('./credits');
@@ -386,6 +405,10 @@ async function verifyMediaDecodable(filePath, mimetype, type) {
     }
     return { ok: true, durationSeconds };
   } catch (err) {
+    // Diagnostic SIGUR (fara nume de fisier client, fara continut) — necesar ca sa distingem
+    // "fisierul chiar e corupt" de "ffprobe/ffmpeg de pe acest mediu nu are demuxer-ul necesar
+    // pentru acest tip de fisier" (ex. constructia ffmpeg din apt poate sa nu aiba suport HEIF).
+    console.error(`verifyMediaDecodable: ffprobe a esuat pentru mimetype=${mimetype}, tip=${type}:`, err.message);
     return { ok: false, reason: 'fișier corupt sau imposibil de decodat' };
   }
 }
@@ -446,6 +469,41 @@ async function extractDngPreviewToJpeg(dngPath) {
   // (ex. pachetul nix nu s-a instalat) — altfel esecul era complet tacut.
   console.error('extractDngPreviewToJpeg: ambele tag-uri de previzualizare au esuat —', attemptErrors.join(' | '));
   return { ok: false, reason: 'fișierul DNG nu conține o previzualizare utilizabilă' };
+}
+
+// ==========================================================================================
+// Suport HEIC/HEIF (hotfix 2026-08-08) — gasit direct la testare cu un fisier HEIC REAL
+// (libheif/examples/example.heic, arhiva oficiala de referinta a proiectului libheif): ffprobe
+// din build-ul de productie (ffmpeg instalat prin apt) NU poate decodifica deloc HEIC/HEIF —
+// comanda esueaza cu exit code diferit de zero, desi acelasi fisier trece perfect prin ffprobe
+// pe un build complet (Gyan.dev) folosit doar pentru testare locala. Fisierul era respins la
+// upload ca "fisier corupt", desi era perfect valid — si chiar daca respingerea la upload ar fi
+// fost ocolita, randarea FINALA a videoclipului (buildMemoryBackground -> renderMemorySegment)
+// foloseste acelasi ffmpeg, deci ar fi esuat identic mai tarziu, mult mai greu de diagnosticat.
+//
+// HEIC nu e ca DNG — nu are o previzualizare JPEG separata incorporata (verificat: niciun tag
+// PreviewImage/ThumbnailImage pe fisierul de test) — imaginea IN SINE e continutul HEVC codat.
+// exiftool nu poate "extrage" ce nu exista ca tag separat; e nevoie de un decodor HEIF real.
+// heif-convert (pachetul apt `libheif-examples`, adaugat separat de ffmpeg/exiftool) e un
+// decodor HEIF dedicat, independent de suportul HEIF al ffmpeg — converteste direct la JPEG.
+async function extractHeicToJpeg(heicPath) {
+  const outPath = `${heicPath}.converted.jpg`;
+  // heif-convert numeroteaza fisierele de iesire ("nume-1.jpg", "nume-2.jpg", ...) cand
+  // fisierul HEIC contine mai multe imagini (ex. burst, thumbnail auxiliar) — comportament
+  // nedocumentat explicit in manual, verificat empiric. Pentru poza principala a clientului
+  // ne intereseaza DOAR prima imagine (nici DNG nu livreaza mai mult de o poza per fisier).
+  const numberedOutPath = `${heicPath}.converted-1.jpg`;
+  try {
+    await execFileAsync('heif-convert', [heicPath, outPath], { timeout: 30000 });
+    const direct = await fs.promises.stat(outPath).catch(() => null);
+    if (direct && direct.size > 0) return { ok: true, path: outPath };
+    const numbered = await fs.promises.stat(numberedOutPath).catch(() => null);
+    if (numbered && numbered.size > 0) return { ok: true, path: numberedOutPath };
+    return { ok: false, reason: 'heif-convert nu a produs niciun fisier de iesire' };
+  } catch (err) {
+    console.error('extractHeicToJpeg: heif-convert a esuat —', err.message);
+    return { ok: false, reason: 'fișierul HEIC/HEIF nu a putut fi convertit' };
+  }
 }
 
 // memoryStorage — fisierul ajunge in req.file.buffer, ca sa-l putem urca direct in cloud
@@ -1851,7 +1909,7 @@ app.post('/api/orders/:orderId/media', requireOrderToken, handleOrderMediaUpload
     let rejectedBadContent = 0;
     let rejectedUndecodable = 0;
     let rejectedStorageError = 0;
-    let rejectedDngUnusable = 0;
+    let rejectedConversionFailed = 0;
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       const label = file.originalname || `fișier ${i + 1}`;
@@ -1864,6 +1922,7 @@ app.post('/api/orders/:orderId/media', requireOrderToken, handleOrderMediaUpload
       let { type, mimetype: effectiveMimetype } = inferred;
       let uploadPath = file.path;
       const wasDng = effectiveMimetype === 'image/x-adobe-dng';
+      const wasHeic = effectiveMimetype === 'image/heic' || effectiveMimetype === 'image/heif';
 
       const header = await readFileHeader(file.path, 16);
       if (!bufferMatchesDeclaredType(header, effectiveMimetype)) {
@@ -1880,12 +1939,29 @@ app.post('/api/orders/:orderId/media', requireOrderToken, handleOrderMediaUpload
       if (wasDng) {
         const extracted = await extractDngPreviewToJpeg(file.path);
         if (!extracted.ok) {
-          rejectedDngUnusable++;
+          rejectedConversionFailed++;
           failed.push({ filename: label, reason: `Fotografia RAW (.dng) nu a putut fi procesată (${extracted.reason}).` });
           continue;
         }
         derivedPaths.push(extracted.path);
         uploadPath = extracted.path;
+        effectiveMimetype = 'image/jpeg';
+      }
+
+      // HEIC/HEIF: build-ul de ffmpeg din productie nu poate decodifica deloc acest format
+      // (verificat cu un fisier HEIC real — vezi extractHeicToJpeg) — nici la validare, nici
+      // mai tarziu la randarea videoclipului. Convertim la JPEG ACUM, o singura data, cu
+      // heif-convert (decodor HEIF dedicat) — restul pipeline-ului (validare, stocare,
+      // randare video) nu mai intalneste niciodata HEIC direct.
+      if (wasHeic) {
+        const converted = await extractHeicToJpeg(file.path);
+        if (!converted.ok) {
+          rejectedConversionFailed++;
+          failed.push({ filename: label, reason: `Fotografia HEIC/HEIF nu a putut fi procesată (${converted.reason}).` });
+          continue;
+        }
+        derivedPaths.push(converted.path);
+        uploadPath = converted.path;
         effectiveMimetype = 'image/jpeg';
       }
 
@@ -1895,7 +1971,7 @@ app.post('/api/orders/:orderId/media', requireOrderToken, handleOrderMediaUpload
         failed.push({ filename: label, reason: `Fișierul nu poate fi procesat (${decodable.reason}). Încearcă alt fișier sau alt format.` });
         continue;
       }
-      const ext = wasDng ? '.jpg' : (path.extname(file.originalname).toLowerCase() || (type === 'photo' ? '.jpg' : '.mp4'));
+      const ext = (wasDng || wasHeic) ? '.jpg' : (path.extname(file.originalname).toLowerCase() || (type === 'photo' ? '.jpg' : '.mp4'));
       const key = `orders/memories/${order.id}/${randomUUID()}${ext}`;
       try {
         await storage.uploadPrivateFile(uploadPath, key, effectiveMimetype);
@@ -1918,7 +1994,7 @@ app.post('/api/orders/:orderId/media', requireOrderToken, handleOrderMediaUpload
         (rejectedNoType ? `, tip_neacceptat=${rejectedNoType}` : '') +
         (rejectedBadContent ? `, continut_invalid=${rejectedBadContent}` : '') +
         (rejectedUndecodable ? `, nedecodabil=${rejectedUndecodable}` : '') +
-        (rejectedDngUnusable ? `, dng_fara_previzualizare=${rejectedDngUnusable}` : '') +
+        (rejectedConversionFailed ? `, conversie_esuata=${rejectedConversionFailed}` : '') +
         (rejectedStorageError ? `, eroare_storage=${rejectedStorageError}` : ''));
     }
 
@@ -3317,7 +3393,7 @@ async function generatePremiumExtras(orderId, options = {}) {
 
 async function generateWavExtra(orderId, variantId, tempFullMp3Path) {
   const tempWav = path.join(TEMP_DIR, `${orderId}-${variantId}-full.wav`);
-  await execFileAsync('ffmpeg', ['-y', '-i', tempFullMp3Path, tempWav]);
+  await execFfmpeg(['-y', '-i', tempFullMp3Path, tempWav]);
   const wavKey = `orders/full-wav/${orderId}-${variantId}.wav`;
   await storage.uploadPrivateFile(tempWav, wavKey, 'audio/wav');
   try { fs.unlinkSync(tempWav); } catch (e) { /* best-effort */ }
@@ -3501,7 +3577,7 @@ async function renderMemorySegment(item, index, segDurationSeconds, order) {
     // pre-scalare la 2x rezolutia finala (acelasi raport 9:16) — da zoompan-ului suficient
     // "spatiu" sa faca un zoom lent si neted, fara sa mareasca artificial o poza mica
     const zoomExpr = 'min(zoom+0.0012,1.12)';
-    await execFileAsync('ffmpeg', [
+    await execFfmpeg([
       '-y', '-loop', '1', '-i', item.localPath,
       '-t', String(segDurationSeconds),
       '-vf', `scale=${MEMORY_VIDEO_WIDTH * 2}:${MEMORY_VIDEO_HEIGHT * 2}:force_original_aspect_ratio=increase,crop=${MEMORY_VIDEO_WIDTH * 2}:${MEMORY_VIDEO_HEIGHT * 2},zoompan=z='${zoomExpr}':d=${frames}:s=${MEMORY_VIDEO_WIDTH}x${MEMORY_VIDEO_HEIGHT}:fps=${MEMORY_VIDEO_FPS},format=yuv420p`,
@@ -3509,7 +3585,7 @@ async function renderMemorySegment(item, index, segDurationSeconds, order) {
       outPath
     ], { timeout: 180000 });
   } else {
-    await execFileAsync('ffmpeg', [
+    await execFfmpeg([
       '-y', '-stream_loop', '-1', '-i', item.localPath,
       '-t', String(segDurationSeconds),
       '-vf', `scale=${MEMORY_VIDEO_WIDTH}:${MEMORY_VIDEO_HEIGHT}:force_original_aspect_ratio=increase,crop=${MEMORY_VIDEO_WIDTH}:${MEMORY_VIDEO_HEIGHT},fps=${MEMORY_VIDEO_FPS},format=yuv420p`,
@@ -3543,7 +3619,7 @@ async function concatWithCrossfades(segmentPaths, segDurations, order) {
   }
   filter = filter.replace(/;$/, '');
 
-  await execFileAsync('ffmpeg', [
+  await execFfmpeg([
     '-y', ...inputArgs,
     '-filter_complex', filter,
     '-map', `[${lastLabel}]`,
@@ -3669,7 +3745,7 @@ async function generateLyricVideo(order, variant, tempFullMp3Path) {
       ? ['-i', memoryBackground.backgroundPath]
       : ['-f', 'lavfi', '-i', `color=c=${VIDEO_BG_COLOR}:s=${MEMORY_VIDEO_WIDTH}x${MEMORY_VIDEO_HEIGHT}:d=${durationSeconds}`];
 
-    await execFileAsync('ffmpeg', [
+    await execFfmpeg([
       '-y',
       ...videoInputArgs,
       '-i', tempFullMp3Path,
@@ -3934,7 +4010,7 @@ async function trimAudio(srcPath, destPath, seconds, startSeconds = 0) {
   const args = ['-y'];
   if (safeStart > 0) args.push('-ss', String(safeStart));
   args.push('-i', srcPath, '-t', String(seconds), '-acodec', 'copy', destPath);
-  await execFileAsync('ffmpeg', args);
+  await execFfmpeg(args);
 }
 
 async function getAudioDuration(filePath) {
@@ -4447,11 +4523,29 @@ async function checkExiftoolAvailability() {
   }
 }
 
+// Aceeasi verificare, pentru heif-convert (hotfix 2026-08-08, suport real HEIC/HEIF) — vezi
+// extractHeicToJpeg. heif-convert nu are un flag simplu de versiune confirmat — apelat fara
+// argumente iese oricum cu cod diferit de zero (lipsesc fisierele de intrare/iesire), dar asta
+// confirma ca binarul CHIAR EXISTA si porneste; doar ENOENT inseamna ca lipseste cu adevarat.
+async function checkHeifConvertAvailability() {
+  try {
+    await execFileAsync('heif-convert', []);
+    console.log('heif-convert disponibil');
+  } catch (err) {
+    if (err.code === 'ENOENT') {
+      console.error('heif-convert indisponibil — suportul HEIC/HEIF nu va functiona:', err.message);
+    } else {
+      console.log('heif-convert disponibil (a raspuns cu cod de iesire diferit de zero fara argumente, asteptat)');
+    }
+  }
+}
+
 // -------- pornire: verificam intai conexiunea la baza de date --------
 db.initDb()
   .then(() => {
     checkFfmpegAvailability(); // fire-and-forget — nu blocheaza si nu conditioneaza pornirea
     checkExiftoolAvailability(); // fire-and-forget, acelasi motiv
+    checkHeifConvertAvailability(); // fire-and-forget, acelasi motiv
     app.listen(PORT, () => {
       console.log(`NALUNA ruleaza pe ${DOMAIN}`);
     });

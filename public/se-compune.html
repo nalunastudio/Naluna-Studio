@@ -427,12 +427,17 @@
     }, 220);
   }
 
-  // IMPORTANT: nu exista niciun procent numeric real de progres — Suno (furnizorul de
-  // generare) nu expune asa ceva prin API. Bara ramane vizual nedeterminata (animatie CSS,
-  // vezi .progress-fill), NEATASATA de niciun calcul fals "timp scurs / estimare = %". Ce
-  // rotim aici e STRICT textul calitativ afisat langa ea, ca reasigurare ca ceva se intampla —
-  // nu o pretentie de masurare exacta. Finalizarea REALA (finishSuccess/handleGenerationFailed)
-  // vine EXCLUSIV din polling-ul statusului real al comenzii, niciodata din acest timer.
+  // Acest timer controleaza STRICT textul calitativ rotativ (t.stages) afisat langa bara —
+  // reasigurare emotionala pe baza de timp scurs, nu o masuratoare reala. Procentul NUMERIC
+  // real (order.generationPhasePercent) e gestionat EXCLUSIV de updateRealProgress() mai jos,
+  // populat din milestone-uri server-side reale — acest timer NU trebuie sa atinga niciodata
+  // vizibilitatea lui #estimate-pill.
+  //
+  // HOTFIX (procentul aparea si disparea, pagina parea blocata): acest timer rula la fiecare
+  // 1s si ascundea necondiționat #estimate-pill la fiecare tick, in timp ce updateRealProgress
+  // il reafisa doar cand sosea un raspuns nou de la server (la ~4s) — rezultatul vizibil era
+  // un procent care disparea de 3-4 ori mai des decat aparea. Bara/procentul raman acum
+  // permanent vizibile de indata ce exista o valoare reala, pana la finishSuccess().
   const STAGE_INTERVAL_MS = ESTIMATE_MS / t.stages.length;
   function updateProgress() {
     if (finished) return;
@@ -442,7 +447,6 @@
       currentStageIndex = stageIndex;
       setStatusMessage(t.stages[stageIndex]);
     }
-    estimatePillEl.classList.add('hidden');
   }
   updateProgress();
   const progressTimer = setInterval(updateProgress, 1000);
@@ -629,6 +633,15 @@
       spinnerEl.style.opacity = '1';
       spinnerCheckEl.classList.remove('show');
       currentStageIndex = -1;
+
+      // O reincercare porneste o generare NOUA (de la 0) — fara acest reset, procentul ramas
+      // de la incercarea esuata anterior (ex. 55%) ar ramane afisat, inghetat, pana cand noua
+      // generare il depaseste real (updateRealProgress nu regreseaza niciodata vizual) — un
+      // procent "vechi", nu fals, dar inducand in eroare pentru incercarea curenta.
+      highestShownPercent = 0;
+      progressFill.classList.remove('real', 'done');
+      progressFill.style.width = '';
+      estimatePillEl.classList.add('hidden');
 
       updateProgress();
       pollStatus();

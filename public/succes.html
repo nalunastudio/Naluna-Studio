@@ -34,6 +34,7 @@
   @keyframes spin{ to{ transform:rotate(360deg); } }
   @media (prefers-reduced-motion: reduce){ .spinner{ animation-duration:3s; } }
   audio{ width:100%; margin-top:12px; }
+  video{ width:100%; margin-top:12px; border-radius:12px; background:#000; }
   .btn{
     display:inline-block; margin-top:10px; padding:13px 26px; border-radius:999px;
     background:var(--text); color:var(--bg); text-decoration:none; font-weight:500; font-size:14px;
@@ -95,7 +96,7 @@
         download: 'Descarcă fișierul',
         error_title: 'A apărut o eroare',
         error_sub: 'Nu am putut genera melodia din cauza unei erori tehnice.',
-        not_found: 'Comanda nu a fost găsită', download_wav: 'Descarcă WAV', download_video: 'Descarcă videoclipul', extra_processing: 'Se pregătește — reîmprospătează pagina în câteva minute',
+        not_found: 'Comanda nu a fost găsită', download_wav: 'Descarcă WAV', download_video: 'Descarcă videoclipul', video_gift_title: 'Videoclipul tău cadou', video_song_title: 'Melodia din videoclip', video_gift_song_title: 'Melodia cadou', extra_processing: 'Se pregătește — reîmprospătează pagina în câteva minute',
         gift_title: 'A doua melodie completă', gift_download: 'Descarcă a doua melodie',
         memories_title: 'Adaugă pozele și videoclipurile tale',
         memories_sub: 'Adaugă între 3 și 10 poze sau clipuri video, iar noi le vom transforma într-un videoclip cu versuri, cu tranziții cinematice.',
@@ -106,7 +107,7 @@
         memories_create_btn_skip: 'Creează fără poze',
         memories_creating: 'Se creează videoclipul tău cu amintiri... poate dura câteva minute',
         memories_remove: '✕',
-        memories_upload_error: 'Încărcarea a eșuat. Încearcă din nou',
+        memories_upload_error: 'Încărcarea a eșuat. Încearcă din nou', media_load_error: 'Nu s-a putut încărca — atinge pentru a reîncerca.',
         memories_create_error: 'Crearea videoclipului a eșuat. Încearcă din nou',
         memories_sections: { none: 'Fără preferință', beginning: 'Început', verse1: 'Strofa 1', chorus: 'Refren', verse2: 'Strofa 2', ending: 'Final' },
         plan_standard: '🎵 Pachet Standard', plan_premium: '💿 Pachet Premium', plan_video: '🎬 Cadou video'
@@ -119,7 +120,7 @@
         download: 'Download the file',
         error_title: 'Something went wrong',
         error_sub: 'We couldn\'t generate the song due to a technical error.',
-        not_found: 'Order not found.', download_wav: 'Download WAV', download_video: 'Download the video', extra_processing: 'Still preparing — refresh this page in a few minutes',
+        not_found: 'Order not found.', download_wav: 'Download WAV', download_video: 'Download the video', video_gift_title: 'Your gift video', video_song_title: 'The song in the video', video_gift_song_title: 'The gift song', extra_processing: 'Still preparing — refresh this page in a few minutes',
         gift_title: 'Your second complete song', gift_download: 'Download the second song',
         memories_title: 'Add your photos & videos',
         memories_sub: 'Add 3 to 10 photos or video clips and we\'ll weave them into a lyric video with cinematic transitions.',
@@ -130,7 +131,7 @@
         memories_create_btn_skip: 'Create without photos',
         memories_creating: 'Creating your memory video... this can take a few minutes',
         memories_remove: '✕',
-        memories_upload_error: 'Upload failed. Please try again.',
+        memories_upload_error: 'Upload failed. Please try again.', media_load_error: 'Could not load — tap to retry.',
         memories_create_error: 'Creating the video failed. Please try again.',
         memories_sections: { none: 'No preference', beginning: 'Beginning', verse1: 'Verse 1', chorus: 'Chorus', verse2: 'Verse 2', ending: 'Ending' },
         plan_standard: '🎵 Standard package', plan_premium: '💿 Premium package', plan_video: '🎬 Video gift'
@@ -143,7 +144,7 @@
         download: 'Datei herunterladen',
         error_title: 'Etwas ist schiefgelaufen',
         error_sub: 'Wir konnten das Lied aufgrund eines technischen Fehlers nicht erstellen.',
-        not_found: 'Bestellung nicht gefunden.', download_wav: 'WAV herunterladen', download_video: 'Video herunterladen', extra_processing: 'Wird noch vorbereitet — aktualisiere diese Seite in ein paar Minuten',
+        not_found: 'Bestellung nicht gefunden.', download_wav: 'WAV herunterladen', download_video: 'Video herunterladen', video_gift_title: 'Dein Geschenkvideo', video_song_title: 'Das Lied im Video', video_gift_song_title: 'Das Geschenklied', extra_processing: 'Wird noch vorbereitet — aktualisiere diese Seite in ein paar Minuten',
         gift_title: 'Dein zweites vollständiges Lied', gift_download: 'Zweites Lied herunterladen',
         memories_title: 'Füge deine Fotos & Videos hinzu',
         memories_sub: 'Füge 3 bis 10 Fotos oder Videoclips hinzu — wir verweben sie zu einem Lyric-Video mit filmischen Übergängen.',
@@ -154,7 +155,7 @@
         memories_create_btn_skip: 'Ohne Fotos erstellen',
         memories_creating: 'Dein Erinnerungsvideo wird erstellt... das kann einige Minuten dauern',
         memories_remove: '✕',
-        memories_upload_error: 'Hochladen fehlgeschlagen. Bitte versuche es erneut.',
+        memories_upload_error: 'Hochladen fehlgeschlagen. Bitte versuche es erneut.', media_load_error: 'Konnte nicht geladen werden — zum Wiederholen tippen.',
         memories_create_error: 'Videoerstellung fehlgeschlagen. Bitte versuche es erneut.',
         memories_sections: { none: 'Keine Präferenz', beginning: 'Anfang', verse1: 'Strophe 1', chorus: 'Refrain', verse2: 'Strophe 2', ending: 'Ende' },
         plan_standard: '🎵 Standard-Paket', plan_premium: '💿 Premium-Paket', plan_video: '🎬 Video-Geschenk'
@@ -167,7 +168,7 @@
         download: 'Descargar el archivo',
         error_title: 'Algo salió mal',
         error_sub: 'No pudimos generar la canción debido a un error técnico.',
-        not_found: 'Pedido no encontrado.', download_wav: 'Descargar WAV', download_video: 'Descargar el video', extra_processing: 'Aún preparando — actualiza esta página en unos minutos',
+        not_found: 'Pedido no encontrado.', download_wav: 'Descargar WAV', download_video: 'Descargar el video', video_gift_title: 'Tu video de regalo', video_song_title: 'La canción del video', video_gift_song_title: 'La canción de regalo', extra_processing: 'Aún preparando — actualiza esta página en unos minutos',
         gift_title: 'Tu segunda canción completa', gift_download: 'Descargar la segunda canción',
         memories_title: 'Añade tus fotos y videos',
         memories_sub: 'Añade entre 3 y 10 fotos o clips de video y los combinaremos en un video lírico con transiciones cinematográficas.',
@@ -178,7 +179,7 @@
         memories_create_btn_skip: 'Crear sin fotos',
         memories_creating: 'Creando tu video de recuerdos... puede tardar unos minutos',
         memories_remove: '✕',
-        memories_upload_error: 'Error al subir. Inténtalo de nuevo.',
+        memories_upload_error: 'Error al subir. Inténtalo de nuevo.', media_load_error: 'No se pudo cargar — toca para reintentar.',
         memories_create_error: 'Error al crear el video. Inténtalo de nuevo.',
         memories_sections: { none: 'Sin preferencia', beginning: 'Inicio', verse1: 'Estrofa 1', chorus: 'Estribillo', verse2: 'Estrofa 2', ending: 'Final' },
         plan_standard: '🎵 Paquete Estándar', plan_premium: '💿 Paquete Premium', plan_video: '🎬 Regalo en video'
@@ -191,7 +192,7 @@
         download: 'Scarica il file',
         error_title: 'Qualcosa è andato storto',
         error_sub: 'Non siamo riusciti a generare la canzone a causa di un errore tecnico.',
-        not_found: 'Ordine non trovato.', download_wav: 'Scarica WAV', download_video: 'Scarica il video', extra_processing: 'Ancora in preparazione — aggiorna questa pagina tra qualche minuto',
+        not_found: 'Ordine non trovato.', download_wav: 'Scarica WAV', download_video: 'Scarica il video', video_gift_title: 'Il tuo video regalo', video_song_title: 'La canzone nel video', video_gift_song_title: 'La canzone regalo', extra_processing: 'Ancora in preparazione — aggiorna questa pagina tra qualche minuto',
         gift_title: 'La tua seconda canzone completa', gift_download: 'Scarica la seconda canzone',
         memories_title: 'Aggiungi le tue foto e i tuoi video',
         memories_sub: 'Aggiungi da 3 a 10 foto o clip video: le trasformeremo in un video con testo e transizioni cinematografiche.',
@@ -202,7 +203,7 @@
         memories_create_btn_skip: 'Crea senza foto',
         memories_creating: 'Creazione del video con i ricordi... può richiedere qualche minuto',
         memories_remove: '✕',
-        memories_upload_error: 'Caricamento non riuscito. Riprova.',
+        memories_upload_error: 'Caricamento non riuscito. Riprova.', media_load_error: 'Impossibile caricare — tocca per riprovare.',
         memories_create_error: 'Creazione del video non riuscita. Riprova.',
         memories_sections: { none: 'Nessuna preferenza', beginning: 'Inizio', verse1: 'Strofa 1', chorus: 'Ritornello', verse2: 'Strofa 2', ending: 'Finale' },
         plan_standard: '🎵 Pacchetto Standard', plan_premium: '💿 Pacchetto Premium', plan_video: '🎬 Regalo video'
@@ -215,7 +216,7 @@
         download: 'Télécharger le fichier',
         error_title: 'Un problème est survenu',
         error_sub: 'Nous n\'avons pas pu générer la chanson en raison d\'une erreur technique.',
-        not_found: 'Commande introuvable.', download_wav: 'Télécharger le WAV', download_video: 'Télécharger la vidéo', extra_processing: 'Encore en préparation — actualisez cette page dans quelques minutes',
+        not_found: 'Commande introuvable.', download_wav: 'Télécharger le WAV', download_video: 'Télécharger la vidéo', video_gift_title: 'Ta vidéo cadeau', video_song_title: 'La chanson de la vidéo', video_gift_song_title: 'La chanson cadeau', extra_processing: 'Encore en préparation — actualisez cette page dans quelques minutes',
         gift_title: 'Votre deuxième chanson complète', gift_download: 'Télécharger la deuxième chanson',
         memories_title: 'Ajoutez vos photos et vidéos',
         memories_sub: 'Ajoutez 3 à 10 photos ou clips vidéo, nous les intégrerons dans un clip lyrique avec des transitions cinématographiques.',
@@ -226,7 +227,7 @@
         memories_create_btn_skip: 'Créer sans photos',
         memories_creating: 'Création de votre vidéo souvenir... cela peut prendre quelques minutes',
         memories_remove: '✕',
-        memories_upload_error: 'Échec de l\'envoi. Veuillez réessayer.',
+        memories_upload_error: 'Échec de l\'envoi. Veuillez réessayer.', media_load_error: 'Échec du chargement — touchez pour réessayer.',
         memories_create_error: 'Échec de la création de la vidéo. Veuillez réessayer.',
         memories_sections: { none: 'Aucune préférence', beginning: 'Début', verse1: 'Couplet 1', chorus: 'Refrain', verse2: 'Couplet 2', ending: 'Fin' },
         plan_standard: '🎵 Pack Standard', plan_premium: '💿 Pack Premium', plan_video: '🎬 Cadeau vidéo'
@@ -239,7 +240,7 @@
         download: 'Изтегли файла',
         error_title: 'Нещо се обърка',
         error_sub: 'Не успяхме да генерираме песента поради техническа грешка.',
-        not_found: 'Поръчката не е намерена.', download_wav: 'Изтегли WAV', download_video: 'Изтегли видеото', extra_processing: 'Все още се подготвя — опресни страницата след няколко минути',
+        not_found: 'Поръчката не е намерена.', download_wav: 'Изтегли WAV', download_video: 'Изтегли видеото', video_gift_title: 'Твоето видео подарък', video_song_title: 'Песента във видеото', video_gift_song_title: 'Песента подарък', extra_processing: 'Все още се подготвя — опресни страницата след няколко минути',
         gift_title: 'Втората ти пълна песен', gift_download: 'Изтегли втората песен',
         memories_title: 'Добави своите снимки и видеа',
         memories_sub: 'Добави между 3 и 10 снимки или видеоклипа и ние ще ги вплетем в лирик видео с кинематографични преходи.',
@@ -250,7 +251,7 @@
         memories_create_btn_skip: 'Създай без снимки',
         memories_creating: 'Създаваме твоето видео със спомени... може да отнеме няколко минути',
         memories_remove: '✕',
-        memories_upload_error: 'Качването не бе успешно. Опитай отново.',
+        memories_upload_error: 'Качването не бе успешно. Опитай отново.', media_load_error: 'Неуспешно зареждане — докосни за повторен опит.',
         memories_create_error: 'Създаването на видеото не бе успешно. Опитай отново.',
         memories_sections: { none: 'Без предпочитание', beginning: 'Начало', verse1: 'Куплет 1', chorus: 'Припев', verse2: 'Куплет 2', ending: 'Край' },
         plan_standard: '🎵 Пакет Стандарт', plan_premium: '💿 Пакет Премиум', plan_video: '🎬 Видео подарък'
@@ -263,7 +264,7 @@
         download: 'Dosyayı indir',
         error_title: 'Bir şeyler ters gitti',
         error_sub: 'Teknik bir hata nedeniyle şarkıyı oluşturamadık.',
-        not_found: 'Sipariş bulunamadı.', download_wav: 'WAV indir', download_video: 'Videoyu indir', extra_processing: 'Hâlâ hazırlanıyor — birkaç dakika içinde bu sayfayı yenileyin',
+        not_found: 'Sipariş bulunamadı.', download_wav: 'WAV indir', download_video: 'Videoyu indir', video_gift_title: 'Hediye videon', video_song_title: 'Videodaki şarkı', video_gift_song_title: 'Hediye şarkı', extra_processing: 'Hâlâ hazırlanıyor — birkaç dakika içinde bu sayfayı yenileyin',
         gift_title: 'İkinci tam şarkınız', gift_download: 'İkinci şarkıyı indir',
         memories_title: 'Fotoğraflarınızı ve videolarınızı ekleyin',
         memories_sub: '3 ile 10 arası fotoğraf veya video klip ekleyin, bunları sinematik geçişlerle bir söz videosuna dönüştürelim.',
@@ -274,7 +275,7 @@
         memories_create_btn_skip: 'Fotoğrafsız oluştur',
         memories_creating: 'Anı videonuz oluşturuluyor... bu birkaç dakika sürebilir',
         memories_remove: '✕',
-        memories_upload_error: 'Yükleme başarısız oldu. Lütfen tekrar deneyin.',
+        memories_upload_error: 'Yükleme başarısız oldu. Lütfen tekrar deneyin.', media_load_error: 'Yüklenemedi — tekrar denemek için dokun.',
         memories_create_error: 'Video oluşturma başarısız oldu. Lütfen tekrar deneyin.',
         memories_sections: { none: 'Fark etmez', beginning: 'Başlangıç', verse1: '1. Kıta', chorus: 'Nakarat', verse2: '2. Kıta', ending: 'Final' },
         plan_standard: '🎵 Standart Paket', plan_premium: '💿 Premium Paket', plan_video: '🎬 Video Hediye'
@@ -299,6 +300,37 @@
       const div = document.createElement('div');
       div.textContent = str == null ? '' : String(str);
       return div.innerHTML;
+    }
+
+    // HOTFIX 2026-08-08: playerele audio/video de pe aceasta pagina (melodia principala,
+    // melodia cadou, videoclipul cadou) foloseau interpolare directa in innerHTML
+    // (`<audio src="...">`) — acelasi tipar care, pe melodia-mea.html, a cauzat preview-uri
+    // blocate la nesfarsit fara niciun semnal vizibil (vezi hotfix-ul anterior de acolo).
+    // Reconstruim elementul explicit prin API DOM (createElement + proprietatea .src + .load()),
+    // cu timeout si buton de reincercare clar — niciodata un player blocat fara explicatie.
+    function mountMedia(wrapEl, url, tagName) {
+      if (!wrapEl) return;
+      wrapEl.innerHTML = '';
+      const el = document.createElement(tagName);
+      el.controls = true;
+      el.preload = 'metadata';
+      if (tagName === 'video') el.playsInline = true;
+
+      let settled = false;
+      const loadTimeout = setTimeout(() => { if (!settled) { settled = true; showError(); } }, 15000);
+
+      function showError() {
+        clearTimeout(loadTimeout);
+        wrapEl.innerHTML = `<p class="media-error" style="color:var(--error); font-size:13px; cursor:pointer; text-decoration:underline; margin:8px 0;">${t.media_load_error}</p>`;
+        wrapEl.querySelector('.media-error').addEventListener('click', () => mountMedia(wrapEl, url, tagName));
+      }
+
+      el.addEventListener('loadedmetadata', () => { settled = true; clearTimeout(loadTimeout); });
+      el.addEventListener('error', () => { if (!settled) { settled = true; showError(); } });
+
+      wrapEl.appendChild(el);
+      el.src = url;
+      el.load();
     }
 
     // fisiere alese local, nu inca incarcate — { file, section }
@@ -455,17 +487,7 @@
       // trei pachete (Standard/Premium/Video), nu doar audio-ul principal. Vezi
       // getGiftVariant/GET /media/full/:orderId/gift in server.js.
       const giftVariant = (data.variants || []).find(v => v.id !== data.selectedVariantId);
-      let giftHtml = '';
-      if (giftVariant) {
-        const giftUrl = `/media/full/${orderId}/gift?token=${encodeURIComponent(accessToken || '')}`;
-        giftHtml = `
-        <div style="margin-top:24px; padding-top:20px; border-top:1px solid var(--line);">
-          <h2>${t.gift_title}</h2>
-          <audio controls src="${giftUrl}"></audio>
-          <br>
-          <a class="btn" href="${giftUrl}" download>${t.gift_download}</a>
-        </div>`;
-      }
+      const giftUrl = giftVariant ? `/media/full/${orderId}/gift?token=${encodeURIComponent(accessToken || '')}` : null;
 
       // Extrasele de pachet (WAV pentru premium/video, videoclip pentru video) se genereaza
       // ASINCRON dupa plata (vezi generatePremiumExtras in server.js) — WAV automat, dar
@@ -482,11 +504,8 @@
           stillWaitingForExtras = true;
         }
       }
-      if (data.plan === 'video') {
-        if (variant.hasVideo) {
-          const videoUrl = `/media/video/${orderId}?token=${encodeURIComponent(accessToken || '')}`;
-          extrasHtml += `<br><a class="btn" href="${videoUrl}" download>${t.download_video}</a>`;
-        }
+      if (data.plan === 'video' && !variant.hasVideo) {
+        stillWaitingForExtras = true;
       }
       if (stillWaitingForExtras) {
         extrasHtml += `<p style="margin-top:16px;">${t.extra_processing}</p>`;
@@ -495,17 +514,61 @@
       const planBadgeHtml = (data.plan === 'standard' || data.plan === 'premium' || data.plan === 'video')
         ? `<div class="plan-badge">${t['plan_' + data.plan]}</div>` : '';
 
+      // Structura ceruta explicit pentru pachetul "Cadou video" — exact 3 blocuri, in aceasta
+      // ordine: 1) videoclipul (playabil, cu sunetul melodiei principale), 2) aceeasi melodie
+      // principala, separat, doar audio, 3) melodia cadou (cealalta varianta, alt gen ales de
+      // client), separat, doar audio. Un singur videoclip, o singura melodie principala,
+      // o singura melodie cadou — niciodata un al doilea videoclip sau o a treia melodie.
+      // Standard/Premium raman NESCHIMBATE (playerul principal + melodia cadou, fara video).
+      // Elementele media (audio/video) sunt DOAR placeholder-uri goale aici — montate explicit
+      // prin API DOM (mountMedia) DUPA ce innerHTML e asignat mai jos, niciodata interpolate
+      // direct ca "<audio src=...>"/"<video src=...>" in acest string (vezi comentariul de la
+      // mountMedia despre de ce).
+      let resultHtml;
+      let videoUrl = null;
+      if (data.plan === 'video' && variant.hasVideo) {
+        videoUrl = `/media/video/${orderId}?token=${encodeURIComponent(accessToken || '')}`;
+        resultHtml = `
+        <h2 style="margin-top:8px;">${t.video_gift_title}</h2>
+        <div id="gift-video-wrap"></div>
+        <a class="btn" href="${videoUrl}" download>${t.download_video}</a>
+
+        <div style="margin-top:24px; padding-top:20px; border-top:1px solid var(--line);">
+          <h2>${t.video_song_title}</h2>
+          <div id="main-audio-wrap"></div>
+          <a class="btn" href="${fullUrl}" download>${t.download}</a>
+        </div>
+
+        ${giftUrl ? `
+        <div style="margin-top:24px; padding-top:20px; border-top:1px solid var(--line);">
+          <h2>${t.video_gift_song_title}</h2>
+          <div id="gift-audio-wrap"></div>
+          <a class="btn" href="${giftUrl}" download>${t.gift_download}</a>
+        </div>` : ''}`;
+      } else {
+        resultHtml = `
+        <div id="main-audio-wrap"></div>
+        <a class="btn" href="${fullUrl}" download>${t.download}</a>
+        ${extrasHtml}
+        ${giftUrl ? `
+        <div style="margin-top:24px; padding-top:20px; border-top:1px solid var(--line);">
+          <h2>${t.gift_title}</h2>
+          <div id="gift-audio-wrap"></div>
+          <a class="btn" href="${giftUrl}" download>${t.gift_download}</a>
+        </div>` : ''}`;
+      }
+
       card.innerHTML = `
         <h1>${t.ready_title}</h1>
         ${planBadgeHtml}
         <p>${t.for_label} ${escapeHtml(data.recipient)}</p>
-        <audio controls src="${fullUrl}"></audio>
-        <br>
-        <a class="btn" href="${fullUrl}" download>${t.download}</a>
-        ${extrasHtml}
-        ${giftHtml}
+        ${resultHtml}
         ${renderMemories(data, variant)}
       `;
+
+      if (videoUrl) mountMedia(document.getElementById('gift-video-wrap'), videoUrl, 'video');
+      mountMedia(document.getElementById('main-audio-wrap'), fullUrl, 'audio');
+      if (giftUrl) mountMedia(document.getElementById('gift-audio-wrap'), giftUrl, 'audio');
 
       wireMemoriesEvents();
 
