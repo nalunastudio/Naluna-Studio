@@ -419,6 +419,7 @@ async function readFileHeader(filePath, len = 16) {
 // Fallback pe JpgFromRaw daca PreviewImage lipseste (unele unelte terte scriu DNG-uri cu doar
 // unul din cele doua tag-uri standard de previzualizare completa).
 async function extractDngPreviewToJpeg(dngPath) {
+  const attemptErrors = [];
   for (const tag of ['-PreviewImage', '-JpgFromRaw']) {
     try {
       const { stdout } = await execFileAsync('exiftool', ['-b', tag, dngPath], {
@@ -431,10 +432,19 @@ async function extractDngPreviewToJpeg(dngPath) {
         await fs.promises.writeFile(outPath, stdout);
         return { ok: true, path: outPath };
       }
+      attemptErrors.push(`${tag}: raspuns gol sau nu e JPEG (${stdout ? stdout.length : 0} octeti)`);
     } catch (err) {
-      // incearca urmatorul tag — o eroare exiftool pe un tag lipsa e normala, nu fatala
+      // o eroare exiftool pentru un tag LIPSA (fisierul nu are acel tag specific) e normala —
+      // incearca urmatorul tag. Retinem mesajul ca sa distingem asta de un esec real (binar
+      // negasit, timeout) daca AMBELE incercari esueaza — vezi logarea de mai jos.
+      attemptErrors.push(`${tag}: ${err.message}`);
     }
   }
+  // Diagnostic SIGUR (fara continutul fisierului, fara nume de fisier client — doar tag-urile
+  // incercate si mesajele de eroare exiftool) — necesar ca sa distingem in loguri Railway intre
+  // "acest DNG chiar nu are nicio previzualizare" si "exiftool nu ruleaza deloc pe acest mediu"
+  // (ex. pachetul nix nu s-a instalat) — altfel esecul era complet tacut.
+  console.error('extractDngPreviewToJpeg: ambele tag-uri de previzualizare au esuat —', attemptErrors.join(' | '));
   return { ok: false, reason: 'fișierul DNG nu conține o previzualizare utilizabilă' };
 }
 
@@ -4345,10 +4355,23 @@ async function checkFfmpegAvailability() {
   }
 }
 
+// Aceeasi verificare, pentru exiftool (hotfix 2026-08-07, suport DNG/Apple ProRAW) — vezi
+// extractDngPreviewToJpeg. Fara aceasta, o eroare "binar negasit" la extragere ar fi rezultat
+// doar in respingerea tacuta a fiecarui DNG in parte, fara niciun indiciu in loguri DE CE.
+async function checkExiftoolAvailability() {
+  try {
+    const { stdout } = await execFileAsync('exiftool', ['-ver']);
+    console.log('exiftool disponibil, versiune', stdout.trim());
+  } catch (err) {
+    console.error('exiftool indisponibil — suportul DNG/Apple ProRAW nu va functiona:', err.message);
+  }
+}
+
 // -------- pornire: verificam intai conexiunea la baza de date --------
 db.initDb()
   .then(() => {
     checkFfmpegAvailability(); // fire-and-forget — nu blocheaza si nu conditioneaza pornirea
+    checkExiftoolAvailability(); // fire-and-forget, acelasi motiv
     app.listen(PORT, () => {
       console.log(`NALUNA ruleaza pe ${DOMAIN}`);
     });
