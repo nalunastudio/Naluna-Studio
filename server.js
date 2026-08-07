@@ -1403,7 +1403,18 @@ app.post('/api/orders/:orderId/select', requireOrderToken, async (req, res, next
       const oldVariant = (order.variants || []).find(v => v.id === order.selectedVariantId);
       const oldHadVideo = !!(oldVariant && oldVariant.videoKey);
       const newAlreadyHasVideo = !!newVariant.videoKey;
-      if (newAlreadyHasVideo) {
+      if (order.videoStaleReason === 'media_changed') {
+        // Materialele (poze/video client) s-au schimbat DUPA ultima randare — niciun
+        // videoclip existent, pentru NICIO varianta, nu mai reflecta selectia curenta de
+        // materiale. Schimbarea variantei (inclusiv re-selectarea acceleasi variante, facuta
+        // AUTOMAT de client la fiecare incarcare/reincarcare a paginii — vezi selectVariant()
+        // in melodia-mea.html, apelat necondiționat din renderContent()) nu rezolva aceasta
+        // staleness si NU trebuie sa o stearga silentios, altfel un client care doar
+        // reincarca pagina dupa ce a schimbat pozele ar vedea din nou videoclipul VECHI
+        // marcat "gata", desi el nu a fost niciodata regenerat. Ramane 'media_changed' pana
+        // la reconfirmarea explicita (POST /media/confirm), singura care declanseaza randarea
+        // reala pentru selectia noua.
+      } else if (newAlreadyHasVideo) {
         // clientul revine la o varianta care avea deja un videoclip gata (ex. comuta inainte
         // si inapoi intre cele 2 variante) — redevine valabil imediat, nimic de regenerat.
         patch.videoStaleReason = null;
