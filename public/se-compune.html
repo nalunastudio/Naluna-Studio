@@ -97,15 +97,17 @@
     height:7px; border-radius:999px; background:var(--surface); border:1px solid var(--line);
     overflow:hidden; margin-bottom:12px; position:relative;
   }
-  /* Bara e INTENTIONAT nedeterminata — Suno (furnizorul de generare) nu ofera niciun procent
-     real de progres. Afisam activitate reala (ceva se intampla), nu un numar inventat care ar
-     pretinde o precizie pe care nu o avem — vezi si eliminarea completa a elementului
-     .progress-percent de mai jos si a JS-ului care calcula un procent din timp scurs. */
+  /* Bara ramane nedeterminata (animatie) DOAR pana la primul raspuns real al serverului —
+     hotfix 2026-08-07: server.js expune acum un procent REAL, bazat pe milestone-uri concrete
+     (submitted/processing/first_stream/finalizing/ready — vezi recordGenerationProgress),
+     niciodata dintr-un timp scurs estimat. De indata ce sosesc date reale, bara trece pe
+     .real si latimea e controlata explicit din JS (updateRealProgress), cu tranzitie lina. */
   .progress-fill{
     height:100%; border-radius:999px; position:absolute; top:0; left:-40%; width:40%;
     background:linear-gradient(90deg, var(--gold-deep), var(--gold-soft));
     animation:indeterminate 1.6s ease-in-out infinite;
   }
+  .progress-fill.real{ animation:none; left:0; transition:width .6s ease; }
   .progress-fill.done{ animation:none; left:0; width:100%; }
   @keyframes indeterminate{ 0%{ left:-40%; } 100%{ left:100%; } }
   @media (prefers-reduced-motion: reduce){ .progress-fill{ animation-duration:.001ms; } }
@@ -445,11 +447,34 @@
   updateProgress();
   const progressTimer = setInterval(updateProgress, 1000);
 
+  // Procentul REAL, pe baza de milestone-uri (order.generationPhasePercent, populat de
+  // recordGenerationProgress in server.js) — inlocuieste bara nedeterminata de indata ce
+  // avem primul raspuns real de la server (nu la incarcarea paginii, cand nu avem inca
+  // nimic). Textul calitativ rotativ (t.stages, de mai sus) ramane neschimbat ca reasigurare
+  // emotionala; procentul e strict aditional, niciodata contradictoriu (ambele vin acum din
+  // surse reale — unul din timp scurs pentru variatia textului, altul din milestone-uri
+  // pentru numarul afisat).
+  let highestShownPercent = 0;
+  function updateRealProgress(order) {
+    const percent = order.generationPhasePercent;
+    if (percent == null || typeof percent !== 'number') return;
+    // Niciodata regresiv vizual, chiar daca un raspuns intarziat ar aduce o valoare mai veche
+    // (polling-ul si callback-ul scriu progresul independent — vezi updateGenerationPhaseIfLater).
+    if (percent < highestShownPercent) return;
+    highestShownPercent = percent;
+
+    progressFill.classList.add('real');
+    progressFill.style.width = Math.max(0, Math.min(100, percent)) + '%';
+    estimatePillEl.classList.remove('hidden');
+    estimatePillEl.textContent = percent + '%';
+  }
+
   function finishSuccess() {
     finished = true;
     clearInterval(progressTimer);
     localStorage.removeItem(startKey);
 
+    progressFill.classList.remove('real');
     progressFill.classList.add('done');
     estimatePillEl.classList.add('hidden');
     hideLongNotice();
@@ -514,6 +539,7 @@
       consecutivePollFailures = 0;
       hideSoftNotice();
       const order = await res.json();
+      updateRealProgress(order);
 
       if (order.status === 'preview_ready' || order.status === 'ready') {
         finishSuccess();

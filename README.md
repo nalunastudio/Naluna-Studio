@@ -10,7 +10,7 @@ Site de comenzi cadou: melodie personalizata generata prin AI, preview gratuit i
 - `private/admin.html` — panou owner: comenzi, venit (protejat cu parola)
 - `server.js` — backend Express: validare, rate limiting, Stripe, webhook, generare muzica, email
 - `db.js` — strat PostgreSQL (inlocuieste vechiul fisier `orders.json`)
-- `nixpacks.toml` — spune Railway sa instaleze `ffmpeg` la build
+- `nixpacks.toml` — pastrat pentru referinta istorica (Railway a migrat de la builder-ul Nixpacks la **Railpack**; acest fisier nu mai e citit). Pachetele de sistem (`ffmpeg`, `exiftool`) sunt instalate acum prin variabila de mediu **`RAILPACK_DEPLOY_APT_PACKAGES`**, setata direct pe fiecare serviciu Railway (staging + productie) — nu e un fisier din git. `exiftool` a fost adaugat 2026-08-07 pentru suportul DNG/Apple ProRAW (vezi `extractDngPreviewToJpeg` in server.js).
 - `.env.example` — sablon cu toate variabilele de mediu necesare
 
 ## Flux complet

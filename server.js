@@ -102,6 +102,11 @@ const FETCH_TIMEOUT_MS = 25000;
 // Preturile NU vin niciodata de la client. Un client care modifica payload-ul (curl/devtools)
 // nu poate plati mai putin decat pretul real al pachetului ales.
 const PLAN_PRICES = { standard: 15, premium: 25, video: 35 };
+// REGULA FINALA A PACHETELOR (2026-08-07): sursa unica server-side pentru cate melodii
+// (variante) primeste fiecare plan — nu doar text in UI. Standard = o singura melodie,
+// un singur gen. Premium/Video = doua melodii COMPLETE, in doua genuri DIFERITE, alese
+// explicit de client (nu "prima varianta + a doua varianta a ACELUIASI gen").
+const PLAN_VARIANT_COUNT = { standard: 1, premium: 2, video: 2 };
 const ALLOWED_OCCASIONS = ['dor', 'onomastica', 'aniversare', 'declaratie', 'nunta', 'pierdere', 'pentru-mine', 'altceva'];
 const ALLOWED_GENRES = ['emotional', 'suflet', 'pop', 'acustic', 'petrecere', 'balada', 'manele', 'copii', 'populara', 'rock', 'colind', 'modern', 'hiphop', 'manele_suflet', 'motivational'];
 const ALLOWED_LANGS = ['ro', 'en', 'de', 'es', 'it', 'fr', 'bg', 'tr'];
@@ -208,6 +213,37 @@ function invalidPhoneMessage(lang) {
   return INVALID_PHONE_MESSAGES[safe];
 }
 
+// Mesaje pentru cel de-al doilea gen muzical (Premium/Video) — obligatoriu, si diferit de
+// primul. Vezi PLAN_VARIANT_COUNT si POST /api/orders.
+const GENRE2_REQUIRED_MESSAGES = {
+  ro: 'Alege genul muzical pentru a doua melodie.',
+  en: 'Choose a musical genre for the second song.',
+  de: 'Wähle ein Musikgenre für das zweite Lied.',
+  es: 'Elige un género musical para la segunda canción.',
+  it: 'Scegli un genere musicale per la seconda canzone.',
+  fr: 'Choisissez un genre musical pour la deuxième chanson.',
+  bg: 'Избери музикален жанр за втората песен.',
+  tr: 'İkinci şarkı için bir müzik türü seçin.'
+};
+function genre2Message(lang) {
+  const safe = ALLOWED_LANGS.includes(lang) ? lang : 'ro';
+  return GENRE2_REQUIRED_MESSAGES[safe];
+}
+const SAME_GENRE_MESSAGES = {
+  ro: 'Alege două genuri muzicale diferite.',
+  en: 'Choose two different musical genres.',
+  de: 'Wähle zwei unterschiedliche Musikgenres.',
+  es: 'Elige dos géneros musicales diferentes.',
+  it: 'Scegli due generi musicali diversi.',
+  fr: 'Choisissez deux genres musicaux différents.',
+  bg: 'Избери два различни музикални жанра.',
+  tr: 'İki farklı müzik türü seçin.'
+};
+function sameGenreMessage(lang) {
+  const safe = ALLOWED_LANGS.includes(lang) ? lang : 'ro';
+  return SAME_GENRE_MESSAGES[safe];
+}
+
 // Validare E.164 STRICT independenta de tara — NU presupune si NU forteaza niciodata un
 // prefix anume (ex. +44). Accepta orice tara valida: "+" urmat de 7-15 cifre, prima cifra
 // nefiind 0 (asa cum cere standardul E.164). Numarul trebuie sa fi fost deja normalizat de
@@ -250,7 +286,7 @@ const TESTIMONIAL_MAX_BYTES = 60 * 1024 * 1024; // 60MB — suficient pentru un 
 
 // -------- incarcare fotografii/videoclipuri client, pentru pachetul "video" (memorii) --------
 const ORDER_MEDIA_MIME_TYPES = {
-  photo: ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'],
+  photo: ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'image/x-adobe-dng'],
   video: ['video/mp4', 'video/quicktime', 'video/webm']
 };
 const ORDER_MEDIA_MAX_BYTES = 150 * 1024 * 1024; // 150MB — suficient pentru un videoclip scurt de telefon la calitate buna
@@ -366,6 +402,50 @@ async function readFileHeader(filePath, len = 16) {
   } finally {
     await fh.close();
   }
+}
+
+// ==========================================================================================
+// Suport Apple ProRAW / DNG (hotfix 2026-08-07, problema 2) — ffmpeg NU poate decodifica un
+// DNG (verificat direct: niciun decodor "dng" in build-ul de productie — un DNG e raw needemo-
+// zaicat, nu un format video/imagine standard). Fisierele Apple ProRAW insa includ INTOTDEAUNA
+// o previzualizare JPEG completa, incorporata direct in structura TIFF a DNG-ului, la rezolutia
+// integrala a senzorului — verificat direct pe un fisier real (iPhone 12 Pro, descarcat de pe
+// raw.pixls.us, arhiva de referinta folosita si de dcraw/darktable pentru testare): tag-ul
+// PreviewImage avea exact 4032x3024, identic cu rezolutia senzorului acelui telefon. Extragem
+// aceasta previzualizare cu exiftool (singurul instrument nou adaugat — vezi nixpacks.toml) si
+// o tratam mai departe ca un JPEG obisnuit — suficient pentru fundalul unui videoclip, fara
+// nevoia unui demozaic RAW complet (dcraw/libraw), mult mai greu de intretinut si inutil de
+// precis pentru acest scop (nu oferim print/editare profesionala a fotografiilor RAW).
+// Fallback pe JpgFromRaw daca PreviewImage lipseste (unele unelte terte scriu DNG-uri cu doar
+// unul din cele doua tag-uri standard de previzualizare completa).
+async function extractDngPreviewToJpeg(dngPath) {
+  const attemptErrors = [];
+  for (const tag of ['-PreviewImage', '-JpgFromRaw']) {
+    try {
+      const { stdout } = await execFileAsync('exiftool', ['-b', tag, dngPath], {
+        timeout: 30000,
+        maxBuffer: 64 * 1024 * 1024, // previzualizarile ProRAW pot ajunge la cativa MB
+        encoding: 'buffer'
+      });
+      if (stdout && stdout.length > 0 && stdout.subarray(0, 3).equals(Buffer.from([0xFF, 0xD8, 0xFF]))) {
+        const outPath = `${dngPath}.preview.jpg`;
+        await fs.promises.writeFile(outPath, stdout);
+        return { ok: true, path: outPath };
+      }
+      attemptErrors.push(`${tag}: raspuns gol sau nu e JPEG (${stdout ? stdout.length : 0} octeti)`);
+    } catch (err) {
+      // o eroare exiftool pentru un tag LIPSA (fisierul nu are acel tag specific) e normala —
+      // incearca urmatorul tag. Retinem mesajul ca sa distingem asta de un esec real (binar
+      // negasit, timeout) daca AMBELE incercari esueaza — vezi logarea de mai jos.
+      attemptErrors.push(`${tag}: ${err.message}`);
+    }
+  }
+  // Diagnostic SIGUR (fara continutul fisierului, fara nume de fisier client — doar tag-urile
+  // incercate si mesajele de eroare exiftool) — necesar ca sa distingem in loguri Railway intre
+  // "acest DNG chiar nu are nicio previzualizare" si "exiftool nu ruleaza deloc pe acest mediu"
+  // (ex. pachetul nix nu s-a instalat) — altfel esecul era complet tacut.
+  console.error('extractDngPreviewToJpeg: ambele tag-uri de previzualizare au esuat —', attemptErrors.join(' | '));
+  return { ok: false, reason: 'fișierul DNG nu conține o previzualizare utilizabilă' };
 }
 
 // memoryStorage — fisierul ajunge in req.file.buffer, ca sa-l putem urca direct in cloud
@@ -1065,7 +1145,7 @@ app.use(express.static(path.join(__dirname, 'public'), {
 // ==========================================================================================
 app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
   try {
-    const { occasion, recipient, senderName, relationship, email, phone, story, genre, plan, lang, voicePreference } = req.body || {};
+    const { occasion, recipient, senderName, relationship, email, phone, story, genre, genre2, plan, lang, voicePreference } = req.body || {};
     const safeLang = ALLOWED_LANGS.includes(lang) ? lang : 'ro';
 
     if (!ALLOWED_OCCASIONS.includes(occasion)) {
@@ -1101,6 +1181,21 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
     if (!PLAN_PRICES[plan]) {
       return res.status(400).json({ error: 'Pachet invalid.' });
     }
+    // REGULA FINALA A PACHETELOR (2026-08-07): Standard = o singura melodie, un singur gen.
+    // Premium/Video = doua melodii COMPLETE, in doua genuri DIFERITE, alese explicit de
+    // client — validate server-side, niciodata doar in UI (un client care manipuleaza
+    // requestul din devtools nu poate obtine entitlement Premium platind Standard, si nici
+    // nu poate forta doua melodii identice la Premium/Video).
+    let safeGenre2 = null;
+    if (PLAN_VARIANT_COUNT[plan] === 2) {
+      if (!ALLOWED_GENRES.includes(genre2)) {
+        return res.status(400).json({ error: genre2Message(safeLang) });
+      }
+      if (genre2 === genre) {
+        return res.status(400).json({ error: sameGenreMessage(safeLang) });
+      }
+      safeGenre2 = genre2;
+    }
     // Preferinta de voce e optionala la creare (implicit 'auto' daca lipseste), dar daca
     // e trimisa, TREBUIE sa fie una din cele 4 valori acceptate — nu acceptam orice text.
     const safeVoicePreference = (voicePreference === undefined || voicePreference === null || voicePreference === '')
@@ -1118,7 +1213,7 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
       id: randomUUID(),
       accessToken: randomBytes(24).toString('hex'),
       occasion, recipient: recipient.trim(), email: email.trim().toLowerCase(),
-      story: story.trim(), genre, plan, price, lang: safeLang,
+      story: story.trim(), genre, genre2: safeGenre2, plan, price, lang: safeLang,
       status: 'draft', editsUsed: 0, variants: [], selectedVariantId: null,
       senderName: senderName.trim(), relationship: relationship.trim(),
       voicePreference: safeVoicePreference,
@@ -1332,7 +1427,11 @@ app.post('/api/orders/:orderId/regenerate', generationLimiter, requireOrderToken
     await db.updateOrder(order.id, { regenerateSourceVariantId: requestedVariantId });
     res.json({ started: true });
 
-    runGeneration(order.id, combinedFeedback).catch(async (err) => {
+    // Premium/Video: variantId cerut mai sus e OBLIGATORIU si identifica exact varianta de
+    // reeditat -> regenerare PARTIALA (doar acel gen). Standard: comportament neschimbat
+    // (intreg array-ul se inlocuieste, ca inainte de aceasta modificare).
+    const regenOptions = (PLAN_VARIANT_COUNT[order.plan] === 2) ? { replaceVariantId: requestedVariantId } : {};
+    runGeneration(order.id, combinedFeedback, regenOptions).catch(async (err) => {
       console.error('Eroare la regenerare pentru comanda', order.id, err.message);
       try {
         // Generarea a esuat — restituim ATOMIC editarea gratuita rezervata mai sus, DOAR
@@ -1472,6 +1571,9 @@ app.get('/api/orders/:orderId', async (req, res, next) => {
       originalLyrics: v.originalLyrics || null,
       editedLyrics: v.editedLyrics || null,
       lyricsUpdatedAt: v.lyricsUpdatedAt || null,
+      // genul asociat variantei — necesar pentru afisarea "genul X" langa fiecare player
+      // in pachetele Premium/Video (doua genuri diferite, alese de client, fara cadru "cadou").
+      genre: v.genre || order.genre || null,
       // niciodata cheile de storage insele (interne, nu au ce cauta in raspuns) — doar
       // daca extrasul de pachet (WAV/video, vezi generatePremiumExtras) e deja gata.
       hasWav: !!v.wavKey,
@@ -1512,6 +1614,13 @@ app.get('/api/orders/:orderId', async (req, res, next) => {
       selectedVariantId: order.selectedVariantId || null,
       error: order.error,
       price: order.price,
+      genre: order.genre || null,
+      genre2: order.genre2 || null,
+      // Progres real, pe baza de milestone-uri (nu timer) — vezi recordGenerationProgress.
+      // generationPhase e un cod stabil (submitted/processing/first_stream/finalizing/ready/
+      // video_processing/video_ready), generationPhasePercent e procentul asociat afisat direct.
+      generationPhase: order.generationPhase || null,
+      generationPhasePercent: order.generationPhasePercent != null ? order.generationPhasePercent : null,
       variants: safeVariants,
       // tip+sectiune per element, NICIODATA cheia de storage — clientul are nevoie sa vada
       // ce a incarcat deja (ca sa poata sterge dupa index) inainte sa apese "creeaza videoclipul"
@@ -1725,20 +1834,26 @@ app.post('/api/orders/:orderId/media', requireOrderToken, handleOrderMediaUpload
     // ce semnatura sa verificam.
     const uploaded = [];
     const failed = [];
+    // fisierele derivate (previzualizarea JPEG extrasa dintr-un DNG) nu fac parte din `files`
+    // (scrise de multer) — trebuie curatate separat, dupa cleanup() de mai jos.
+    const derivedPaths = [];
     let rejectedNoType = 0;
     let rejectedBadContent = 0;
     let rejectedUndecodable = 0;
     let rejectedStorageError = 0;
+    let rejectedDngUnusable = 0;
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       const label = file.originalname || `fișier ${i + 1}`;
       const inferred = inferMediaType(file.originalname, file.mimetype, ORDER_MEDIA_MIME_TYPES.photo, ORDER_MEDIA_MIME_TYPES.video);
       if (!inferred) {
         rejectedNoType++;
-        failed.push({ filename: label, reason: `Tip de fișier neacceptat. Sunt acceptate: JPG, PNG, WEBP, HEIC/HEIF pentru fotografii și MP4, MOV, WEBM pentru videoclipuri.` });
+        failed.push({ filename: label, reason: `Tip de fișier neacceptat. Sunt acceptate: JPG, PNG, WEBP, HEIC/HEIF, DNG (Apple ProRAW) pentru fotografii și MP4, MOV, WEBM pentru videoclipuri.` });
         continue;
       }
-      const { type, mimetype: effectiveMimetype } = inferred;
+      let { type, mimetype: effectiveMimetype } = inferred;
+      let uploadPath = file.path;
+      const wasDng = effectiveMimetype === 'image/x-adobe-dng';
 
       const header = await readFileHeader(file.path, 16);
       if (!bufferMatchesDeclaredType(header, effectiveMimetype)) {
@@ -1746,16 +1861,34 @@ app.post('/api/orders/:orderId/media', requireOrderToken, handleOrderMediaUpload
         failed.push({ filename: label, reason: 'Conținutul fișierului nu corespunde tipului declarat.' });
         continue;
       }
-      const decodable = await verifyMediaDecodable(file.path, effectiveMimetype, type);
+
+      // DNG (Apple ProRAW): ffmpeg nu poate decodifica raw-ul de senzor direct — extragem
+      // previzualizarea JPEG completa incorporata (vezi extractDngPreviewToJpeg) si tratam
+      // REZULTATUL ca fotografia efectiv incarcata mai departe (verificare de decodabilitate,
+      // stocare, extensie) — clientul nu vede nicio diferenta, doar ca fotografia lui RAW e
+      // acum salvata/livrata ca JPEG la rezolutie completa.
+      if (wasDng) {
+        const extracted = await extractDngPreviewToJpeg(file.path);
+        if (!extracted.ok) {
+          rejectedDngUnusable++;
+          failed.push({ filename: label, reason: `Fotografia RAW (.dng) nu a putut fi procesată (${extracted.reason}).` });
+          continue;
+        }
+        derivedPaths.push(extracted.path);
+        uploadPath = extracted.path;
+        effectiveMimetype = 'image/jpeg';
+      }
+
+      const decodable = await verifyMediaDecodable(uploadPath, effectiveMimetype, type);
       if (!decodable.ok) {
         rejectedUndecodable++;
         failed.push({ filename: label, reason: `Fișierul nu poate fi procesat (${decodable.reason}). Încearcă alt fișier sau alt format.` });
         continue;
       }
-      const ext = path.extname(file.originalname).toLowerCase() || (type === 'photo' ? '.jpg' : '.mp4');
+      const ext = wasDng ? '.jpg' : (path.extname(file.originalname).toLowerCase() || (type === 'photo' ? '.jpg' : '.mp4'));
       const key = `orders/memories/${order.id}/${randomUUID()}${ext}`;
       try {
-        await storage.uploadPrivateFile(file.path, key, effectiveMimetype);
+        await storage.uploadPrivateFile(uploadPath, key, effectiveMimetype);
       } catch (err) {
         rejectedStorageError++;
         failed.push({ filename: label, reason: 'Eroare la salvare — te rugăm încearcă din nou.' });
@@ -1764,6 +1897,7 @@ app.post('/api/orders/:orderId/media', requireOrderToken, handleOrderMediaUpload
       uploaded.push({ key, type, section: (typeof sections[i] === 'string' && sections[i].trim()) ? sections[i].trim() : null, filename: label });
     }
     cleanup();
+    derivedPaths.forEach(p => { try { fs.unlinkSync(p); } catch (e) { /* best-effort */ } });
 
     // Diagnostic SIGUR (fara token, URL semnat, cheie de storage sau nume de fisier client) —
     // gasit lipsind exact in incidentul care a cauzat acest hotfix: uploadul esua complet, pe
@@ -1774,6 +1908,7 @@ app.post('/api/orders/:orderId/media', requireOrderToken, handleOrderMediaUpload
         (rejectedNoType ? `, tip_neacceptat=${rejectedNoType}` : '') +
         (rejectedBadContent ? `, continut_invalid=${rejectedBadContent}` : '') +
         (rejectedUndecodable ? `, nedecodabil=${rejectedUndecodable}` : '') +
+        (rejectedDngUnusable ? `, dng_fara_previzualizare=${rejectedDngUnusable}` : '') +
         (rejectedStorageError ? `, eroare_storage=${rejectedStorageError}` : ''));
     }
 
@@ -2017,6 +2152,11 @@ async function triggerVideoGeneration(orderId, variantId) {
   const claimedOrder = await db.claimVideoRender(orderId, variantId, mediaRevisionAtStart);
   if (!claimedOrder) return; // randare deja activa (lock neexpirat) — no-op sigur
 
+  // Problema 1 — faza 2 pentru pachetul Video ("Realizăm videoclipul și îl sincronizăm"):
+  // audio-ul e deja gata la acest punct (altfel randarea nici nu ar fi putut porni), doar
+  // videoclipul mai ramane. Vezi PHASE_PROGRESS/melodia-mea.html pentru afisarea distincta.
+  recordGenerationProgress(orderId, 'video_processing').catch(() => {});
+
   let versionChangedDuringRender = false;
   try {
     await generatePremiumExtras(orderId, { forceVideo: true, forVariantId: variantId, forMediaRevision: mediaRevisionAtStart });
@@ -2031,6 +2171,7 @@ async function triggerVideoGeneration(orderId, variantId) {
         // succes, si versiunea inca e cea curenta: videoclipul redevine valabil —
         // orice marcaj anterior de "depasit" nu mai are sens, il curatam.
         await db.updateOrder(orderId, { videoStaleReason: null });
+        recordGenerationProgress(orderId, 'video_ready').catch(() => {});
       }
     }
   } catch (err) {
@@ -2297,7 +2438,7 @@ app.post('/api/music/callback', async (req, res) => {
       return res.status(200).json({ received: true });
     }
 
-    const order = await db.getOrderByMusicTaskId(taskId);
+    const order = await db.getOrderByAnyMusicTaskId(taskId);
     if (!order) {
       console.warn(`Callback SunoAPI pentru un taskId necunoscut in baza de date: ${taskId}`);
       return res.status(200).json({ received: true });
@@ -2310,11 +2451,39 @@ app.post('/api/music/callback', async (req, res) => {
     // DOAR pentru raspunsul de polling, care chiar are un camp "status").
     const callbackType = data.callbackType;
     const callbackCode = typeof body.code === 'number' ? body.code : null;
-    perfLog(order.id, 'callback_received', `callbackType=${callbackType || 'necunoscut'}, code=${callbackCode}`);
+    perfLog(order.id, 'callback_received', `callbackType=${callbackType || 'necunoscut'}, code=${callbackCode}, taskId=${taskId.slice(0, 8)}`);
+
+    // Progres real, expus clientului (Problema 1 — procentul de generare) — actualizat pentru
+    // ORICE callback recunoscut, indiferent daca declanseaza sau nu finalizarea mai jos.
+    const CALLBACK_TYPE_TO_PHASE = { text: 'processing', first: 'first_stream', complete: 'finalizing' };
+    if (CALLBACK_TYPE_TO_PHASE[callbackType]) {
+      recordGenerationProgress(order.id, CALLBACK_TYPE_TO_PHASE[callbackType]).catch(() => {});
+    }
+
+    // Comenzile cu DOUA sarcini Suno (Premium/Video, doua genuri diferite — musicTaskId2
+    // setat) NU pot fi finalizate de un callback individual: Suno trimite un callback PER
+    // SARCINA, iar un callback pentru O SINGURA sarcina nu poate sti daca CEALALTA sarcina
+    // (celalalt gen) e deja gata. Finalizarea combinata a ambelor genuri se face STRICT prin
+    // polling, in runGeneration (vezi Promise.all acolo) — apelarea prematura a
+    // finalizeVariantsIfNeeded aici ar scrie doar UN gen ca rezultat final, incalcand
+    // promisiunea "exact doua melodii" a pachetului.
+    if (order.musicTaskId2) {
+      res.status(200).json({ received: true });
+      return;
+    }
 
     if (callbackType === 'complete' && callbackCode === 200) {
       const tracks = extractSunoTracks(body);
-      await finalizeVariantsIfNeeded(order.id, tracks, taskId).catch(err => {
+      // Aceeasi logica de gen/inlocuire partiala ca in resumeExistingTaskPolling (vezi
+      // comentariul de acolo) — necesara pentru ca acest cod ruleaza si pentru regenerari
+      // partiale Premium/Video (musicTaskId2 e null in acel caz, deci trece garda de mai sus).
+      const isDualGenrePlan = PLAN_VARIANT_COUNT[order.plan] === 2;
+      const sourceVariant = (isDualGenrePlan && order.regenerateSourceVariantId)
+        ? (order.variants || []).find(v => v.id === order.regenerateSourceVariantId)
+        : null;
+      const genreToUse = (sourceVariant && sourceVariant.genre) || order.genre;
+      const replaceOptions = sourceVariant ? { replaceVariantId: sourceVariant.id } : {};
+      await finalizeVariantsIfNeeded(order.id, [{ tracks, genre: genreToUse, taskId }], replaceOptions).catch(err => {
         console.error(`Callback SunoAPI: eroare la finalizarea comenzii ${order.id}:`, err.message);
       });
     } else if (callbackType === 'error' || (callbackCode !== null && callbackCode !== 200)) {
@@ -2347,6 +2516,29 @@ app.post('/api/music/callback', async (req, res) => {
 // pentru ceva ce vine deja intr-un singur raspuns.
 // ==========================================================================================
 
+// Problema 1 (hotfix 2026-08-07): procentul numeric de generare, legat de milestone-uri
+// REALE (niciodata un timer artificial incrementat orb). "video_processing" e mai mic decat
+// "ready" ca procent brut, dar frontend-ul il trateaza ca o FAZA SEPARATA pentru pachetul
+// Video (vezi t.videoPhaseLabel in melodia-mea.html/se-compune.html) — audio-ul e deja gata
+// si ascultabil in acel moment, doar videoclipul mai continua in fundal.
+const GENERATION_PHASE_PERCENT = {
+  submitted: 10,
+  processing: 30,
+  first_stream: 55,
+  finalizing: 80,
+  ready: 100,
+  video_processing: 90,
+  video_ready: 100
+};
+async function recordGenerationProgress(orderId, phase) {
+  if (!Object.prototype.hasOwnProperty.call(GENERATION_PHASE_PERCENT, phase)) return;
+  try {
+    await db.updateGenerationPhaseIfLater(orderId, phase, GENERATION_PHASE_PERCENT[phase]);
+  } catch (err) {
+    console.error(`Nu am putut inregistra progresul (${phase}) pentru comanda ${orderId}:`, err.message);
+  }
+}
+
 const SUNO_SUCCESS_STATUS = 'SUCCESS';
 const SUNO_ERROR_STATUSES = ['CREATE_TASK_FAILED', 'GENERATE_AUDIO_FAILED', 'CALLBACK_EXCEPTION', 'SENSITIVE_WORD_ERROR'];
 const SUNO_CONTINUE_STATUSES = ['PENDING', 'TEXT_SUCCESS', 'FIRST_SUCCESS'];
@@ -2367,6 +2559,42 @@ async function resumeExistingTaskPolling(orderId, taskId) {
   if (activePollResumptions.has(orderId)) return; // deja se verifica in alta parte
   activePollResumptions.add(orderId);
   try {
+    const order = await db.getOrderById(orderId);
+    if (!order) return;
+
+    // Comenzile cu DOUA sarcini Suno active (Premium/Video, generare initiala completa)
+    // intrerupte INAINTE de finalizare (ex. un restart/redeploy de server chiar in fereastra
+    // dintre "ambele genuri au reusit pe Suno" si "finalizeVariantsIfNeeded a terminat de
+    // descarcat/taiat/urcat ambele piese") ramaneau anterior BLOCATE definitiv in 'generating'
+    // — runGeneration-ul original care astepta ambele task-uri cu Promise.all murise odata cu
+    // procesul, si aceasta functie doar "impingea" o SINGURA sarcina inainte, fara sa
+    // finalizeze niciodata (gasit direct la testarea reala in staging: o comanda Premium a
+    // ramas 'generating'/'finalizing' peste 5 minute dupa un redeploy in timpul generarii).
+    // Reluam acum AMBELE sarcini in paralel — exact ca in runGeneration — si finalizam noi
+    // insine daca ambele sunt deja gata pe Suno.
+    if (order.musicTaskId2) {
+      const [r1, r2] = await Promise.all([
+        pollForResult(order.musicTaskId, orderId),
+        pollForResult(order.musicTaskId2, orderId)
+      ]);
+      const fresh = await db.getOrderById(orderId);
+      if (!fresh || ['preview_ready', 'ready', 'generation_failed'].includes(fresh.status)) return;
+      if (r1.status === 'LOCAL_POLL_TIMEOUT' || r2.status === 'LOCAL_POLL_TIMEOUT') return; // ramane 'generating', se reia
+      if (r1.status !== SUNO_SUCCESS_STATUS || r2.status !== SUNO_SUCCESS_STATUS) {
+        if (SUNO_ERROR_STATUSES.includes(r1.status) || SUNO_ERROR_STATUSES.includes(r2.status)) {
+          console.error(`Reluare polling dual: comanda ${orderId} a esuat (gen1="${order.genre}": ${r1.status}, gen2="${order.genre2}": ${r2.status}).`);
+          await db.refundEditIfReserved(orderId);
+          await db.updateOrder(orderId, { status: 'generation_failed', error: `Suno: gen1=${r1.status}, gen2=${r2.status}` });
+        }
+        return;
+      }
+      await finalizeVariantsIfNeeded(orderId, [
+        { tracks: r1.tracks, genre: order.genre, taskId: order.musicTaskId },
+        { tracks: r2.tracks, genre: order.genre2, taskId: order.musicTaskId2 }
+      ]);
+      return;
+    }
+
     const { status: finalStatus, tracks } = await pollForResult(taskId, orderId);
 
     if (finalStatus === 'ALREADY_FINALIZED_BY_CALLBACK' || finalStatus === 'LOCAL_POLL_TIMEOUT') {
@@ -2375,7 +2603,17 @@ async function resumeExistingTaskPolling(orderId, taskId) {
       return;
     }
     if (finalStatus === SUNO_SUCCESS_STATUS) {
-      await finalizeVariantsIfNeeded(orderId, tracks, taskId);
+      // Regenerare partiala (Premium/Video, o singura varianta reeditata): foloseste genul
+      // deja asociat variantei sursa si inlocuieste DOAR acea varianta — niciodata sora ei.
+      // Pentru generare initiala sau Standard, regenerateSourceVariantId e null/nu se aplica,
+      // deci acesta ramane implicit un inlocuitor COMPLET (comportamentul dinainte).
+      const isDualGenrePlan = PLAN_VARIANT_COUNT[order.plan] === 2;
+      const sourceVariant = (isDualGenrePlan && order.regenerateSourceVariantId)
+        ? (order.variants || []).find(v => v.id === order.regenerateSourceVariantId)
+        : null;
+      const genreToUse = (sourceVariant && sourceVariant.genre) || order.genre;
+      const replaceOptions = sourceVariant ? { replaceVariantId: sourceVariant.id } : {};
+      await finalizeVariantsIfNeeded(orderId, [{ tracks, genre: genreToUse, taskId }], replaceOptions);
       return;
     }
     if (SUNO_ERROR_STATUSES.includes(finalStatus)) {
@@ -2390,41 +2628,103 @@ async function resumeExistingTaskPolling(orderId, taskId) {
   }
 }
 
-async function runGeneration(orderId, feedback) {
+async function runGeneration(orderId, feedback, options = {}) {
   const order = await db.getOrderById(orderId);
   if (!order) throw new Error('Comanda a dispărut în timpul generării');
 
-  const prompt = buildPrompt(order, feedback);
-
   perfLog(orderId, 'generation_start');
-  const taskId = await callMusicProvider(orderId, prompt);
-  const { status: finalStatus, tracks } = await pollForResult(taskId, orderId);
+  recordGenerationProgress(orderId, 'submitted').catch(() => {});
 
-  if (finalStatus === 'ALREADY_FINALIZED_BY_CALLBACK') {
-    // Callback-ul SunoAPI (mecanismul PRINCIPAL) a ajuns si a finalizat deja comanda, in
-    // timp ce noi asteptam la polling — nu mai e nimic de facut, evitam sa procesam a
-    // doua oara acelasi rezultat (garda atomica din finalizeVariantsIfNeeded ar fi
-    // prevenit oricum o dubla procesare, dar aici nici nu mai incercam).
-    perfLog(orderId, 'polling_stopped_early_callback_won');
+  const isDualGenrePlan = PLAN_VARIANT_COUNT[order.plan] === 2;
+
+  // Regenerare PARTIALA (doar Premium/Video): clientul a ales explicit sa reediteze O SINGURA
+  // varianta existenta (POST .../regenerate cere variantId obligatoriu) — regeneram DOAR genul
+  // acelei variante, cealalta ramane complet neatinsa (nu risipim un al doilea apel Suno pentru
+  // un gen pe care clientul nu l-a cerut sa fie schimbat). Genul folosit e cel deja asociat
+  // variantei (comenzi noi, cu genre2); pentru comenzi Standard vechi cu doua variante (pastrate
+  // pentru compatibilitate) aceasta cale nu se foloseste niciodata — vezi ramura Standard de mai
+  // jos, care inlocuieste intotdeauna intreg array-ul, ca inainte.
+  if (options.replaceVariantId && isDualGenrePlan) {
+    const sourceVariant = (order.variants || []).find(v => v.id === options.replaceVariantId);
+    const genreToUse = (sourceVariant && sourceVariant.genre) || order.genre;
+    const prompt = buildPrompt(order, feedback, genreToUse);
+    const taskId = await callMusicProvider(orderId, prompt);
+    await db.updateOrder(orderId, { musicTaskId: taskId, musicTaskId2: null });
+    const { status: finalStatus, tracks } = await pollForResult(taskId, orderId);
+
+    if (finalStatus === 'ALREADY_FINALIZED_BY_CALLBACK') {
+      perfLog(orderId, 'polling_stopped_early_callback_won');
+      return;
+    }
+    if (finalStatus === 'LOCAL_POLL_TIMEOUT') return;
+    if (finalStatus !== SUNO_SUCCESS_STATUS) {
+      throw new Error(`Suno a raportat un status de eroare: ${finalStatus}`);
+    }
+    await finalizeVariantsIfNeeded(orderId, [{ tracks, genre: genreToUse, taskId }], { replaceVariantId: options.replaceVariantId });
     return;
   }
 
-  if (finalStatus === 'LOCAL_POLL_TIMEOUT') {
-    // Polling-ul NOSTRU local a expirat — asta NU inseamna ca Suno a esuat sau ca a
-    // renuntat la generare. Iesim linistit, FARA sa aruncam o eroare: statusul comenzii
-    // ramane 'generating', music_task_id ramane neschimbat, nicio editare nu se restituie.
-    // Callback-ul SunoAPI (sau o reluare ulterioara a polling-ului, vezi ruta /generate)
-    // vor finaliza comanda cand Suno chiar termina.
+  // Standard: un singur gen, o singura cerere Suno — comportament neschimbat.
+  if (!isDualGenrePlan) {
+    const prompt = buildPrompt(order, feedback);
+    const taskId = await callMusicProvider(orderId, prompt);
+    await db.updateOrder(orderId, { musicTaskId: taskId, musicTaskId2: null });
+    const { status: finalStatus, tracks } = await pollForResult(taskId, orderId);
+
+    if (finalStatus === 'ALREADY_FINALIZED_BY_CALLBACK') {
+      perfLog(orderId, 'polling_stopped_early_callback_won');
+      return;
+    }
+    if (finalStatus === 'LOCAL_POLL_TIMEOUT') return;
+    if (finalStatus !== SUNO_SUCCESS_STATUS) {
+      throw new Error(`Suno a raportat un status de eroare: ${finalStatus}`);
+    }
+    await finalizeVariantsIfNeeded(orderId, [{ tracks, genre: order.genre, taskId }]);
     return;
   }
 
-  if (finalStatus !== SUNO_SUCCESS_STATUS) {
-    throw new Error(`Suno a raportat un status de eroare: ${finalStatus}`);
+  // Premium/Video: DOUA genuri diferite alese de client -> DOUA cereri Suno INDEPENDENTE,
+  // pornite in PARALEL (nu secvential — reduce la jumatate timpul de asteptare fata de doua
+  // cereri secventiale). Fiecare foloseste EXACT aceeasi poveste/destinatar/ocazie/voce —
+  // doar stilul muzical difera intre ele (vezi buildPrompt, genreOverride).
+  //
+  // IMPORTANT — de ce NU folosim callback-ul ca sa finalizam aici: Suno trimite un callback
+  // PER SARCINA (task), nu per comanda. Daca am lasa callback-ul sa apeleze
+  // finalizeVariantsIfNeeded imediat ce O SINGURA sarcina termina, am risca sa scriem doar
+  // UN gen ca rezultat final inainte ca CEALALTA sarcina sa fi terminat — incalcand direct
+  // promisiunea "exact doua melodii" a pachetului. Vezi POST /api/music/callback: pentru
+  // comenzi cu musicTaskId2 setat, callback-ul NU declanseaza finalizarea — doar polling-ul
+  // (de mai jos, care asteapta explicit AMBELE sarcini) o face.
+  const promptGenre1 = buildPrompt(order, feedback, order.genre);
+  const promptGenre2 = buildPrompt(order, feedback, order.genre2);
+  const [taskId1, taskId2] = await Promise.all([
+    callMusicProvider(orderId, promptGenre1),
+    callMusicProvider(orderId, promptGenre2)
+  ]);
+  await db.updateOrder(orderId, { musicTaskId: taskId1, musicTaskId2: taskId2 });
+  perfLog(orderId, 'dual_genre_tasks_created', `gen1=${order.genre}, gen2=${order.genre2}`);
+
+  const [r1, r2] = await Promise.all([
+    pollForResult(taskId1, orderId),
+    pollForResult(taskId2, orderId)
+  ]);
+
+  // Comanda cu doua sarcini nu poate fi "deja finalizata de callback" (callback-ul e un
+  // no-op pentru ea, vezi mai sus) — dar tot verificam starea reala, ca sa nu continuam daca
+  // intre timp comanda a fost stearsa/anulata sau marcata esuata pe alta cale.
+  const fresh = await db.getOrderById(orderId);
+  if (!fresh || ['preview_ready', 'ready', 'generation_failed'].includes(fresh.status)) return;
+
+  if (r1.status === 'LOCAL_POLL_TIMEOUT' || r2.status === 'LOCAL_POLL_TIMEOUT') return; // ramane 'generating', se reia
+
+  if (r1.status !== SUNO_SUCCESS_STATUS || r2.status !== SUNO_SUCCESS_STATUS) {
+    throw new Error(`Generare esuata pentru unul din cele doua genuri (gen1="${order.genre}": ${r1.status}, gen2="${order.genre2}": ${r2.status}).`);
   }
 
-  // ghidat de acelasi mecanism folosit si de /api/music/callback — daca ambele au ajuns
-  // aproape simultan la rezultat, doar primul care ajunge aici proceseaza efectiv fisierele
-  await finalizeVariantsIfNeeded(orderId, tracks, taskId);
+  await finalizeVariantsIfNeeded(orderId, [
+    { tracks: r1.tracks, genre: order.genre, taskId: taskId1 },
+    { tracks: r2.tracks, genre: order.genre2, taskId: taskId2 }
+  ]);
 }
 
 // Descarca+taie+urca in stocare fiecare piesa primita de la Suno, si scrie variantele
@@ -2435,61 +2735,86 @@ async function runGeneration(orderId, feedback) {
 // trec de verificare inainte sa apuce vreuna sa scrie — ambele ar descarca si urca fisierele,
 // dublu cost, dublu risc. UPDATE...WHERE...RETURNING e o singura operatie atomica in
 // Postgres: doar una dintre cererile concurente poate "castiga" preluarea.
-async function finalizeVariantsIfNeeded(orderId, tracks, taskId) {
+// requestsInfo: un element per cerere SEPARATA facuta catre Suno — [{ tracks, genre, taskId }].
+// Standard: un singur element (un gen, o cerere). Premium/Video: doua elemente (doua genuri
+// diferite alese de client, doua cereri Suno independente, pornite in paralel — vezi
+// runGeneration). Fiecare cerere contribuie STRICT o singura varianta finala (prima piesa
+// valida; a doua piesa a ACELEIASI cereri, daca exista, e doar fallback tehnic daca prima
+// esueaza la procesare — niciodata livrata separat).
+//
+// options.replaceVariantId (optional): regenerare PARTIALA (Premium/Video, editarea unei
+// singure variante existente) — inlocuieste DOAR acea varianta in array-ul existent,
+// cealalta ramane complet neatinsa ("o revizie pastreaza genul variantei editate", "retry-ul
+// unei variante nu regenereaza inutil cealalta"). Absent -> generare COMPLETA, variants[]
+// inlocuit in intregime (generare initiala, sau regenerare Standard).
+async function finalizeVariantsIfNeeded(orderId, requestsInfo, options = {}) {
   const claimed = await db.claimOrderForProviderFinalization(orderId);
   if (!claimed) {
     return false; // alta cerere (polling sau callback) a preluat-o deja — nu procesam a doua oara
   }
 
   const finalizeStart = Date.now();
-  perfLog(orderId, 'finalize_start', `piese=${tracks ? tracks.length : 0}`);
+  const totalTracks = requestsInfo.reduce((n, r) => n + (r.tracks ? r.tracks.length : 0), 0);
+  perfLog(orderId, 'finalize_start', `cereri=${requestsInfo.length}, piese=${totalTracks}`);
+  recordGenerationProgress(orderId, 'finalizing').catch(() => {});
 
   try {
-    if (!tracks || tracks.length === 0) {
-      throw new Error('Suno a raportat SUCCESS, dar nu am gasit nicio piesa cu audioUrl in raspuns.');
-    }
-    if (tracks.length !== 2) {
-      console.warn(`SunoAPI a returnat ${tracks.length} piese in loc de 2, pentru comanda ${orderId}. Continui cu cate au venit.`);
-    }
-
-    // RELANSARE 2026-08-07 — "melodia cadou" pentru toate cele trei pachete: Standard nu mai
-    // ignora a doua piesa intoarsa de Suno. Toate cele trei pachete (Standard/Premium/Video)
-    // proceseaza ACUM ambele variante — clientul asculta 40s din amandoua inainte de plata,
-    // alege varianta principala, iar cealalta devine "melodia cadou" (fisier audio complet
-    // separat, livrat dupa plata la toate cele trei pachete). Suno intoarce mereu 2 piese per
-    // apel — nu mai exista niciun motiv sa aruncam a doua doar pentru Standard; diferentierea
-    // reala intre pachete ramane (WAV la Premium/Video, videoclip doar la Video — vezi
-    // generatePremiumExtras), nu numarul de melodii primite.
-    const tracksToProcess = tracks;
-
-    // Promise.allSettled (nu Promise.all): daca o varianta esueaza la procesare
-    // (descarcare/timestamp/ffmpeg/upload), NU intrerupe si NU corupe procesarea celeilalte
-    // variante, care poate continua complet independent pana la capat. Deciziile de mai
-    // jos (esec total vs. partial) se iau abia dupa ce AMBELE s-au terminat, indiferent
-    // de rezultat.
-    const settled = await Promise.allSettled(
-      tracksToProcess.map(track => buildVariantFromTrack(orderId, randomUUID().slice(0, 8), track, taskId))
-    );
-
-    const variants = [];
-    const failures = [];
-    for (const result of settled) {
-      if (result.status === 'fulfilled') variants.push(result.value);
-      else failures.push(result.reason);
+    const builtVariants = [];
+    const requestFailures = [];
+    for (const { tracks, genre, taskId } of requestsInfo) {
+      if (!tracks || tracks.length === 0) {
+        requestFailures.push(`genul "${genre}": Suno nu a intors nicio piesa cu audioUrl`);
+        continue;
+      }
+      let built = null;
+      let lastErr = null;
+      // incearca prima piesa; daca EA esueaza la procesare (descarcare/ffmpeg/upload), a
+      // doua piesa a ACELEIASI cereri devine fallback tehnic — niciodata livrata separat.
+      for (const track of tracks.slice(0, 2)) {
+        try {
+          built = await buildVariantFromTrack(orderId, randomUUID().slice(0, 8), track, taskId);
+          break;
+        } catch (err) {
+          lastErr = err;
+        }
+      }
+      if (built) {
+        built.genre = genre;
+        builtVariants.push(built);
+      } else {
+        requestFailures.push(`genul "${genre}": ${lastErr ? lastErr.message : 'motiv necunoscut'}`);
+      }
     }
 
-    if (variants.length === 0) {
-      const detail = failures.map(e => (e && e.message) || String(e)).join(' | ');
-      throw new Error(`Ambele variante au esuat la procesare: ${detail}`);
+    if (builtVariants.length === 0) {
+      throw new Error(`Toate cererile au esuat la procesare: ${requestFailures.join(' | ')}`);
     }
-    if (failures.length > 0) {
-      console.warn(
-        `Comanda ${orderId}: o varianta a esuat la procesare, continui cu ${variants.length} varianta(e) reusita(e). ` +
-        `Motiv: ${(failures[0] && failures[0].message) || String(failures[0])}`
-      );
+    // Pentru Premium/Video, "exact doua melodii" e o promisiune ferma a pachetului — daca UNA
+    // din cele doua cereri a esuat definitiv, NU livram tacit o singura melodie sub un pachet
+    // care promite doua; tratam esecul PARTIAL ca esec TOTAL, ca ambele genuri sa poata fi
+    // reincercate impreuna (clientul nu pierde nimic — nimic nu s-a marcat 'preview_ready').
+    if (requestsInfo.length > 1 && builtVariants.length < requestsInfo.length && !options.replaceVariantId) {
+      throw new Error(`Doar ${builtVariants.length} din ${requestsInfo.length} melodii au reusit: ${requestFailures.join(' | ')}`);
+    }
+    if (requestFailures.length > 0) {
+      console.warn(`Comanda ${orderId}: ${requestFailures.length} cerere(i) esuata(e), continui cu ${builtVariants.length} varianta(e). Motiv: ${requestFailures.join(' | ')}`);
     }
 
-    const newSelectedVariantId = variants[0]?.id || null;
+    let variants;
+    let newSelectedVariantId;
+    let replacedOldVariants;
+    if (options.replaceVariantId) {
+      const existing = claimed.variants || [];
+      const replaced = builtVariants[0];
+      variants = existing.map(v => v.id === options.replaceVariantId ? replaced : v);
+      newSelectedVariantId = options.keepSelectedVariantId || claimed.selectedVariantId;
+      replacedOldVariants = existing.filter(v => v.id === options.replaceVariantId);
+    } else {
+      variants = builtVariants;
+      newSelectedVariantId = variants[0]?.id || null;
+      replacedOldVariants = claimed.variants || [];
+    }
+
     await db.updateOrder(orderId, {
       status: 'preview_ready',
       variants,
@@ -2500,6 +2825,10 @@ async function finalizeVariantsIfNeeded(orderId, tracks, taskId) {
       // o generare INITIALA, editReserved era deja false — actualizarea e un no-op sigur.
       editReserved: false
     });
+    // 'ready' aici = ambele melodii (sau singura, pentru Standard) gata si redabile — NU
+    // 100% pentru pachetul Video, care mai are o a doua faza (videoclipul) dupa aceasta; vezi
+    // triggerVideoGeneration/generatePremiumExtras pentru 'video_processing'/'video_ready'.
+    recordGenerationProgress(orderId, 'ready').catch(() => {});
 
     // Fluxul obligatoriu "Cadou video" (cerintele 6-9): imediat ce melodia (initiala SAU
     // regenerata dupa o editare) ajunge 'preview_ready', si DOAR daca materialele au fost
@@ -2520,22 +2849,16 @@ async function finalizeVariantsIfNeeded(orderId, tracks, taskId) {
     // CERINTA G14 — politica de curatare pentru versiuni audio inlocuite. La o REGENERARE
     // (nu la generarea initiala, unde claimed.variants e []), variantele vechi tocmai
     // inlocuite mai sus raman orfane in bucket-urile R2/S3 daca nu le stergem explicit —
-    // nimic altceva nu le mai atinge vreodata (variants[] a fost deja INLOCUIT COMPLET cu
-    // array-ul nou, cateva linii mai sus). Stergem acum fullKey/previewKey SI wavKey/videoKey
-    // — cu noua arhitectura de versionare (mediaRevision/selectedVariantId + sesiuni Stripe
-    // legate strict de versiunea aprobata, vezi checkout/webhook), un videoclip/WAV al unei
-    // variante INLOCUITE nu mai poate fi livrat legitim niciodata (nu exista nicio cale in
-    // aplicatie care sa mai citeasca acele chei) — pastrarea lor "pentru rollback" nu mai are
-    // sens functional, doar ocupa spatiu de stocare la nesfarsit.
+    // nimic altceva nu le mai atinge vreodata. Stergem acum fullKey/previewKey SI wavKey/
+    // videoKey — un videoclip/WAV al unei variante INLOCUITE nu mai poate fi livrat legitim
+    // niciodata. La regenerare PARTIALA (replaceVariantId), stergem DOAR fisierele variantei
+    // efectiv inlocuite, niciodata pe cele ale surorii ei neatinse.
     //
-    // Curatare best-effort, DUPA ce noile variante sunt deja salvate cu succes (niciodata
-    // invers — nu stergem fisiere vechi inainte sa fie sigur ca inlocuitorii lor exista), si
-    // niciodata pentru comenzi deja 'ready' (regenerarea e blocata dupa plata, deci nu atinge
-    // niciodata fisierul livrat clientului). Doar bucket-urile cloud — fallback-ul local nu e
-    // productie recomandata, nu adaugam aceeasi complexitate acolo.
+    // Curatare best-effort, DUPA ce noile variante sunt deja salvate cu succes, si niciodata
+    // pentru comenzi deja 'ready' (regenerarea e blocata dupa plata). Doar bucket-urile cloud.
     // ======================================================================================
-    if (storage.CLOUD_ENABLED && claimed.variants && claimed.variants.length > 0) {
-      const oldVariants = claimed.variants;
+    if (storage.CLOUD_ENABLED && replacedOldVariants && replacedOldVariants.length > 0) {
+      const oldVariants = replacedOldVariants;
       Promise.allSettled(oldVariants.flatMap(v => [
         v.fullKey ? storage.deletePrivateFile(v.fullKey) : null,
         v.previewKey ? storage.deletePublicFile(v.previewKey) : null,
@@ -2549,7 +2872,7 @@ async function finalizeVariantsIfNeeded(orderId, tracks, taskId) {
       });
     }
 
-    perfLog(orderId, 'finalize_done', `${Date.now() - finalizeStart}ms, variante_reusite=${variants.length}`);
+    perfLog(orderId, 'finalize_done', `${Date.now() - finalizeStart}ms, variante_reusite=${builtVariants.length}`);
     // durata totala de la crearea comenzii pana la 'preview_ready' — util ca sa vedem cat
     // din timpul perceput de client vine de fapt din asteptarea inainte de generare
     // (crearea comenzii, formular etc.) fata de generarea efectiva
@@ -3528,6 +3851,11 @@ async function pollForResult(taskId, orderId, maxAttempts = 90, intervalMs = 600
     if (!SUNO_CONTINUE_STATUSES.includes(statusName)) {
       console.warn(`SunoAPI record-info: status necunoscut "${statusName}" pentru taskId ${taskId} — continui polling-ul.`);
     }
+    // Progres real din POLLING (nu doar din callback) — daca webhook-ul Suno intarzie sau nu
+    // ajunge deloc, clientul tot vede procentul avansa pe baza starii reale raportate direct
+    // de furnizor la fiecare verificare, niciodata pe baza unui timer.
+    if (orderId && statusName === 'TEXT_SUCCESS') recordGenerationProgress(orderId, 'processing').catch(() => {});
+    if (orderId && statusName === 'FIRST_SUCCESS') recordGenerationProgress(orderId, 'first_stream').catch(() => {});
     // PENDING / TEXT_SUCCESS / FIRST_SUCCESS (sau orice status necunoscut) -> continuam bucla
   }
   console.warn(`Polling local epuizat pentru taskId ${taskId} dupa ${maxAttempts} incercari — Suno nu a raportat inca un status final. Comanda ramane 'generating'; callback-ul sau o reluare ulterioara o pot finaliza.`);
@@ -3660,7 +3988,7 @@ const RELATIONSHIP_MAX_LEN = 60;
 // niciodata complet din prompt (cerinta explicita).
 const STORY_MIN_RESERVE = 160;
 
-function buildPrompt(order, feedback) {
+function buildPrompt(order, feedback, genreOverride) {
   // Rescris complet (2026-08-03, audit de calitate muzicala) — versiunea anterioara folosea
   // mai ales cuvinte de atmosfera/mood, care se suprapuneau prea mult intre genuri inrudite
   // (verificat direct: clientul a raportat ca "Manele de jale" si "Manele de suflet" sunau
@@ -3703,7 +4031,11 @@ function buildPrompt(order, feedback) {
     it: 'Italian', fr: 'French', bg: 'Bulgarian', tr: 'Turkish'
   };
   const lyricsLanguage = languageNames[order.lang] || 'Romanian';
-  const styleTags = genreMap[order.genre] || 'pop, warm vocals';
+  // genreOverride: folosit pentru a doua cerere Suno (Premium/Video, al doilea gen ales de
+  // client) — restul promptului (poveste, destinatar, ocazie, voce) ramane IDENTIC intre
+  // cele doua cereri; DOAR stilul muzical difera, ca ambele melodii sa fie despre aceeasi
+  // poveste reala, in doua interpretari muzicale reale, distincte.
+  const styleTags = genreMap[genreOverride || order.genre] || 'pop, warm vocals';
   const occasionLabel = OCCASION_LABELS[order.occasion] || order.occasion;
 
   // Instructiunea de atmosfera/ton pentru ocazia aleasa — comenzi vechi sau o valoare
@@ -3914,14 +4246,14 @@ async function sendDeliveryEmail(order) {
   const hasGift = !!(giftVariant && giftVariant.fullKey);
   const giftUrl = `${DOMAIN}/media/full/${order.id}/gift?token=${order.accessToken}`;
   const GIFT_LINE = {
-    ro: `<p>🎁 <a href="${giftUrl}">Descarcă și a doua melodie, cadou din partea noastră</a>.</p>`,
-    en: `<p>🎁 <a href="${giftUrl}">Download your second song too, a gift from us</a>.</p>`,
-    de: `<p>🎁 <a href="${giftUrl}">Lade auch dein zweites Lied herunter, ein Geschenk von uns</a>.</p>`,
-    es: `<p>🎁 <a href="${giftUrl}">Descarga también tu segunda canción, un regalo de nuestra parte</a>.</p>`,
-    it: `<p>🎁 <a href="${giftUrl}">Scarica anche la tua seconda canzone, un regalo da parte nostra</a>.</p>`,
-    fr: `<p>🎁 <a href="${giftUrl}">Téléchargez aussi votre deuxième chanson, un cadeau de notre part</a>.</p>`,
-    bg: `<p>🎁 <a href="${giftUrl}">Изтегли и втората си песен, подарък от нас</a>.</p>`,
-    tr: `<p>🎁 <a href="${giftUrl}">İkinci şarkınızı da indirin, bizden bir hediye</a>.</p>`
+    ro: `<p>🎵 <a href="${giftUrl}">Descarcă și a doua melodie completă</a>.</p>`,
+    en: `<p>🎵 <a href="${giftUrl}">Download your second complete song too</a>.</p>`,
+    de: `<p>🎵 <a href="${giftUrl}">Lade auch dein zweites vollständiges Lied herunter</a>.</p>`,
+    es: `<p>🎵 <a href="${giftUrl}">Descarga también tu segunda canción completa</a>.</p>`,
+    it: `<p>🎵 <a href="${giftUrl}">Scarica anche la tua seconda canzone completa</a>.</p>`,
+    fr: `<p>🎵 <a href="${giftUrl}">Téléchargez aussi votre deuxième chanson complète</a>.</p>`,
+    bg: `<p>🎵 <a href="${giftUrl}">Изтегли и втората си пълна песен</a>.</p>`,
+    tr: `<p>🎵 <a href="${giftUrl}">İkinci tam şarkınızı da indirin</a>.</p>`
   };
   const giftLine = hasGift ? (GIFT_LINE[order.lang] || GIFT_LINE.ro) : '';
 
@@ -4046,10 +4378,23 @@ async function checkFfmpegAvailability() {
   }
 }
 
+// Aceeasi verificare, pentru exiftool (hotfix 2026-08-07, suport DNG/Apple ProRAW) — vezi
+// extractDngPreviewToJpeg. Fara aceasta, o eroare "binar negasit" la extragere ar fi rezultat
+// doar in respingerea tacuta a fiecarui DNG in parte, fara niciun indiciu in loguri DE CE.
+async function checkExiftoolAvailability() {
+  try {
+    const { stdout } = await execFileAsync('exiftool', ['-ver']);
+    console.log('exiftool disponibil, versiune', stdout.trim());
+  } catch (err) {
+    console.error('exiftool indisponibil — suportul DNG/Apple ProRAW nu va functiona:', err.message);
+  }
+}
+
 // -------- pornire: verificam intai conexiunea la baza de date --------
 db.initDb()
   .then(() => {
     checkFfmpegAvailability(); // fire-and-forget — nu blocheaza si nu conditioneaza pornirea
+    checkExiftoolAvailability(); // fire-and-forget, acelasi motiv
     app.listen(PORT, () => {
       console.log(`NALUNA ruleaza pe ${DOMAIN}`);
     });
