@@ -386,6 +386,10 @@ async function verifyMediaDecodable(filePath, mimetype, type) {
     }
     return { ok: true, durationSeconds };
   } catch (err) {
+    // Diagnostic SIGUR (fara nume de fisier client, fara continut) — necesar ca sa distingem
+    // "fisierul chiar e corupt" de "ffprobe/ffmpeg de pe acest mediu nu are demuxer-ul necesar
+    // pentru acest tip de fisier" (ex. constructia ffmpeg din apt poate sa nu aiba suport HEIF).
+    console.error(`verifyMediaDecodable: ffprobe a esuat pentru mimetype=${mimetype}, tip=${type}:`, err.message);
     return { ok: false, reason: 'fișier corupt sau imposibil de decodat' };
   }
 }
