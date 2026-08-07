@@ -2562,13 +2562,36 @@ async function resumeExistingTaskPolling(orderId, taskId) {
     const order = await db.getOrderById(orderId);
     if (!order) return;
 
-    // Comenzile cu DOUA sarcini Suno active (Premium/Video, generare initiala completa) NU pot
-    // fi finalizate dintr-o singura sarcina reluata aici — finalizarea combinata a ambelor
-    // genuri ramane STRICT in runGeneration (Promise.all asteapta ambele task-uri, vezi
-    // comentariul de acolo si din POST /api/music/callback). Aici doar "impingem" polling-ul
-    // acestei sarcini individuale, ca plasa de siguranta suplimentara — fara sa finalizam noi.
+    // Comenzile cu DOUA sarcini Suno active (Premium/Video, generare initiala completa)
+    // intrerupte INAINTE de finalizare (ex. un restart/redeploy de server chiar in fereastra
+    // dintre "ambele genuri au reusit pe Suno" si "finalizeVariantsIfNeeded a terminat de
+    // descarcat/taiat/urcat ambele piese") ramaneau anterior BLOCATE definitiv in 'generating'
+    // — runGeneration-ul original care astepta ambele task-uri cu Promise.all murise odata cu
+    // procesul, si aceasta functie doar "impingea" o SINGURA sarcina inainte, fara sa
+    // finalizeze niciodata (gasit direct la testarea reala in staging: o comanda Premium a
+    // ramas 'generating'/'finalizing' peste 5 minute dupa un redeploy in timpul generarii).
+    // Reluam acum AMBELE sarcini in paralel — exact ca in runGeneration — si finalizam noi
+    // insine daca ambele sunt deja gata pe Suno.
     if (order.musicTaskId2) {
-      await pollForResult(taskId, orderId);
+      const [r1, r2] = await Promise.all([
+        pollForResult(order.musicTaskId, orderId),
+        pollForResult(order.musicTaskId2, orderId)
+      ]);
+      const fresh = await db.getOrderById(orderId);
+      if (!fresh || ['preview_ready', 'ready', 'generation_failed'].includes(fresh.status)) return;
+      if (r1.status === 'LOCAL_POLL_TIMEOUT' || r2.status === 'LOCAL_POLL_TIMEOUT') return; // ramane 'generating', se reia
+      if (r1.status !== SUNO_SUCCESS_STATUS || r2.status !== SUNO_SUCCESS_STATUS) {
+        if (SUNO_ERROR_STATUSES.includes(r1.status) || SUNO_ERROR_STATUSES.includes(r2.status)) {
+          console.error(`Reluare polling dual: comanda ${orderId} a esuat (gen1="${order.genre}": ${r1.status}, gen2="${order.genre2}": ${r2.status}).`);
+          await db.refundEditIfReserved(orderId);
+          await db.updateOrder(orderId, { status: 'generation_failed', error: `Suno: gen1=${r1.status}, gen2=${r2.status}` });
+        }
+        return;
+      }
+      await finalizeVariantsIfNeeded(orderId, [
+        { tracks: r1.tracks, genre: order.genre, taskId: order.musicTaskId },
+        { tracks: r2.tracks, genre: order.genre2, taskId: order.musicTaskId2 }
+      ]);
       return;
     }
 
