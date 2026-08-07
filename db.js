@@ -70,6 +70,24 @@ async function initDb() {
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS music_task_id TEXT;`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_orders_music_task_id ON orders(music_task_id);`);
 
+  // HOTFIX 2026-08-07 — regula finala a pachetelor: Premium/Video cer DOUA genuri muzicale
+  // diferite, alese explicit de client, transformate in DOUA cereri SEPARATE catre Suno
+  // (fiecare cu propriul style prompt) — nu mai e "un singur apel, doua piese ale ACELUIASI
+  // prompt". music_task_id_2/genre2 raman NULL pentru Standard (o singura melodie, un singur
+  // gen) si pentru comenzile vechi dinainte de aceasta relansare — tratate optional peste tot
+  // (compatibilitate, vezi rowToOrder si finalizeVariantsIfNeeded).
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS music_task_id_2 TEXT;`);
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS genre2 TEXT;`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_orders_music_task_id_2 ON orders(music_task_id_2);`);
+
+  // Problema 1 (hotfix 2026-08-07): procentul numeric de generare disparuse — clientul avea
+  // impresia ca pagina s-a blocat. generation_phase/generation_phase_percent reflecta
+  // milestone-uri REALE (job trimis, furnizorul proceseaza, primul stream, finalizare,
+  // gata), niciodata un timer artificial. Vezi recordGenerationProgress in server.js.
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS generation_phase TEXT;`);
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS generation_phase_percent INTEGER;`);
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS generation_phase_updated_at TIMESTAMPTZ;`);
+
   // Date de tranzactie Stripe, salvate la confirmarea platii (webhook) — strict cele
   // returnate de Stripe, pentru evidenta contabila si pregatire pentru inregistrare OSS
   // ulterioara. Migrare sigura: ADD COLUMN IF NOT EXISTS nu atinge randurile existente,
@@ -282,6 +300,10 @@ function rowToOrder(row) {
     email: row.email,
     story: row.story,
     genre: row.genre,
+    genre2: row.genre2 || null,
+    generationPhase: row.generation_phase || null,
+    generationPhasePercent: row.generation_phase_percent !== null && row.generation_phase_percent !== undefined ? Number(row.generation_phase_percent) : null,
+    generationPhaseUpdatedAt: row.generation_phase_updated_at || null,
     plan: row.plan,
     price: Number(row.price),
     lang: row.lang,
@@ -290,6 +312,7 @@ function rowToOrder(row) {
     variants: row.variants || [],
     selectedVariantId: row.selected_variant_id,
     musicTaskId: row.music_task_id,
+    musicTaskId2: row.music_task_id_2 || null,
     error: row.error,
     createdAt: row.created_at,
     generatedAt: row.generated_at,
@@ -326,12 +349,12 @@ function rowToOrder(row) {
 async function createOrder(order) {
   const result = await pool.query(
     `INSERT INTO orders
-      (id, access_token, occasion, recipient, email, story, genre, plan, price, lang, status, edits_used, variants, selected_variant_id, sender_name, relationship, voice_preference, phone)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+      (id, access_token, occasion, recipient, email, story, genre, genre2, plan, price, lang, status, edits_used, variants, selected_variant_id, sender_name, relationship, voice_preference, phone)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
      RETURNING *`,
     [
       order.id, order.accessToken, order.occasion, order.recipient, order.email,
-      order.story, order.genre, order.plan, order.price, order.lang,
+      order.story, order.genre, order.genre2 || null, order.plan, order.price, order.lang,
       order.status, order.editsUsed, JSON.stringify(order.variants || []), order.selectedVariantId,
       order.senderName || null, order.relationship || null, order.voicePreference || 'auto',
       order.phone || null
@@ -354,6 +377,29 @@ async function getOrderByToken(token) {
 // primit de la SunoAPI, ca sa stim ce inregistrare sa actualizam
 async function getOrderByMusicTaskId(taskId) {
   const result = await pool.query(`SELECT * FROM orders WHERE music_task_id = $1`, [taskId]);
+  return rowToOrder(result.rows[0]);
+}
+
+// La fel ca getOrderByMusicTaskId, dar cauta si in music_task_id_2 — necesar pentru
+// Premium/Video, care fac DOUA cereri separate catre Suno (cate una per gen ales de
+// client), deci callback-ul poate sosi pentru oricare din cele doua taskId-uri.
+// Actualizeaza faza de generare DOAR daca procentul nou e MAI MARE decat cel deja salvat —
+// evita ca un callback/poll intarziat, dintr-o etapa mai veche, sa suprascrie un progres deja
+// mai avansat (ex. un "text" intarziat sosit dupa ce "complete" a ajuns deja). Best-effort,
+// pur informativa pentru UI — nicio logica de business nu depinde de aceasta coloana.
+async function updateGenerationPhaseIfLater(orderId, phase, percent) {
+  await pool.query(
+    `UPDATE orders SET generation_phase = $2, generation_phase_percent = $3, generation_phase_updated_at = now()
+     WHERE id = $1 AND (generation_phase_percent IS NULL OR generation_phase_percent < $3)`,
+    [orderId, phase, percent]
+  );
+}
+
+async function getOrderByAnyMusicTaskId(taskId) {
+  const result = await pool.query(
+    `SELECT * FROM orders WHERE music_task_id = $1 OR music_task_id_2 = $1`,
+    [taskId]
+  );
   return rowToOrder(result.rows[0]);
 }
 
@@ -787,6 +833,8 @@ const COLUMN_MAP = {
   variants: 'variants',
   selectedVariantId: 'selected_variant_id',
   musicTaskId: 'music_task_id',
+  musicTaskId2: 'music_task_id_2',
+  genre2: 'genre2',
   error: 'error',
   generatedAt: 'generated_at',
   paidAt: 'paid_at',
@@ -980,7 +1028,8 @@ async function moveTestimonial(id, direction) {
 }
 
 module.exports = {
-  pool, initDb, createOrder, getOrderById, getOrderByToken, getOrderByMusicTaskId,
+  pool, initDb, createOrder, getOrderById, getOrderByToken, getOrderByMusicTaskId, getOrderByAnyMusicTaskId,
+  updateGenerationPhaseIfLater,
   claimOrderForProviderFinalization, claimOrderForRegeneration, claimOrderForInitialGeneration,
   refundEditIfReserved,
   claimVideoRender, releaseVideoRender, recordStripeEventIfNew, recordPaidOrderAtomically,

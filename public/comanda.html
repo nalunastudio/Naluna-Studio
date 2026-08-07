@@ -385,6 +385,30 @@
         </div>
       </div>
 
+      <div class="field" id="genre2-field" style="display:none;">
+        <label data-i18n="label_genre2">Genul celei de-a doua melodii</label>
+        <div class="genre-grid" id="genre2-grid">
+          <div class="genre-card genre2-card" data-genre="emotional"><span data-i18n="genre_emotional">Emoțional</span></div>
+          <div class="genre-card genre2-card" data-genre="suflet"><span data-i18n="genre_suflet">De suflet</span></div>
+          <div class="genre-card genre2-card" data-genre="pop"><span>Pop</span></div>
+          <div class="genre-card genre2-card" data-genre="acustic"><span data-i18n="genre_acustic">Acustic / Folk</span></div>
+          <div class="genre-card genre2-card" data-genre="petrecere"><span data-i18n="genre_petrecere">Muzică de petrecere</span></div>
+          <div class="genre-card genre2-card" data-genre="balada"><span data-i18n="genre_balada">Baladă</span></div>
+          <div class="genre-card genre2-card" data-genre="manele"><span data-i18n="genre_manele">Manele de jale</span></div>
+          <div class="genre-card genre2-card" data-genre="copii"><span data-i18n="genre_copii">Pentru copii</span></div>
+          <div class="genre-card genre2-card" data-genre="populara"><span data-i18n="genre_populara">Populară</span></div>
+          <div class="genre-card genre2-card" data-genre="rock"><span data-i18n="genre_rock">Rock</span></div>
+          <div class="genre-card genre2-card" data-genre="colind"><span data-i18n="genre_colind">Colind</span></div>
+          <div class="genre-card genre2-card" data-genre="modern"><span data-i18n="genre_modern">Modern</span></div>
+          <div class="genre-card genre2-card" data-genre="hiphop"><span data-i18n="genre_hiphop">Hip-hop</span></div>
+          <div class="genre-card genre2-card" data-genre="manele_suflet"><span data-i18n="genre_manele_suflet">Manele de suflet</span></div>
+          <div class="genre-card genre2-card" data-genre="motivational"><span data-i18n="genre_motivational">Motivațional</span></div>
+        </div>
+        <input type="hidden" id="genre2" value="">
+        <div class="price-note" style="margin-top:6px;" data-i18n="genre2_hint">Alege un gen diferit de primul, pentru cea de-a doua melodie completă.</div>
+        <div class="field-error" id="err-genre2"></div>
+      </div>
+
       <div class="order-summary">
         <div class="row"><span data-i18n="sum_package">Pachet</span><span id="sum-plan">Standard</span></div>
         <div class="row total"><span data-i18n="sum_total">Total</span><span id="sum-total">£15</span></div>
@@ -450,6 +474,8 @@
       story_hint: 'Poți scrie în orice limbă — versurile vor fi generate în limba aleasă mai sus',
       label_genre: 'Gen muzical',
       genre_choose: 'Alege genul',
+      label_genre2: 'Genul celei de-a doua melodii',
+      genre2_hint: 'Alege un gen diferit de primul, pentru cea de-a doua melodie completă.',
       genre_emotional: 'Emoțional',
       genre_suflet: 'De suflet',
       genre_acustic: 'Acustic / Folk',
@@ -468,7 +494,7 @@
       label_package: 'Alege pachetul',
       plan_standard_name: 'Standard',
       plan_standard_subtitle: 'O melodie personalizată',
-      plan_standard_desc: 'Melodie personalizată + o a doua melodie cadou, livrare pe email',
+      plan_standard_desc: 'Melodie personalizată, livrare pe email',
       plan_premium_name: 'Premium',
       plan_premium_subtitle: 'Două variante ale melodiei',
       plan_premium_desc: '2 versiuni complete + versiune audio la calitate înaltă',
@@ -476,27 +502,27 @@
       plan_video_subtitle: 'Melodie personalizată cu videoclip',
       plan_video_desc: 'Melodie + videoclip sincronizat, cu pozele și filmările tale',
       benefits_standard: [
-        'Asculți gratuit 2 variante ale melodiei, create din povestea și preferințele tale, și alegi varianta principală',
-        'Durată aproximativă de 2 minute per variantă',
-        'Primești și a doua melodie completă, cadou din partea noastră',
-        'Descarci ambele melodii după plată — le primești și pe email',
+        'Asculți gratuit un preview de 40 de secunde din melodia ta, creată din povestea și preferințele tale',
+        'Durată aproximativă de 2 minute',
+        'Descarci melodia completă după plată — o primești și pe email',
         'Ai dreptul la o editare gratuită, dacă nu e exact cum vrei'
       ],
       benefits_premium: [
-        'Asculți gratuit 2 variante diferite ale melodiei și alegi varianta care îți place mai mult',
-        'Primești și a doua melodie completă, cadou din partea noastră',
+        'Alegi două genuri muzicale diferite — aceeași poveste, două interpretări muzicale diferite',
+        'Asculți gratuit un preview de 40 de secunde din fiecare melodie și alegi varianta principală',
         'Ai inclusă o modificare gratuită',
         'Varianta principală vine și ca versiune audio la calitate înaltă — păstrează mai bine claritatea sunetului, potrivită pentru păstrare sau editare; nu ai nevoie de cunoștințe tehnice ca să o folosești',
-        'Descarci ambele melodii după plată'
+        'Descarci ambele melodii complete după plată'
       ],
       benefits_video: [
         'Încarci între 3 și 10 fotografii sau videoclipuri înainte de creare',
-        'Asculți gratuit 2 variante ale melodiei, la fel ca la Premium, și alegi varianta principală',
+        'Alegi două genuri muzicale diferite — aceeași poveste, două interpretări muzicale diferite, ca la Premium',
+        'Asculți gratuit un preview de 40 de secunde din fiecare melodie și alegi varianta principală',
         'Creăm un videoclip sincronizat cu varianta principală, folosind fotografiile și filmările tale',
         'Videoclipul include versuri și tranziții potrivite muzicii',
         'Este pregătit pentru WhatsApp și rețelele sociale',
         'Ai inclusă o modificare gratuită',
-        'Primești ambele melodii ca fișiere audio, plus videoclipul final realizat cu varianta ta preferată'
+        'Primești ambele melodii complete ca fișiere audio, plus videoclipul final realizat cu varianta ta preferată'
       ],
       sum_package: 'Pachet',
       sum_total: 'Total',
@@ -520,6 +546,8 @@
       val_email: 'Adresa de email nu este validă',
       val_phone: 'Numărul de telefon nu este valid',
       val_genre: 'Alege un gen muzical',
+      val_genre2_required: 'Alege genul celei de-a doua melodii',
+      val_genre_same: 'Alege două genuri muzicale diferite.',
       step_progress_label: (n) => 'Pasul ' + n + ' din 4',
     },
     en: {
@@ -558,6 +586,8 @@
       story_hint: 'You can write in any language — the lyrics will be generated in the language selected above.',
       label_genre: 'Musical genre',
       genre_choose: 'Choose a genre',
+      label_genre2: "Second song's genre",
+      genre2_hint: 'Choose a genre different from the first, for the second complete song.',
       genre_emotional: 'Emotional',
       genre_suflet: 'Soulful',
       genre_acustic: 'Acoustic / Folk',
@@ -576,7 +606,7 @@
       label_package: 'Choose your package',
       plan_standard_name: 'Standard',
       plan_standard_subtitle: 'A personalised song',
-      plan_standard_desc: 'A personalised song + a second gift song, delivered by email',
+      plan_standard_desc: 'A personalised song, delivered by email',
       plan_premium_name: 'Premium',
       plan_premium_subtitle: 'Two versions of the song',
       plan_premium_desc: '2 complete versions + high-quality audio version',
@@ -584,27 +614,27 @@
       plan_video_subtitle: 'Personalised song with video',
       plan_video_desc: 'Song + synced video with your own photos and clips',
       benefits_standard: [
-        'You listen to 2 free versions of the song, written from your story and preferences, and choose the main version',
-        'About 2 minutes long per version',
-        "You also get a second complete song, a gift from us",
-        'You download both songs after payment — we also send them to your email',
+        'You listen to a free 40-second preview of your song, written from your story and preferences',
+        'About 2 minutes long',
+        'You download the complete song after payment — we also send it to your email',
         "You get one free edit if it's not quite right"
       ],
       benefits_premium: [
-        'You listen to 2 free different versions of the song and choose the one you like best',
-        "You also get a second complete song, a gift from us",
+        'You choose two different musical genres — the same story, two different musical interpretations',
+        'You listen to a free 40-second preview of each song and choose the main version',
         'One free edit is included',
         "The main version also comes as a high-quality audio version — it keeps the sound clearer and is better for keeping or editing; you don't need any technical knowledge to use it",
-        'You download both songs after payment'
+        'You download both complete songs after payment'
       ],
       benefits_video: [
         'Upload 3 to 10 photos or video clips before we start',
-        'You listen to 2 free versions of the song, just like Premium, and choose the main version',
+        'You choose two different musical genres — the same story, two different musical interpretations, just like Premium',
+        'You listen to a free 40-second preview of each song and choose the main version',
         'We create a video synced to the main version, using your own photos and clips',
         'The video includes lyrics and transitions that follow the music',
         'Ready to share on WhatsApp and social media',
         'One free edit is included',
-        'You get both songs as audio files, plus the final video made with your favourite version'
+        'You get both complete songs as audio files, plus the final video made with your favourite version'
       ],
       sum_package: 'Package',
       sum_total: 'Total',
@@ -628,6 +658,8 @@
       val_email: 'The email address is not valid',
       val_phone: 'The phone number is not valid',
       val_genre: 'Choose a musical genre',
+      val_genre2_required: "Choose the second song's genre",
+      val_genre_same: 'Choose two different musical genres.',
       step_progress_label: (n) => 'Step ' + n + ' of 4',
     },
     de: {
@@ -666,6 +698,8 @@
       story_hint: 'Du kannst in jeder Sprache schreiben — der Text wird in der oben gewählten Sprache erstellt.',
       label_genre: 'Musikrichtung',
       genre_choose: 'Genre wählen',
+      label_genre2: 'Musikrichtung des zweiten Liedes',
+      genre2_hint: 'Wähle eine andere Musikrichtung als beim ersten Lied, für das zweite vollständige Lied.',
       genre_emotional: 'Emotional',
       genre_suflet: 'Gefühlvoll',
       genre_acustic: 'Akustik / Folk',
@@ -684,7 +718,7 @@
       label_package: 'Paket wählen',
       plan_standard_name: 'Standard',
       plan_standard_subtitle: 'Ein persönliches Lied',
-      plan_standard_desc: 'Persönliches Lied + ein zweites Geschenklied, per E-Mail geliefert',
+      plan_standard_desc: 'Persönliches Lied, per E-Mail geliefert',
       plan_premium_name: 'Premium',
       plan_premium_subtitle: 'Zwei Versionen des Liedes',
       plan_premium_desc: '2 vollständige Versionen + hochwertige Audioversion',
@@ -692,27 +726,27 @@
       plan_video_subtitle: 'Persönliches Lied mit Video',
       plan_video_desc: 'Lied + synchronisiertes Video mit deinen eigenen Fotos und Clips',
       benefits_standard: [
-        'Du hörst kostenlos 2 Versionen des Liedes, geschrieben nach deiner Geschichte und deinen Wünschen, und wählst die Hauptversion',
-        'Etwa 2 Minuten lang pro Version',
-        'Du bekommst außerdem ein zweites vollständiges Lied, ein Geschenk von uns',
-        'Du lädst beide Lieder nach der Zahlung herunter — wir schicken sie dir auch per E-Mail',
+        'Du hörst kostenlos eine 40-sekündige Vorschau deines Liedes, geschrieben nach deiner Geschichte und deinen Wünschen',
+        'Etwa 2 Minuten lang',
+        'Du lädst das vollständige Lied nach der Zahlung herunter — wir schicken es dir auch per E-Mail',
         'Du hast eine kostenlose Änderung, falls es nicht ganz passt'
       ],
       benefits_premium: [
-        'Du hörst kostenlos 2 verschiedene Versionen des Liedes und wählst die, die dir am besten gefällt',
-        'Du bekommst außerdem ein zweites vollständiges Lied, ein Geschenk von uns',
+        'Du wählst zwei verschiedene Musikrichtungen — dieselbe Geschichte, zwei unterschiedliche musikalische Interpretationen',
+        'Du hörst kostenlos eine 40-sekündige Vorschau jedes Liedes und wählst die Hauptversion',
         'Eine kostenlose Änderung ist inbegriffen',
         'Die Hauptversion gibt es außerdem als hochwertige Audioversion — klingt klarer und eignet sich besser zum Aufbewahren oder Bearbeiten; du brauchst kein technisches Wissen dafür',
-        'Du lädst beide Lieder nach der Zahlung herunter'
+        'Du lädst beide vollständigen Lieder nach der Zahlung herunter'
       ],
       benefits_video: [
         'Lade 3 bis 10 Fotos oder Videoclips hoch, bevor wir starten',
-        'Du hörst kostenlos 2 Versionen des Liedes, genau wie bei Premium, und wählst die Hauptversion',
+        'Du wählst zwei verschiedene Musikrichtungen — dieselbe Geschichte, zwei unterschiedliche musikalische Interpretationen, genau wie bei Premium',
+        'Du hörst kostenlos eine 40-sekündige Vorschau jedes Liedes und wählst die Hauptversion',
         'Wir erstellen ein Video, das auf die Hauptversion abgestimmt ist, mit deinen eigenen Fotos und Clips',
         'Das Video enthält den Liedtext und Übergänge, die zur Musik passen',
         'Bereit zum Teilen auf WhatsApp und in sozialen Medien',
         'Eine kostenlose Änderung ist inbegriffen',
-        'Du bekommst beide Lieder als Audiodateien, plus das fertige Video mit deiner bevorzugten Version'
+        'Du bekommst beide vollständigen Lieder als Audiodateien, plus das fertige Video mit deiner bevorzugten Version'
       ],
       sum_package: 'Paket',
       sum_total: 'Gesamt',
@@ -736,6 +770,8 @@
       val_email: 'Die E-Mail-Adresse ist ungültig',
       val_phone: 'Die Telefonnummer ist ungültig',
       val_genre: 'Wähle eine Musikrichtung',
+      val_genre2_required: 'Wähle die Musikrichtung des zweiten Liedes',
+      val_genre_same: 'Wähle zwei unterschiedliche Musikrichtungen.',
       step_progress_label: (n) => 'Schritt ' + n + ' von 4',
     },
     es: {
@@ -774,6 +810,8 @@
       story_hint: 'Puedes escribir en cualquier idioma — la letra se generará en el idioma elegido arriba.',
       label_genre: 'Género musical',
       genre_choose: 'Elige un género',
+      label_genre2: 'Género de la segunda canción',
+      genre2_hint: 'Elige un género diferente al primero, para la segunda canción completa.',
       genre_emotional: 'Emotivo',
       genre_suflet: 'Con alma',
       genre_acustic: 'Acústico / Folk',
@@ -792,7 +830,7 @@
       label_package: 'Elige tu paquete',
       plan_standard_name: 'Estándar',
       plan_standard_subtitle: 'Una canción personalizada',
-      plan_standard_desc: 'Canción personalizada + una segunda canción de regalo, entrega por email',
+      plan_standard_desc: 'Canción personalizada, entrega por email',
       plan_premium_name: 'Premium',
       plan_premium_subtitle: 'Dos versiones de la canción',
       plan_premium_desc: '2 versiones completas + versión de audio de alta calidad',
@@ -800,27 +838,27 @@
       plan_video_subtitle: 'Canción personalizada con video',
       plan_video_desc: 'Canción + video sincronizado con tus propias fotos y videos',
       benefits_standard: [
-        'Escuchas gratis 2 versiones de la canción, creadas a partir de tu historia y tus preferencias, y eliges la versión principal',
-        'Duración aproximada de 2 minutos por versión',
-        'También recibes una segunda canción completa, de regalo por nuestra parte',
-        'Descargas ambas canciones después del pago — también te las enviamos por email',
+        'Escuchas gratis un adelanto de 40 segundos de tu canción, creada a partir de tu historia y tus preferencias',
+        'Duración aproximada de 2 minutos',
+        'Descargas la canción completa después del pago — también te la enviamos por email',
         'Tienes derecho a una edición gratuita si no queda exactamente como quieres'
       ],
       benefits_premium: [
-        'Escuchas gratis 2 versiones diferentes de la canción y eliges la que más te guste',
-        'También recibes una segunda canción completa, de regalo por nuestra parte',
+        'Eliges dos géneros musicales diferentes — la misma historia, dos interpretaciones musicales distintas',
+        'Escuchas gratis un adelanto de 40 segundos de cada canción y eliges la versión principal',
         'Incluye una modificación gratuita',
         'La versión principal también viene como versión de audio de alta calidad — conserva mejor la claridad del sonido, adecuada para guardar o editar; no necesitas conocimientos técnicos para usarla',
-        'Descargas ambas canciones después del pago'
+        'Descargas ambas canciones completas después del pago'
       ],
       benefits_video: [
         'Subes entre 3 y 10 fotos o videos antes de empezar',
-        'Escuchas gratis 2 versiones de la canción, igual que en Premium, y eliges la versión principal',
+        'Eliges dos géneros musicales diferentes — la misma historia, dos interpretaciones musicales distintas, igual que en Premium',
+        'Escuchas gratis un adelanto de 40 segundos de cada canción y eliges la versión principal',
         'Creamos un video sincronizado con la versión principal, usando tus propias fotos y videos',
         'El video incluye la letra y transiciones acordes a la música',
         'Listo para compartir en WhatsApp y redes sociales',
         'Incluye una modificación gratuita',
-        'Recibes ambas canciones como archivos de audio, además del video final hecho con tu versión favorita'
+        'Recibes ambas canciones completas como archivos de audio, además del video final hecho con tu versión favorita'
       ],
       sum_package: 'Paquete',
       sum_total: 'Total',
@@ -844,6 +882,8 @@
       val_email: 'La dirección de correo no es válida',
       val_phone: 'El número de teléfono no es válido',
       val_genre: 'Elige un género musical',
+      val_genre2_required: 'Elige el género de la segunda canción',
+      val_genre_same: 'Elige dos géneros musicales diferentes.',
       step_progress_label: (n) => 'Paso ' + n + ' de 4',
     },
     it: {
@@ -882,6 +922,8 @@
       story_hint: 'Puoi scrivere in qualsiasi lingua — il testo sarà generato nella lingua scelta sopra.',
       label_genre: 'Genere musicale',
       genre_choose: 'Scegli un genere',
+      label_genre2: 'Genere della seconda canzone',
+      genre2_hint: "Scegli un genere diverso dal primo, per la seconda canzone completa.",
       genre_emotional: 'Emozionante',
       genre_suflet: 'Con anima',
       genre_acustic: 'Acustico / Folk',
@@ -900,7 +942,7 @@
       label_package: 'Scegli il pacchetto',
       plan_standard_name: 'Standard',
       plan_standard_subtitle: 'Una canzone personalizzata',
-      plan_standard_desc: 'Canzone personalizzata + una seconda canzone regalo, consegna via email',
+      plan_standard_desc: 'Canzone personalizzata, consegna via email',
       plan_premium_name: 'Premium',
       plan_premium_subtitle: 'Due versioni della canzone',
       plan_premium_desc: '2 versioni complete + versione audio ad alta qualità',
@@ -908,27 +950,27 @@
       plan_video_subtitle: 'Canzone personalizzata con video',
       plan_video_desc: 'Canzone + video sincronizzato con le tue foto e i tuoi video',
       benefits_standard: [
-        'Ascolti gratis 2 versioni della canzone, scritte a partire dalla tua storia e dalle tue preferenze, e scegli la versione principale',
-        'Durata di circa 2 minuti per versione',
-        'Ricevi anche una seconda canzone completa, in regalo da parte nostra',
-        'Scarichi entrambe le canzoni dopo il pagamento — te le inviamo anche via email',
+        "Ascolti gratis un'anteprima di 40 secondi della tua canzone, scritta a partire dalla tua storia e dalle tue preferenze",
+        'Durata di circa 2 minuti',
+        'Scarichi la canzone completa dopo il pagamento — te la inviamo anche via email',
         'Hai diritto a una modifica gratuita se non è esattamente come desideri'
       ],
       benefits_premium: [
-        'Ascolti gratis 2 versioni diverse della canzone e scegli quella che preferisci',
-        'Ricevi anche una seconda canzone completa, in regalo da parte nostra',
+        'Scegli due generi musicali diversi — la stessa storia, due interpretazioni musicali diverse',
+        "Ascolti gratis un'anteprima di 40 secondi di ogni canzone e scegli la versione principale",
         'È inclusa una modifica gratuita',
         'La versione principale arriva anche come versione audio ad alta qualità — mantiene il suono più chiaro, adatta per conservare o modificare; non servono competenze tecniche per usarla',
-        'Scarichi entrambe le canzoni dopo il pagamento'
+        'Scarichi entrambe le canzoni complete dopo il pagamento'
       ],
       benefits_video: [
         'Carichi da 3 a 10 foto o video prima di iniziare',
-        'Ascolti gratis 2 versioni della canzone, come nel Premium, e scegli la versione principale',
+        'Scegli due generi musicali diversi — la stessa storia, due interpretazioni musicali diverse, come nel Premium',
+        "Ascolti gratis un'anteprima di 40 secondi di ogni canzone e scegli la versione principale",
         'Creiamo un video sincronizzato con la versione principale, usando le tue foto e i tuoi video',
         'Il video include il testo e transizioni in sintonia con la musica',
         'Pronto da condividere su WhatsApp e sui social',
         'È inclusa una modifica gratuita',
-        'Ricevi entrambe le canzoni come file audio, più il video finale realizzato con la tua versione preferita'
+        'Ricevi entrambe le canzoni complete come file audio, più il video finale realizzato con la tua versione preferita'
       ],
       sum_package: 'Pacchetto',
       sum_total: 'Totale',
@@ -952,6 +994,8 @@
       val_email: 'L\'indirizzo email non è valido',
       val_phone: 'Il numero di telefono non è valido',
       val_genre: 'Scegli un genere musicale',
+      val_genre2_required: 'Scegli il genere della seconda canzone',
+      val_genre_same: 'Scegli due generi musicali diversi.',
       step_progress_label: (n) => 'Passo ' + n + ' di 4',
     },
     fr: {
@@ -990,6 +1034,8 @@
       story_hint: 'Vous pouvez écrire dans n\'importe quelle langue — les paroles seront générées dans la langue choisie ci-dessus.',
       label_genre: 'Genre musical',
       genre_choose: 'Choisissez un genre',
+      label_genre2: 'Genre de la deuxième chanson',
+      genre2_hint: 'Choisissez un genre différent du premier, pour la deuxième chanson complète.',
       genre_emotional: 'Émouvant',
       genre_suflet: 'Avec âme',
       genre_acustic: 'Acoustique / Folk',
@@ -1008,7 +1054,7 @@
       label_package: 'Choisissez votre pack',
       plan_standard_name: 'Standard',
       plan_standard_subtitle: 'Une chanson personnalisée',
-      plan_standard_desc: 'Chanson personnalisée + une deuxième chanson cadeau, livrée par email',
+      plan_standard_desc: 'Chanson personnalisée, livrée par email',
       plan_premium_name: 'Premium',
       plan_premium_subtitle: 'Deux versions de la chanson',
       plan_premium_desc: '2 versions complètes + version audio haute qualité',
@@ -1016,27 +1062,27 @@
       plan_video_subtitle: 'Chanson personnalisée avec vidéo',
       plan_video_desc: 'Chanson + vidéo synchronisée avec vos propres photos et vidéos',
       benefits_standard: [
-        'Vous écoutez gratuitement 2 versions de la chanson, écrites à partir de votre histoire et de vos préférences, et choisissez la version principale',
-        'Environ 2 minutes par version',
-        'Vous recevez aussi une deuxième chanson complète, offerte par nous',
-        'Vous téléchargez les deux chansons après le paiement — nous vous les envoyons aussi par email',
+        'Vous écoutez gratuitement un extrait de 40 secondes de votre chanson, écrite à partir de votre histoire et de vos préférences',
+        'Environ 2 minutes',
+        "Vous téléchargez la chanson complète après le paiement — nous vous l'envoyons aussi par email",
         "Vous avez droit à une modification gratuite si ce n'est pas tout à fait ce que vous souhaitez"
       ],
       benefits_premium: [
-        'Vous écoutez gratuitement 2 versions différentes de la chanson et choisissez celle que vous préférez',
-        'Vous recevez aussi une deuxième chanson complète, offerte par nous',
+        'Vous choisissez deux genres musicaux différents — la même histoire, deux interprétations musicales différentes',
+        'Vous écoutez gratuitement un extrait de 40 secondes de chaque chanson et choisissez la version principale',
         'Une modification gratuite est incluse',
         "La version principale existe aussi en version audio haute qualité — un son plus clair, adapté pour la conservation ou le montage; aucune connaissance technique n'est nécessaire pour l'utiliser",
-        'Vous téléchargez les deux chansons après le paiement'
+        'Vous téléchargez les deux chansons complètes après le paiement'
       ],
       benefits_video: [
         'Téléversez 3 à 10 photos ou vidéos avant de commencer',
-        'Vous écoutez gratuitement 2 versions de la chanson, comme avec Premium, et choisissez la version principale',
+        'Vous choisissez deux genres musicaux différents — la même histoire, deux interprétations musicales différentes, comme avec Premium',
+        'Vous écoutez gratuitement un extrait de 40 secondes de chaque chanson et choisissez la version principale',
         'Nous créons une vidéo synchronisée avec la version principale, à partir de vos propres photos et vidéos',
         'La vidéo inclut les paroles et des transitions adaptées à la musique',
         'Prête à partager sur WhatsApp et les réseaux sociaux',
         'Une modification gratuite est incluse',
-        'Vous recevez les deux chansons en fichiers audio, ainsi que la vidéo finale réalisée avec votre version préférée'
+        'Vous recevez les deux chansons complètes en fichiers audio, ainsi que la vidéo finale réalisée avec votre version préférée'
       ],
       sum_package: 'Pack',
       sum_total: 'Total',
@@ -1060,6 +1106,8 @@
       val_email: 'L\'adresse email n\'est pas valide',
       val_phone: 'Le numéro de téléphone n\'est pas valide',
       val_genre: 'Choisissez un genre musical',
+      val_genre2_required: 'Choisissez le genre de la deuxième chanson',
+      val_genre_same: 'Choisissez deux genres musicaux différents.',
       step_progress_label: (n) => 'Étape ' + n + ' sur 4',
     },
     bg: {
@@ -1098,6 +1146,8 @@
       story_hint: 'Можеш да пишеш на всеки език — текстът ще бъде генериран на избрания по-горе език.',
       label_genre: 'Музикален жанр',
       genre_choose: 'Избери жанр',
+      label_genre2: 'Жанр на втората песен',
+      genre2_hint: 'Избери жанр, различен от първия, за втората пълна песен.',
       genre_emotional: 'Емоционално',
       genre_suflet: 'Душевно',
       genre_acustic: 'Акустика / Фолк',
@@ -1116,7 +1166,7 @@
       label_package: 'Избери пакет',
       plan_standard_name: 'Стандартен',
       plan_standard_subtitle: 'Персонализирана песен',
-      plan_standard_desc: 'Персонализирана песен + втора песен подарък, доставка по имейл',
+      plan_standard_desc: 'Персонализирана песен, доставка по имейл',
       plan_premium_name: 'Премиум',
       plan_premium_subtitle: 'Две версии на песента',
       plan_premium_desc: '2 пълни версии + аудио версия с високо качество',
@@ -1124,27 +1174,27 @@
       plan_video_subtitle: 'Персонализирана песен с видео',
       plan_video_desc: 'Песен + синхронизирано видео с твоите снимки и видеоклипове',
       benefits_standard: [
-        'Слушаш безплатно 2 версии на песента, създадени по твоята история и предпочитания, и избираш основната версия',
-        'Продължителност около 2 минути на версия',
-        'Получаваш и втора пълна песен, подарък от нас',
-        'Изтегляш и двете песни след плащане — изпращаме ти ги и на имейла',
+        'Слушаш безплатно 40-секунден откъс от твоята песен, създадена по твоята история и предпочитания',
+        'Продължителност около 2 минути',
+        'Изтегляш пълната песен след плащане — изпращаме ти я и на имейла',
         'Имаш право на една безплатна редакция, ако не е точно както искаш'
       ],
       benefits_premium: [
-        'Слушаш безплатно 2 различни версии на песента и избираш тази, която ти харесва повече',
-        'Получаваш и втора пълна песен, подарък от нас',
+        'Избираш два различни музикални жанра — една и съща история, две различни музикални интерпретации',
+        'Слушаш безплатно 40-секунден откъс от всяка песен и избираш основната версия',
         'Включена е една безплатна промяна',
         'Основната версия идва и като аудио версия с високо качество — запазва по-добре яснотата на звука, подходяща за съхранение или редактиране; не са нужни технически познания, за да я използваш',
-        'Изтегляш и двете песни след плащане'
+        'Изтегляш и двете пълни песни след плащане'
       ],
       benefits_video: [
         'Качваш между 3 и 10 снимки или видеоклипа преди създаването',
-        'Слушаш безплатно 2 версии на песента, както при Премиум, и избираш основната версия',
+        'Избираш два различни музикални жанра — една и съща история, две различни музикални интерпретации, както при Премиум',
+        'Слушаш безплатно 40-секунден откъс от всяка песен и избираш основната версия',
         'Създаваме видео, синхронизирано с основната версия, с твоите снимки и видеоклипове',
         'Видеото включва текста на песента и преходи, съобразени с музиката',
         'Готово за споделяне в WhatsApp и социалните мрежи',
         'Включена е една безплатна промяна',
-        'Получаваш и двете песни като аудио файлове, плюс финалното видео, направено с любимата ти версия'
+        'Получаваш и двете пълни песни като аудио файлове, плюс финалното видео, направено с любимата ти версия'
       ],
       sum_package: 'Пакет',
       sum_total: 'Общо',
@@ -1168,6 +1218,8 @@
       val_email: 'Имейл адресът не е валиден',
       val_phone: 'Телефонният номер не е валиден',
       val_genre: 'Избери музикален жанр',
+      val_genre2_required: 'Избери жанра на втората песен',
+      val_genre_same: 'Избери два различни музикални жанра.',
       step_progress_label: (n) => 'Стъпка ' + n + ' от 4',
     },
     tr: {
@@ -1206,6 +1258,8 @@
       story_hint: 'Herhangi bir dilde yazabilirsiniz — sözler yukarıda seçilen dilde oluşturulacaktır.',
       label_genre: 'Müzik türü',
       genre_choose: 'Bir tür seçin',
+      label_genre2: 'İkinci şarkının türü',
+      genre2_hint: 'İkinci tam şarkı için ilkinden farklı bir tür seçin.',
       genre_emotional: 'Duygusal',
       genre_suflet: 'İçten',
       genre_acustic: 'Akustik / Folk',
@@ -1224,7 +1278,7 @@
       label_package: 'Paketinizi seçin',
       plan_standard_name: 'Standart',
       plan_standard_subtitle: 'Kişiye özel bir şarkı',
-      plan_standard_desc: 'Kişiye özel şarkı + ikinci bir hediye şarkı, e-posta ile teslim',
+      plan_standard_desc: 'Kişiye özel şarkı, e-posta ile teslim',
       plan_premium_name: 'Premium',
       plan_premium_subtitle: 'Şarkının iki versiyonu',
       plan_premium_desc: '2 tam versiyon + yüksek kaliteli ses versiyonu',
@@ -1232,27 +1286,27 @@
       plan_video_subtitle: 'Videolu kişiye özel şarkı',
       plan_video_desc: 'Şarkı + kendi fotoğraf ve videolarınızla senkronize video',
       benefits_standard: [
-        'Hikayenize ve tercihlerinize göre yazılmış şarkının 2 versiyonunu ücretsiz dinler, ana versiyonu seçersiniz',
-        'Versiyon başına yaklaşık 2 dakika uzunluğunda',
-        'Ayrıca bizden hediye olarak ikinci bir tam şarkı alırsınız',
-        'Ödemeden sonra her iki şarkıyı da indirirsiniz — e-postanıza da gönderiyoruz',
+        'Hikayenize ve tercihlerinize göre yazılmış şarkınızın 40 saniyelik ücretsiz bir önizlemesini dinlersiniz',
+        'Yaklaşık 2 dakika uzunluğunda',
+        'Ödemeden sonra tam şarkıyı indirirsiniz — e-postanıza da gönderiyoruz',
         'Tam istediğiniz gibi değilse bir ücretsiz düzenleme hakkınız var'
       ],
       benefits_premium: [
-        'Şarkının 2 farklı versiyonunu ücretsiz dinler, en çok beğendiğinizi seçersiniz',
-        'Ayrıca bizden hediye olarak ikinci bir tam şarkı alırsınız',
+        'İki farklı müzik türü seçersiniz — aynı hikaye, iki farklı müzikal yorum',
+        'Her şarkının 40 saniyelik ücretsiz önizlemesini dinler, ana versiyonu seçersiniz',
         'Bir ücretsiz düzenleme dahildir',
         'Ana versiyon ayrıca yüksek kaliteli ses versiyonu olarak da gelir — sesi daha net tutar, saklamak veya düzenlemek için uygundur; kullanmak için teknik bilgiye ihtiyacınız yoktur',
-        'Ödemeden sonra her iki şarkıyı da indirirsiniz'
+        'Ödemeden sonra iki tam şarkıyı da indirirsiniz'
       ],
       benefits_video: [
         'Başlamadan önce 3 ile 10 arası fotoğraf veya video yüklersiniz',
-        "Premium'da olduğu gibi şarkının 2 versiyonunu ücretsiz dinler, ana versiyonu seçersiniz",
+        "Premium'da olduğu gibi iki farklı müzik türü seçersiniz — aynı hikaye, iki farklı müzikal yorum",
+        'Her şarkının 40 saniyelik ücretsiz önizlemesini dinler, ana versiyonu seçersiniz',
         'Kendi fotoğraf ve videolarınızı kullanarak ana versiyonla senkronize bir video oluştururuz',
         'Video, şarkı sözlerini ve müziğe uygun geçişleri içerir',
         "WhatsApp ve sosyal medyada paylaşıma hazırdır",
         'Bir ücretsiz düzenleme dahildir',
-        'Her iki şarkıyı da ses dosyası olarak, artık favori versiyonunuzla hazırlanan videoyu da alırsınız'
+        'Her iki tam şarkıyı da ses dosyası olarak, artık favori versiyonunuzla hazırlanan videoyu da alırsınız'
       ],
       sum_package: 'Paket',
       sum_total: 'Toplam',
@@ -1276,6 +1330,8 @@
       val_email: 'E-posta adresi geçerli değil',
       val_phone: 'Telefon numarası geçerli değil',
       val_genre: 'Bir müzik türü seçin',
+      val_genre2_required: 'İkinci şarkının türünü seçin',
+      val_genre_same: 'İki farklı müzik türü seçin.',
       step_progress_label: (n) => 'Adım ' + n + '/4',
     },
   };
@@ -1478,8 +1534,11 @@
 
   const voiceCards = document.querySelectorAll('.voice-card');
   const voiceInput = document.getElementById('voice-preference');
-  const genreCards = document.querySelectorAll('.genre-card');
+  const genreCards = document.querySelectorAll('.genre-card:not(.genre2-card)');
   const genreInput = document.getElementById('genre');
+  const genre2Field = document.getElementById('genre2-field');
+  const genre2Cards = document.querySelectorAll('.genre2-card');
+  const genre2Input = document.getElementById('genre2');
   const step3ContinueBtn = document.getElementById('step3-continue-btn');
 
   // Butonul "Continua" de pe pasul 3 ramane dezactivat pana cand exista atat un gen CAT
@@ -1502,6 +1561,33 @@
       saveDraft();
     });
   });
+
+  // Genul celei de-a doua melodii — vizibil DOAR pentru Premium/Video (vezi
+  // updateGenre2Visibility, apelata la fiecare schimbare de pachet pe pasul 4).
+  // Standard nu are a doua melodie, deci acest camp nu se afiseaza si nu se trimite.
+  genre2Cards.forEach(c => {
+    c.addEventListener('click', () => {
+      genre2Cards.forEach(x => x.classList.remove('active'));
+      c.classList.add('active');
+      genre2Input.value = c.dataset.genre;
+      setFieldError('genre2', '');
+      saveDraft();
+    });
+  });
+
+  function planNeedsGenre2(planId) {
+    return planId === 'premium' || planId === 'video';
+  }
+
+  function updateGenre2Visibility() {
+    const needsGenre2 = planNeedsGenre2(selectedPlan.id);
+    genre2Field.style.display = needsGenre2 ? '' : 'none';
+    if (!needsGenre2) {
+      genre2Input.value = '';
+      genre2Cards.forEach(c => c.classList.remove('active'));
+      setFieldError('genre2', '');
+    }
+  }
 
   voiceCards.forEach(c => {
     c.addEventListener('click', () => {
@@ -1557,6 +1643,7 @@
     sumTotal.textContent = '£' + selectedPlan.price;
     renderBenefits(selectedPlan.id);
     updateGenerateButtonLabel();
+    updateGenre2Visibility();
     saveDraft();
   }
 
@@ -1579,6 +1666,9 @@
       phone: getPhoneInfo().value,
       story: document.getElementById('story').value,
       genre: document.getElementById('genre').value,
+      // genre2 e relevant DOAR pentru Premium/Video (server-side, POST /api/orders il cere
+      // si il valideaza doar in acel caz) — pentru Standard, campul e gol si serverul il ignora.
+      genre2: genre2Input.value,
       voicePreference: voiceInput.value,
       plan: selectedPlan.id,
       // FARA price aici — serverul recalculeaza intotdeauna pretul din "plan", niciodata din
@@ -1598,6 +1688,7 @@
         phone: getPhoneInfo().value || phoneInput.value,
         story: document.getElementById('story').value,
         genre: document.getElementById('genre').value,
+        genre2: genre2Input.value,
         voicePreference: voiceInput.value,
         plan: selectedPlan.id
       };
@@ -1632,6 +1723,10 @@
       genreInput.value = draft.genre;
       genreCards.forEach(c => c.classList.toggle('active', c.dataset.genre === draft.genre));
     }
+    if (draft.genre2) {
+      genre2Input.value = draft.genre2;
+      genre2Cards.forEach(c => c.classList.toggle('active', c.dataset.genre === draft.genre2));
+    }
     if (draft.voicePreference) {
       voiceInput.value = draft.voicePreference;
       voiceCards.forEach(c => c.classList.toggle('active', c.dataset.voice === draft.voicePreference));
@@ -1652,6 +1747,10 @@
         updateGenerateButtonLabel();
       }
     }
+    // updateGenre2Visibility() dupa restaurarea planului (nu doar in selectPlan(), care nu
+    // ruleaza aici) — altfel campul ar ramane ascuns/vizibil dupa starea implicita, nu dupa
+    // planul efectiv restaurat din draft.
+    updateGenre2Visibility();
   }
   restoreDraft();
   updateStep3ContinueState();
@@ -1668,6 +1767,7 @@
   applyLang(currentLang);
   renderBenefits(selectedPlan.id);
   updateGenerateButtonLabel();
+  updateGenre2Visibility();
   showStep(restoredStep);
 
   const statusMsg = document.getElementById('status-msg');
@@ -1687,6 +1787,25 @@
       const nextBtn = document.querySelector(`.step-card[data-step="${currentStep}"] [data-next]`);
       if (nextBtn) nextBtn.click();
       return;
+    }
+
+    // Premium/Video: genul celei de-a doua melodii e OBLIGATORIU si trebuie sa difere de
+    // primul gen — server-side (POST /api/orders) respinge oricum cererea daca lipseste sau
+    // e identic, dar validam si aici, ca sa nu trimitem inutil o cerere care va fi respinsa,
+    // si ca sa aratam eroarea exact langa campul relevant.
+    if (planNeedsGenre2(selectedPlan.id)) {
+      const g1 = genreInput.value;
+      const g2 = genre2Input.value;
+      if (!g2) {
+        setFieldError('genre2', t('val_genre2_required'));
+        genre2Field.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+      }
+      if (g2 === g1) {
+        setFieldError('genre2', t('val_genre_same'));
+        genre2Field.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+      }
     }
 
     generateBtn.disabled = true;

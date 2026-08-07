@@ -26,7 +26,7 @@ const {
   sortMediaBySection
 } = require('../lib/media-analysis');
 
-const PHOTO_MIMES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
+const PHOTO_MIMES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'image/x-adobe-dng'];
 const VIDEO_MIMES = ['video/mp4', 'video/quicktime', 'video/webm'];
 
 test('bufferMatchesDeclaredType — accepta JPEG real', () => {
@@ -56,6 +56,24 @@ test('bufferMatchesDeclaredType — respinge text arbitrar declarat ca orice for
 test('bufferMatchesDeclaredType — tip necunoscut, intotdeauna respins (allowlist stricta)', () => {
   const buf = Buffer.from([0xFF, 0xD8, 0xFF]);
   assert.equal(bufferMatchesDeclaredType(buf, 'application/x-executable'), false);
+});
+
+// Apple ProRAW/.dng — hotfix 2026-08-07, problema 2. DNG e un container TIFF; Apple scrie
+// intotdeauna big-endian ("MM\0*"), dar acceptam si little-endian ("II*\0"), valabil conform
+// specificatiei TIFF/DNG SDK Adobe, chiar daca fisierele Apple nu il folosesc in practica.
+test('bufferMatchesDeclaredType — accepta DNG real (TIFF big-endian, "MM\\0*", scris de Apple)', () => {
+  const dngBuf = Buffer.from([0x4D, 0x4D, 0x00, 0x2A, 0x00, 0x00, 0x00, 0x08]);
+  assert.equal(bufferMatchesDeclaredType(dngBuf, 'image/x-adobe-dng'), true);
+});
+
+test('bufferMatchesDeclaredType — accepta DNG cu TIFF little-endian ("II*\\0")', () => {
+  const dngBuf = Buffer.from([0x49, 0x49, 0x2A, 0x00, 0x08, 0x00, 0x00, 0x00]);
+  assert.equal(bufferMatchesDeclaredType(dngBuf, 'image/x-adobe-dng'), true);
+});
+
+test('bufferMatchesDeclaredType — respinge un JPEG fals declarat DNG', () => {
+  const jpegBuf = Buffer.from([0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10]);
+  assert.equal(bufferMatchesDeclaredType(jpegBuf, 'image/x-adobe-dng'), false);
 });
 
 test('normalizeSectionType — recunoaste marcajele standard Suno, ignora restul', () => {
@@ -284,6 +302,16 @@ test('inferMediaType — MOV cu mimetype generic "application/octet-stream" -> f
 test('inferMediaType — video/quicktime valid de la browser, folosit direct', () => {
   const r = inferMediaType('clip.mov', 'video/quicktime', PHOTO_MIMES, VIDEO_MIMES);
   assert.deepEqual(r, { type: 'video', mimetype: 'video/quicktime' });
+});
+
+test('inferMediaType — DNG (Apple ProRAW) cu mimetype generic -> fallback pe extensie .dng', () => {
+  const r = inferMediaType('IMG_9999.dng', 'application/octet-stream', PHOTO_MIMES, VIDEO_MIMES);
+  assert.deepEqual(r, { type: 'photo', mimetype: 'image/x-adobe-dng' });
+});
+
+test('inferMediaType — DNG cu mimetype real trimis de browser, folosit direct (fara fallback)', () => {
+  const r = inferMediaType('poza.DNG', 'image/x-adobe-dng', PHOTO_MIMES, VIDEO_MIMES);
+  assert.deepEqual(r, { type: 'photo', mimetype: 'image/x-adobe-dng' });
 });
 
 test('inferMediaType — nume cu mai multe puncte, extensia reala e ultima', () => {

@@ -103,6 +103,12 @@
   .variant-label{ font-weight:600; font-size:14px; }
   .variant-progress{ font-size:12px; color:var(--text-secondary); margin-top:8px; letter-spacing:.02em; }
   .variant-gift-note{ font-size:12px; color:var(--text-secondary); margin:8px 0 0; }
+  .variant-genre-tag{
+    display:inline-block; font-size:11px; font-weight:600; letter-spacing:.02em;
+    color:var(--gold-deep); background:rgba(168,131,75,.12); border-radius:999px;
+    padding:3px 10px; margin-left:8px; vertical-align:middle;
+  }
+  .variant-audio-error{ font-size:13px; color:var(--gold-deep); text-decoration:underline; cursor:pointer; margin:4px 0; }
 
   .voice-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:4px; }
   .voice-card{
@@ -312,7 +318,7 @@
           <div class="mem-list" id="mem-uploaded-list"></div>
           <div class="mem-list" id="mem-staged-list"></div>
           <input type="file" id="mem-file-input" multiple
-            accept="image/jpeg,image/png,image/webp,image/heic,image/heif,video/mp4,video/quicktime,video/webm">
+            accept="image/jpeg,image/png,image/webp,image/heic,image/heif,image/x-adobe-dng,.dng,video/mp4,video/quicktime,video/webm">
           <p class="mem-status" id="mem-status"></p>
         </div>
 
@@ -351,6 +357,8 @@
       heading: (r) => `Melodia pentru ${r}`, dedication: (s) => `Din partea ${s}`,
       variant_main_label: 'Varianta principală', variant_gift_label: '🎁 A doua melodie, cadou pentru tine',
       variant_gift_note: 'După plată vei putea descărca ambele melodii complete.',
+      genre_emotional: 'Emoțional', genre_suflet: 'De suflet', genre_acustic: 'Acustic / Folk', genre_petrecere: 'Muzică de petrecere', genre_balada: 'Baladă', genre_manele: 'Manele de jale', genre_copii: 'Pentru copii', genre_populara: 'Populară', genre_rock: 'Rock', genre_colind: 'Colind', genre_modern: 'Modern', genre_hiphop: 'Hip-hop', genre_manele_suflet: 'Manele de suflet', genre_motivational: 'Motivațional', genre_pop: 'Pop',
+      variant_second_label: 'A doua melodie',
       listened: (t, d) => `Ai ascultat ${t} din ${d}`,
       lyrics_empty: 'Versurile nu sunt încă disponibile pentru afișare.',
       lyrics_edited_tag: 'Versuri editate de tine',
@@ -387,10 +395,11 @@
       video_status_none: 'Videoclipul tău nu este încă gata.',
       memories_title: 'Adaugă pozele și videoclipurile tale',
       memories_sub: 'Adaugă între 3 și 10 poze sau clipuri video — le vom transforma într-un videoclip sincronizat cu melodia ta.',
-      memories_meta: (min, max) => `Între ${min} și ${max} materiale • JPG, PNG, HEIC, MP4, MOV, WebM • max. 150MB per fișier • orice combinație de poze și videoclipuri`,
+      memories_meta: (min, max) => `Între ${min} și ${max} materiale • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • max. 150MB per fișier • orice combinație de poze și videoclipuri`,
       memories_count: (n, min, max) => n < min ? `${n} din minimum ${min} materiale` : n > max ? `Prea multe materiale (${n}/${max})` : `${n} materiale — gata de continuare`,
       memories_uploading: 'Se încarcă...', memories_queued: 'În așteptare...', memories_uploaded: 'Încărcat', memories_remove: '✕', memories_retry: 'Reîncearcă',
       memories_upload_timeout: 'Încărcarea durează prea mult — verifică conexiunea și încearcă din nou.',
+      preview_load_error: 'Nu am putut încărca previzualizarea. Atinge aici ca să încerci din nou.',
       memories_move_up: 'Mută mai sus', memories_move_down: 'Mută mai jos', memories_section_label: 'Secțiune din melodie',
       memories_upload_error: 'Încărcarea a eșuat. Încearcă din nou',
       awaiting_media_title: 'Adaugă fotografiile și videoclipurile pentru cadoul tău',
@@ -406,6 +415,8 @@
       heading: (r) => `The song for ${r}`, dedication: (s) => `From ${s}`,
       variant_main_label: 'Main version', variant_gift_label: '🎁 Your second song, a gift for you',
       variant_gift_note: 'After payment you\'ll be able to download both complete songs.',
+      genre_emotional: 'Emotional', genre_suflet: 'Soulful', genre_acustic: 'Acoustic / Folk', genre_petrecere: 'Party music', genre_balada: 'Ballad', genre_manele: 'Mournful manele', genre_copii: 'For kids', genre_populara: 'Folk-pop', genre_rock: 'Rock', genre_colind: 'Christmas carol', genre_modern: 'Modern', genre_hiphop: 'Hip-hop', genre_manele_suflet: 'Soulful manele', genre_motivational: 'Motivational', genre_pop: 'Pop',
+      variant_second_label: 'Second song',
       listened: (t, d) => `You've listened to ${t} of ${d}`,
       lyrics_empty: 'Lyrics are not available to display yet.',
       lyrics_edited_tag: 'Lyrics edited by you',
@@ -442,10 +453,11 @@
       video_status_none: "Your video isn't ready yet.",
       memories_title: 'Add your photos & videos',
       memories_sub: "Add 3 to 10 photos or video clips — we'll weave them into a video synced to your song.",
-      memories_meta: (min, max) => `${min} to ${max} items • JPG, PNG, HEIC, MP4, MOV, WebM • max 150MB per file • any mix of photos and videos`,
+      memories_meta: (min, max) => `${min} to ${max} items • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • max 150MB per file • any mix of photos and videos`,
       memories_count: (n, min, max) => n < min ? `${n} of at least ${min} items` : n > max ? `Too many items (${n}/${max})` : `${n} items — ready to continue`,
       memories_uploading: 'Uploading...', memories_queued: 'Queued...', memories_uploaded: 'Uploaded', memories_remove: '✕', memories_retry: 'Retry',
       memories_upload_timeout: 'This is taking too long — check your connection and try again.',
+      preview_load_error: "We couldn't load the preview. Tap here to try again.",
       memories_move_up: 'Move up', memories_move_down: 'Move down', memories_section_label: 'Song section',
       memories_upload_error: 'Upload failed. Please try again.',
       awaiting_media_title: 'Add the photos and videos for your gift',
@@ -461,6 +473,8 @@
       heading: (r) => `Das Lied für ${r}`, dedication: (s) => `Von ${s}`,
       variant_main_label: 'Hauptversion', variant_gift_label: '🎁 Dein zweites Lied, ein Geschenk für dich',
       variant_gift_note: 'Nach der Zahlung kannst du beide vollständigen Lieder herunterladen.',
+      genre_emotional: 'Emotional', genre_suflet: 'Gefühlvoll', genre_acustic: 'Akustik / Folk', genre_petrecere: 'Partymusik', genre_balada: 'Ballade', genre_manele: 'Manele der Trauer', genre_copii: 'Für Kinder', genre_populara: 'Volkstümlich', genre_rock: 'Rock', genre_colind: 'Weihnachtslied', genre_modern: 'Modern', genre_hiphop: 'Hip-Hop', genre_manele_suflet: 'Manele mit Seele', genre_motivational: 'Motivierend', genre_pop: 'Pop',
+      variant_second_label: 'Zweites Lied',
       listened: (t, d) => `Du hast ${t} von ${d} gehört`,
       lyrics_empty: 'Der Text steht noch nicht zur Anzeige zur Verfügung.',
       lyrics_edited_tag: 'Von dir bearbeiteter Text',
@@ -497,10 +511,11 @@
       video_status_none: 'Dein Video ist noch nicht fertig.',
       memories_title: 'Füge deine Fotos & Videos hinzu',
       memories_sub: 'Füge 3 bis 10 Fotos oder Videoclips hinzu — wir verweben sie zu einem Video, das genau auf dein Lied abgestimmt ist.',
-      memories_meta: (min, max) => `${min} bis ${max} Elemente • JPG, PNG, HEIC, MP4, MOV, WebM • max. 150MB pro Datei • jede Mischung aus Fotos und Videos`,
+      memories_meta: (min, max) => `${min} bis ${max} Elemente • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • max. 150MB pro Datei • jede Mischung aus Fotos und Videos`,
       memories_count: (n, min, max) => n < min ? `${n} von mindestens ${min} Elementen` : n > max ? `Zu viele Elemente (${n}/${max})` : `${n} Elemente — bereit zum Fortfahren`,
       memories_uploading: 'Wird hochgeladen...', memories_queued: 'In Warteschlange...', memories_uploaded: 'Hochgeladen', memories_remove: '✕', memories_retry: 'Erneut versuchen',
       memories_upload_timeout: 'Das dauert zu lange — überprüfe deine Verbindung und versuche es erneut.',
+      preview_load_error: 'Die Vorschau konnte nicht geladen werden. Tippe hier, um es erneut zu versuchen.',
       memories_move_up: 'Nach oben', memories_move_down: 'Nach unten', memories_section_label: 'Liedabschnitt',
       memories_upload_error: 'Hochladen fehlgeschlagen. Bitte versuche es erneut.',
       awaiting_media_title: 'Füge die Fotos und Videos für dein Geschenk hinzu',
@@ -516,6 +531,8 @@
       heading: (r) => `La canción para ${r}`, dedication: (s) => `De parte de ${s}`,
       variant_main_label: 'Versión principal', variant_gift_label: '🎁 Tu segunda canción, un regalo para ti',
       variant_gift_note: 'Después del pago podrás descargar ambas canciones completas.',
+      genre_emotional: 'Emotivo', genre_suflet: 'Con alma', genre_acustic: 'Acústico / Folk', genre_petrecere: 'Música de fiesta', genre_balada: 'Balada', genre_manele: 'Manele de duelo', genre_copii: 'Para niños', genre_populara: 'Popular', genre_rock: 'Rock', genre_colind: 'Villancico', genre_modern: 'Moderno', genre_hiphop: 'Hip-hop', genre_manele_suflet: 'Manele con sentimiento', genre_motivational: 'Motivacional', genre_pop: 'Pop',
+      variant_second_label: 'Segunda canción',
       listened: (t, d) => `Has escuchado ${t} de ${d}`,
       lyrics_empty: 'La letra todavía no está disponible para mostrar.',
       lyrics_edited_tag: 'Letra editada por ti',
@@ -552,10 +569,11 @@
       video_status_none: 'Tu video aún no está listo.',
       memories_title: 'Añade tus fotos y videos',
       memories_sub: 'Añade entre 3 y 10 fotos o clips de video — los combinaremos en un video sincronizado con tu canción.',
-      memories_meta: (min, max) => `Entre ${min} y ${max} elementos • JPG, PNG, HEIC, MP4, MOV, WebM • máx. 150MB por archivo • cualquier combinación de fotos y videos`,
+      memories_meta: (min, max) => `Entre ${min} y ${max} elementos • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • máx. 150MB por archivo • cualquier combinación de fotos y videos`,
       memories_count: (n, min, max) => n < min ? `${n} de al menos ${min} elementos` : n > max ? `Demasiados elementos (${n}/${max})` : `${n} elementos — listo para continuar`,
       memories_uploading: 'Subiendo...', memories_queued: 'En espera...', memories_uploaded: 'Subido', memories_remove: '✕', memories_retry: 'Reintentar',
       memories_upload_timeout: 'Esto está tardando demasiado — comprueba tu conexión e inténtalo de nuevo.',
+      preview_load_error: 'No pudimos cargar la previsualización. Toca aquí para intentarlo de nuevo.',
       memories_move_up: 'Subir', memories_move_down: 'Bajar', memories_section_label: 'Sección de la canción',
       memories_upload_error: 'Error al subir. Inténtalo de nuevo.',
       awaiting_media_title: 'Añade las fotos y videos para tu regalo',
@@ -571,6 +589,8 @@
       heading: (r) => `La canzone per ${r}`, dedication: (s) => `Da parte di ${s}`,
       variant_main_label: 'Versione principale', variant_gift_label: '🎁 La tua seconda canzone, un regalo per te',
       variant_gift_note: 'Dopo il pagamento potrai scaricare entrambe le canzoni complete.',
+      genre_emotional: 'Emozionante', genre_suflet: 'Con anima', genre_acustic: 'Acustico / Folk', genre_petrecere: 'Musica da festa', genre_balada: 'Ballata', genre_manele: 'Manele di lutto', genre_copii: 'Per bambini', genre_populara: 'Popolare', genre_rock: 'Rock', genre_colind: 'Canto natalizio', genre_modern: 'Moderno', genre_hiphop: 'Hip-hop', genre_manele_suflet: 'Manele con anima', genre_motivational: 'Motivazionale', genre_pop: 'Pop',
+      variant_second_label: 'Seconda canzone',
       listened: (t, d) => `Hai ascoltato ${t} di ${d}`,
       lyrics_empty: 'Il testo non è ancora disponibile per la visualizzazione.',
       lyrics_edited_tag: 'Testo modificato da te',
@@ -607,10 +627,11 @@
       video_status_none: 'Il tuo video non è ancora pronto.',
       memories_title: 'Aggiungi le tue foto e i tuoi video',
       memories_sub: 'Aggiungi da 3 a 10 foto o clip video: le trasformeremo in un video sincronizzato con la tua canzone.',
-      memories_meta: (min, max) => `Da ${min} a ${max} elementi • JPG, PNG, HEIC, MP4, MOV, WebM • max 150MB per file • qualsiasi combinazione di foto e video`,
+      memories_meta: (min, max) => `Da ${min} a ${max} elementi • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • max 150MB per file • qualsiasi combinazione di foto e video`,
       memories_count: (n, min, max) => n < min ? `${n} di almeno ${min} elementi` : n > max ? `Troppi elementi (${n}/${max})` : `${n} elementi — pronto per continuare`,
       memories_uploading: 'Caricamento...', memories_queued: 'In attesa...', memories_uploaded: 'Caricato', memories_remove: '✕', memories_retry: 'Riprova',
       memories_upload_timeout: 'Sta impiegando troppo tempo — controlla la connessione e riprova.',
+      preview_load_error: "Non siamo riusciti a caricare l'anteprima. Tocca qui per riprovare.",
       memories_move_up: 'Sposta su', memories_move_down: 'Sposta giù', memories_section_label: 'Sezione della canzone',
       memories_upload_error: 'Caricamento non riuscito. Riprova.',
       awaiting_media_title: 'Aggiungi le foto e i video per il tuo regalo',
@@ -626,6 +647,8 @@
       heading: (r) => `La chanson pour ${r}`, dedication: (s) => `De la part de ${s}`,
       variant_main_label: 'Version principale', variant_gift_label: '🎁 Votre deuxième chanson, un cadeau pour vous',
       variant_gift_note: 'Après le paiement, vous pourrez télécharger les deux chansons complètes.',
+      genre_emotional: 'Émouvant', genre_suflet: 'Avec âme', genre_acustic: 'Acoustique / Folk', genre_petrecere: 'Musique de fête', genre_balada: 'Ballade', genre_manele: 'Manele de deuil', genre_copii: 'Pour enfants', genre_populara: 'Populaire', genre_rock: 'Rock', genre_colind: 'Chant de Noël', genre_modern: 'Moderne', genre_hiphop: 'Hip-hop', genre_manele_suflet: 'Manele avec âme', genre_motivational: 'Motivant', genre_pop: 'Pop',
+      variant_second_label: 'Deuxième chanson',
       listened: (t, d) => `Vous avez écouté ${t} sur ${d}`,
       lyrics_empty: "Les paroles ne sont pas encore disponibles à l'affichage.",
       lyrics_edited_tag: 'Paroles modifiées par vous',
@@ -662,10 +685,11 @@
       video_status_none: "Votre vidéo n'est pas encore prête.",
       memories_title: 'Ajoutez vos photos et vidéos',
       memories_sub: 'Ajoutez 3 à 10 photos ou clips vidéo — nous les intégrerons dans une vidéo synchronisée avec votre chanson.',
-      memories_meta: (min, max) => `${min} à ${max} éléments • JPG, PNG, HEIC, MP4, MOV, WebM • max 150 Mo par fichier • tout mélange de photos et vidéos`,
+      memories_meta: (min, max) => `${min} à ${max} éléments • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • max 150 Mo par fichier • tout mélange de photos et vidéos`,
       memories_count: (n, min, max) => n < min ? `${n} sur au moins ${min} éléments` : n > max ? `Trop d'éléments (${n}/${max})` : `${n} éléments — prêt à continuer`,
       memories_uploading: 'Envoi en cours...', memories_queued: 'En attente...', memories_uploaded: 'Envoyé', memories_remove: '✕', memories_retry: 'Réessayer',
       memories_upload_timeout: "Cela prend trop de temps — vérifiez votre connexion et réessayez.",
+      preview_load_error: "Nous n'avons pas pu charger l'aperçu. Touchez ici pour réessayer.",
       memories_move_up: 'Monter', memories_move_down: 'Descendre', memories_section_label: 'Section de la chanson',
       memories_upload_error: "Échec de l'envoi. Veuillez réessayer.",
       awaiting_media_title: 'Ajoutez les photos et vidéos de votre cadeau',
@@ -681,6 +705,8 @@
       heading: (r) => `Песента за ${r}`, dedication: (s) => `От ${s}`,
       variant_main_label: 'Основна версия', variant_gift_label: '🎁 Втората ти песен, подарък за теб',
       variant_gift_note: 'След плащането ще можеш да изтеглиш и двете пълни песни.',
+      genre_emotional: 'Емоционално', genre_suflet: 'Душевно', genre_acustic: 'Акустика / Фолк', genre_petrecere: 'Парти музика', genre_balada: 'Балада', genre_manele: 'Тъжни манеле', genre_copii: 'За деца', genre_populara: 'Народна', genre_rock: 'Рок', genre_colind: 'Коледна песен', genre_modern: 'Модерна', genre_hiphop: 'Хип-хоп', genre_manele_suflet: 'Задушевни манеле', genre_motivational: 'Мотивационна', genre_pop: 'Pop',
+      variant_second_label: 'Втора песен',
       listened: (t, d) => `Изслуша ${t} от ${d}`,
       lyrics_empty: 'Текстът все още не е наличен за показване.',
       lyrics_edited_tag: 'Текст, редактиран от теб',
@@ -717,10 +743,11 @@
       video_status_none: 'Видеото ти още не е готово.',
       memories_title: 'Добави своите снимки и видеа',
       memories_sub: 'Добави между 3 и 10 снимки или видеоклипа — ще ги превърнем във видео, синхронизирано с твоята песен.',
-      memories_meta: (min, max) => `Между ${min} и ${max} материала • JPG, PNG, HEIC, MP4, MOV, WebM • макс. 150MB на файл • всякаква комбинация от снимки и видеа`,
+      memories_meta: (min, max) => `Между ${min} и ${max} материала • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • макс. 150MB на файл • всякаква комбинация от снимки и видеа`,
       memories_count: (n, min, max) => n < min ? `${n} от поне ${min} материала` : n > max ? `Твърде много материали (${n}/${max})` : `${n} материала — готово за продължаване`,
       memories_uploading: 'Качване...', memories_queued: 'На изчакване...', memories_uploaded: 'Качено', memories_remove: '✕', memories_retry: 'Опитай отново',
       memories_upload_timeout: 'Това отнема твърде много време — провери връзката си и опитай отново.',
+      preview_load_error: 'Не успяхме да заредим прегледа. Докосни тук, за да опиташ отново.',
       memories_move_up: 'Премести нагоре', memories_move_down: 'Премести надолу', memories_section_label: 'Секция от песента',
       memories_upload_error: 'Качването не бе успешно. Опитай отново.',
       awaiting_media_title: 'Добави снимките и видеата за твоя подарък',
@@ -736,6 +763,8 @@
       heading: (r) => `${r} için şarkı`, dedication: (s) => `${s} tarafından`,
       variant_main_label: 'Ana versiyon', variant_gift_label: '🎁 İkinci şarkınız, size bir hediye',
       variant_gift_note: 'Ödemeden sonra her iki tam şarkıyı da indirebileceksiniz.',
+      genre_emotional: 'Duygusal', genre_suflet: 'İçten', genre_acustic: 'Akustik / Folk', genre_petrecere: 'Parti müziği', genre_balada: 'Balad', genre_manele: 'Hüzünlü manele', genre_copii: 'Çocuklar için', genre_populara: 'Popüler', genre_rock: 'Rock', genre_colind: 'Noel ilahisi', genre_modern: 'Modern', genre_hiphop: 'Hip-hop', genre_manele_suflet: 'Duygusal manele', genre_motivational: 'Motivasyonel', genre_pop: 'Pop',
+      variant_second_label: 'İkinci şarkı',
       listened: (t, d) => `${d} şarkının ${t} kadarını dinlediniz`,
       lyrics_empty: 'Sözler henüz görüntülenmeye hazır değil.',
       lyrics_edited_tag: 'Sizin tarafınızdan düzenlenen sözler',
@@ -772,10 +801,11 @@
       video_status_none: 'Videonuz henüz hazır değil.',
       memories_title: 'Fotoğraflarınızı ve videolarınızı ekleyin',
       memories_sub: '3 ile 10 arası fotoğraf veya video klip ekleyin — bunları şarkınızla senkronize bir videoya dönüştürelim.',
-      memories_meta: (min, max) => `${min} ile ${max} arası öğe • JPG, PNG, HEIC, MP4, MOV, WebM • dosya başına maks. 150MB • fotoğraf ve video karışımı kabul edilir`,
+      memories_meta: (min, max) => `${min} ile ${max} arası öğe • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • dosya başına maks. 150MB • fotoğraf ve video karışımı kabul edilir`,
       memories_count: (n, min, max) => n < min ? `${n} / en az ${min} öğe` : n > max ? `Çok fazla öğe (${n}/${max})` : `${n} öğe — devam etmeye hazır`,
       memories_uploading: 'Yükleniyor...', memories_queued: 'Sırada...', memories_uploaded: 'Yüklendi', memories_remove: '✕', memories_retry: 'Tekrar dene',
       memories_upload_timeout: 'Bu çok uzun sürüyor — bağlantınızı kontrol edip tekrar deneyin.',
+      preview_load_error: 'Ön izlemeyi yükleyemedik. Tekrar denemek için buraya dokunun.',
       memories_move_up: 'Yukarı taşı', memories_move_down: 'Aşağı taşı', memories_section_label: 'Şarkı bölümü',
       memories_upload_error: 'Yükleme başarısız oldu. Lütfen tekrar deneyin.',
       awaiting_media_title: 'Hediyeniz için fotoğraf ve videoları ekleyin',
@@ -1030,11 +1060,23 @@
       card.className = 'variant-card' + (i === selectedVariantIndex ? ' selected' : '');
       card.dataset.index = i;
 
-      // Eticheta "cadou" urmareste DINAMIC selectia curenta (nu pozitia in array) — varianta
-      // NEALEASA ca principala e mereu cea numita "melodia cadou", indiferent daca clientul a
-      // ales varianta 1 sau varianta 2 ca favorita. Vezi si server.js: getGiftVariant().
+      // Eticheta urmareste DINAMIC selectia curenta (nu pozitia in array) — varianta NEALEASA
+      // ca principala ramane vizibila si descarcabila la fel ca cealalta, niciodata ascunsa.
+      // Comenzi NOI (Premium/Video, doua genuri diferite alese de client — vezi order.genre2
+      // in server.js): variantele au v.genre setat, etichetate neutru ("A doua melodie",
+      // FARA cadru de "cadou") si insotite de un tag vizibil cu genul (cerinta explicita —
+      // genul trebuie afisat langa fiecare player). Comenzi VECHI Standard, pastrate pentru
+      // compatibilitate (doua variante fara .genre, generate inainte de aceasta regula): pastram
+      // eticheta si nota originale ("cadou"), ca sa nu schimbam brusc afisarea unor comenzi deja
+      // livrate clientului.
       const isSelected = i === selectedVariantIndex;
-      const label = isSelected ? t.variant_main_label : t.variant_gift_label;
+      const hasGenreTag = !!v.genre;
+      const label = isSelected
+        ? t.variant_main_label
+        : (hasGenreTag ? t.variant_second_label : t.variant_gift_label);
+      const genreTagHtml = hasGenreTag
+        ? `<span class="variant-genre-tag">${escapeHtml(t['genre_' + v.genre] || v.genre)}</span>`
+        : '';
       const lyricsTextRaw = (v.editedLyrics && v.editedLyrics.trim()) ? v.editedLyrics : v.originalLyrics;
       const lyricsText = translateSectionLabelsForDisplay(lyricsTextRaw, order.lang);
       const wasEdited = !!(v.editedLyrics && v.editedLyrics.trim());
@@ -1047,23 +1089,72 @@
       }
 
       card.innerHTML = `
-        <div class="variant-head"><span class="variant-label">${label}</span></div>
-        <audio class="variant-audio" controls style="width:100%;" src="${v.previewUrl}?t=${Date.now()}"></audio>
+        <div class="variant-head"><span class="variant-label">${label}</span>${genreTagHtml}</div>
+        <div class="variant-audio-wrap"></div>
+        <p class="variant-audio-error" style="display:none;"></p>
         <div class="variant-progress">${t.listened('0:00', formatTime(v.durationSeconds))}</div>
-        ${isSelected ? '' : `<p class="variant-gift-note">${t.variant_gift_note}</p>`}
+        ${(!isSelected && !hasGenreTag) ? `<p class="variant-gift-note">${t.variant_gift_note}</p>` : ''}
         ${lyricsHtml}
         <button type="button" class="btn btn-ghost btn-small edit-lyrics-btn" data-variant-id="${v.id}">${t.edit_lyrics_btn}</button>
       `;
 
       card.addEventListener('click', (e) => {
-        if (e.target.closest('.edit-lyrics-btn') || e.target.closest('audio')) return;
+        if (e.target.closest('.edit-lyrics-btn') || e.target.closest('audio') || e.target.closest('.variant-audio-error')) return;
         selectVariant(i);
       });
 
-      const audioEl = card.querySelector('audio');
+      // HOTFIX 2026-08-07: previewurile ramaneau blocate la "incarcare" (--:--), niciodata
+      // redabile — construim acum elementul <audio> prin API DOM (createElement + proprietatea
+      // .src + .load() explicit), nu prin interpolare in innerHTML. Safari (inclusiv iOS) are
+      // un istoric de neinitializare corecta a elementelor media inserate direct ca text HTML,
+      // mai ales cand sunt recreate repetat (fiecare reincarcare a starii comenzii sterge si
+      // reconstruieste tot variantsWrap). Adaugam explicit gestionarea erorii: daca incarcarea
+      // nu reuseste sau dureaza prea mult, aratam un mesaj clar cu buton de reincercare, in loc
+      // sa lasam playerul blocat la nesfarsit fara nicio explicatie.
+      const audioWrap = card.querySelector('.variant-audio-wrap');
+      const audioErrorEl = card.querySelector('.variant-audio-error');
       const progressEl = card.querySelector('.variant-progress');
-      audioEl.addEventListener('timeupdate', () => {
-        progressEl.textContent = t.listened(formatTime(audioEl.currentTime), formatTime(v.durationSeconds));
+
+      function mountAudio() {
+        audioWrap.innerHTML = '';
+        audioErrorEl.style.display = 'none';
+        const audioEl = document.createElement('audio');
+        audioEl.className = 'variant-audio';
+        audioEl.controls = true;
+        audioEl.preload = 'metadata';
+        audioEl.style.width = '100%';
+
+        let settled = false;
+        const loadTimeout = setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          showAudioError();
+        }, 15000);
+
+        function showAudioError() {
+          clearTimeout(loadTimeout);
+          audioWrap.innerHTML = '';
+          audioErrorEl.textContent = t.preview_load_error;
+          audioErrorEl.style.display = 'block';
+        }
+
+        audioEl.addEventListener('loadedmetadata', () => { settled = true; clearTimeout(loadTimeout); });
+        audioEl.addEventListener('error', () => { if (!settled) { settled = true; showAudioError(); } });
+        audioEl.addEventListener('timeupdate', () => {
+          progressEl.textContent = t.listened(formatTime(audioEl.currentTime), formatTime(v.durationSeconds));
+        });
+
+        audioWrap.appendChild(audioEl);
+        // cache-bust prin proprietate, nu prin markup — evita orice ambiguitate de parsare HTML
+        // pe atributul src cand URL-ul contine caractere speciale.
+        audioEl.src = v.previewUrl + (v.previewUrl.includes('?') ? '&' : '?') + 't=' + Date.now();
+        audioEl.load();
+      }
+      mountAudio();
+
+      audioErrorEl.addEventListener('click', (e) => {
+        e.stopPropagation();
+        mountAudio();
       });
 
       card.querySelector('.edit-lyrics-btn').addEventListener('click', (e) => {
