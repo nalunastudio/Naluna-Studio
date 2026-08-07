@@ -97,18 +97,18 @@
     height:7px; border-radius:999px; background:var(--surface); border:1px solid var(--line);
     overflow:hidden; margin-bottom:12px; position:relative;
   }
+  /* Bara e INTENTIONAT nedeterminata — Suno (furnizorul de generare) nu ofera niciun procent
+     real de progres. Afisam activitate reala (ceva se intampla), nu un numar inventat care ar
+     pretinde o precizie pe care nu o avem — vezi si eliminarea completa a elementului
+     .progress-percent de mai jos si a JS-ului care calcula un procent din timp scurs. */
   .progress-fill{
-    height:100%; border-radius:999px; position:relative; overflow:hidden;
+    height:100%; border-radius:999px; position:absolute; top:0; left:-40%; width:40%;
     background:linear-gradient(90deg, var(--gold-deep), var(--gold-soft));
-    width:2%; transition:width 1.4s cubic-bezier(.4,0,.2,1);
+    animation:indeterminate 1.6s ease-in-out infinite;
   }
-  .progress-fill::after{
-    content:''; position:absolute; inset:0;
-    background:linear-gradient(90deg, transparent, rgba(255,255,255,.5), transparent);
-    animation:shimmer 2.2s linear infinite;
-  }
-  @keyframes shimmer{ 0%{ transform:translateX(-100%); } 100%{ transform:translateX(100%); } }
-  .progress-percent{ font-size:12px; color:var(--text-secondary); letter-spacing:.04em; margin-bottom:22px; }
+  .progress-fill.done{ animation:none; left:0; width:100%; }
+  @keyframes indeterminate{ 0%{ left:-40%; } 100%{ left:100%; } }
+  @media (prefers-reduced-motion: reduce){ .progress-fill{ animation-duration:.001ms; } }
 
   .estimate-pill{
     display:inline-block; padding:6px 16px; border-radius:999px;
@@ -162,7 +162,6 @@
       <div class="status-msg" id="status-msg"></div>
 
       <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
-      <div class="progress-percent" id="progress-percent">0%</div>
 
       <div class="estimate-pill" id="estimate-pill"></div>
       <p class="keep-open" id="p-keepopen">Nu închide această pagină. Rezultatul va apărea automat când este gata.</p>
@@ -400,7 +399,6 @@
   const progressState = document.getElementById('progress-state');
   const errorState = document.getElementById('error-state');
   const progressFill = document.getElementById('progress-fill');
-  const progressPercentEl = document.getElementById('progress-percent');
   const statusMsgEl = document.getElementById('status-msg');
   const estimatePillEl = document.getElementById('estimate-pill');
   const softNoticeEl = document.getElementById('soft-notice');
@@ -416,16 +414,8 @@
   }
 
   const ESTIMATE_MS = 165000;
-  const STAGE_THRESHOLDS = [15, 30, 45, 65, 85, 97, 99];
   let currentStageIndex = -1;
   let finished = false;
-
-  function percentToStageIndex(pct) {
-    for (let i = 0; i < STAGE_THRESHOLDS.length; i++) {
-      if (pct <= STAGE_THRESHOLDS[i]) return i;
-    }
-    return STAGE_THRESHOLDS.length - 1;
-  }
 
   function setStatusMessage(msg) {
     statusMsgEl.classList.add('fading');
@@ -435,25 +425,21 @@
     }, 220);
   }
 
+  // IMPORTANT: nu exista niciun procent numeric real de progres — Suno (furnizorul de
+  // generare) nu expune asa ceva prin API. Bara ramane vizual nedeterminata (animatie CSS,
+  // vezi .progress-fill), NEATASATA de niciun calcul fals "timp scurs / estimare = %". Ce
+  // rotim aici e STRICT textul calitativ afisat langa ea, ca reasigurare ca ceva se intampla —
+  // nu o pretentie de masurare exacta. Finalizarea REALA (finishSuccess/handleGenerationFailed)
+  // vine EXCLUSIV din polling-ul statusului real al comenzii, niciodata din acest timer.
+  const STAGE_INTERVAL_MS = ESTIMATE_MS / t.stages.length;
   function updateProgress() {
     if (finished) return;
     const elapsed = Date.now() - startTime;
-    const fraction = Math.min(elapsed / ESTIMATE_MS, 0.99);
-    const pct = Math.round(fraction * 100);
-
-    progressFill.style.width = pct + '%';
-    progressPercentEl.textContent = pct + '%';
-
-    const stageIndex = percentToStageIndex(pct);
+    const stageIndex = Math.min(Math.floor(elapsed / STAGE_INTERVAL_MS), t.stages.length - 1);
     if (stageIndex !== currentStageIndex) {
       currentStageIndex = stageIndex;
       setStatusMessage(t.stages[stageIndex]);
     }
-
-    // Nu mai afisam un numarator de minute ramase — ar implica o promisiune de timp
-    // exact, pe care nu o putem garanta (timpul real depinde de furnizorul extern).
-    // Bara de progres si etapele de mai sus raman ca indicator vizual general, fara sa
-    // afirme o durata precisa.
     estimatePillEl.classList.add('hidden');
   }
   updateProgress();
@@ -464,8 +450,7 @@
     clearInterval(progressTimer);
     localStorage.removeItem(startKey);
 
-    progressFill.style.width = '100%';
-    progressPercentEl.textContent = '100%';
+    progressFill.classList.add('done');
     estimatePillEl.classList.add('hidden');
     hideLongNotice();
     setStatusMessage(t.readyMsg);

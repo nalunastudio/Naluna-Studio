@@ -124,14 +124,28 @@
 
   .plan-list{ display:flex; flex-direction:column; gap:12px; }
   .plan{
-    border:1px solid var(--line); border-radius:14px; padding:19px 21px;
-    display:flex; align-items:center; justify-content:space-between; cursor:pointer;
-    transition:border-color .2s ease, background-color .2s ease;
+    border:2px solid var(--line); border-radius:14px; padding:19px 21px;
+    display:flex; align-items:center; justify-content:space-between; gap:14px; cursor:pointer;
+    transition:border-color .2s ease, background-color .2s ease; position:relative;
   }
-  .plan.active{ border-color:var(--gold); background:rgba(168,131,75,.06); }
-  .plan-name{ font-weight:600; font-size:15px; }
-  .plan-desc{ color:var(--text-secondary); font-size:13px; margin-top:2px; }
-  .plan-price{ font-family:'Fraunces', serif; font-size:22px; color:var(--gold-deep); }
+  .plan:focus-visible{ outline:2px solid var(--gold-deep); outline-offset:2px; }
+  /* Contrast mai puternic la selectie decat doar o tenta de fundal 6% — bordura ingrosata
+     (2px) + bifa vizibila fac starea "selectat" clara si fara culoare, pentru accesibilitate. */
+  .plan.active{ border-color:var(--gold-deep); background:rgba(168,131,75,.09); }
+  .plan-check{
+    flex-shrink:0; width:22px; height:22px; border-radius:50%; border:2px solid var(--line);
+    display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700;
+    color:transparent; background:var(--surface); transition:all .2s ease;
+  }
+  .plan.active .plan-check{ border-color:var(--gold-deep); background:var(--gold-deep); color:#fff; }
+  .plan-body{ flex:1; }
+  .plan-name{ font-weight:700; font-size:15px; }
+  .plan-subtitle{ color:var(--gold-deep); font-size:12.5px; font-weight:600; margin-top:2px; }
+  .plan-desc{ color:var(--text-secondary); font-size:13px; margin-top:4px; line-height:1.5; }
+  .plan-price{ font-family:'Fraunces', serif; font-size:22px; color:var(--gold-deep); flex-shrink:0; }
+  @media (max-width: 480px){
+    .plan{ flex-wrap:wrap; }
+  }
 
   .order-summary{ margin-top:22px; padding-top:22px; border-top:1px solid var(--line); }
 
@@ -341,25 +355,31 @@
     <div class="step-card" data-step="4" style="display:none;">
       <h1 data-i18n="wizard_step4_title">Alege pachetul</h1>
 
-      <div class="plan-list" id="plan-list">
-        <div class="plan active" data-plan="standard" data-price="15">
-          <div>
+      <div class="plan-list" id="plan-list" role="radiogroup" aria-label="Pachet">
+        <div class="plan active" data-plan="standard" data-price="15" role="radio" aria-selected="true" tabindex="0">
+          <span class="plan-check">✓</span>
+          <div class="plan-body">
             <div class="plan-name" data-i18n="plan_standard_name">Standard</div>
+            <div class="plan-subtitle" data-i18n="plan_standard_subtitle">O melodie personalizată</div>
             <div class="plan-desc" data-i18n="plan_standard_desc">1 versiune, ~2 minute, livrare pe email</div>
           </div>
           <div class="plan-price">£15</div>
         </div>
-        <div class="plan" data-plan="premium" data-price="25">
-          <div>
+        <div class="plan" data-plan="premium" data-price="25" role="radio" aria-selected="false" tabindex="0">
+          <span class="plan-check">✓</span>
+          <div class="plan-body">
             <div class="plan-name" data-i18n="plan_premium_name">Premium</div>
-            <div class="plan-desc" data-i18n="plan_premium_desc">2 versiuni la alegere + fișier WAV descărcabil</div>
+            <div class="plan-subtitle" data-i18n="plan_premium_subtitle">Două variante ale melodiei</div>
+            <div class="plan-desc" data-i18n="plan_premium_desc">2 versiuni la alegere + fișier audio la calitate înaltă</div>
           </div>
           <div class="plan-price">£25</div>
         </div>
-        <div class="plan" data-plan="video" data-price="35">
-          <div>
+        <div class="plan" data-plan="video" data-price="35" role="radio" aria-selected="false" tabindex="0">
+          <span class="plan-check">✓</span>
+          <div class="plan-body">
             <div class="plan-name" data-i18n="plan_video_name">Cadou video</div>
-            <div class="plan-desc" data-i18n="plan_video_desc">Melodie + video cu versuri pentru social/WhatsApp</div>
+            <div class="plan-subtitle" data-i18n="plan_video_subtitle">Melodie personalizată cu videoclip</div>
+            <div class="plan-desc" data-i18n="plan_video_desc">Melodie + videoclip sincronizat, cu pozele și filmările tale</div>
           </div>
           <div class="plan-price">£35</div>
         </div>
@@ -370,13 +390,10 @@
         <div class="row total"><span data-i18n="sum_total">Total</span><span id="sum-total">£15</span></div>
       </div>
 
+      <!-- Dinamic — populat de renderBenefits() cu beneficiile REALE ale pachetului
+           selectat curent (nu un text static identic pentru toate pachetele). -->
       <div class="benefits-card">
-        <div class="benefits-list">
-          <div class="benefit-item"><span class="benefit-check">✓</span><span class="benefit-text" data-i18n="benefit_1">Primești 2 variante gratuite.</span></div>
-          <div class="benefit-item"><span class="benefit-check">✓</span><span class="benefit-text" data-i18n="benefit_2">Dacă niciuna nu este exact cum îți dorești, poți face o editare gratuită și vom crea încă 2 variante noi pentru povestea ta.</span></div>
-          <div class="benefit-item"><span class="benefit-check">✓</span><span class="benefit-text" data-i18n="benefit_3">Nu plătești acum. Plătești doar dacă îți place rezultatul.</span></div>
-          <div class="benefit-item"><span class="benefit-check">✓</span><span class="benefit-text" data-i18n="benefit_4">Dacă apare o problemă tehnică cu comanda ta, te contactăm pentru remediere sau rambursare.</span></div>
-        </div>
+        <div class="benefits-list" id="benefits-list"></div>
       </div>
 
       <button type="submit" class="btn btn-primary" id="generate-btn" style="width:100%; justify-content:center; margin-top:20px;">
@@ -450,20 +467,43 @@
       voice_note: 'Vom alege vocea care se potrivește cel mai bine poveștii tale',
       label_package: 'Alege pachetul',
       plan_standard_name: 'Standard',
-      plan_standard_desc: '1 versiune, ~2 minute, livrare pe email',
+      plan_standard_subtitle: 'O melodie personalizată',
+      plan_standard_desc: 'Melodie personalizată + o a doua melodie cadou, livrare pe email',
       plan_premium_name: 'Premium',
-      plan_premium_desc: '2 versiuni la alegere + fișier WAV descărcabil',
+      plan_premium_subtitle: 'Două variante ale melodiei',
+      plan_premium_desc: '2 versiuni complete + versiune audio la calitate înaltă',
       plan_video_name: 'Cadou video',
-      plan_video_desc: 'Melodie + video cu versuri pentru social/WhatsApp',
+      plan_video_subtitle: 'Melodie personalizată cu videoclip',
+      plan_video_desc: 'Melodie + videoclip sincronizat, cu pozele și filmările tale',
+      benefits_standard: [
+        'Asculți gratuit 2 variante ale melodiei, create din povestea și preferințele tale, și alegi varianta principală',
+        'Durată aproximativă de 2 minute per variantă',
+        'Primești și a doua melodie completă, cadou din partea noastră',
+        'Descarci ambele melodii după plată — le primești și pe email',
+        'Ai dreptul la o editare gratuită, dacă nu e exact cum vrei'
+      ],
+      benefits_premium: [
+        'Asculți gratuit 2 variante diferite ale melodiei și alegi varianta care îți place mai mult',
+        'Primești și a doua melodie completă, cadou din partea noastră',
+        'Ai inclusă o modificare gratuită',
+        'Varianta principală vine și ca versiune audio la calitate înaltă — păstrează mai bine claritatea sunetului, potrivită pentru păstrare sau editare; nu ai nevoie de cunoștințe tehnice ca să o folosești',
+        'Descarci ambele melodii după plată'
+      ],
+      benefits_video: [
+        'Încarci între 3 și 10 fotografii sau videoclipuri înainte de creare',
+        'Asculți gratuit 2 variante ale melodiei, la fel ca la Premium, și alegi varianta principală',
+        'Creăm un videoclip sincronizat cu varianta principală, folosind fotografiile și filmările tale',
+        'Videoclipul include versuri și tranziții potrivite muzicii',
+        'Este pregătit pentru WhatsApp și rețelele sociale',
+        'Ai inclusă o modificare gratuită',
+        'Primești ambele melodii ca fișiere audio, plus videoclipul final realizat cu varianta ta preferată'
+      ],
       sum_package: 'Pachet',
       sum_total: 'Total',
       btn_generate: 'Generează previzualizarea gratuit →',
       btn_generate_starting: 'Pornim compunerea...',
+      btn_continue_media: 'Continuă la fotografii și videoclipuri →',
       note_free: 'Nu plătești acum. Plătești doar dacă îți place rezultatul',
-      benefit_1: 'Primești 2 variante gratuite.',
-      benefit_2: 'Dacă niciuna nu este exact cum îți dorești, poți face o editare gratuită și vom crea încă 2 variante noi pentru povestea ta.',
-      benefit_3: 'Nu plătești acum. Plătești doar dacă îți place rezultatul.',
-      benefit_4: 'Dacă apare o problemă tehnică cu comanda ta, te contactăm pentru remediere sau rambursare.',
       msg_conn_error: 'Eroare de conexiune. Încearcă din nou',
       msg_error_prefix: 'Eroare: ',
       msg_try_again: 'încearcă din nou',
@@ -535,20 +575,43 @@
       voice_note: 'We\'ll choose the voice that best fits your story',
       label_package: 'Choose your package',
       plan_standard_name: 'Standard',
-      plan_standard_desc: '1 version, ~2 minutes, delivered by email',
+      plan_standard_subtitle: 'A personalised song',
+      plan_standard_desc: 'A personalised song + a second gift song, delivered by email',
       plan_premium_name: 'Premium',
-      plan_premium_desc: '2 versions to choose from + downloadable WAV file',
+      plan_premium_subtitle: 'Two versions of the song',
+      plan_premium_desc: '2 complete versions + high-quality audio version',
       plan_video_name: 'Video gift',
-      plan_video_desc: 'Song + lyric video for social/WhatsApp',
+      plan_video_subtitle: 'Personalised song with video',
+      plan_video_desc: 'Song + synced video with your own photos and clips',
+      benefits_standard: [
+        'You listen to 2 free versions of the song, written from your story and preferences, and choose the main version',
+        'About 2 minutes long per version',
+        "You also get a second complete song, a gift from us",
+        'You download both songs after payment — we also send them to your email',
+        "You get one free edit if it's not quite right"
+      ],
+      benefits_premium: [
+        'You listen to 2 free different versions of the song and choose the one you like best',
+        "You also get a second complete song, a gift from us",
+        'One free edit is included',
+        "The main version also comes as a high-quality audio version — it keeps the sound clearer and is better for keeping or editing; you don't need any technical knowledge to use it",
+        'You download both songs after payment'
+      ],
+      benefits_video: [
+        'Upload 3 to 10 photos or video clips before we start',
+        'You listen to 2 free versions of the song, just like Premium, and choose the main version',
+        'We create a video synced to the main version, using your own photos and clips',
+        'The video includes lyrics and transitions that follow the music',
+        'Ready to share on WhatsApp and social media',
+        'One free edit is included',
+        'You get both songs as audio files, plus the final video made with your favourite version'
+      ],
       sum_package: 'Package',
       sum_total: 'Total',
       btn_generate: 'Generate your free preview →',
       btn_generate_starting: 'Starting composition...',
+      btn_continue_media: 'Continue to photos and videos →',
       note_free: 'You don\'t pay now. You only pay if you like the result.',
-      benefit_1: 'You get 2 free versions.',
-      benefit_2: "If neither is exactly what you wanted, you can make one free edit and we'll create 2 brand new versions for your story.",
-      benefit_3: "You don't pay now. You only pay if you love the result.",
-      benefit_4: "If there's a technical issue with your order, we'll contact you to fix it or refund you.",
       msg_conn_error: 'Connection error. Please try again.',
       msg_error_prefix: 'Error: ',
       msg_try_again: 'please try again.',
@@ -620,20 +683,43 @@
       voice_note: 'Wir wählen die Stimme, die am besten zu deiner Geschichte passt',
       label_package: 'Paket wählen',
       plan_standard_name: 'Standard',
-      plan_standard_desc: '1 Version, ca. 2 Minuten, per E-Mail geliefert',
+      plan_standard_subtitle: 'Ein persönliches Lied',
+      plan_standard_desc: 'Persönliches Lied + ein zweites Geschenklied, per E-Mail geliefert',
       plan_premium_name: 'Premium',
-      plan_premium_desc: '2 Versionen zur Wahl + herunterladbare WAV-Datei',
+      plan_premium_subtitle: 'Zwei Versionen des Liedes',
+      plan_premium_desc: '2 vollständige Versionen + hochwertige Audioversion',
       plan_video_name: 'Video-Geschenk',
-      plan_video_desc: 'Lied + Lyric-Video für Social Media/WhatsApp',
+      plan_video_subtitle: 'Persönliches Lied mit Video',
+      plan_video_desc: 'Lied + synchronisiertes Video mit deinen eigenen Fotos und Clips',
+      benefits_standard: [
+        'Du hörst kostenlos 2 Versionen des Liedes, geschrieben nach deiner Geschichte und deinen Wünschen, und wählst die Hauptversion',
+        'Etwa 2 Minuten lang pro Version',
+        'Du bekommst außerdem ein zweites vollständiges Lied, ein Geschenk von uns',
+        'Du lädst beide Lieder nach der Zahlung herunter — wir schicken sie dir auch per E-Mail',
+        'Du hast eine kostenlose Änderung, falls es nicht ganz passt'
+      ],
+      benefits_premium: [
+        'Du hörst kostenlos 2 verschiedene Versionen des Liedes und wählst die, die dir am besten gefällt',
+        'Du bekommst außerdem ein zweites vollständiges Lied, ein Geschenk von uns',
+        'Eine kostenlose Änderung ist inbegriffen',
+        'Die Hauptversion gibt es außerdem als hochwertige Audioversion — klingt klarer und eignet sich besser zum Aufbewahren oder Bearbeiten; du brauchst kein technisches Wissen dafür',
+        'Du lädst beide Lieder nach der Zahlung herunter'
+      ],
+      benefits_video: [
+        'Lade 3 bis 10 Fotos oder Videoclips hoch, bevor wir starten',
+        'Du hörst kostenlos 2 Versionen des Liedes, genau wie bei Premium, und wählst die Hauptversion',
+        'Wir erstellen ein Video, das auf die Hauptversion abgestimmt ist, mit deinen eigenen Fotos und Clips',
+        'Das Video enthält den Liedtext und Übergänge, die zur Musik passen',
+        'Bereit zum Teilen auf WhatsApp und in sozialen Medien',
+        'Eine kostenlose Änderung ist inbegriffen',
+        'Du bekommst beide Lieder als Audiodateien, plus das fertige Video mit deiner bevorzugten Version'
+      ],
       sum_package: 'Paket',
       sum_total: 'Gesamt',
       btn_generate: 'Kostenlose Vorschau erstellen →',
       btn_generate_starting: 'Komposition wird gestartet...',
+      btn_continue_media: 'Weiter zu Fotos und Videos →',
       note_free: 'Du zahlst jetzt noch nicht. Nur wenn dir das Ergebnis gefällt.',
-      benefit_1: 'Du erhältst 2 kostenlose Versionen.',
-      benefit_2: 'Wenn keine genau das ist, was du dir wünschst, kannst du eine kostenlose Änderung vornehmen, und wir erstellen 2 brandneue Versionen für deine Geschichte.',
-      benefit_3: 'Du zahlst jetzt nichts. Du zahlst nur, wenn dir das Ergebnis gefällt.',
-      benefit_4: 'Falls es ein technisches Problem mit deiner Bestellung gibt, melden wir uns bei dir, um es zu beheben oder dir dein Geld zurückzuerstatten.',
       msg_conn_error: 'Verbindungsfehler. Bitte versuche es erneut.',
       msg_error_prefix: 'Fehler: ',
       msg_try_again: 'bitte versuche es erneut.',
@@ -705,20 +791,43 @@
       voice_note: 'Elegiremos la voz que mejor se adapte a tu historia',
       label_package: 'Elige tu paquete',
       plan_standard_name: 'Estándar',
-      plan_standard_desc: '1 versión, ~2 minutos, entrega por email',
+      plan_standard_subtitle: 'Una canción personalizada',
+      plan_standard_desc: 'Canción personalizada + una segunda canción de regalo, entrega por email',
       plan_premium_name: 'Premium',
-      plan_premium_desc: '2 versiones a elegir + archivo WAV descargable',
+      plan_premium_subtitle: 'Dos versiones de la canción',
+      plan_premium_desc: '2 versiones completas + versión de audio de alta calidad',
       plan_video_name: 'Regalo en video',
-      plan_video_desc: 'Canción + video lírico para redes/WhatsApp',
+      plan_video_subtitle: 'Canción personalizada con video',
+      plan_video_desc: 'Canción + video sincronizado con tus propias fotos y videos',
+      benefits_standard: [
+        'Escuchas gratis 2 versiones de la canción, creadas a partir de tu historia y tus preferencias, y eliges la versión principal',
+        'Duración aproximada de 2 minutos por versión',
+        'También recibes una segunda canción completa, de regalo por nuestra parte',
+        'Descargas ambas canciones después del pago — también te las enviamos por email',
+        'Tienes derecho a una edición gratuita si no queda exactamente como quieres'
+      ],
+      benefits_premium: [
+        'Escuchas gratis 2 versiones diferentes de la canción y eliges la que más te guste',
+        'También recibes una segunda canción completa, de regalo por nuestra parte',
+        'Incluye una modificación gratuita',
+        'La versión principal también viene como versión de audio de alta calidad — conserva mejor la claridad del sonido, adecuada para guardar o editar; no necesitas conocimientos técnicos para usarla',
+        'Descargas ambas canciones después del pago'
+      ],
+      benefits_video: [
+        'Subes entre 3 y 10 fotos o videos antes de empezar',
+        'Escuchas gratis 2 versiones de la canción, igual que en Premium, y eliges la versión principal',
+        'Creamos un video sincronizado con la versión principal, usando tus propias fotos y videos',
+        'El video incluye la letra y transiciones acordes a la música',
+        'Listo para compartir en WhatsApp y redes sociales',
+        'Incluye una modificación gratuita',
+        'Recibes ambas canciones como archivos de audio, además del video final hecho con tu versión favorita'
+      ],
       sum_package: 'Paquete',
       sum_total: 'Total',
       btn_generate: 'Generar previsualización gratis →',
       btn_generate_starting: 'Iniciando la composición...',
+      btn_continue_media: 'Continuar a fotos y videos →',
       note_free: 'No pagas ahora. Solo pagas si te gusta el resultado.',
-      benefit_1: 'Recibes 2 versiones gratuitas.',
-      benefit_2: 'Si ninguna es exactamente lo que quieres, puedes hacer una edición gratuita y crearemos 2 versiones nuevas para tu historia.',
-      benefit_3: 'No pagas ahora. Solo pagas si te encanta el resultado.',
-      benefit_4: 'Si hay un problema técnico con tu pedido, te contactamos para solucionarlo o devolverte el dinero.',
       msg_conn_error: 'Error de conexión. Inténtalo de nuevo.',
       msg_error_prefix: 'Error: ',
       msg_try_again: 'inténtalo de nuevo.',
@@ -790,20 +899,43 @@
       voice_note: 'Sceglieremo la voce più adatta alla tua storia',
       label_package: 'Scegli il pacchetto',
       plan_standard_name: 'Standard',
-      plan_standard_desc: '1 versione, ~2 minuti, consegna via email',
+      plan_standard_subtitle: 'Una canzone personalizzata',
+      plan_standard_desc: 'Canzone personalizzata + una seconda canzone regalo, consegna via email',
       plan_premium_name: 'Premium',
-      plan_premium_desc: '2 versioni a scelta + file WAV scaricabile',
+      plan_premium_subtitle: 'Due versioni della canzone',
+      plan_premium_desc: '2 versioni complete + versione audio ad alta qualità',
       plan_video_name: 'Regalo video',
-      plan_video_desc: 'Canzone + video con testo per social/WhatsApp',
+      plan_video_subtitle: 'Canzone personalizzata con video',
+      plan_video_desc: 'Canzone + video sincronizzato con le tue foto e i tuoi video',
+      benefits_standard: [
+        'Ascolti gratis 2 versioni della canzone, scritte a partire dalla tua storia e dalle tue preferenze, e scegli la versione principale',
+        'Durata di circa 2 minuti per versione',
+        'Ricevi anche una seconda canzone completa, in regalo da parte nostra',
+        'Scarichi entrambe le canzoni dopo il pagamento — te le inviamo anche via email',
+        'Hai diritto a una modifica gratuita se non è esattamente come desideri'
+      ],
+      benefits_premium: [
+        'Ascolti gratis 2 versioni diverse della canzone e scegli quella che preferisci',
+        'Ricevi anche una seconda canzone completa, in regalo da parte nostra',
+        'È inclusa una modifica gratuita',
+        'La versione principale arriva anche come versione audio ad alta qualità — mantiene il suono più chiaro, adatta per conservare o modificare; non servono competenze tecniche per usarla',
+        'Scarichi entrambe le canzoni dopo il pagamento'
+      ],
+      benefits_video: [
+        'Carichi da 3 a 10 foto o video prima di iniziare',
+        'Ascolti gratis 2 versioni della canzone, come nel Premium, e scegli la versione principale',
+        'Creiamo un video sincronizzato con la versione principale, usando le tue foto e i tuoi video',
+        'Il video include il testo e transizioni in sintonia con la musica',
+        'Pronto da condividere su WhatsApp e sui social',
+        'È inclusa una modifica gratuita',
+        'Ricevi entrambe le canzoni come file audio, più il video finale realizzato con la tua versione preferita'
+      ],
       sum_package: 'Pacchetto',
       sum_total: 'Totale',
       btn_generate: 'Genera l\'anteprima gratis →',
       btn_generate_starting: 'Avvio della composizione...',
+      btn_continue_media: 'Continua con foto e video →',
       note_free: 'Non paghi ora. Paghi solo se ti piace il risultato.',
-      benefit_1: 'Ricevi 2 versioni gratuite.',
-      benefit_2: 'Se nessuna delle due è esattamente come la desideri, puoi richiedere una modifica gratuita e creeremo altre 2 nuove versioni per la tua storia.',
-      benefit_3: 'Non paghi ora. Paghi solo se il risultato ti piace.',
-      benefit_4: "Se c'è un problema tecnico con il tuo ordine, ti contattiamo per risolverlo o per il rimborso.",
       msg_conn_error: 'Errore di connessione. Riprova.',
       msg_error_prefix: 'Errore: ',
       msg_try_again: 'riprova.',
@@ -875,20 +1007,43 @@
       voice_note: 'Nous choisirons la voix qui convient le mieux à votre histoire',
       label_package: 'Choisissez votre pack',
       plan_standard_name: 'Standard',
-      plan_standard_desc: '1 version, ~2 minutes, livrée par email',
+      plan_standard_subtitle: 'Une chanson personnalisée',
+      plan_standard_desc: 'Chanson personnalisée + une deuxième chanson cadeau, livrée par email',
       plan_premium_name: 'Premium',
-      plan_premium_desc: '2 versions au choix + fichier WAV téléchargeable',
+      plan_premium_subtitle: 'Deux versions de la chanson',
+      plan_premium_desc: '2 versions complètes + version audio haute qualité',
       plan_video_name: 'Cadeau vidéo',
-      plan_video_desc: 'Chanson + vidéo lyrics pour réseaux sociaux/WhatsApp',
+      plan_video_subtitle: 'Chanson personnalisée avec vidéo',
+      plan_video_desc: 'Chanson + vidéo synchronisée avec vos propres photos et vidéos',
+      benefits_standard: [
+        'Vous écoutez gratuitement 2 versions de la chanson, écrites à partir de votre histoire et de vos préférences, et choisissez la version principale',
+        'Environ 2 minutes par version',
+        'Vous recevez aussi une deuxième chanson complète, offerte par nous',
+        'Vous téléchargez les deux chansons après le paiement — nous vous les envoyons aussi par email',
+        "Vous avez droit à une modification gratuite si ce n'est pas tout à fait ce que vous souhaitez"
+      ],
+      benefits_premium: [
+        'Vous écoutez gratuitement 2 versions différentes de la chanson et choisissez celle que vous préférez',
+        'Vous recevez aussi une deuxième chanson complète, offerte par nous',
+        'Une modification gratuite est incluse',
+        "La version principale existe aussi en version audio haute qualité — un son plus clair, adapté pour la conservation ou le montage; aucune connaissance technique n'est nécessaire pour l'utiliser",
+        'Vous téléchargez les deux chansons après le paiement'
+      ],
+      benefits_video: [
+        'Téléversez 3 à 10 photos ou vidéos avant de commencer',
+        'Vous écoutez gratuitement 2 versions de la chanson, comme avec Premium, et choisissez la version principale',
+        'Nous créons une vidéo synchronisée avec la version principale, à partir de vos propres photos et vidéos',
+        'La vidéo inclut les paroles et des transitions adaptées à la musique',
+        'Prête à partager sur WhatsApp et les réseaux sociaux',
+        'Une modification gratuite est incluse',
+        'Vous recevez les deux chansons en fichiers audio, ainsi que la vidéo finale réalisée avec votre version préférée'
+      ],
       sum_package: 'Pack',
       sum_total: 'Total',
       btn_generate: 'Générer l\'aperçu gratuit →',
       btn_generate_starting: 'Démarrage de la composition...',
+      btn_continue_media: 'Continuer vers les photos et vidéos →',
       note_free: 'Vous ne payez pas maintenant. Seulement si le résultat vous plaît.',
-      benefit_1: 'Vous recevez 2 versions gratuites.',
-      benefit_2: 'Si aucune ne correspond exactement à ce que vous souhaitez, vous pouvez faire une modification gratuite et nous créerons 2 nouvelles versions pour votre histoire.',
-      benefit_3: 'Vous ne payez pas maintenant. Vous ne payez que si le résultat vous plaît.',
-      benefit_4: 'En cas de problème technique avec votre commande, nous vous contactons pour le résoudre ou vous rembourser.',
       msg_conn_error: 'Erreur de connexion. Veuillez réessayer.',
       msg_error_prefix: 'Erreur : ',
       msg_try_again: 'veuillez réessayer.',
@@ -960,20 +1115,43 @@
       voice_note: 'Ще изберем гласа, който пасва най-добре на историята ти',
       label_package: 'Избери пакет',
       plan_standard_name: 'Стандартен',
-      plan_standard_desc: '1 версия, ~2 минути, доставка по имейл',
+      plan_standard_subtitle: 'Персонализирана песен',
+      plan_standard_desc: 'Персонализирана песен + втора песен подарък, доставка по имейл',
       plan_premium_name: 'Премиум',
-      plan_premium_desc: '2 версии за избор + файл WAV за изтегляне',
+      plan_premium_subtitle: 'Две версии на песента',
+      plan_premium_desc: '2 пълни версии + аудио версия с високо качество',
       plan_video_name: 'Видео подарък',
-      plan_video_desc: 'Песен + видео с текст за социални мрежи/WhatsApp',
+      plan_video_subtitle: 'Персонализирана песен с видео',
+      plan_video_desc: 'Песен + синхронизирано видео с твоите снимки и видеоклипове',
+      benefits_standard: [
+        'Слушаш безплатно 2 версии на песента, създадени по твоята история и предпочитания, и избираш основната версия',
+        'Продължителност около 2 минути на версия',
+        'Получаваш и втора пълна песен, подарък от нас',
+        'Изтегляш и двете песни след плащане — изпращаме ти ги и на имейла',
+        'Имаш право на една безплатна редакция, ако не е точно както искаш'
+      ],
+      benefits_premium: [
+        'Слушаш безплатно 2 различни версии на песента и избираш тази, която ти харесва повече',
+        'Получаваш и втора пълна песен, подарък от нас',
+        'Включена е една безплатна промяна',
+        'Основната версия идва и като аудио версия с високо качество — запазва по-добре яснотата на звука, подходяща за съхранение или редактиране; не са нужни технически познания, за да я използваш',
+        'Изтегляш и двете песни след плащане'
+      ],
+      benefits_video: [
+        'Качваш между 3 и 10 снимки или видеоклипа преди създаването',
+        'Слушаш безплатно 2 версии на песента, както при Премиум, и избираш основната версия',
+        'Създаваме видео, синхронизирано с основната версия, с твоите снимки и видеоклипове',
+        'Видеото включва текста на песента и преходи, съобразени с музиката',
+        'Готово за споделяне в WhatsApp и социалните мрежи',
+        'Включена е една безплатна промяна',
+        'Получаваш и двете песни като аудио файлове, плюс финалното видео, направено с любимата ти версия'
+      ],
       sum_package: 'Пакет',
       sum_total: 'Общо',
       btn_generate: 'Генерирай безплатен преглед →',
       btn_generate_starting: 'Стартираме композирането...',
+      btn_continue_media: 'Продължи към снимки и видеа →',
       note_free: 'Не плащаш сега. Плащаш само ако ти хареса резултатът.',
-      benefit_1: 'Получаваш 2 безплатни версии.',
-      benefit_2: 'Ако нито една не е точно това, което искаш, можеш да направиш една безплатна редакция и ще създадем още 2 нови версии за твоята история.',
-      benefit_3: 'Не плащаш сега. Плащаш само ако резултатът ти хареса.',
-      benefit_4: 'Ако възникне технически проблем с поръчката ти, ще се свържем с теб, за да го оправим или да ти върнем парите.',
       msg_conn_error: 'Грешка във връзката. Опитай отново.',
       msg_error_prefix: 'Грешка: ',
       msg_try_again: 'опитай отново.',
@@ -1045,20 +1223,43 @@
       voice_note: 'Hikayenize en uygun sesi biz seçeceğiz',
       label_package: 'Paketinizi seçin',
       plan_standard_name: 'Standart',
-      plan_standard_desc: '1 versiyon, ~2 dakika, e-posta ile teslim',
+      plan_standard_subtitle: 'Kişiye özel bir şarkı',
+      plan_standard_desc: 'Kişiye özel şarkı + ikinci bir hediye şarkı, e-posta ile teslim',
       plan_premium_name: 'Premium',
-      plan_premium_desc: 'Seçilecek 2 versiyon + indirilebilir WAV dosyası',
+      plan_premium_subtitle: 'Şarkının iki versiyonu',
+      plan_premium_desc: '2 tam versiyon + yüksek kaliteli ses versiyonu',
       plan_video_name: 'Video hediye',
-      plan_video_desc: 'Şarkı + sosyal medya/WhatsApp için sözlü video',
+      plan_video_subtitle: 'Videolu kişiye özel şarkı',
+      plan_video_desc: 'Şarkı + kendi fotoğraf ve videolarınızla senkronize video',
+      benefits_standard: [
+        'Hikayenize ve tercihlerinize göre yazılmış şarkının 2 versiyonunu ücretsiz dinler, ana versiyonu seçersiniz',
+        'Versiyon başına yaklaşık 2 dakika uzunluğunda',
+        'Ayrıca bizden hediye olarak ikinci bir tam şarkı alırsınız',
+        'Ödemeden sonra her iki şarkıyı da indirirsiniz — e-postanıza da gönderiyoruz',
+        'Tam istediğiniz gibi değilse bir ücretsiz düzenleme hakkınız var'
+      ],
+      benefits_premium: [
+        'Şarkının 2 farklı versiyonunu ücretsiz dinler, en çok beğendiğinizi seçersiniz',
+        'Ayrıca bizden hediye olarak ikinci bir tam şarkı alırsınız',
+        'Bir ücretsiz düzenleme dahildir',
+        'Ana versiyon ayrıca yüksek kaliteli ses versiyonu olarak da gelir — sesi daha net tutar, saklamak veya düzenlemek için uygundur; kullanmak için teknik bilgiye ihtiyacınız yoktur',
+        'Ödemeden sonra her iki şarkıyı da indirirsiniz'
+      ],
+      benefits_video: [
+        'Başlamadan önce 3 ile 10 arası fotoğraf veya video yüklersiniz',
+        "Premium'da olduğu gibi şarkının 2 versiyonunu ücretsiz dinler, ana versiyonu seçersiniz",
+        'Kendi fotoğraf ve videolarınızı kullanarak ana versiyonla senkronize bir video oluştururuz',
+        'Video, şarkı sözlerini ve müziğe uygun geçişleri içerir',
+        "WhatsApp ve sosyal medyada paylaşıma hazırdır",
+        'Bir ücretsiz düzenleme dahildir',
+        'Her iki şarkıyı da ses dosyası olarak, artık favori versiyonunuzla hazırlanan videoyu da alırsınız'
+      ],
       sum_package: 'Paket',
       sum_total: 'Toplam',
       btn_generate: 'Ücretsiz ön izlemeyi oluştur →',
       btn_generate_starting: 'Beste başlıyor...',
+      btn_continue_media: 'Fotoğraf ve videolara devam et →',
       note_free: 'Şimdi ödemezsiniz. Sadece sonucu beğenirseniz ödersiniz.',
-      benefit_1: '2 ücretsiz versiyon alırsınız.',
-      benefit_2: 'Hiçbiri tam istediğiniz gibi değilse, ücretsiz bir düzenleme yapabilirsiniz ve hikayeniz için 2 yeni versiyon daha oluştururuz.',
-      benefit_3: 'Şimdi ödeme yapmazsınız. Yalnızca sonuçtan memnun kalırsanız ödersiniz.',
-      benefit_4: 'Siparişinizde teknik bir sorun olursa, sizinle iletişime geçip sorunu çözer veya ücret iadesi yaparız.',
       msg_conn_error: 'Bağlantı hatası. Lütfen tekrar deneyin.',
       msg_error_prefix: 'Hata: ',
       msg_try_again: 'lütfen tekrar deneyin.',
@@ -1315,20 +1516,54 @@
   const plans = document.querySelectorAll('.plan');
   const sumPlan = document.getElementById('sum-plan');
   const sumTotal = document.getElementById('sum-total');
+  const benefitsListEl = document.getElementById('benefits-list');
   let selectedPlan = { id: 'standard', price: 15, label: 'Standard' };
 
+  // Beneficiile REALE ale pachetului curent — sursa unica e obiectul de traduceri
+  // (t.benefits_standard/premium/video), acelasi obiect din care se randeaza si restul
+  // textelor paginii, ca sa nu poata exista o lista veche/gresita afisata pentru un plan.
+  function renderBenefits(planId) {
+    const key = `benefits_${planId}`;
+    const items = (translations[currentLang] && translations[currentLang][key]) || translations.ro[key] || [];
+    benefitsListEl.innerHTML = items.map(text => `
+      <div class="benefit-item"><span class="benefit-check">✓</span><span class="benefit-text">${text}</span></div>
+    `).join('');
+  }
+
+  // Pachetul Video sare complet peste generarea previzualizarii melodiei la acest pas —
+  // urmatorul pas e incarcarea materialelor (vezi comentariul de la trimiterea formularului,
+  // "FLUXUL OBLIGATORIU CADOU VIDEO"). Eticheta butonului trebuie sa reflecte asta explicit,
+  // altfel clientul crede ca apasarea lui porneste deja compunerea melodiei. Actualizam si
+  // atributul data-i18n de pe element, ca o schimbare ulterioara de limba (applyLang) sa
+  // foloseasca automat cheia corecta, fara sa mai fie nevoie de o sincronizare separata.
+  function updateGenerateButtonLabel() {
+    const label = document.getElementById('generate-btn-label');
+    if (!label) return;
+    const key = selectedPlan.id === 'video' ? 'btn_continue_media' : 'btn_generate';
+    label.setAttribute('data-i18n', key);
+    label.textContent = t(key);
+  }
+
+  function selectPlan(p) {
+    plans.forEach(x => { x.classList.remove('active'); x.setAttribute('aria-selected', 'false'); });
+    p.classList.add('active');
+    p.setAttribute('aria-selected', 'true');
+    selectedPlan = {
+      id: p.dataset.plan,
+      price: Number(p.dataset.price),
+      label: p.querySelector('.plan-name').textContent
+    };
+    sumPlan.textContent = selectedPlan.label;
+    sumTotal.textContent = '£' + selectedPlan.price;
+    renderBenefits(selectedPlan.id);
+    updateGenerateButtonLabel();
+    saveDraft();
+  }
+
   plans.forEach(p => {
-    p.addEventListener('click', () => {
-      plans.forEach(x => x.classList.remove('active'));
-      p.classList.add('active');
-      selectedPlan = {
-        id: p.dataset.plan,
-        price: Number(p.dataset.price),
-        label: p.querySelector('.plan-name').textContent
-      };
-      sumPlan.textContent = selectedPlan.label;
-      sumTotal.textContent = '£' + selectedPlan.price;
-      saveDraft();
+    p.addEventListener('click', () => selectPlan(p));
+    p.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectPlan(p); }
     });
   });
 
@@ -1404,8 +1639,9 @@
     if (draft.plan) {
       const planEl = document.querySelector(`.plan[data-plan="${draft.plan}"]`);
       if (planEl) {
-        plans.forEach(x => x.classList.remove('active'));
+        plans.forEach(x => { x.classList.remove('active'); x.setAttribute('aria-selected', 'false'); });
         planEl.classList.add('active');
+        planEl.setAttribute('aria-selected', 'true');
         selectedPlan = {
           id: planEl.dataset.plan,
           price: Number(planEl.dataset.price),
@@ -1413,6 +1649,7 @@
         };
         sumPlan.textContent = selectedPlan.label;
         sumTotal.textContent = '£' + selectedPlan.price;
+        updateGenerateButtonLabel();
       }
     }
   }
@@ -1429,6 +1666,8 @@
   form.addEventListener('input', saveDraft);
 
   applyLang(currentLang);
+  renderBenefits(selectedPlan.id);
+  updateGenerateButtonLabel();
   showStep(restoredStep);
 
   const statusMsg = document.getElementById('status-msg');
@@ -1481,6 +1720,22 @@
         currentAccessToken = createData.accessToken || '';
         pendingOrderId = currentOrderId;
         pendingAccessToken = currentAccessToken;
+      }
+
+      // ======================================================================================
+      // FLUXUL OBLIGATORIU "CADOU VIDEO": materialele trebuie incarcate SI confirmate explicit
+      // INAINTE ca melodia sa inceapa sa se genereze (cerintele 5-6 din fluxul obligatoriu) —
+      // deci pentru acest pachet NU apelam /generate aici. Redirectionam direct catre
+      // melodia-mea.html, care recunoaste o comanda 'draft' cu plan==='video' si arata
+      // ecranul dedicat de upload; /generate e apelat de ACEA pagina, abia dupa confirmare.
+      // Standard/Premium raman neschimbate: /generate porneste imediat, ca inainte.
+      // ======================================================================================
+      if (selectedPlan.id === 'video') {
+        localStorage.removeItem(DRAFT_KEY);
+        localStorage.removeItem(STEP_KEY);
+        const tokenParam = encodeURIComponent(currentAccessToken);
+        window.location.href = `/melodia-mea.html?id=${currentOrderId}&token=${tokenParam}`;
+        return;
       }
 
       // IMPORTANT: verificam raspunsul lui /generate explicit — inainte, cererea era

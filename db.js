@@ -120,6 +120,83 @@ async function initDb() {
   // ramane null daca clientul nu organizeaza manual (server-ul distribuie automat).
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS uploaded_media JSONB NOT NULL DEFAULT '[]'::jsonb;`);
 
+  // ==================================================================================
+  // RELANSARE "CADOU VIDEO" (2026-08-06) — separa explicit starea materialelor, a
+  // randarii video si a platii, in loc sa suprascarca semantica lui `status` (care
+  // ramane, neschimbat, pentru ciclul de generare a melodiei: draft/generating/
+  // processing_provider_result/preview_ready/generation_failed/ready). Coloane noi,
+  // toate aditive si NULL/DEFAULT sigure pentru comenzile existente — nicio comanda
+  // veche nu se rupe, pur si simplu nu are inca aceste campuri populate.
+  //
+  // media_confirmed_at: momentul in care clientul a confirmat explicit selectia de
+  // materiale (POST /api/orders/:orderId/media/confirm) — DUPA aceasta, si NUMAI dupa
+  // aceasta, poate porni generarea melodiei pentru pachetul "video" (vezi POST /generate).
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS media_confirmed_at TIMESTAMPTZ;`);
+
+  // video_render_claimed_at / video_render_variant_id: rezervare ATOMICA, persistenta
+  // in Postgres, pentru randarea videoclipului cu memorii — inlocuieste garda anterioara
+  // `activeVideoRenders` (un Set doar in memoria procesului Node), care nu proteja
+  // impotriva a doua randari simultane daca Railway ar rula vreodata mai multe instante.
+  // Lock-ul expira automat dupa 20 minute (vezi db.claimVideoRender) — daca procesul
+  // pica la mijlocul unei randari, comanda nu ramane blocata permanent.
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS video_render_claimed_at TIMESTAMPTZ;`);
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS video_render_variant_id TEXT;`);
+
+  // video_stale_reason: NULL = videoclipul curent (daca exista) e valabil pentru
+  // varianta audio selectata acum. Se seteaza explicit ('song_regenerated' sau
+  // 'variant_changed') exact in momentul in care clientul schimba varianta audio sau
+  // cere o editare a melodiei DUPA ce un videoclip fusese deja gata — semnal clar,
+  // persistent, ca videoclipul anterior nu mai poate fi livrat/platit, chiar daca
+  // fisierul lui ramane inca in storage (pastrat pentru rollback, nu sters imediat).
+  // Se sterge (NULL) cand un videoclip nou, pentru varianta curenta, devine gata.
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS video_stale_reason TEXT;`);
+
+  // ==================================================================================
+  // RELANSARE 2026-08-06 (partea 2) — reparatii de concurenta/versionare descoperite
+  // dupa revizia initiala. Toate coloanele de mai jos sunt aditive, NULL/DEFAULT sigure.
+  //
+  // media_revision: contor care creste la FIECARE mutatie a materialelor (upload/
+  // stergere/reordonare/schimbare sectiune) — vezi db.mutateOrderMediaAtomically().
+  // Nu identifica DOAR "ce s-a schimbat", ci serveste ca token de concurenta optimista:
+  // orice job (randare video) sau sesiune de plata pornita pentru o anumita revizie
+  // devine detectabil ca STALE daca media_revision a mai crescut intre timp.
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS media_revision INTEGER NOT NULL DEFAULT 0;`);
+
+  // video_render_media_revision: media_revision EXACT in momentul in care randarea video
+  // curenta a fost rezervata (vezi db.claimVideoRender) — impreuna cu video_render_variant_id,
+  // formeaza cheia completa de versiune a randarii active. Un rezultat care se intoarce
+  // dupa ce media_revision a crescut intre timp (clientul a mai modificat materialele cat
+  // randarea era in curs) NU mai e acceptat ca rezultat valid — vezi triggerVideoGeneration.
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS video_render_media_revision INTEGER;`);
+
+  // checkout_session_id / checkout_variant_id / checkout_media_revision: "amprenta"
+  // EXACTA a sesiunii Stripe Checkout create ultima — varianta audio, revizia materialelor
+  // si sesiunea insasi, toate salvate ATOMIC in acelasi moment (vezi POST /checkout).
+  // La webhook, livrarea se face DOAR daca aceasta amprenta inca se potriveste cu starea
+  // curenta a comenzii — o sesiune veche (client a schimbat varianta/materialele dupa ce
+  // a deschis checkout-ul, apoi incearca sa plateasca vechiul link) nu mai poate debloca
+  // sau livra o versiune care nu mai e cea aprobata.
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS checkout_session_id TEXT;`);
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS checkout_variant_id TEXT;`);
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS checkout_media_revision INTEGER;`);
+
+  // processed_stripe_events: dedup persistent, la nivel de eveniment Stripe individual
+  // (event.id, ex. "evt_1Abc..."), NU doar la nivel de comanda. Garda existenta
+  // (`status !== 'ready'` in handler-ul webhook-ului) ramane si ea — protejeaza corect
+  // impotriva reincercarilor Stripe care ajung SECVENTIAL, dupa ce prima a fost deja
+  // procesata. Tabela de mai jos acopera in plus fereastra teoretica de cursa in care
+  // Stripe ar trimite (foarte rar, dar posibil) doua livrari ale ACELUIASI eveniment
+  // aproape simultan: INSERT ... ON CONFLICT (event_id) DO NOTHING e o operatie atomica
+  // unica in Postgres — a doua livrare gaseste deja randul si stie sigur ca nu mai are
+  // nimic de procesat, indiferent de starea curenta a comenzii in acel moment exact.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS processed_stripe_events (
+      event_id TEXT PRIMARY KEY,
+      order_id UUID,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `);
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS testimonials (
       id UUID PRIMARY KEY,
@@ -233,7 +310,16 @@ function rowToOrder(row) {
     voicePreference: row.voice_preference || 'auto',
     phone: row.phone || null,
     generationAttempts: row.generation_attempts || 0,
-    uploadedMedia: row.uploaded_media || []
+    uploadedMedia: row.uploaded_media || [],
+    mediaConfirmedAt: row.media_confirmed_at || null,
+    videoRenderClaimedAt: row.video_render_claimed_at || null,
+    videoRenderVariantId: row.video_render_variant_id || null,
+    videoStaleReason: row.video_stale_reason || null,
+    mediaRevision: row.media_revision || 0,
+    videoRenderMediaRevision: row.video_render_media_revision !== null && row.video_render_media_revision !== undefined ? Number(row.video_render_media_revision) : null,
+    checkoutSessionId: row.checkout_session_id || null,
+    checkoutVariantId: row.checkout_variant_id || null,
+    checkoutMediaRevision: row.checkout_media_revision !== null && row.checkout_media_revision !== undefined ? Number(row.checkout_media_revision) : null
   };
 }
 
@@ -386,6 +472,192 @@ async function refundEditIfReserved(orderId) {
 }
 
 // ==================================================================================
+// PRELUARE ATOMICA, PERSISTENTA IN POSTGRES, a randarii videoclipului cu memorii —
+// inlocuieste garda anterioara bazata pe un Set in memoria procesului Node (sigura doar
+// pe o singura instanta a serverului). UPDATE ... WHERE ... RETURNING e o singura
+// instructiune atomica: doua cereri "simultane" (dublu-click, retry, sau doua instante
+// separate ale serverului) sunt serializate de Postgres — doar una poate "castiga"
+// tranzitia, cealalta gaseste deja un lock activ si nu returneaza niciun rand.
+//
+// Lock-ul expira SINGUR dupa 20 de minute (o randare video reala dureaza cateva minute,
+// niciodata atat) — daca procesul pica la mijlocul unei randari, comanda nu ramane
+// blocata permanent; o cerere ulterioara poate relua randarea in siguranta.
+// ==================================================================================
+// variantId + mediaRevision impreuna formeaza cheia COMPLETA de versiune a randarii —
+// vezi comentariul coloanei video_render_media_revision in initDb(). Un apelant care
+// termina o randare TREBUIE sa verifice, inainte sa scrie rezultatul, ca aceasta pereche
+// se mai potriveste cu starea curenta a comenzii (vezi isVideoClaimStillCurrent mai jos).
+async function claimVideoRender(orderId, variantId, mediaRevision) {
+  const result = await pool.query(
+    `UPDATE orders
+     SET video_render_claimed_at = now(), video_render_variant_id = $2, video_render_media_revision = $3
+     WHERE id = $1
+       AND (video_render_claimed_at IS NULL OR video_render_claimed_at < now() - interval '20 minutes')
+     RETURNING *`,
+    [orderId, variantId, mediaRevision]
+  );
+  return rowToOrder(result.rows[0]); // null daca o randare e deja activa (lock neexpirat)
+}
+
+// Elibereaza lock-ul de randare video, INDIFERENT de rezultat (succes sau esec) — apelantul
+// (generatePremiumExtras / triggerVideoGeneration in server.js) il apeleaza mereu intr-un
+// bloc finally. Idempotent: eliberarea unui lock deja eliberat e un no-op sigur.
+async function releaseVideoRender(orderId) {
+  await pool.query(
+    `UPDATE orders SET video_render_claimed_at = NULL, video_render_variant_id = NULL, video_render_media_revision = NULL WHERE id = $1`,
+    [orderId]
+  );
+}
+
+// Adevarat DOAR daca (variantId, mediaRevision) date inca reprezinta varianta/materialele
+// CURENTE ale comenzii — apelat DUPA ce o randare video (posibil lunga, minute intregi) s-a
+// terminat, INAINTE de a scrie rezultatul ei peste variants[]. Daca clientul a schimbat
+// varianta sau a modificat materialele cat randarea era in desfasurare, rezultatul vechi
+// e aruncat (nu se scrie videoKey), iar apelantul (triggerVideoGeneration) porneste o
+// randare noua pentru versiunea curenta.
+async function isVideoClaimStillCurrent(orderId, variantId, mediaRevision) {
+  const order = await getOrderById(orderId);
+  if (!order) return false;
+  return order.selectedVariantId === variantId && order.mediaRevision === mediaRevision;
+}
+
+// ==================================================================================
+// MUTATIE ATOMICA a materialelor comenzii (upload/stergere/reordonare/schimbare sectiune) —
+// SELECT ... FOR UPDATE blocheaza randul comenzii pe durata tranzactiei: doua mutatii
+// "simultane" (ex. doua fisiere din acelasi upload, sau un upload si o stergere aproape
+// concomitente) sunt serializate de Postgres, niciodata procesate pe baza aceleiasi citiri
+// "vechi" — elimina exact cursa in care a doua scriere suprascrie complet prima.
+//
+// `mutatorFn(currentOrder)` primeste comanda CURENTA (citita sub lock, garantat proaspata)
+// si trebuie sa returneze fie:
+//   - un obiect patch, ex. { uploadedMedia: [...], mediaConfirmedAt: null }, aplicat atomic
+//     impreuna cu incrementarea media_revision si invalidarea video (vezi mai jos);
+//   - `null`, pentru a abandona mutatia fara nicio scriere (ex. ar depasi limita maxima).
+//
+// Orice mutatie reusita: creste media_revision cu 1, sterge media_confirmed_at (clientul
+// trebuie sa reconfirme selectia dupa orice schimbare), si — daca varianta audio SELECTATA
+// ACUM are deja un videoKey — marcheaza explicit video_stale_reason='media_changed'.
+// ==================================================================================
+// Confirma selectia de materiale sub acelasi lock de rand (SELECT ... FOR UPDATE) — vede
+// numarul REAL de materiale, niciodata unul citit inainte ca un upload concurent sa se
+// termine (ex. clientul apasa "Continuă" chiar in clipa in care ultimul fisier din batch
+// tocmai a fost confirmat de server, dar raspunsul HTTP inca nu a ajuns la client).
+async function confirmMediaSelection(orderId, minItems, maxItems) {
+  return withTransaction(async (client) => {
+    const { rows } = await client.query('SELECT * FROM orders WHERE id = $1 FOR UPDATE', [orderId]);
+    const current = rowToOrder(rows[0]);
+    if (!current) return { ok: false, count: 0 };
+    const count = (current.uploadedMedia || []).length;
+    if (count < minItems || count > maxItems) return { ok: false, count };
+    const result = await client.query(`UPDATE orders SET media_confirmed_at = now() WHERE id = $1 RETURNING *`, [orderId]);
+    return { ok: true, order: rowToOrder(result.rows[0]) };
+  });
+}
+
+async function mutateOrderMediaAtomically(orderId, mutatorFn) {
+  return withTransaction(async (client) => {
+    const { rows } = await client.query('SELECT * FROM orders WHERE id = $1 FOR UPDATE', [orderId]);
+    const current = rowToOrder(rows[0]);
+    if (!current) return { ok: false, reason: 'not_found', order: null };
+
+    const patch = mutatorFn(current);
+    if (!patch) return { ok: false, reason: 'rejected', order: current };
+
+    const selectedVariant = (current.variants || []).find(v => v.id === current.selectedVariantId);
+    const currentVideoIsReady = !!(selectedVariant && selectedVariant.videoKey);
+
+    const setClauses = ['media_revision = media_revision + 1', 'media_confirmed_at = NULL'];
+    const values = [orderId];
+    let i = 2;
+    if (Object.prototype.hasOwnProperty.call(patch, 'uploadedMedia')) {
+      setClauses.push(`uploaded_media = $${i}`);
+      values.push(JSON.stringify(patch.uploadedMedia));
+      i++;
+    }
+    if (currentVideoIsReady) {
+      setClauses.push(`video_stale_reason = 'media_changed'`);
+    }
+
+    const result = await client.query(
+      `UPDATE orders SET ${setClauses.join(', ')} WHERE id = $1 RETURNING *`,
+      values
+    );
+    return { ok: true, order: rowToOrder(result.rows[0]) };
+  });
+}
+
+// ==================================================================================
+// DEDUP ATOMIC, la nivel de eveniment Stripe individual (event.id) — vezi comentariul
+// coloanei/tabelei processed_stripe_events in initDb() pentru motivul exact. Foloseste
+// INSERT ... ON CONFLICT DO NOTHING: primul apel pentru un event_id dat insereaza randul
+// si returneaza true (eveniment nou, de procesat); orice apel ulterior pentru ACELASI
+// event_id gaseste conflictul, nu insereaza nimic, returneaza false (deja procesat).
+//
+// Folosita de fluxuri care NU scriu si starea comenzii in acelasi pas (ex.
+// checkout.session.async_payment_failed, care doar logheaza/notifica). Pentru evenimente
+// care SI marcheaza comanda platita, vezi recordPaidOrderAtomically() mai jos — acolo
+// dedup-ul si actualizarea comenzii sunt in ACEEASI tranzactie, nu doua operatii separate.
+// ==================================================================================
+async function recordStripeEventIfNew(eventId, orderId) {
+  const result = await pool.query(
+    `INSERT INTO processed_stripe_events (event_id, order_id) VALUES ($1, $2)
+     ON CONFLICT (event_id) DO NOTHING
+     RETURNING event_id`,
+    [eventId, orderId || null]
+  );
+  return result.rows.length > 0; // true = eveniment nou (de procesat), false = deja procesat
+}
+
+// ==================================================================================
+// PROCESARE ATOMICA a unui eveniment Stripe de plata reusita: dedup (processed_stripe_events)
+// SI actualizarea comenzii (status='ready', paid_at, date de tranzactie) in ACEEASI
+// tranzactie Postgres — vezi cerinta "D8. Fa procesarea Stripe atomica si recuperabila".
+//
+// De ce conteaza: daca am marca evenimentul procesat INAINTE sa stim ca actualizarea
+// comenzii a reusit (cum era inainte — INSERT separat, apoi UPDATE separat), o eroare
+// tranzitorie DB intre cele doua pasi ar lasa evenimentul "marcat procesat" DAR comanda
+// neplatita — Stripe NU ar mai reincerca (crede ca am procesat cu succes), iar clientul
+// ar ramane platit fara livrare, PERMANENT. Cu totul intr-o tranzactie: daca UPDATE-ul
+// comenzii esueaza din orice motiv, ROLLBACK anuleaza si INSERT-ul de dedup — Stripe vede
+// evenimentul ca neprocesat inca la urmatoarea livrare/retry, exact comportamentul corect.
+//
+// SELECT ... FOR UPDATE pe randul comenzii, in aceeasi tranzactie — daca doua evenimente
+// (webhook retry + livrare originala aproape simultana) ar trece amandoua de dedup din
+// motive improbabile, actualizarea comenzii tot ramane serializata corect.
+//
+// Returneaza:
+//   { isNewEvent: false }                         — eveniment deja procesat, nimic de facut
+//   { isNewEvent: true, order: null }              — eveniment nou, dar comanda nu exista
+//   { isNewEvent: true, order, alreadyPaid: true } — eveniment nou, dar comanda era deja 'ready'
+//   { isNewEvent: true, order }                    — eveniment nou, comanda actualizata cu succes
+// ==================================================================================
+async function recordPaidOrderAtomically(eventId, orderId, patch) {
+  return withTransaction(async (client) => {
+    const dedupRes = await client.query(
+      `INSERT INTO processed_stripe_events (event_id, order_id) VALUES ($1, $2)
+       ON CONFLICT (event_id) DO NOTHING RETURNING event_id`,
+      [eventId, orderId || null]
+    );
+    if (dedupRes.rows.length === 0) return { isNewEvent: false };
+
+    if (!orderId) return { isNewEvent: true, order: null };
+    const { rows } = await client.query('SELECT * FROM orders WHERE id = $1 FOR UPDATE', [orderId]);
+    const current = rowToOrder(rows[0]);
+    if (!current) return { isNewEvent: true, order: null };
+    if (current.status === 'ready') return { isNewEvent: true, order: current, alreadyPaid: true };
+
+    const keys = Object.keys(patch).filter(k => COLUMN_MAP[k]);
+    const setClauses = keys.map((k, i) => `${COLUMN_MAP[k]} = $${i + 2}`);
+    const values = keys.map(k => ((k === 'variants' || k === 'uploadedMedia') ? JSON.stringify(patch[k]) : patch[k]));
+    const result = await client.query(
+      `UPDATE orders SET ${setClauses.join(', ')} WHERE id = $1 RETURNING *`,
+      [orderId, ...values]
+    );
+    return { isNewEvent: true, order: rowToOrder(result.rows[0]) };
+  });
+}
+
+// ==================================================================================
 // SISTEM DE PROTECTIE A CREDITELOR — jurnal de evenimente + setari persistente.
 // Vezi credits.js pentru logica de decizie (praguri, alerte, mod de urgenta);
 // functiile de mai jos sunt strict acces la date, fara nicio logica de business.
@@ -528,7 +800,12 @@ const COLUMN_MAP = {
   editReserved: 'edit_reserved',
   voicePreference: 'voice_preference',
   generationAttempts: 'generation_attempts',
-  uploadedMedia: 'uploaded_media'
+  uploadedMedia: 'uploaded_media',
+  mediaConfirmedAt: 'media_confirmed_at',
+  videoStaleReason: 'video_stale_reason',
+  checkoutSessionId: 'checkout_session_id',
+  checkoutVariantId: 'checkout_variant_id',
+  checkoutMediaRevision: 'checkout_media_revision'
 };
 
 async function updateOrder(id, patch) {
@@ -706,6 +983,8 @@ module.exports = {
   pool, initDb, createOrder, getOrderById, getOrderByToken, getOrderByMusicTaskId,
   claimOrderForProviderFinalization, claimOrderForRegeneration, claimOrderForInitialGeneration,
   refundEditIfReserved,
+  claimVideoRender, releaseVideoRender, recordStripeEventIfNew, recordPaidOrderAtomically,
+  isVideoClaimStillCurrent, mutateOrderMediaAtomically, confirmMediaSelection,
   updateOrder, listOrders, computeRevenue,
   logCreditEvent, getCreditEventsSince, getSetting, setSetting,
   claimCreditAlertTransition, getCreditAlertState, getCompletedOrdersSince, getAverageCreditsPerCompletedOrder,

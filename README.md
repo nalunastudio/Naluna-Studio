@@ -16,12 +16,27 @@ Site de comenzi cadou: melodie personalizata generata prin AI, preview gratuit i
 ## Flux complet
 
 1. Clientul completeaza formularul si apasa **"Genereaza previzualizarea"** — gratuit, fara plata.
-2. Serverul genereaza **2 variante** in paralel, taie 55 secunde din fiecare cu `ffmpeg`, citeste durata reala cu `ffprobe`.
+2. Serverul genereaza **2 variante** (1 pentru pachetul Standard) in paralel, taie `PREVIEW_SECONDS` (40 secunde) din fiecare cu `ffmpeg`, citeste durata reala cu `ffprobe`.
 3. Clientul asculta, alege o varianta sau apasa **"Editeaza cantecul"** — o singura regenerare gratuita (`FREE_EDITS` in server.js).
 4. Apasa **"Finalizeaza cadoul"** -> Stripe Checkout, vanzare internationala, fara restrictie de tara.
 5. Dupa plata confirmata (webhook), fisierul complet se deblocheaza si pleaca automat un **email de livrare** cu link direct.
 6. Daca plata esueaza/e abandonata, clientul revine si vede bannerul de recuperare — comanda ramane salvata.
 7. Clientul isi poate regasi oricand comanda la `/comanda-mea.html`, folosind **codul de acces unic** primit pe email — nu prin simpla introducere a adresei de email.
+
+### Fluxul pachetului "Cadou video" (diferit de Standard/Premium)
+
+Relansat 2026-08-06 — videoclipul se genereaza si se aproba **INAINTE** de plata, nu dupa:
+
+1. Clientul alege pachetul Cadou video — comanda ramane `draft`.
+2. Incarca obligatoriu **3-10 fotografii/videoclipuri** (per fisier, cu progres si retry individual — vezi `POST /api/orders/:id/media`), le poate elimina/reordona/eticheta pe sectiuni.
+3. Confirma explicit selectia (`POST /api/orders/:id/media/confirm`) — **doar dupa aceasta** poate porni `POST /generate` (blocat server-side fara `mediaConfirmedAt`).
+4. Melodia se genereaza gratuit (identic cu Standard/Premium), apoi **videoclipul se genereaza automat**, folosind exact acea varianta si acele materiale (`triggerVideoGeneration` in server.js, rezervare atomica persistenta in Postgres, nu doar in memoria procesului).
+5. Editarea melodiei sau schimbarea materialelor **invalideaza** videoclipul curent (`videoStaleReason`) si declanseaza automat o randare noua, resincronizata.
+6. Checkout-ul (`POST /checkout`) e blocat pana cand videoclipul variantei EXACT selectate e gata si nemarcat "depasit" — vezi verificarile explicite din ruta de checkout.
+7. Sesiunea Stripe e legata de versiunea exacta aprobata (varianta audio + revizia materialelor, salvate in metadata Stripe si in baza de date) — o sesiune deschisa pentru o versiune ulterior schimbata e respinsa sigur la webhook, nu poate debloca versiunea gresita.
+8. Dupa plata, se livreaza audio-ul complet si videoclipul complet — **aceeasi versiune aprobata**, niciodata o alta.
+
+Sectiunile video (intro/strofa/refren/bridge/outro) folosesc timestamp-uri REALE, derivate din marcajele Suno (`[Verse]`, `[Chorus]` etc. cu timestamp confirmat per cuvant) — vezi `lib/media-analysis.js`. Fara marcaje reale detectate, sistemul foloseste explicit un fallback controlat si etichetat (`source: 'fallback_equal'`), niciodata prezentat drept aliniere reala.
 
 ## Setup, in ordine
 

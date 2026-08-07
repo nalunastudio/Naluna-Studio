@@ -102,6 +102,7 @@
   .variant-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
   .variant-label{ font-weight:600; font-size:14px; }
   .variant-progress{ font-size:12px; color:var(--text-secondary); margin-top:8px; letter-spacing:.02em; }
+  .variant-gift-note{ font-size:12px; color:var(--text-secondary); margin:8px 0 0; }
 
   .voice-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:4px; }
   .voice-card{
@@ -147,28 +148,55 @@
   .memories{ margin:22px 0; padding:20px; background:var(--surface); border:1px solid var(--line); border-radius:16px; }
   .memories h2{ font-family:'Fraunces', serif; font-weight:400; font-size:17px; margin:0 0 6px; }
   .memories-sub{ font-size:13px; color:var(--text-secondary); margin-bottom:14px; }
-  .memories-hint{ font-size:12px; color:var(--text-secondary); margin:8px 0 14px; }
+  .memories-meta{ font-size:12px; color:var(--text-secondary); margin:0 0 14px; line-height:1.6; }
+  .memories-count{ font-size:12px; font-weight:600; margin-bottom:10px; }
+  .memories-count.ok{ color:var(--success); }
+  .memories-count.warn{ color:var(--gold-deep); }
   .mem-list{ display:flex; flex-direction:column; gap:8px; margin-bottom:12px; }
   .mem-item{
-    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    display:flex; align-items:center; gap:10px;
     background:var(--bg-secondary); border:1px solid var(--line); border-radius:10px;
-    padding:8px 10px; font-size:13px;
+    padding:8px 10px; font-size:13px; cursor:grab;
   }
-  .mem-item .mem-name{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; }
+  .mem-item.dragging{ opacity:.4; }
+  .mem-item.drag-over{ border-color:var(--gold); }
+  .mem-thumb{
+    flex-shrink:0; width:44px; height:44px; border-radius:8px; overflow:hidden;
+    background:var(--line); display:flex; align-items:center; justify-content:center; font-size:18px;
+  }
+  .mem-thumb img, .mem-thumb video{ width:100%; height:100%; object-fit:cover; display:block; }
+  .mem-info{ flex:1; min-width:0; }
+  .mem-item .mem-name{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:block; }
+  .mem-item .mem-meta{ font-size:11px; color:var(--text-secondary); margin-top:2px; }
+  .mem-item .mem-meta.err{ color:var(--error); }
+  .mem-progress-track{ background:var(--line); border-radius:999px; height:4px; overflow:hidden; margin-top:5px; }
+  .mem-progress-fill{ background:var(--gold); height:100%; border-radius:999px; transition:width .2s ease; }
   .mem-item select{
     font-family:'Sora',sans-serif; font-size:12px; border:1px solid var(--line); border-radius:6px;
-    padding:4px 6px; background:var(--bg); color:var(--text);
+    padding:4px 6px; background:var(--bg); color:var(--text); flex-shrink:0;
   }
-  .mem-item .mem-remove{
-    background:none; border:none; color:var(--error); font-size:16px; cursor:pointer; line-height:1;
-    padding:2px 4px;
+  .mem-actions{ display:flex; align-items:center; gap:2px; flex-shrink:0; }
+  .mem-actions button{
+    background:none; border:none; cursor:pointer; line-height:1; padding:4px 6px;
+    color:var(--text-secondary); font-size:14px; border-radius:6px;
   }
+  .mem-actions button:hover{ background:rgba(43,43,43,.06); }
+  .mem-actions button:disabled{ opacity:.35; cursor:default; }
+  .mem-actions .mem-remove{ color:var(--error); font-size:16px; }
+  .mem-actions .mem-retry{ color:var(--gold-deep); font-size:12px; font-weight:600; }
   #mem-file-input{
     display:block; width:100%; font-size:13px; margin-bottom:10px;
     font-family:'Sora',sans-serif; color:var(--text-secondary);
   }
   .mem-status{ font-size:13px; margin-top:10px; }
   .mem-status.err{ color:var(--error); }
+
+  /* ecran dedicat de upload, INAINTE de generarea melodiei — pachetul "video" */
+  .awaiting-media-actions{ margin-top:20px; }
+  .video-status-msg{ font-size:13px; margin-top:12px; padding:10px 12px; border-radius:10px; }
+  .video-status-msg.generating{ background:rgba(168,131,75,.09); color:var(--gold-deep); }
+  .video-status-msg.ready{ background:rgba(95,143,110,.1); color:var(--success); }
+  .video-status-msg.failed, .video-status-msg.stale{ background:rgba(179,87,74,.08); color:var(--error); }
 
   #status-msg{ margin-top:14px; font-size:13px; text-align:center; }
   .status-ok{ color:var(--success); }
@@ -222,6 +250,20 @@
         <p class="sub" id="paid-sub">Ai primit deja un email cu linkul de descărcare.</p>
       </div>
 
+      <!-- Fluxul obligatoriu "Cadou video": upload + confirmare materiale INAINTE ca melodia
+           sa inceapa sa se genereze. Afisat DOAR pentru plan==='video' si status==='draft'
+           (fara mediaConfirmedAt). Contine acelasi widget #memories-section, mutat aici din
+           content-state pentru durata acestui ecran (vezi renderAwaitingMedia in JS). -->
+      <div id="awaiting-media-state" style="display:none;">
+        <h1 class="display" id="awaiting-media-title">Adaugă fotografiile și videoclipurile pentru cadoul tău</h1>
+        <p class="sub" id="awaiting-media-sub" style="text-align:left;">Alege momentele pe care vrei să le includem. Le vom transforma într-un videoclip sincronizat cu melodia ta.</p>
+        <div id="awaiting-media-memories-slot"></div>
+        <div class="awaiting-media-actions">
+          <button type="button" class="btn btn-primary" id="awaiting-media-continue-btn" style="width:100%; justify-content:center;" disabled>Continuă și creează cadoul →</button>
+        </div>
+        <div id="awaiting-media-status" style="margin-top:10px; font-size:13px; text-align:center;"></div>
+      </div>
+
       <div id="content-state" style="display:none;">
         <div id="resume-banner" style="display:none;">
           <p style="font-weight:600; margin-bottom:14px;" id="resume-msg">Plata nu s-a finalizat 💛 Nicio grijă — cântecul e salvat și te așteaptă.</p>
@@ -265,14 +307,16 @@
         <div class="memories" id="memories-section" style="display:none;">
           <h2 id="memories-title"></h2>
           <p class="memories-sub" id="memories-sub"></p>
+          <p class="memories-meta" id="memories-meta"></p>
+          <p class="memories-count" id="memories-count"></p>
           <div class="mem-list" id="mem-uploaded-list"></div>
           <div class="mem-list" id="mem-staged-list"></div>
           <input type="file" id="mem-file-input" multiple
             accept="image/jpeg,image/png,image/webp,image/heic,image/heif,video/mp4,video/quicktime,video/webm">
-          <p class="memories-hint" id="memories-hint"></p>
-          <button type="button" class="btn btn-ghost btn-small" id="mem-upload-btn" style="display:none;"></button>
           <p class="mem-status" id="mem-status"></p>
         </div>
+
+        <div id="video-status-msg" class="video-status-msg" style="display:none;"></div>
 
         <div id="confirm-row" style="display:none; gap:10px; margin-top:16px; flex-wrap:wrap;">
           <span id="confirm-msg" style="flex:1 1 220px; font-size:13px; color:var(--text-secondary);"></span>
@@ -305,7 +349,8 @@
       error_title: 'Nu am putut finaliza melodia de această dată', error_sub: 'Nu ai fost taxat.', retry_btn: 'Încearcă din nou', retrying: 'Se reîncearcă...',
       paid_title: 'Melodia ta a fost livrată deja', paid_sub: 'Ai primit deja un email cu linkul de descărcare.',
       heading: (r) => `Melodia pentru ${r}`, dedication: (s) => `Din partea ${s}`,
-      variant1_label: 'Varianta 1', variant2_label: '🎁 A doua variantă, și ea a ta',
+      variant_main_label: 'Varianta principală', variant_gift_label: '🎁 A doua melodie, cadou pentru tine',
+      variant_gift_note: 'După plată vei putea descărca ambele melodii complete.',
       listened: (t, d) => `Ai ascultat ${t} din ${d}`,
       lyrics_empty: 'Versurile nu sunt încă disponibile pentru afișare.',
       lyrics_edited_tag: 'Versuri editate de tine',
@@ -336,11 +381,20 @@
       plan_video_icon: '🎬', plan_video_name: 'Cadou video',
       plan_video_desc: 'Primești ambele variante finale (MP3 + WAV) și un videoclip cu versuri, cu pozele/videoclipurile tale.',
       edits_info_msg_one: 'Aceasta e melodia ta. Dacă nu e exact cum vrei, ai dreptul la o singură editare gratuită.',
+      video_status_generating: 'Îți creăm videoclipul — poate dura câteva minute. Poți plăti imediat ce e gata.',
+      video_status_stale: 'Videoclipul se regenerează după ultima modificare — poți plăti imediat ce e gata.',
+      video_status_failed: 'Crearea videoclipului a eșuat. Încearcă din nou.',
+      video_status_none: 'Videoclipul tău nu este încă gata.',
       memories_title: 'Adaugă pozele și videoclipurile tale',
-      memories_sub: 'Adaugă între 3 și 10 poze sau clipuri video — le vom transforma într-un videoclip cu versuri, cu tranziții cinematice.',
-      memories_hint: 'Poți face asta acum sau după ce plătești — videoclipul se creează abia după finalizarea plății.',
-      memories_upload_btn: 'Încarcă', memories_uploading: 'Se încarcă...', memories_remove: '✕',
+      memories_sub: 'Adaugă între 3 și 10 poze sau clipuri video — le vom transforma într-un videoclip sincronizat cu melodia ta.',
+      memories_meta: (min, max) => `Între ${min} și ${max} materiale • JPG, PNG, HEIC, MP4, MOV, WebM • max. 150MB per fișier • orice combinație de poze și videoclipuri`,
+      memories_count: (n, min, max) => n < min ? `${n} din minimum ${min} materiale` : n > max ? `Prea multe materiale (${n}/${max})` : `${n} materiale — gata de continuare`,
+      memories_uploading: 'Se încarcă...', memories_uploaded: 'Încărcat', memories_remove: '✕', memories_retry: 'Reîncearcă',
+      memories_move_up: 'Mută mai sus', memories_move_down: 'Mută mai jos', memories_section_label: 'Secțiune din melodie',
       memories_upload_error: 'Încărcarea a eșuat. Încearcă din nou',
+      awaiting_media_title: 'Adaugă fotografiile și videoclipurile pentru cadoul tău',
+      awaiting_media_sub: 'Alege momentele pe care vrei să le includem. Le vom transforma într-un videoclip sincronizat cu melodia ta.',
+      awaiting_media_continue_btn: 'Continuă și creează cadoul →',
       memories_sections: { none: 'Fără preferință', beginning: 'Început', verse1: 'Strofa 1', chorus: 'Refren', verse2: 'Strofa 2', ending: 'Final' }
     },
     en: {
@@ -349,7 +403,8 @@
       error_title: 'We could not finish your song this time', error_sub: "You haven't been charged.", retry_btn: 'Try again', retrying: 'Retrying...',
       paid_title: 'Your song has already been delivered', paid_sub: "You've already received an email with the download link.",
       heading: (r) => `The song for ${r}`, dedication: (s) => `From ${s}`,
-      variant1_label: 'Version 1', variant2_label: '🎁 A second version, also yours',
+      variant_main_label: 'Main version', variant_gift_label: '🎁 Your second song, a gift for you',
+      variant_gift_note: 'After payment you\'ll be able to download both complete songs.',
       listened: (t, d) => `You've listened to ${t} of ${d}`,
       lyrics_empty: 'Lyrics are not available to display yet.',
       lyrics_edited_tag: 'Lyrics edited by you',
@@ -380,11 +435,20 @@
       plan_video_icon: '🎬', plan_video_name: 'Video gift',
       plan_video_desc: "You'll receive both final versions (MP3 + WAV) and a lyric video featuring your own photos and clips.",
       edits_info_msg_one: "This is your song. If it's not quite right, you get one free edit.",
+      video_status_generating: "We're creating your video — this can take a few minutes. You can pay as soon as it's ready.",
+      video_status_stale: "The video is being regenerated after your last change — you can pay as soon as it's ready.",
+      video_status_failed: 'Creating the video failed. Please try again.',
+      video_status_none: "Your video isn't ready yet.",
       memories_title: 'Add your photos & videos',
-      memories_sub: "Add 3 to 10 photos or video clips — we'll weave them into a lyric video with cinematic transitions.",
-      memories_hint: 'You can do this now or after payment — the video itself is only created once payment is complete.',
-      memories_upload_btn: 'Upload', memories_uploading: 'Uploading...', memories_remove: '✕',
+      memories_sub: "Add 3 to 10 photos or video clips — we'll weave them into a video synced to your song.",
+      memories_meta: (min, max) => `${min} to ${max} items • JPG, PNG, HEIC, MP4, MOV, WebM • max 150MB per file • any mix of photos and videos`,
+      memories_count: (n, min, max) => n < min ? `${n} of at least ${min} items` : n > max ? `Too many items (${n}/${max})` : `${n} items — ready to continue`,
+      memories_uploading: 'Uploading...', memories_uploaded: 'Uploaded', memories_remove: '✕', memories_retry: 'Retry',
+      memories_move_up: 'Move up', memories_move_down: 'Move down', memories_section_label: 'Song section',
       memories_upload_error: 'Upload failed. Please try again.',
+      awaiting_media_title: 'Add the photos and videos for your gift',
+      awaiting_media_sub: "Choose the moments you'd like to include. We'll turn them into a video synced to your song.",
+      awaiting_media_continue_btn: 'Continue and create the gift →',
       memories_sections: { none: 'No preference', beginning: 'Beginning', verse1: 'Verse 1', chorus: 'Chorus', verse2: 'Verse 2', ending: 'Ending' }
     },
     de: {
@@ -393,7 +457,8 @@
       error_title: 'Wir konnten dein Lied dieses Mal nicht fertigstellen', error_sub: 'Du wurdest nicht belastet.', retry_btn: 'Erneut versuchen', retrying: 'Erneuter Versuch...',
       paid_title: 'Dein Lied wurde bereits geliefert', paid_sub: 'Du hast bereits eine E-Mail mit dem Download-Link erhalten.',
       heading: (r) => `Das Lied für ${r}`, dedication: (s) => `Von ${s}`,
-      variant1_label: 'Version 1', variant2_label: '🎁 Eine zweite Version, auch deine',
+      variant_main_label: 'Hauptversion', variant_gift_label: '🎁 Dein zweites Lied, ein Geschenk für dich',
+      variant_gift_note: 'Nach der Zahlung kannst du beide vollständigen Lieder herunterladen.',
       listened: (t, d) => `Du hast ${t} von ${d} gehört`,
       lyrics_empty: 'Der Text steht noch nicht zur Anzeige zur Verfügung.',
       lyrics_edited_tag: 'Von dir bearbeiteter Text',
@@ -424,11 +489,20 @@
       plan_video_icon: '🎬', plan_video_name: 'Video-Geschenk',
       plan_video_desc: 'Du erhältst beide finalen Versionen (MP3 + WAV) und ein Lyric-Video mit deinen eigenen Fotos und Clips.',
       edits_info_msg_one: 'Das ist dein Lied. Falls es nicht ganz passt, hast du eine kostenlose Änderung.',
+      video_status_generating: 'Wir erstellen dein Video — das kann einige Minuten dauern. Du kannst bezahlen, sobald es fertig ist.',
+      video_status_stale: 'Das Video wird nach deiner letzten Änderung neu erstellt — du kannst bezahlen, sobald es fertig ist.',
+      video_status_failed: 'Die Videoerstellung ist fehlgeschlagen. Bitte versuche es erneut.',
+      video_status_none: 'Dein Video ist noch nicht fertig.',
       memories_title: 'Füge deine Fotos & Videos hinzu',
-      memories_sub: 'Füge 3 bis 10 Fotos oder Videoclips hinzu — wir verweben sie zu einem Lyric-Video mit filmischen Übergängen.',
-      memories_hint: 'Das kannst du jetzt oder nach der Zahlung tun — das Video selbst wird erst nach abgeschlossener Zahlung erstellt.',
-      memories_upload_btn: 'Hochladen', memories_uploading: 'Wird hochgeladen...', memories_remove: '✕',
+      memories_sub: 'Füge 3 bis 10 Fotos oder Videoclips hinzu — wir verweben sie zu einem Video, das genau auf dein Lied abgestimmt ist.',
+      memories_meta: (min, max) => `${min} bis ${max} Elemente • JPG, PNG, HEIC, MP4, MOV, WebM • max. 150MB pro Datei • jede Mischung aus Fotos und Videos`,
+      memories_count: (n, min, max) => n < min ? `${n} von mindestens ${min} Elementen` : n > max ? `Zu viele Elemente (${n}/${max})` : `${n} Elemente — bereit zum Fortfahren`,
+      memories_uploading: 'Wird hochgeladen...', memories_uploaded: 'Hochgeladen', memories_remove: '✕', memories_retry: 'Erneut versuchen',
+      memories_move_up: 'Nach oben', memories_move_down: 'Nach unten', memories_section_label: 'Liedabschnitt',
       memories_upload_error: 'Hochladen fehlgeschlagen. Bitte versuche es erneut.',
+      awaiting_media_title: 'Füge die Fotos und Videos für dein Geschenk hinzu',
+      awaiting_media_sub: 'Wähle die Momente, die du einbeziehen möchtest. Wir verwandeln sie in ein Video, das genau auf dein Lied abgestimmt ist.',
+      awaiting_media_continue_btn: 'Weiter und Geschenk erstellen →',
       memories_sections: { none: 'Keine Präferenz', beginning: 'Anfang', verse1: 'Strophe 1', chorus: 'Refrain', verse2: 'Strophe 2', ending: 'Ende' }
     },
     es: {
@@ -437,7 +511,8 @@
       error_title: 'No pudimos terminar tu canción esta vez', error_sub: 'No se te ha cobrado.', retry_btn: 'Intentar de nuevo', retrying: 'Reintentando...',
       paid_title: 'Tu canción ya ha sido entregada', paid_sub: 'Ya has recibido un email con el enlace de descarga.',
       heading: (r) => `La canción para ${r}`, dedication: (s) => `De parte de ${s}`,
-      variant1_label: 'Versión 1', variant2_label: '🎁 Una segunda versión, también tuya',
+      variant_main_label: 'Versión principal', variant_gift_label: '🎁 Tu segunda canción, un regalo para ti',
+      variant_gift_note: 'Después del pago podrás descargar ambas canciones completas.',
       listened: (t, d) => `Has escuchado ${t} de ${d}`,
       lyrics_empty: 'La letra todavía no está disponible para mostrar.',
       lyrics_edited_tag: 'Letra editada por ti',
@@ -468,11 +543,20 @@
       plan_video_icon: '🎬', plan_video_name: 'Regalo en video',
       plan_video_desc: 'Recibirás ambas versiones finales (MP3 + WAV) y un video lírico con tus propias fotos y clips.',
       edits_info_msg_one: 'Esta es tu canción. Si no es exactamente como quieres, tienes una edición gratuita.',
+      video_status_generating: 'Estamos creando tu video — puede tardar unos minutos. Puedes pagar en cuanto esté listo.',
+      video_status_stale: 'El video se está regenerando después de tu último cambio — puedes pagar en cuanto esté listo.',
+      video_status_failed: 'La creación del video falló. Inténtalo de nuevo.',
+      video_status_none: 'Tu video aún no está listo.',
       memories_title: 'Añade tus fotos y videos',
-      memories_sub: 'Añade entre 3 y 10 fotos o clips de video — los combinaremos en un video lírico con transiciones cinematográficas.',
-      memories_hint: 'Puedes hacerlo ahora o después de pagar — el video en sí se crea solo tras completar el pago.',
-      memories_upload_btn: 'Subir', memories_uploading: 'Subiendo...', memories_remove: '✕',
+      memories_sub: 'Añade entre 3 y 10 fotos o clips de video — los combinaremos en un video sincronizado con tu canción.',
+      memories_meta: (min, max) => `Entre ${min} y ${max} elementos • JPG, PNG, HEIC, MP4, MOV, WebM • máx. 150MB por archivo • cualquier combinación de fotos y videos`,
+      memories_count: (n, min, max) => n < min ? `${n} de al menos ${min} elementos` : n > max ? `Demasiados elementos (${n}/${max})` : `${n} elementos — listo para continuar`,
+      memories_uploading: 'Subiendo...', memories_uploaded: 'Subido', memories_remove: '✕', memories_retry: 'Reintentar',
+      memories_move_up: 'Subir', memories_move_down: 'Bajar', memories_section_label: 'Sección de la canción',
       memories_upload_error: 'Error al subir. Inténtalo de nuevo.',
+      awaiting_media_title: 'Añade las fotos y videos para tu regalo',
+      awaiting_media_sub: 'Elige los momentos que quieres incluir. Los convertiremos en un video sincronizado con tu canción.',
+      awaiting_media_continue_btn: 'Continuar y crear el regalo →',
       memories_sections: { none: 'Sin preferencia', beginning: 'Inicio', verse1: 'Estrofa 1', chorus: 'Estribillo', verse2: 'Estrofa 2', ending: 'Final' }
     },
     it: {
@@ -481,7 +565,8 @@
       error_title: 'Questa volta non siamo riusciti a completare la tua canzone', error_sub: 'Non ti è stato addebitato nulla.', retry_btn: 'Riprova', retrying: 'Nuovo tentativo...',
       paid_title: 'La tua canzone è già stata consegnata', paid_sub: "Hai già ricevuto un'email con il link per il download.",
       heading: (r) => `La canzone per ${r}`, dedication: (s) => `Da parte di ${s}`,
-      variant1_label: 'Versione 1', variant2_label: '🎁 Una seconda versione, anche questa tua',
+      variant_main_label: 'Versione principale', variant_gift_label: '🎁 La tua seconda canzone, un regalo per te',
+      variant_gift_note: 'Dopo il pagamento potrai scaricare entrambe le canzoni complete.',
       listened: (t, d) => `Hai ascoltato ${t} di ${d}`,
       lyrics_empty: 'Il testo non è ancora disponibile per la visualizzazione.',
       lyrics_edited_tag: 'Testo modificato da te',
@@ -512,11 +597,20 @@
       plan_video_icon: '🎬', plan_video_name: 'Regalo video',
       plan_video_desc: 'Riceverai entrambe le versioni finali (MP3 + WAV) e un video con testo che include le tue foto e i tuoi clip.',
       edits_info_msg_one: 'Questa è la tua canzone. Se non è esattamente come vuoi, hai diritto a una modifica gratuita.',
+      video_status_generating: 'Stiamo creando il tuo video — può richiedere alcuni minuti. Puoi pagare non appena è pronto.',
+      video_status_stale: "Il video viene rigenerato dopo la tua ultima modifica — puoi pagare non appena è pronto.",
+      video_status_failed: 'La creazione del video non è riuscita. Riprova.',
+      video_status_none: 'Il tuo video non è ancora pronto.',
       memories_title: 'Aggiungi le tue foto e i tuoi video',
-      memories_sub: 'Aggiungi da 3 a 10 foto o clip video: le trasformeremo in un video con testo e transizioni cinematografiche.',
-      memories_hint: 'Puoi farlo ora o dopo il pagamento — il video vero e proprio viene creato solo a pagamento completato.',
-      memories_upload_btn: 'Carica', memories_uploading: 'Caricamento...', memories_remove: '✕',
+      memories_sub: 'Aggiungi da 3 a 10 foto o clip video: le trasformeremo in un video sincronizzato con la tua canzone.',
+      memories_meta: (min, max) => `Da ${min} a ${max} elementi • JPG, PNG, HEIC, MP4, MOV, WebM • max 150MB per file • qualsiasi combinazione di foto e video`,
+      memories_count: (n, min, max) => n < min ? `${n} di almeno ${min} elementi` : n > max ? `Troppi elementi (${n}/${max})` : `${n} elementi — pronto per continuare`,
+      memories_uploading: 'Caricamento...', memories_uploaded: 'Caricato', memories_remove: '✕', memories_retry: 'Riprova',
+      memories_move_up: 'Sposta su', memories_move_down: 'Sposta giù', memories_section_label: 'Sezione della canzone',
       memories_upload_error: 'Caricamento non riuscito. Riprova.',
+      awaiting_media_title: 'Aggiungi le foto e i video per il tuo regalo',
+      awaiting_media_sub: 'Scegli i momenti che vuoi includere. Li trasformeremo in un video sincronizzato con la tua canzone.',
+      awaiting_media_continue_btn: 'Continua e crea il regalo →',
       memories_sections: { none: 'Nessuna preferenza', beginning: 'Inizio', verse1: 'Strofa 1', chorus: 'Ritornello', verse2: 'Strofa 2', ending: 'Finale' }
     },
     fr: {
@@ -525,7 +619,8 @@
       error_title: "Nous n'avons pas pu terminer votre chanson cette fois-ci", error_sub: "Vous n'avez pas été débité.", retry_btn: 'Réessayer', retrying: 'Nouvelle tentative...',
       paid_title: 'Votre chanson a déjà été livrée', paid_sub: 'Vous avez déjà reçu un email avec le lien de téléchargement.',
       heading: (r) => `La chanson pour ${r}`, dedication: (s) => `De la part de ${s}`,
-      variant1_label: 'Version 1', variant2_label: '🎁 Une deuxième version, aussi à vous',
+      variant_main_label: 'Version principale', variant_gift_label: '🎁 Votre deuxième chanson, un cadeau pour vous',
+      variant_gift_note: 'Après le paiement, vous pourrez télécharger les deux chansons complètes.',
       listened: (t, d) => `Vous avez écouté ${t} sur ${d}`,
       lyrics_empty: "Les paroles ne sont pas encore disponibles à l'affichage.",
       lyrics_edited_tag: 'Paroles modifiées par vous',
@@ -556,11 +651,20 @@
       plan_video_icon: '🎬', plan_video_name: 'Cadeau vidéo',
       plan_video_desc: 'Vous recevrez les deux versions finales (MP3 + WAV) et une vidéo lyrics avec vos propres photos et vidéos.',
       edits_info_msg_one: "C'est votre chanson. Si elle n'est pas tout à fait juste, vous avez droit à une modification gratuite.",
+      video_status_generating: 'Nous créons votre vidéo — cela peut prendre quelques minutes. Vous pourrez payer dès qu\'elle sera prête.',
+      video_status_stale: 'La vidéo est régénérée après votre dernière modification — vous pourrez payer dès qu\'elle sera prête.',
+      video_status_failed: 'La création de la vidéo a échoué. Veuillez réessayer.',
+      video_status_none: "Votre vidéo n'est pas encore prête.",
       memories_title: 'Ajoutez vos photos et vidéos',
-      memories_sub: 'Ajoutez 3 à 10 photos ou clips vidéo — nous les intégrerons dans un clip lyrique avec des transitions cinématographiques.',
-      memories_hint: "Vous pouvez le faire maintenant ou après le paiement — la vidéo elle-même n'est créée qu'une fois le paiement finalisé.",
-      memories_upload_btn: 'Envoyer', memories_uploading: 'Envoi en cours...', memories_remove: '✕',
+      memories_sub: 'Ajoutez 3 à 10 photos ou clips vidéo — nous les intégrerons dans une vidéo synchronisée avec votre chanson.',
+      memories_meta: (min, max) => `${min} à ${max} éléments • JPG, PNG, HEIC, MP4, MOV, WebM • max 150 Mo par fichier • tout mélange de photos et vidéos`,
+      memories_count: (n, min, max) => n < min ? `${n} sur au moins ${min} éléments` : n > max ? `Trop d'éléments (${n}/${max})` : `${n} éléments — prêt à continuer`,
+      memories_uploading: 'Envoi en cours...', memories_uploaded: 'Envoyé', memories_remove: '✕', memories_retry: 'Réessayer',
+      memories_move_up: 'Monter', memories_move_down: 'Descendre', memories_section_label: 'Section de la chanson',
       memories_upload_error: "Échec de l'envoi. Veuillez réessayer.",
+      awaiting_media_title: 'Ajoutez les photos et vidéos de votre cadeau',
+      awaiting_media_sub: 'Choisissez les moments que vous souhaitez inclure. Nous les transformerons en une vidéo synchronisée avec votre chanson.',
+      awaiting_media_continue_btn: 'Continuer et créer le cadeau →',
       memories_sections: { none: 'Aucune préférence', beginning: 'Début', verse1: 'Couplet 1', chorus: 'Refrain', verse2: 'Couplet 2', ending: 'Fin' }
     },
     bg: {
@@ -569,7 +673,8 @@
       error_title: 'Този път не успяхме да завършим песента ти', error_sub: 'Не си таксуван.', retry_btn: 'Опитай отново', retrying: 'Нов опит...',
       paid_title: 'Песента ти вече е доставена', paid_sub: 'Вече си получил имейл с линк за изтегляне.',
       heading: (r) => `Песента за ${r}`, dedication: (s) => `От ${s}`,
-      variant1_label: 'Версия 1', variant2_label: '🎁 Втора версия, и тя е твоя',
+      variant_main_label: 'Основна версия', variant_gift_label: '🎁 Втората ти песен, подарък за теб',
+      variant_gift_note: 'След плащането ще можеш да изтеглиш и двете пълни песни.',
       listened: (t, d) => `Изслуша ${t} от ${d}`,
       lyrics_empty: 'Текстът все още не е наличен за показване.',
       lyrics_edited_tag: 'Текст, редактиран от теб',
@@ -600,11 +705,20 @@
       plan_video_icon: '🎬', plan_video_name: 'Видео подарък',
       plan_video_desc: 'Ще получиш и двете финални версии (MP3 + WAV) и лирик видео с твоите снимки и клипове.',
       edits_info_msg_one: 'Това е твоята песен. Ако не е точно както искаш, имаш право на една безплатна редакция.',
+      video_status_generating: 'Създаваме твоето видео — може да отнеме няколко минути. Можеш да платиш веднага щом е готово.',
+      video_status_stale: 'Видеото се регенерира след последната ти промяна — можеш да платиш веднага щом е готово.',
+      video_status_failed: 'Създаването на видеото не бе успешно. Опитай отново.',
+      video_status_none: 'Видеото ти още не е готово.',
       memories_title: 'Добави своите снимки и видеа',
-      memories_sub: 'Добави между 3 и 10 снимки или видеоклипа — ще ги вплетем в лирик видео с кинематографични преходи.',
-      memories_hint: 'Можеш да направиш това сега или след плащането — самото видео се създава едва след завършено плащане.',
-      memories_upload_btn: 'Качи', memories_uploading: 'Качване...', memories_remove: '✕',
+      memories_sub: 'Добави между 3 и 10 снимки или видеоклипа — ще ги превърнем във видео, синхронизирано с твоята песен.',
+      memories_meta: (min, max) => `Между ${min} и ${max} материала • JPG, PNG, HEIC, MP4, MOV, WebM • макс. 150MB на файл • всякаква комбинация от снимки и видеа`,
+      memories_count: (n, min, max) => n < min ? `${n} от поне ${min} материала` : n > max ? `Твърде много материали (${n}/${max})` : `${n} материала — готово за продължаване`,
+      memories_uploading: 'Качване...', memories_uploaded: 'Качено', memories_remove: '✕', memories_retry: 'Опитай отново',
+      memories_move_up: 'Премести нагоре', memories_move_down: 'Премести надолу', memories_section_label: 'Секция от песента',
       memories_upload_error: 'Качването не бе успешно. Опитай отново.',
+      awaiting_media_title: 'Добави снимките и видеата за твоя подарък',
+      awaiting_media_sub: 'Избери моментите, които искаш да включиш. Ще ги превърнем във видео, синхронизирано с твоята песен.',
+      awaiting_media_continue_btn: 'Продължи и създай подаръка →',
       memories_sections: { none: 'Без предпочитание', beginning: 'Начало', verse1: 'Куплет 1', chorus: 'Припев', verse2: 'Куплет 2', ending: 'Край' }
     },
     tr: {
@@ -613,7 +727,8 @@
       error_title: 'Bu sefer şarkınızı tamamlayamadık', error_sub: 'Ücretlendirilmediniz.', retry_btn: 'Tekrar dene', retrying: 'Tekrar deneniyor...',
       paid_title: 'Şarkınız zaten teslim edildi', paid_sub: 'İndirme bağlantısını içeren e-postayı zaten aldınız.',
       heading: (r) => `${r} için şarkı`, dedication: (s) => `${s} tarafından`,
-      variant1_label: 'Versiyon 1', variant2_label: '🎁 İkinci bir versiyon, o da sizin',
+      variant_main_label: 'Ana versiyon', variant_gift_label: '🎁 İkinci şarkınız, size bir hediye',
+      variant_gift_note: 'Ödemeden sonra her iki tam şarkıyı da indirebileceksiniz.',
       listened: (t, d) => `${d} şarkının ${t} kadarını dinlediniz`,
       lyrics_empty: 'Sözler henüz görüntülenmeye hazır değil.',
       lyrics_edited_tag: 'Sizin tarafınızdan düzenlenen sözler',
@@ -644,11 +759,20 @@
       plan_video_icon: '🎬', plan_video_name: 'Video Hediye',
       plan_video_desc: 'Her iki final versiyonu (MP3 + WAV) ve kendi fotoğraf ve kliplerinizin yer aldığı bir söz videosu alırsınız.',
       edits_info_msg_one: 'Bu sizin şarkınız. Tam istediğiniz gibi değilse, bir ücretsiz düzenleme hakkınız var.',
+      video_status_generating: 'Videonuzu oluşturuyoruz — bu birkaç dakika sürebilir. Hazır olur olmaz ödeme yapabilirsiniz.',
+      video_status_stale: 'Video, son değişikliğinizden sonra yeniden oluşturuluyor — hazır olur olmaz ödeme yapabilirsiniz.',
+      video_status_failed: 'Video oluşturma başarısız oldu. Lütfen tekrar deneyin.',
+      video_status_none: 'Videonuz henüz hazır değil.',
       memories_title: 'Fotoğraflarınızı ve videolarınızı ekleyin',
-      memories_sub: '3 ile 10 arası fotoğraf veya video klip ekleyin — bunları sinematik geçişlerle bir söz videosuna dönüştürelim.',
-      memories_hint: 'Bunu şimdi ya da ödemeden sonra yapabilirsiniz — videonun kendisi yalnızca ödeme tamamlandıktan sonra oluşturulur.',
-      memories_upload_btn: 'Yükle', memories_uploading: 'Yükleniyor...', memories_remove: '✕',
+      memories_sub: '3 ile 10 arası fotoğraf veya video klip ekleyin — bunları şarkınızla senkronize bir videoya dönüştürelim.',
+      memories_meta: (min, max) => `${min} ile ${max} arası öğe • JPG, PNG, HEIC, MP4, MOV, WebM • dosya başına maks. 150MB • fotoğraf ve video karışımı kabul edilir`,
+      memories_count: (n, min, max) => n < min ? `${n} / en az ${min} öğe` : n > max ? `Çok fazla öğe (${n}/${max})` : `${n} öğe — devam etmeye hazır`,
+      memories_uploading: 'Yükleniyor...', memories_uploaded: 'Yüklendi', memories_remove: '✕', memories_retry: 'Tekrar dene',
+      memories_move_up: 'Yukarı taşı', memories_move_down: 'Aşağı taşı', memories_section_label: 'Şarkı bölümü',
       memories_upload_error: 'Yükleme başarısız oldu. Lütfen tekrar deneyin.',
+      awaiting_media_title: 'Hediyeniz için fotoğraf ve videoları ekleyin',
+      awaiting_media_sub: 'Dahil etmek istediğiniz anları seçin. Bunları şarkınızla senkronize bir videoya dönüştüreceğiz.',
+      awaiting_media_continue_btn: 'Devam et ve hediyeyi oluştur →',
       memories_sections: { none: 'Fark etmez', beginning: 'Başlangıç', verse1: '1. Kıta', chorus: 'Nakarat', verse2: '2. Kıta', ending: 'Final' }
     }
   };
@@ -688,6 +812,9 @@
     document.getElementById('voice-name-duet').textContent = t.voice_duet;
     document.getElementById('voice-name-auto').textContent = t.voice_auto;
     document.getElementById('voice-change-hint').textContent = t.voice_change_hint;
+    document.getElementById('awaiting-media-title').textContent = t.awaiting_media_title;
+    document.getElementById('awaiting-media-sub').textContent = t.awaiting_media_sub;
+    document.getElementById('awaiting-media-continue-btn').textContent = t.awaiting_media_continue_btn;
   }
 
   // -------- afiseaza si permite schimbarea preferintei de voce (Partea 4) — schimbarea
@@ -714,7 +841,7 @@
     window.location.href = '/index.html';
   }
 
-  const states = ['loading-state', 'notfound-state', 'error-state', 'paid-state', 'content-state', 'lyrics-editor-state'];
+  const states = ['loading-state', 'notfound-state', 'error-state', 'paid-state', 'awaiting-media-state', 'content-state', 'lyrics-editor-state'];
   function showState(name) {
     states.forEach(s => { document.getElementById(s).style.display = (s === name) ? 'block' : 'none'; });
   }
@@ -895,7 +1022,11 @@
       card.className = 'variant-card' + (i === selectedVariantIndex ? ' selected' : '');
       card.dataset.index = i;
 
-      const label = i === 0 ? t.variant1_label : t.variant2_label;
+      // Eticheta "cadou" urmareste DINAMIC selectia curenta (nu pozitia in array) — varianta
+      // NEALEASA ca principala e mereu cea numita "melodia cadou", indiferent daca clientul a
+      // ales varianta 1 sau varianta 2 ca favorita. Vezi si server.js: getGiftVariant().
+      const isSelected = i === selectedVariantIndex;
+      const label = isSelected ? t.variant_main_label : t.variant_gift_label;
       const lyricsTextRaw = (v.editedLyrics && v.editedLyrics.trim()) ? v.editedLyrics : v.originalLyrics;
       const lyricsText = translateSectionLabelsForDisplay(lyricsTextRaw, order.lang);
       const wasEdited = !!(v.editedLyrics && v.editedLyrics.trim());
@@ -911,6 +1042,7 @@
         <div class="variant-head"><span class="variant-label">${label}</span></div>
         <audio class="variant-audio" controls style="width:100%;" src="${v.previewUrl}?t=${Date.now()}"></audio>
         <div class="variant-progress">${t.listened('0:00', formatTime(v.durationSeconds))}</div>
+        ${isSelected ? '' : `<p class="variant-gift-note">${t.variant_gift_note}</p>`}
         ${lyricsHtml}
         <button type="button" class="btn btn-ghost btn-small edit-lyrics-btn" data-variant-id="${v.id}">${t.edit_lyrics_btn}</button>
       `;
@@ -941,19 +1073,34 @@
     return div.innerHTML;
   }
 
-  function selectVariant(index) {
-    selectedVariantIndex = index;
+  // Elimina cursa dintre selectarea variantei si plata: butonul de checkout se
+  // DEZACTIVEAZA imediat si ramane asa pana cand serverul confirma explicit ca
+  // selectedVariantId a fost salvat SI starea reala a comenzii (inclusiv videoStatus,
+  // pentru pachetul video) a fost reincarcata — niciodata pe baza unei presupuneri optimiste
+  // facute inainte ca raspunsul sa fi ajuns.
+  async function selectVariant(index) {
     document.querySelectorAll('.variant-card').forEach((card, i) => card.classList.toggle('selected', i === index));
     selectedVariantLabelEl.textContent = index + 1;
 
     const v = currentOrder && currentOrder.variants && currentOrder.variants[index];
-    if (v) {
-      fetch(`/api/orders/${orderId}/select`, {
+    if (!v) return;
+    selectedVariantIndex = index;
+
+    checkoutBtn.disabled = true;
+    try {
+      const res = await fetch(`/api/orders/${orderId}/select`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Access-Token': accessToken },
         body: JSON.stringify({ variantId: v.id })
       });
+      if (!res.ok) throw new Error('select failed');
+    } catch (e) {
+      statusMsgEl.textContent = t.msg_conn_error;
+      statusMsgEl.className = 'status-err';
     }
+    // Reincarca starea REALA a comenzii de pe server (inclusiv videoStatus) — checkoutBtn
+    // e re-activat DOAR daca starea confirmata chiar il permite (vezi updateVideoStatusUI).
+    await loadOrder();
   }
 
   function openLyricsEditor(variant) {
@@ -1134,29 +1281,101 @@
   });
 
   // ==========================================================================================
-  // Amintii (poze/videoclipuri) pentru pachetul video — vezi si succes.html/comanda-mea.html
-  // pentru acelasi widget, reutilizat identic acolo pentru clientii care prefera sa incarce
-  // dupa plata. Aici NU exista buton "creeaza videoclipul" — randarea nu poate incepe inainte
-  // de plata (melodia completa nu exista inca la 'preview_ready'), doar incarcarea in sine.
+  // Amintii (poze/videoclipuri) pentru pachetul video. RELANSARE 2026-08-06:
+  //   - fiecare fisier se incarca INDIVIDUAL, imediat ce e ales — nu mai exista un buton
+  //     "Incarca" separat pentru un lot intreg. Un fisier care esueaza NU afecteaza deloc
+  //     fisierele deja incarcate cu succes (raman salvate), si poate fi reincercat singur;
+  //   - fiecare fisier are propriul progres real (XMLHttpRequest, nu fetch — fetch nu expune
+  //     progres de upload), propria stare ("Se încarcă"/"Încărcat"/"Eroare") si mesaj de eroare;
+  //   - thumbnail real pentru poze, player pentru video — pentru fisierele inca in curs de
+  //     incarcare, direct din fisierul local (URL.createObjectURL); pentru cele deja urcate,
+  //     printr-un URL semnat de scurta durata (bucket-ul e privat, vezi endpoint-ul dedicat);
+  //   - reordonare prin drag-and-drop SI prin butoane sus/jos (alternativa accesibila pentru
+  //     mobil/tastatura), persistata server-side (PUT /media/reorder).
   // ==========================================================================================
-  let stagedFiles = []; // { file, section }
+  let uploadQueue = []; // { localId, file, section, status, progress, errorMsg, thumbUrl, xhr }
+  let memOrderRef = null;
+  const thumbCache = new Map(); // index-ul din uploadedMedia -> URL semnat (evita re-cereri la fiecare randare)
+
+  function sectionSelectHtml(currentSection, dataAttr, dataValue) {
+    const options = Object.keys(t.memories_sections)
+      .map(k => `<option value="${k === 'none' ? '' : k}" ${((currentSection || '') === (k === 'none' ? '' : k)) ? 'selected' : ''}>${escapeHtml(t.memories_sections[k])}</option>`).join('');
+    return `<select ${dataAttr}="${dataValue}" aria-label="${escapeHtml(t.memories_section_label || '')}">${options}</select>`;
+  }
 
   function renderMemories(order) {
+    memOrderRef = order;
     const section = document.getElementById('memories-section');
     document.getElementById('memories-title').textContent = t.memories_title;
     document.getElementById('memories-sub').textContent = t.memories_sub;
-    document.getElementById('memories-hint').textContent = t.memories_hint;
-    const uploadBtn = document.getElementById('mem-upload-btn');
-    uploadBtn.textContent = t.memories_upload_btn;
+    document.getElementById('memories-meta').textContent = t.memories_meta(MEM_MIN, MEM_MAX);
+    renderExistingList(order);
+    renderQueueList();
+    updateMemoriesCountAndGates(order);
+    section.style.display = 'block';
+  }
 
+  const MEM_MIN = 3;
+  const MEM_MAX = 10;
+
+  function updateMemoriesCountAndGates(order) {
+    const total = (order.uploadedMedia || []).length;
+    const uploading = uploadQueue.some(q => q.status === 'uploading');
+    const hasUnresolvedError = uploadQueue.some(q => q.status === 'error');
+    const countEl = document.getElementById('memories-count');
+    const ok = total >= MEM_MIN && total <= MEM_MAX;
+    countEl.textContent = t.memories_count(total, MEM_MIN, MEM_MAX);
+    countEl.className = 'memories-count ' + (ok ? 'ok' : 'warn');
+
+    const awaitingBtn = document.getElementById('awaiting-media-continue-btn');
+    if (awaitingBtn) {
+      awaitingBtn.disabled = !ok || uploading || hasUnresolvedError;
+    }
+  }
+
+  async function fetchThumbUrl(index) {
+    if (thumbCache.has(index)) return thumbCache.get(index);
+    try {
+      const res = await fetch(`/api/orders/${orderId}/media/${index}/preview-url`, {
+        headers: { 'X-Access-Token': accessToken }
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      thumbCache.set(index, data.url);
+      return data.url;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function renderExistingList(order) {
     const uploaded = order.uploadedMedia || [];
     const uploadedList = document.getElementById('mem-uploaded-list');
     uploadedList.innerHTML = uploaded.map((m, i) => `
-      <div class="mem-item">
-        <span class="mem-name">${m.type === 'photo' ? '🖼️' : '🎬'} ${escapeHtml(t.memories_sections[m.section] || t.memories_sections.none)}</span>
-        <button type="button" class="mem-remove" data-remove-index="${i}" title="${t.memories_remove}">${t.memories_remove}</button>
+      <div class="mem-item" draggable="true" data-existing-index="${i}">
+        <span class="mem-thumb" data-thumb-index="${i}">${m.type === 'photo' ? '🖼️' : '🎬'}</span>
+        <div class="mem-info">
+          <span class="mem-name">${escapeHtml(t.memories_sections[m.section] || t.memories_sections.none)}</span>
+        </div>
+        ${sectionSelectHtml(m.section, 'data-existing-section', i)}
+        <div class="mem-actions">
+          <button type="button" class="mem-move-up" data-move-up="${i}" title="${t.memories_move_up}" ${i === 0 ? 'disabled' : ''}>↑</button>
+          <button type="button" class="mem-move-down" data-move-down="${i}" title="${t.memories_move_down}" ${i === uploaded.length - 1 ? 'disabled' : ''}>↓</button>
+          <button type="button" class="mem-remove" data-remove-index="${i}" title="${t.memories_remove}">${t.memories_remove}</button>
+        </div>
       </div>
     `).join('');
+
+    uploadedList.querySelectorAll('[data-thumb-index]').forEach(async (el) => {
+      const idx = Number(el.dataset.thumbIndex);
+      const item = uploaded[idx];
+      const url = await fetchThumbUrl(idx);
+      if (!url) return;
+      el.innerHTML = item.type === 'photo'
+        ? `<img src="${url}" alt="" loading="lazy">`
+        : `<video src="${url}" muted playsinline preload="metadata"></video>`;
+    });
+
     uploadedList.querySelectorAll('button[data-remove-index]').forEach(btn => {
       btn.addEventListener('click', async () => {
         btn.disabled = true;
@@ -1165,79 +1384,313 @@
             method: 'DELETE',
             headers: { 'X-Access-Token': accessToken }
           });
-          await loadOrder();
+          thumbCache.clear();
+          await refreshOrderMedia();
         } catch (e) {
           btn.disabled = false;
         }
       });
     });
 
-    renderStagedList();
-    section.style.display = 'block';
+    uploadedList.querySelectorAll('select[data-existing-section]').forEach(sel => {
+      sel.addEventListener('change', async () => {
+        const idx = Number(sel.dataset.existingSection);
+        try {
+          await fetch(`/api/orders/${orderId}/media/${idx}/section`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'X-Access-Token': accessToken },
+            body: JSON.stringify({ section: sel.value || null })
+          });
+          await refreshOrderMedia();
+        } catch (e) { /* lasam selectul cum era, clientul poate incerca din nou */ }
+      });
+    });
+
+    uploadedList.querySelectorAll('[data-move-up], [data-move-down]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const total = uploaded.length;
+        const from = Number(btn.dataset.moveUp !== undefined && btn.dataset.moveUp !== '' ? btn.dataset.moveUp : btn.dataset.moveDown);
+        const to = btn.dataset.moveUp !== undefined && btn.dataset.moveUp !== '' ? from - 1 : from + 1;
+        if (to < 0 || to >= total) return;
+        await reorderExisting(swapArrayIndices(total, from, to));
+      });
+    });
+
+    // Drag and drop — alternativa la butoanele sus/jos, pentru desktop.
+    let dragFrom = null;
+    uploadedList.querySelectorAll('[data-existing-index]').forEach(el => {
+      el.addEventListener('dragstart', () => { dragFrom = Number(el.dataset.existingIndex); el.classList.add('dragging'); });
+      el.addEventListener('dragend', () => el.classList.remove('dragging'));
+      el.addEventListener('dragover', (e) => { e.preventDefault(); el.classList.add('drag-over'); });
+      el.addEventListener('dragleave', () => el.classList.remove('drag-over'));
+      el.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        el.classList.remove('drag-over');
+        const dragTo = Number(el.dataset.existingIndex);
+        if (dragFrom === null || dragFrom === dragTo) return;
+        await reorderExisting(moveArrayIndex(uploaded.length, dragFrom, dragTo));
+        dragFrom = null;
+      });
+    });
   }
 
-  function renderStagedList() {
+  function swapArrayIndices(length, a, b) {
+    const order = Array.from({ length }, (_, i) => i);
+    [order[a], order[b]] = [order[b], order[a]];
+    return order;
+  }
+  function moveArrayIndex(length, from, to) {
+    const order = Array.from({ length }, (_, i) => i);
+    const [moved] = order.splice(from, 1);
+    order.splice(to, 0, moved);
+    return order;
+  }
+
+  async function reorderExisting(newOrderIndices) {
+    thumbCache.clear();
+    try {
+      await fetch(`/api/orders/${orderId}/media/reorder`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'X-Access-Token': accessToken },
+        body: JSON.stringify({ order: newOrderIndices })
+      });
+    } catch (e) { /* refresh-ul de mai jos reflecta oricum starea reala de pe server */ }
+    await refreshOrderMedia();
+  }
+
+  // Reia doar starea materialelor (nu tot loadOrder — evita sa resetam alta stare a paginii,
+  // ex. varianta audio selectata) — folosit dupa fiecare actiune asupra materialelor.
+  async function refreshOrderMedia() {
+    try {
+      const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}?token=${encodeURIComponent(accessToken)}`);
+      if (!res.ok) return;
+      const fresh = await res.json();
+      if (memOrderRef) memOrderRef.uploadedMedia = fresh.uploadedMedia;
+      if (currentOrder) currentOrder.uploadedMedia = fresh.uploadedMedia;
+      renderExistingList(fresh);
+      updateMemoriesCountAndGates(fresh);
+    } catch (e) { /* urmatorul poll/refresh manual va corecta */ }
+  }
+
+  function renderQueueList() {
     const el = document.getElementById('mem-staged-list');
-    const uploadBtn = document.getElementById('mem-upload-btn');
-    const sectionOptions = Object.keys(t.memories_sections)
-      .map(k => `<option value="${k === 'none' ? '' : k}">${escapeHtml(t.memories_sections[k])}</option>`).join('');
-    el.innerHTML = stagedFiles.map((sf, i) => `
-      <div class="mem-item">
-        <span class="mem-name">${sf.file.type.startsWith('video') ? '🎬' : '🖼️'} ${escapeHtml(sf.file.name)}</span>
-        <select data-staged-index="${i}">${sectionOptions}</select>
-        <button type="button" class="mem-remove" data-staged-remove="${i}" title="${t.memories_remove}">${t.memories_remove}</button>
+    el.innerHTML = uploadQueue.map(q => `
+      <div class="mem-item" data-queue-id="${q.localId}">
+        <span class="mem-thumb">${q.thumbUrl ? (q.file.type.startsWith('video') ? `<video src="${q.thumbUrl}" muted playsinline preload="metadata"></video>` : `<img src="${q.thumbUrl}" alt="">`) : (q.file.type.startsWith('video') ? '🎬' : '🖼️')}</span>
+        <div class="mem-info">
+          <span class="mem-name">${escapeHtml(q.file.name)}</span>
+          <span class="mem-meta ${q.status === 'error' ? 'err' : ''}">${
+            q.status === 'uploading' ? t.memories_uploading
+            : q.status === 'error' ? (q.errorMsg || t.memories_upload_error)
+            : t.memories_uploaded
+          }</span>
+          ${q.status === 'uploading' ? `<div class="mem-progress-track"><div class="mem-progress-fill" style="width:${q.progress}%"></div></div>` : ''}
+        </div>
+        <div class="mem-actions">
+          ${q.status === 'error' ? `<button type="button" class="mem-retry" data-retry-id="${q.localId}">${t.memories_retry}</button>` : ''}
+          <button type="button" class="mem-remove" data-queue-remove="${q.localId}" title="${t.memories_remove}" ${q.status === 'uploading' ? 'disabled' : ''}>${t.memories_remove}</button>
+        </div>
       </div>
     `).join('');
-    uploadBtn.style.display = stagedFiles.length > 0 ? 'inline-block' : 'none';
 
-    el.querySelectorAll('select[data-staged-index]').forEach(sel => {
-      sel.addEventListener('change', () => {
-        stagedFiles[Number(sel.dataset.stagedIndex)].section = sel.value || null;
-      });
-    });
-    el.querySelectorAll('button[data-staged-remove]').forEach(btn => {
+    el.querySelectorAll('[data-retry-id]').forEach(btn => {
       btn.addEventListener('click', () => {
-        stagedFiles.splice(Number(btn.dataset.stagedRemove), 1);
-        renderStagedList();
+        const entry = uploadQueue.find(q => q.localId === btn.dataset.retryId);
+        if (entry) startUpload(entry);
       });
     });
+    el.querySelectorAll('[data-queue-remove]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = uploadQueue.findIndex(q => q.localId === btn.dataset.queueRemove);
+        if (idx === -1) return;
+        const entry = uploadQueue[idx];
+        if (entry.xhr) entry.xhr.abort();
+        if (entry.thumbUrl) URL.revokeObjectURL(entry.thumbUrl);
+        uploadQueue.splice(idx, 1);
+        renderQueueList();
+        if (memOrderRef) updateMemoriesCountAndGates(memOrderRef);
+      });
+    });
+  }
+
+  function startUpload(entry) {
+    entry.status = 'uploading';
+    entry.progress = 0;
+    entry.errorMsg = null;
+    renderQueueList();
+
+    const formData = new FormData();
+    formData.append('media', entry.file);
+    formData.append('sections', JSON.stringify([entry.section || '']));
+
+    const xhr = new XMLHttpRequest();
+    entry.xhr = xhr;
+    xhr.open('POST', `/api/orders/${orderId}/media`);
+    xhr.setRequestHeader('X-Access-Token', accessToken);
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) {
+        entry.progress = Math.round((e.loaded / e.total) * 100);
+        renderQueueList();
+      }
+    };
+    xhr.onload = async () => {
+      let data = null;
+      try { data = JSON.parse(xhr.responseText); } catch (e) { /* raspuns invalid */ }
+      const failedEntry = data && Array.isArray(data.failed) ? data.failed[0] : null;
+      const succeeded = data && Array.isArray(data.uploaded) && data.uploaded.length > 0;
+      if (xhr.status >= 200 && xhr.status < 300 && succeeded) {
+        if (entry.thumbUrl) URL.revokeObjectURL(entry.thumbUrl);
+        uploadQueue = uploadQueue.filter(q => q.localId !== entry.localId);
+        renderQueueList();
+        await refreshOrderMedia();
+      } else {
+        entry.status = 'error';
+        entry.errorMsg = (failedEntry && failedEntry.reason) || (data && data.error) || t.memories_upload_error;
+        renderQueueList();
+        if (memOrderRef) updateMemoriesCountAndGates(memOrderRef);
+      }
+    };
+    xhr.onerror = () => {
+      entry.status = 'error';
+      entry.errorMsg = t.memories_upload_error;
+      renderQueueList();
+      if (memOrderRef) updateMemoriesCountAndGates(memOrderRef);
+    };
+    xhr.onabort = () => { /* eliminat explicit de client — nimic de facut */ };
+    xhr.send(formData);
   }
 
   const memFileInput = document.getElementById('mem-file-input');
-  const memUploadBtn = document.getElementById('mem-upload-btn');
-  const memStatusEl = document.getElementById('mem-status');
 
   memFileInput.addEventListener('change', () => {
-    stagedFiles = stagedFiles.concat(Array.from(memFileInput.files).map(file => ({ file, section: null })));
+    const files = Array.from(memFileInput.files);
     memFileInput.value = '';
-    renderStagedList();
+    files.forEach(file => {
+      const entry = {
+        localId: 'q' + Math.random().toString(36).slice(2),
+        file,
+        section: null,
+        status: 'uploading',
+        progress: 0,
+        errorMsg: null,
+        thumbUrl: /^(image|video)\//.test(file.type) ? URL.createObjectURL(file) : null,
+        xhr: null
+      };
+      uploadQueue.push(entry);
+      startUpload(entry);
+    });
+    renderQueueList();
+    if (memOrderRef) updateMemoriesCountAndGates(memOrderRef);
   });
 
-  memUploadBtn.addEventListener('click', async () => {
-    if (stagedFiles.length === 0) return;
-    memUploadBtn.disabled = true;
-    memUploadBtn.textContent = t.memories_uploading;
-    memStatusEl.textContent = '';
-    memStatusEl.classList.remove('err');
+  // ==========================================================================================
+  // Ecranul dedicat de upload, INAINTE de generarea melodiei — pachetul "video", comanda inca
+  // 'draft'. Fluxul obligatoriu: upload -> confirmare -> ABIA APOI generarea melodiei. Widget-ul
+  // #memories-section e mutat aici (reparentat in DOM) pentru durata acestui ecran — aceeasi
+  // logica de upload/reordonare/eliminare, fara nicio duplicare de cod.
+  // ==========================================================================================
+  function renderAwaitingMedia(order) {
+    currentOrder = order;
+    document.getElementById('awaiting-media-memories-slot').appendChild(document.getElementById('memories-section'));
+    renderMemories(order);
+    showState('awaiting-media-state');
+  }
+
+  document.getElementById('awaiting-media-continue-btn').addEventListener('click', async () => {
+    const btn = document.getElementById('awaiting-media-continue-btn');
+    const statusEl = document.getElementById('awaiting-media-status');
+    btn.disabled = true;
+    statusEl.textContent = '';
+    statusEl.className = '';
     try {
-      const formData = new FormData();
-      stagedFiles.forEach(sf => formData.append('media', sf.file));
-      formData.append('sections', JSON.stringify(stagedFiles.map(sf => sf.section || '')));
-      const res = await fetch(`/api/orders/${orderId}/media`, {
+      const confirmRes = await fetch(`/api/orders/${orderId}/media/confirm`, {
         method: 'POST',
-        headers: { 'X-Access-Token': accessToken },
-        body: formData
+        headers: { 'X-Access-Token': accessToken }
       });
-      if (!res.ok) throw new Error('upload failed');
-      stagedFiles = [];
-      await loadOrder();
-    } catch (e) {
-      memStatusEl.textContent = t.memories_upload_error;
-      memStatusEl.classList.add('err');
-      memUploadBtn.disabled = false;
-      memUploadBtn.textContent = t.memories_upload_btn;
+      const confirmData = await confirmRes.json().catch(() => ({}));
+      if (!confirmRes.ok) {
+        statusEl.textContent = confirmData.error || t.msg_conn_error;
+        statusEl.className = 'status-err';
+        btn.disabled = false;
+        return;
+      }
+
+      const genRes = await fetch(`/api/orders/${orderId}/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Access-Token': accessToken },
+        body: JSON.stringify({ feedback: null })
+      });
+      if (!genRes.ok && genRes.status !== 409) {
+        let msg = '';
+        try { const d = await genRes.json(); msg = d.error; } catch (e) { /* ignoram */ }
+        statusEl.textContent = msg || t.msg_conn_error;
+        statusEl.className = 'status-err';
+        btn.disabled = false;
+        return;
+      }
+
+      window.location.href = `/se-compune.html?id=${encodeURIComponent(orderId)}&token=${encodeURIComponent(accessToken)}`;
+    } catch (err) {
+      statusEl.textContent = t.msg_conn_error;
+      statusEl.className = 'status-err';
+      btn.disabled = false;
     }
   });
+
+  // ==========================================================================================
+  // Starea videoclipului (pachetul "video") — gateaza explicit plata pe partea de client,
+  // reflectand EXACT aceleasi conditii pe care serverul le verifica oricum in /checkout (nu e
+  // singura protectie, doar UX: evita un client care apasa plata si primeste direct o eroare).
+  // ==========================================================================================
+  function updateVideoStatusUI(order) {
+    const el = document.getElementById('video-status-msg');
+    if (order.plan !== 'video') { el.style.display = 'none'; return; }
+
+    const messages = {
+      generating: t.video_status_generating,
+      stale: t.video_status_stale,
+      failed: t.video_status_failed,
+      none: t.video_status_none
+    };
+
+    if (order.videoStatus === 'ready') {
+      el.style.display = 'none';
+      checkoutBtn.disabled = false;
+      return;
+    }
+
+    el.className = 'video-status-msg ' + order.videoStatus;
+    el.textContent = messages[order.videoStatus] || messages.none;
+    el.style.display = 'block';
+    checkoutBtn.disabled = true;
+
+    if (order.videoStatus === 'failed') {
+      const retryBtn = document.createElement('button');
+      retryBtn.type = 'button';
+      retryBtn.className = 'btn btn-ghost btn-small';
+      retryBtn.style.marginTop = '8px';
+      retryBtn.style.display = 'block';
+      retryBtn.textContent = t.memories_retry;
+      retryBtn.addEventListener('click', async () => {
+        retryBtn.disabled = true;
+        try {
+          await fetch(`/api/orders/${orderId}/create-video`, {
+            method: 'POST',
+            headers: { 'X-Access-Token': accessToken }
+          });
+        } catch (e) { /* pollVideoStatus de mai jos reflecta oricum starea reala */ }
+        setTimeout(loadOrder, 1500);
+      });
+      el.appendChild(retryBtn);
+    }
+
+    // Cat timp videoclipul se creeaza/regenereaza, reincarcam periodic starea comenzii —
+    // clientul vede automat cand devine gata, fara sa dea refresh manual.
+    if ((order.videoStatus === 'generating' || order.videoStatus === 'stale') && !videoPollTimer) {
+      videoPollTimer = setTimeout(() => { videoPollTimer = null; loadOrder(); }, 5000);
+    }
+  }
+  let videoPollTimer = null;
 
   function renderContent(order) {
     currentOrder = order;
@@ -1300,6 +1753,7 @@
 
     if (order.plan === 'video') {
       renderMemories(order);
+      updateVideoStatusUI(order);
     } else {
       document.getElementById('memories-section').style.display = 'none';
     }
@@ -1327,6 +1781,10 @@
       } else if (order.status === 'generation_failed') {
         document.getElementById('error-sub').textContent = order.error || t.error_sub;
         showState('error-state');
+      } else if (order.status === 'draft' && order.plan === 'video') {
+        // Fluxul obligatoriu "Cadou video": materialele trebuie incarcate si confirmate
+        // INAINTE ca melodia sa inceapa sa se genereze — comanda ramane 'draft' pana atunci.
+        renderAwaitingMedia(order);
       } else if (order.status === 'generating' || order.status === 'processing_provider_result' || order.status === 'draft') {
         // comanda e inca in procesare (reincarcare de pagina in timpul generarii) — pagina
         // dedicata de asteptare, cu progres si reincercare, gestioneaza deja acest caz
