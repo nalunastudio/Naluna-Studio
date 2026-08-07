@@ -50,6 +50,25 @@ const { pipeline } = require('stream/promises');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
 const execFileAsync = promisify(execFile);
+
+// ==========================================================================================
+// HOTFIX 2026-08-08: randarea videoclipului esua intermitent cu "Command failed" desi ffmpeg
+// insusi rula corect (confirmat in loguri: incadrele avansau normal, fisierul de iesire
+// crestea normal) — cauza reala: execFileAsync (Node) are un maxBuffer IMPLICIT de doar 1MB
+// pentru stdout+stderr combinate, iar ffmpeg tipareste pe stderr o linie de progres PENTRU
+// FIECARE CADRU codat by default — pentru un encode de cateva minute (normal pentru
+// concatWithCrossfades, care combina 5-10 segmente), acel text de progres singur depaseste
+// usor 1MB, iar Node omoara procesul si arunca eroarea generica "Command failed", fara nicio
+// legatura cu vreun fisier de intrare invalid. Wrapper unic pentru TOATE apelurile ffmpeg din
+// pipeline-ul video: '-hide_banner -loglevel error -nostats' elimina aproape complet spam-ul
+// de progres (pastreaza doar erorile reale), iar maxBuffer generos ramane ca plasa de
+// siguranta suplimentara.
+async function execFfmpeg(args, options = {}) {
+  return execFileAsync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostats', ...args], {
+    maxBuffer: 20 * 1024 * 1024,
+    ...options
+  });
+}
 const db = require('./db');
 const storage = require('./storage');
 const credits = require('./credits');
@@ -3374,7 +3393,7 @@ async function generatePremiumExtras(orderId, options = {}) {
 
 async function generateWavExtra(orderId, variantId, tempFullMp3Path) {
   const tempWav = path.join(TEMP_DIR, `${orderId}-${variantId}-full.wav`);
-  await execFileAsync('ffmpeg', ['-y', '-i', tempFullMp3Path, tempWav]);
+  await execFfmpeg(['-y', '-i', tempFullMp3Path, tempWav]);
   const wavKey = `orders/full-wav/${orderId}-${variantId}.wav`;
   await storage.uploadPrivateFile(tempWav, wavKey, 'audio/wav');
   try { fs.unlinkSync(tempWav); } catch (e) { /* best-effort */ }
@@ -3558,7 +3577,7 @@ async function renderMemorySegment(item, index, segDurationSeconds, order) {
     // pre-scalare la 2x rezolutia finala (acelasi raport 9:16) — da zoompan-ului suficient
     // "spatiu" sa faca un zoom lent si neted, fara sa mareasca artificial o poza mica
     const zoomExpr = 'min(zoom+0.0012,1.12)';
-    await execFileAsync('ffmpeg', [
+    await execFfmpeg([
       '-y', '-loop', '1', '-i', item.localPath,
       '-t', String(segDurationSeconds),
       '-vf', `scale=${MEMORY_VIDEO_WIDTH * 2}:${MEMORY_VIDEO_HEIGHT * 2}:force_original_aspect_ratio=increase,crop=${MEMORY_VIDEO_WIDTH * 2}:${MEMORY_VIDEO_HEIGHT * 2},zoompan=z='${zoomExpr}':d=${frames}:s=${MEMORY_VIDEO_WIDTH}x${MEMORY_VIDEO_HEIGHT}:fps=${MEMORY_VIDEO_FPS},format=yuv420p`,
@@ -3566,7 +3585,7 @@ async function renderMemorySegment(item, index, segDurationSeconds, order) {
       outPath
     ], { timeout: 180000 });
   } else {
-    await execFileAsync('ffmpeg', [
+    await execFfmpeg([
       '-y', '-stream_loop', '-1', '-i', item.localPath,
       '-t', String(segDurationSeconds),
       '-vf', `scale=${MEMORY_VIDEO_WIDTH}:${MEMORY_VIDEO_HEIGHT}:force_original_aspect_ratio=increase,crop=${MEMORY_VIDEO_WIDTH}:${MEMORY_VIDEO_HEIGHT},fps=${MEMORY_VIDEO_FPS},format=yuv420p`,
@@ -3600,7 +3619,7 @@ async function concatWithCrossfades(segmentPaths, segDurations, order) {
   }
   filter = filter.replace(/;$/, '');
 
-  await execFileAsync('ffmpeg', [
+  await execFfmpeg([
     '-y', ...inputArgs,
     '-filter_complex', filter,
     '-map', `[${lastLabel}]`,
@@ -3726,7 +3745,7 @@ async function generateLyricVideo(order, variant, tempFullMp3Path) {
       ? ['-i', memoryBackground.backgroundPath]
       : ['-f', 'lavfi', '-i', `color=c=${VIDEO_BG_COLOR}:s=${MEMORY_VIDEO_WIDTH}x${MEMORY_VIDEO_HEIGHT}:d=${durationSeconds}`];
 
-    await execFileAsync('ffmpeg', [
+    await execFfmpeg([
       '-y',
       ...videoInputArgs,
       '-i', tempFullMp3Path,
@@ -3991,7 +4010,7 @@ async function trimAudio(srcPath, destPath, seconds, startSeconds = 0) {
   const args = ['-y'];
   if (safeStart > 0) args.push('-ss', String(safeStart));
   args.push('-i', srcPath, '-t', String(seconds), '-acodec', 'copy', destPath);
-  await execFileAsync('ffmpeg', args);
+  await execFfmpeg(args);
 }
 
 async function getAudioDuration(filePath) {
