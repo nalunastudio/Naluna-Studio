@@ -62,6 +62,7 @@ const {
   MEMORY_SECTION_ORDER,
   sortMediaBySection
 } = require('./lib/media-analysis');
+const { getGiftVariant } = require('./lib/entitlements');
 
 // -------- Validare stricta a variabilelor de mediu obligatorii, la pornire --------
 // Mai bine esueaza clar la boot decat sa porneasca "pe jumatate" si sa pice abia la prima comanda.
@@ -2077,6 +2078,9 @@ app.get('/media/preview/:orderId/:variantId', async (req, res, next) => {
 // Cu stocare cloud: redirect catre un URL semnat, temporar (expira in 10 minute).
 // Fara stocare cloud (fallback local): serveste direct de pe disc, ca inainte.
 // ==========================================================================================
+// "Melodia cadou" = cealaltă variantă audio decât cea aleasă ca principală — livrată la
+// TOATE cele trei pachete (Standard/Premium/Video) după plată, nu doar audio-ul principal.
+// Logica (getGiftVariant) e in lib/entitlements.js — pura, testata izolat in test/.
 app.get('/media/full/:orderId', async (req, res, next) => {
   try {
     const denyGeneric = () => res.status(404).send('Resursa nu este disponibilă');
@@ -2108,6 +2112,40 @@ app.get('/media/full/:orderId', async (req, res, next) => {
     const filePath = path.join(MEDIA_FULL_DIR, `${order.id}-${order.selectedVariantId}.mp3`);
     if (!fs.existsSync(filePath)) return res.status(404).send('Fișier indisponibil');
     res.download(filePath, `cantec-${order.recipient}.mp3`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Fisierul complet al melodiei CADOU (cealalta varianta, nealeasa ca principala) — acelasi
+// tipar de securitate ca /media/full de mai sus. Livrat la toate cele trei pachete.
+app.get('/media/full/:orderId/gift', async (req, res, next) => {
+  try {
+    const denyGeneric = () => res.status(404).send('Resursa nu este disponibilă');
+
+    if (!UUID_RE.test(req.params.orderId)) return denyGeneric();
+
+    const order = await db.getOrderById(req.params.orderId);
+    const providedToken = typeof req.query.token === 'string' ? req.query.token : '';
+    const expectedToken = order ? order.accessToken : DUMMY_TOKEN_FOR_TIMING;
+    const tokenValid = safeCompare(providedToken, expectedToken);
+
+    if (!order || !tokenValid) return denyGeneric();
+
+    if (order.status !== 'ready') {
+      return res.status(403).send('Melodia cadou se deblochează după plată');
+    }
+
+    const giftVariant = getGiftVariant(order);
+
+    if (storage.CLOUD_ENABLED && giftVariant && giftVariant.fullKey) {
+      const signedUrl = await storage.getSignedDownloadUrl(giftVariant.fullKey, 600);
+      return res.redirect(302, signedUrl);
+    }
+
+    const filePath = giftVariant ? path.join(MEDIA_FULL_DIR, `${order.id}-${giftVariant.id}.mp3`) : null;
+    if (!filePath || !fs.existsSync(filePath)) return res.status(404).send('Fișier indisponibil');
+    res.download(filePath, `cantec-cadou-${order.recipient}.mp3`);
   } catch (err) {
     next(err);
   }
@@ -2185,8 +2223,10 @@ app.get('/api/orders/access/:token', lookupLimiter, async (req, res, next) => {
 
     // hasWav/hasVideo ale variantei ALESE — niciodata cheile de storage insele — necesare
     // ca pagina "comanda mea" sa poata arata extrasele de pachet (WAV/video) cand sunt gata,
-    // fara sa expuna nimic in plus fata de ce era deja expus aici.
+    // fara sa expuna nimic in plus fata de ce era deja expus aici. hasGiftAudio la fel, pentru
+    // "melodia cadou" (cealalta varianta) — livrata la toate cele trei pachete dupa plata.
     const selectedVariant = (order.variants || []).find(v => v.id === order.selectedVariantId);
+    const giftVariant = getGiftVariant(order);
 
     res.json({
       id: order.id, recipient: order.recipient, status: order.status,
@@ -2194,6 +2234,7 @@ app.get('/api/orders/access/:token', lookupLimiter, async (req, res, next) => {
       plan: order.plan,
       hasWav: !!(selectedVariant && selectedVariant.wavKey),
       hasVideo: !!(selectedVariant && selectedVariant.videoKey),
+      hasGiftAudio: !!(giftVariant && giftVariant.fullKey),
       uploadedMedia: (order.uploadedMedia || []).map(m => ({ type: m.type, section: m.section || null }))
     });
   } catch (err) {
@@ -2378,13 +2419,15 @@ async function finalizeVariantsIfNeeded(orderId, tracks, taskId) {
       console.warn(`SunoAPI a returnat ${tracks.length} piese in loc de 2, pentru comanda ${orderId}. Continui cu cate au venit.`);
     }
 
-    // Diferentiere REALA intre pachete (audit 2026-08-03): pachetul "standard" primeste o
-    // singura varianta (auto-aleasa), procesata singura — nu doar ascunsa in interfata dupa
-    // ce ambele au fost generate/urcate/verificate degeaba. "premium" si "video" pastreaza
-    // ambele variante, pentru alegere reala. Suno intoarce mereu 2 piese per apel (nu poate
-    // fi cerut sa genereze doar 1), deci a doua piesa e pur si simplu ignorata pentru
-    // standard — nu se descarca, nu se taie, nu se urca, niciun cost suplimentar.
-    const tracksToProcess = claimed.plan === 'standard' ? tracks.slice(0, 1) : tracks;
+    // RELANSARE 2026-08-07 — "melodia cadou" pentru toate cele trei pachete: Standard nu mai
+    // ignora a doua piesa intoarsa de Suno. Toate cele trei pachete (Standard/Premium/Video)
+    // proceseaza ACUM ambele variante — clientul asculta 40s din amandoua inainte de plata,
+    // alege varianta principala, iar cealalta devine "melodia cadou" (fisier audio complet
+    // separat, livrat dupa plata la toate cele trei pachete). Suno intoarce mereu 2 piese per
+    // apel — nu mai exista niciun motiv sa aruncam a doua doar pentru Standard; diferentierea
+    // reala intre pachete ramane (WAV la Premium/Video, videoclip doar la Video — vezi
+    // generatePremiumExtras), nu numarul de melodii primite.
+    const tracksToProcess = tracks;
 
     // Promise.allSettled (nu Promise.all): daca o varianta esueaza la procesare
     // (descarcare/timestamp/ffmpeg/upload), NU intrerupe si NU corupe procesarea celeilalte
@@ -3829,12 +3872,54 @@ async function sendDeliveryEmail(order) {
   const accessUrl = `${DOMAIN}/comanda-mea.html?token=${order.accessToken}`;
   const safeRecipient = escapeHtmlForEmail(order.recipient);
 
-  // Nota despre extrasele de pachet (WAV pentru premium/video, videoclip pentru video) —
-  // generate ASINCRON dupa acest email (pot dura pana la cateva minute, vezi
-  // generatePremiumExtras), deci NU le promitem ca fiind deja disponibile in acest moment,
-  // doar ca vor aparea la pagina comenzii. "standard" nu are nicio nota suplimentara.
-  // Termenul tehnic "WAV" apare NUMAI dupa o explicatie in limbaj simplu (aceeasi regula
-  // ca pe cardul de pachet Premium din comanda.html) — niciodata neexplicat, izolat.
+  // "Melodia cadou" (cealalta varianta, nealeasa ca principala) — livrata la TOATE cele trei
+  // pachete, nu doar Premium/Video (vezi getGiftVariant si /media/full/:orderId/gift). Ambele
+  // fullKey (principal + cadou) exista deja din momentul preview_ready (inainte de plata) —
+  // singurul caz in care lipseste e o procesare partial esuata (foarte rar), tratat simplu
+  // prin omiterea liniei, niciodata printr-un link catre un fisier inexistent.
+  const giftVariant = getGiftVariant(order);
+  const hasGift = !!(giftVariant && giftVariant.fullKey);
+  const giftUrl = `${DOMAIN}/media/full/${order.id}/gift?token=${order.accessToken}`;
+  const GIFT_LINE = {
+    ro: `<p>🎁 <a href="${giftUrl}">Descarcă și a doua melodie, cadou din partea noastră</a>.</p>`,
+    en: `<p>🎁 <a href="${giftUrl}">Download your second song too, a gift from us</a>.</p>`,
+    de: `<p>🎁 <a href="${giftUrl}">Lade auch dein zweites Lied herunter, ein Geschenk von uns</a>.</p>`,
+    es: `<p>🎁 <a href="${giftUrl}">Descarga también tu segunda canción, un regalo de nuestra parte</a>.</p>`,
+    it: `<p>🎁 <a href="${giftUrl}">Scarica anche la tua seconda canzone, un regalo da parte nostra</a>.</p>`,
+    fr: `<p>🎁 <a href="${giftUrl}">Téléchargez aussi votre deuxième chanson, un cadeau de notre part</a>.</p>`,
+    bg: `<p>🎁 <a href="${giftUrl}">Изтегли и втората си песен, подарък от нас</a>.</p>`,
+    tr: `<p>🎁 <a href="${giftUrl}">İkinci şarkınızı da indirin, bizden bir hediye</a>.</p>`
+  };
+  const giftLine = hasGift ? (GIFT_LINE[order.lang] || GIFT_LINE.ro) : '';
+
+  // Videoclipul (pachetul "video") e DEJA gata in acest moment — relansarea 2026-08-06 muta
+  // randarea lui INAINTE de plata (checkout-ul refuza plata daca nu e gata, vezi
+  // processConfirmedPayment) — deci, spre deosebire de WAV (generat asincron DUPA plata),
+  // link-ul securizat catre videoclipul final poate fi trimis direct in acest email, nu doar
+  // promis "in cateva minute".
+  const videoVariantForEmail = order.plan === 'video'
+    ? (order.variants || []).find(v => v.id === order.selectedVariantId)
+    : null;
+  const hasVideoForEmail = !!(videoVariantForEmail && videoVariantForEmail.videoKey);
+  const videoUrlForEmail = `${DOMAIN}/media/video/${order.id}?token=${order.accessToken}`;
+  const VIDEO_LINE = {
+    ro: `<p>🎬 <a href="${videoUrlForEmail}">Descarcă videoclipul final</a>.</p>`,
+    en: `<p>🎬 <a href="${videoUrlForEmail}">Download the final video</a>.</p>`,
+    de: `<p>🎬 <a href="${videoUrlForEmail}">Lade das fertige Video herunter</a>.</p>`,
+    es: `<p>🎬 <a href="${videoUrlForEmail}">Descarga el video final</a>.</p>`,
+    it: `<p>🎬 <a href="${videoUrlForEmail}">Scarica il video finale</a>.</p>`,
+    fr: `<p>🎬 <a href="${videoUrlForEmail}">Téléchargez la vidéo finale</a>.</p>`,
+    bg: `<p>🎬 <a href="${videoUrlForEmail}">Изтегли финалното видео</a>.</p>`,
+    tr: `<p>🎬 <a href="${videoUrlForEmail}">Son videoyu indirin</a>.</p>`
+  };
+  const videoLine = hasVideoForEmail ? (VIDEO_LINE[order.lang] || VIDEO_LINE.ro) : '';
+
+  // Nota despre WAV (premium/video) — generat ASINCRON dupa acest email (poate dura pana la
+  // cateva minute, vezi generatePremiumExtras), deci NU il promitem ca fiind deja disponibil
+  // in acest moment, doar ca va aparea la pagina comenzii. "standard" nu are nicio nota
+  // suplimentara. Termenul tehnic "WAV" apare NUMAI dupa o explicatie in limbaj simplu
+  // (aceeasi regula ca pe cardul de pachet Premium din comanda.html) — niciodata neexplicat,
+  // izolat. Videoclipul (plan "video") NU mai apare aici — e livrat direct prin videoLine.
   const EXTRAS_NOTE = {
     premium: {
       ro: ` Vei primi și fișierul audio la calitate înaltă (WAV) — păstrează mai bine claritatea sunetului, potrivit pentru păstrare sau editare. Apare în câteva minute la <a href="${accessUrl}">pagina comenzii tale</a>.`,
@@ -3847,35 +3932,35 @@ async function sendDeliveryEmail(order) {
       tr: ` Ayrıca yüksek kaliteli ses dosyasını da (WAV) alacaksınız — sesi daha net tutar, saklamak veya düzenlemek için uygundur. Birkaç dakika içinde <a href="${accessUrl}">sipariş sayfanızda</a> görünecek.`
     },
     video: {
-      ro: ` Vei primi și fișierul audio la calitate înaltă (WAV) și videoclipul complet, cu aceeași melodie. Ambele apar în câteva minute la <a href="${accessUrl}">pagina comenzii tale</a>.`,
-      en: ` You'll also get the high-quality audio file (WAV) and the full video, using the same song. Both will appear within a few minutes at <a href="${accessUrl}">your order page</a>.`,
-      de: ` Du erhältst außerdem die hochwertige Audiodatei (WAV) und das vollständige Video mit demselben Lied. Beides erscheint in wenigen Minuten auf <a href="${accessUrl}">deiner Bestellseite</a>.`,
-      es: ` También recibirás el archivo de audio de alta calidad (WAV) y el video completo, con la misma canción. Ambos aparecerán en unos minutos en <a href="${accessUrl}">la página de tu pedido</a>.`,
-      it: ` Riceverai anche il file audio ad alta qualità (WAV) e il video completo, con la stessa canzone. Entrambi appariranno tra qualche minuto nella <a href="${accessUrl}">pagina del tuo ordine</a>.`,
-      fr: ` Vous recevrez aussi le fichier audio haute qualité (WAV) et la vidéo complète, avec la même chanson. Les deux apparaîtront dans quelques minutes sur <a href="${accessUrl}">la page de votre commande</a>.`,
-      bg: ` Ще получиш и аудио файла с високо качество (WAV), и пълното видео, със същата песен. И двете ще се появят след няколко минути на <a href="${accessUrl}">страницата на поръчката ти</a>.`,
-      tr: ` Ayrıca yüksek kaliteli ses dosyasını (WAV) ve aynı şarkıyla tam videoyu da alacaksınız. İkisi de birkaç dakika içinde <a href="${accessUrl}">sipariş sayfanızda</a> görünecek.`
+      ro: ` Vei primi și fișierul audio la calitate înaltă (WAV) pentru varianta principală. Apare în câteva minute la <a href="${accessUrl}">pagina comenzii tale</a>.`,
+      en: ` You'll also get the high-quality audio file (WAV) for the main version. It'll appear within a few minutes at <a href="${accessUrl}">your order page</a>.`,
+      de: ` Du erhältst außerdem die hochwertige Audiodatei (WAV) für die Hauptversion. Sie erscheint in wenigen Minuten auf <a href="${accessUrl}">deiner Bestellseite</a>.`,
+      es: ` También recibirás el archivo de audio de alta calidad (WAV) de la versión principal. Aparecerá en unos minutos en <a href="${accessUrl}">la página de tu pedido</a>.`,
+      it: ` Riceverai anche il file audio ad alta qualità (WAV) della versione principale. Apparirà tra qualche minuto nella <a href="${accessUrl}">pagina del tuo ordine</a>.`,
+      fr: ` Vous recevrez aussi le fichier audio haute qualité (WAV) de la version principale. Il apparaîtra dans quelques minutes sur <a href="${accessUrl}">la page de votre commande</a>.`,
+      bg: ` Ще получиш и аудио файла с високо качество (WAV) на основната версия. Ще се появи след няколко минути на <a href="${accessUrl}">страницата на поръчката ти</a>.`,
+      tr: ` Ayrıca ana versiyon için yüksek kaliteli ses dosyasını da (WAV) alacaksınız. Birkaç dakika içinde <a href="${accessUrl}">sipariş sayfanızda</a> görünecek.`
     }
   };
   const extrasNote = (EXTRAS_NOTE[order.plan] && EXTRAS_NOTE[order.plan][order.lang]) || '';
 
   const templates = {
     ro: { subject: `Cântecul tău pentru ${order.recipient} e gata`,
-      html: `<p>Salut,</p><p>Cântecul tău personalizat pentru <strong>${safeRecipient}</strong> e gata.</p><p><a href="${downloadUrl}">Descarcă melodia</a></p><p>O poți regăsi oricând la <a href="${accessUrl}">acest link</a>.${extrasNote}</p><p>— NALUNA</p>` },
+      html: `<p>Salut,</p><p>Cântecul tău personalizat pentru <strong>${safeRecipient}</strong> e gata.</p><p><a href="${downloadUrl}">Descarcă melodia</a></p>${giftLine}${videoLine}<p>Le poți regăsi oricând la <a href="${accessUrl}">acest link</a>.${extrasNote}</p><p>— NALUNA</p>` },
     en: { subject: `Your song for ${order.recipient} is ready`,
-      html: `<p>Hi,</p><p>Your personalised song for <strong>${safeRecipient}</strong> is ready.</p><p><a href="${downloadUrl}">Download your song</a></p><p>You can find it anytime at <a href="${accessUrl}">this link</a>.${extrasNote}</p><p>— NALUNA</p>` },
+      html: `<p>Hi,</p><p>Your personalised song for <strong>${safeRecipient}</strong> is ready.</p><p><a href="${downloadUrl}">Download your song</a></p>${giftLine}${videoLine}<p>You can find them anytime at <a href="${accessUrl}">this link</a>.${extrasNote}</p><p>— NALUNA</p>` },
     de: { subject: `Dein Lied für ${order.recipient} ist fertig`,
-      html: `<p>Hallo,</p><p>Dein persönliches Lied für <strong>${safeRecipient}</strong> ist fertig.</p><p><a href="${downloadUrl}">Lied herunterladen</a></p><p>Du findest es jederzeit über <a href="${accessUrl}">diesen Link</a>.${extrasNote}</p><p>— NALUNA</p>` },
+      html: `<p>Hallo,</p><p>Dein persönliches Lied für <strong>${safeRecipient}</strong> ist fertig.</p><p><a href="${downloadUrl}">Lied herunterladen</a></p>${giftLine}${videoLine}<p>Du findest sie jederzeit über <a href="${accessUrl}">diesen Link</a>.${extrasNote}</p><p>— NALUNA</p>` },
     es: { subject: `Tu canción para ${order.recipient} está lista`,
-      html: `<p>Hola,</p><p>Tu canción personalizada para <strong>${safeRecipient}</strong> está lista.</p><p><a href="${downloadUrl}">Descargar la canción</a></p><p>Puedes encontrarla siempre en <a href="${accessUrl}">este enlace</a>.${extrasNote}</p><p>— NALUNA</p>` },
+      html: `<p>Hola,</p><p>Tu canción personalizada para <strong>${safeRecipient}</strong> está lista.</p><p><a href="${downloadUrl}">Descargar la canción</a></p>${giftLine}${videoLine}<p>Puedes encontrarlas siempre en <a href="${accessUrl}">este enlace</a>.${extrasNote}</p><p>— NALUNA</p>` },
     it: { subject: `La tua canzone per ${order.recipient} è pronta`,
-      html: `<p>Ciao,</p><p>La tua canzone personalizzata per <strong>${safeRecipient}</strong> è pronta.</p><p><a href="${downloadUrl}">Scarica la canzone</a></p><p>Puoi trovarla sempre su <a href="${accessUrl}">questo link</a>.${extrasNote}</p><p>— NALUNA</p>` },
+      html: `<p>Ciao,</p><p>La tua canzone personalizzata per <strong>${safeRecipient}</strong> è pronta.</p><p><a href="${downloadUrl}">Scarica la canzone</a></p>${giftLine}${videoLine}<p>Puoi trovarle sempre su <a href="${accessUrl}">questo link</a>.${extrasNote}</p><p>— NALUNA</p>` },
     fr: { subject: `Votre chanson pour ${order.recipient} est prête`,
-      html: `<p>Bonjour,</p><p>Votre chanson personnalisée pour <strong>${safeRecipient}</strong> est prête.</p><p><a href="${downloadUrl}">Télécharger la chanson</a></p><p>Vous pouvez la retrouver à tout moment via <a href="${accessUrl}">ce lien</a>.${extrasNote}</p><p>— NALUNA</p>` },
+      html: `<p>Bonjour,</p><p>Votre chanson personnalisée pour <strong>${safeRecipient}</strong> est prête.</p><p><a href="${downloadUrl}">Télécharger la chanson</a></p>${giftLine}${videoLine}<p>Vous pouvez les retrouver à tout moment via <a href="${accessUrl}">ce lien</a>.${extrasNote}</p><p>— NALUNA</p>` },
     bg: { subject: `Твоята песен за ${order.recipient} е готова`,
-      html: `<p>Здравей,</p><p>Твоята персонализирана песен за <strong>${safeRecipient}</strong> е готова.</p><p><a href="${downloadUrl}">Изтегли песента</a></p><p>Можеш да я намериш винаги на <a href="${accessUrl}">този линк</a>.${extrasNote}</p><p>— NALUNA</p>` },
+      html: `<p>Здравей,</p><p>Твоята персонализирана песен за <strong>${safeRecipient}</strong> е готова.</p><p><a href="${downloadUrl}">Изтегли песента</a></p>${giftLine}${videoLine}<p>Можеш да ги намериш винаги на <a href="${accessUrl}">този линк</a>.${extrasNote}</p><p>— NALUNA</p>` },
     tr: { subject: `${order.recipient} için şarkınız hazır`,
-      html: `<p>Merhaba,</p><p><strong>${safeRecipient}</strong> için kişiselleştirilmiş şarkınız hazır.</p><p><a href="${downloadUrl}">Şarkınızı indirin</a></p><p><a href="${accessUrl}">Bu bağlantıdan</a> her zaman ulaşabilirsiniz.${extrasNote}</p><p>— NALUNA</p>` }
+      html: `<p>Merhaba,</p><p><strong>${safeRecipient}</strong> için kişiselleştirilmiş şarkınız hazır.</p><p><a href="${downloadUrl}">Şarkınızı indirin</a></p>${giftLine}${videoLine}<p><a href="${accessUrl}">Bu bağlantıdan</a> her zaman ulaşabilirsiniz.${extrasNote}</p><p>— NALUNA</p>` }
   };
 
   const template = templates[order.lang] || templates.ro;

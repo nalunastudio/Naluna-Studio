@@ -102,6 +102,7 @@
   .variant-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
   .variant-label{ font-weight:600; font-size:14px; }
   .variant-progress{ font-size:12px; color:var(--text-secondary); margin-top:8px; letter-spacing:.02em; }
+  .variant-gift-note{ font-size:12px; color:var(--text-secondary); margin:8px 0 0; }
 
   .voice-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:4px; }
   .voice-card{
@@ -348,7 +349,8 @@
       error_title: 'Nu am putut finaliza melodia de această dată', error_sub: 'Nu ai fost taxat.', retry_btn: 'Încearcă din nou', retrying: 'Se reîncearcă...',
       paid_title: 'Melodia ta a fost livrată deja', paid_sub: 'Ai primit deja un email cu linkul de descărcare.',
       heading: (r) => `Melodia pentru ${r}`, dedication: (s) => `Din partea ${s}`,
-      variant1_label: 'Varianta 1', variant2_label: '🎁 A doua variantă, și ea a ta',
+      variant_main_label: 'Varianta principală', variant_gift_label: '🎁 A doua melodie, cadou pentru tine',
+      variant_gift_note: 'După plată vei putea descărca ambele melodii complete.',
       listened: (t, d) => `Ai ascultat ${t} din ${d}`,
       lyrics_empty: 'Versurile nu sunt încă disponibile pentru afișare.',
       lyrics_edited_tag: 'Versuri editate de tine',
@@ -401,7 +403,8 @@
       error_title: 'We could not finish your song this time', error_sub: "You haven't been charged.", retry_btn: 'Try again', retrying: 'Retrying...',
       paid_title: 'Your song has already been delivered', paid_sub: "You've already received an email with the download link.",
       heading: (r) => `The song for ${r}`, dedication: (s) => `From ${s}`,
-      variant1_label: 'Version 1', variant2_label: '🎁 A second version, also yours',
+      variant_main_label: 'Main version', variant_gift_label: '🎁 Your second song, a gift for you',
+      variant_gift_note: 'After payment you\'ll be able to download both complete songs.',
       listened: (t, d) => `You've listened to ${t} of ${d}`,
       lyrics_empty: 'Lyrics are not available to display yet.',
       lyrics_edited_tag: 'Lyrics edited by you',
@@ -454,7 +457,8 @@
       error_title: 'Wir konnten dein Lied dieses Mal nicht fertigstellen', error_sub: 'Du wurdest nicht belastet.', retry_btn: 'Erneut versuchen', retrying: 'Erneuter Versuch...',
       paid_title: 'Dein Lied wurde bereits geliefert', paid_sub: 'Du hast bereits eine E-Mail mit dem Download-Link erhalten.',
       heading: (r) => `Das Lied für ${r}`, dedication: (s) => `Von ${s}`,
-      variant1_label: 'Version 1', variant2_label: '🎁 Eine zweite Version, auch deine',
+      variant_main_label: 'Hauptversion', variant_gift_label: '🎁 Dein zweites Lied, ein Geschenk für dich',
+      variant_gift_note: 'Nach der Zahlung kannst du beide vollständigen Lieder herunterladen.',
       listened: (t, d) => `Du hast ${t} von ${d} gehört`,
       lyrics_empty: 'Der Text steht noch nicht zur Anzeige zur Verfügung.',
       lyrics_edited_tag: 'Von dir bearbeiteter Text',
@@ -507,7 +511,8 @@
       error_title: 'No pudimos terminar tu canción esta vez', error_sub: 'No se te ha cobrado.', retry_btn: 'Intentar de nuevo', retrying: 'Reintentando...',
       paid_title: 'Tu canción ya ha sido entregada', paid_sub: 'Ya has recibido un email con el enlace de descarga.',
       heading: (r) => `La canción para ${r}`, dedication: (s) => `De parte de ${s}`,
-      variant1_label: 'Versión 1', variant2_label: '🎁 Una segunda versión, también tuya',
+      variant_main_label: 'Versión principal', variant_gift_label: '🎁 Tu segunda canción, un regalo para ti',
+      variant_gift_note: 'Después del pago podrás descargar ambas canciones completas.',
       listened: (t, d) => `Has escuchado ${t} de ${d}`,
       lyrics_empty: 'La letra todavía no está disponible para mostrar.',
       lyrics_edited_tag: 'Letra editada por ti',
@@ -560,7 +565,8 @@
       error_title: 'Questa volta non siamo riusciti a completare la tua canzone', error_sub: 'Non ti è stato addebitato nulla.', retry_btn: 'Riprova', retrying: 'Nuovo tentativo...',
       paid_title: 'La tua canzone è già stata consegnata', paid_sub: "Hai già ricevuto un'email con il link per il download.",
       heading: (r) => `La canzone per ${r}`, dedication: (s) => `Da parte di ${s}`,
-      variant1_label: 'Versione 1', variant2_label: '🎁 Una seconda versione, anche questa tua',
+      variant_main_label: 'Versione principale', variant_gift_label: '🎁 La tua seconda canzone, un regalo per te',
+      variant_gift_note: 'Dopo il pagamento potrai scaricare entrambe le canzoni complete.',
       listened: (t, d) => `Hai ascoltato ${t} di ${d}`,
       lyrics_empty: 'Il testo non è ancora disponibile per la visualizzazione.',
       lyrics_edited_tag: 'Testo modificato da te',
@@ -613,7 +619,8 @@
       error_title: "Nous n'avons pas pu terminer votre chanson cette fois-ci", error_sub: "Vous n'avez pas été débité.", retry_btn: 'Réessayer', retrying: 'Nouvelle tentative...',
       paid_title: 'Votre chanson a déjà été livrée', paid_sub: 'Vous avez déjà reçu un email avec le lien de téléchargement.',
       heading: (r) => `La chanson pour ${r}`, dedication: (s) => `De la part de ${s}`,
-      variant1_label: 'Version 1', variant2_label: '🎁 Une deuxième version, aussi à vous',
+      variant_main_label: 'Version principale', variant_gift_label: '🎁 Votre deuxième chanson, un cadeau pour vous',
+      variant_gift_note: 'Après le paiement, vous pourrez télécharger les deux chansons complètes.',
       listened: (t, d) => `Vous avez écouté ${t} sur ${d}`,
       lyrics_empty: "Les paroles ne sont pas encore disponibles à l'affichage.",
       lyrics_edited_tag: 'Paroles modifiées par vous',
@@ -666,7 +673,8 @@
       error_title: 'Този път не успяхме да завършим песента ти', error_sub: 'Не си таксуван.', retry_btn: 'Опитай отново', retrying: 'Нов опит...',
       paid_title: 'Песента ти вече е доставена', paid_sub: 'Вече си получил имейл с линк за изтегляне.',
       heading: (r) => `Песента за ${r}`, dedication: (s) => `От ${s}`,
-      variant1_label: 'Версия 1', variant2_label: '🎁 Втора версия, и тя е твоя',
+      variant_main_label: 'Основна версия', variant_gift_label: '🎁 Втората ти песен, подарък за теб',
+      variant_gift_note: 'След плащането ще можеш да изтеглиш и двете пълни песни.',
       listened: (t, d) => `Изслуша ${t} от ${d}`,
       lyrics_empty: 'Текстът все още не е наличен за показване.',
       lyrics_edited_tag: 'Текст, редактиран от теб',
@@ -719,7 +727,8 @@
       error_title: 'Bu sefer şarkınızı tamamlayamadık', error_sub: 'Ücretlendirilmediniz.', retry_btn: 'Tekrar dene', retrying: 'Tekrar deneniyor...',
       paid_title: 'Şarkınız zaten teslim edildi', paid_sub: 'İndirme bağlantısını içeren e-postayı zaten aldınız.',
       heading: (r) => `${r} için şarkı`, dedication: (s) => `${s} tarafından`,
-      variant1_label: 'Versiyon 1', variant2_label: '🎁 İkinci bir versiyon, o da sizin',
+      variant_main_label: 'Ana versiyon', variant_gift_label: '🎁 İkinci şarkınız, size bir hediye',
+      variant_gift_note: 'Ödemeden sonra her iki tam şarkıyı da indirebileceksiniz.',
       listened: (t, d) => `${d} şarkının ${t} kadarını dinlediniz`,
       lyrics_empty: 'Sözler henüz görüntülenmeye hazır değil.',
       lyrics_edited_tag: 'Sizin tarafınızdan düzenlenen sözler',
@@ -1013,7 +1022,11 @@
       card.className = 'variant-card' + (i === selectedVariantIndex ? ' selected' : '');
       card.dataset.index = i;
 
-      const label = i === 0 ? t.variant1_label : t.variant2_label;
+      // Eticheta "cadou" urmareste DINAMIC selectia curenta (nu pozitia in array) — varianta
+      // NEALEASA ca principala e mereu cea numita "melodia cadou", indiferent daca clientul a
+      // ales varianta 1 sau varianta 2 ca favorita. Vezi si server.js: getGiftVariant().
+      const isSelected = i === selectedVariantIndex;
+      const label = isSelected ? t.variant_main_label : t.variant_gift_label;
       const lyricsTextRaw = (v.editedLyrics && v.editedLyrics.trim()) ? v.editedLyrics : v.originalLyrics;
       const lyricsText = translateSectionLabelsForDisplay(lyricsTextRaw, order.lang);
       const wasEdited = !!(v.editedLyrics && v.editedLyrics.trim());
@@ -1029,6 +1042,7 @@
         <div class="variant-head"><span class="variant-label">${label}</span></div>
         <audio class="variant-audio" controls style="width:100%;" src="${v.previewUrl}?t=${Date.now()}"></audio>
         <div class="variant-progress">${t.listened('0:00', formatTime(v.durationSeconds))}</div>
+        ${isSelected ? '' : `<p class="variant-gift-note">${t.variant_gift_note}</p>`}
         ${lyricsHtml}
         <button type="button" class="btn btn-ghost btn-small edit-lyrics-btn" data-variant-id="${v.id}">${t.edit_lyrics_btn}</button>
       `;
