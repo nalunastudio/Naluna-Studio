@@ -1282,9 +1282,15 @@ app.post('/api/orders/:orderId/generate', generationLimiter, requireOrderToken, 
     // in timp ce primul e inca activ, consumand credite degeaba pentru aceeasi comanda.
     // NU pornim un task nou — in schimb, daca exista deja un music_task_id valid, relansam
     // (in fundal, garda impotriva suprapunerii) o verificare a task-ului existent, ca
-    // "plasa de siguranta" suplimentara fata de callback-ul SunoAPI.
+    // "plasa de siguranta" suplimentara fata de callback-ul SunoAPI. Premium/Video (doua
+    // sarcini): CRITIC sa folosim resumeDualTaskPolling (asteapta+finalizeaza AMBELE sarcini),
+    // nu resumeExistingTaskPolling (o singura sarcina) — altfel o comanda ramasa 'generating'
+    // peste fereastra locala de polling a rundei initiale (vezi waitForDualTaskAndFinalize)
+    // nu ar mai putea fi NICIODATA recuperata automat.
     if (order.status === 'generating' || order.status === 'processing_provider_result') {
-      if (order.musicTaskId) {
+      if (order.musicTaskId2) {
+        resumeDualTaskPolling(order.id);
+      } else if (order.musicTaskId) {
         resumeExistingTaskPolling(order.id, order.musicTaskId);
       }
       return res.status(409).json({ error: 'Generarea este deja în desfășurare.' });
@@ -1392,8 +1398,12 @@ app.post('/api/orders/:orderId/regenerate', generationLimiter, requireOrderToken
       if (fresh && fresh.generationAttempts >= credits.MAX_GENERATION_ATTEMPTS) {
         return res.status(429).json({ error: 'Ai atins numărul maxim de încercări pentru această comandă. Contactează-ne pentru ajutor.' });
       }
-      if (fresh && (fresh.status === 'generating' || fresh.status === 'processing_provider_result') && fresh.musicTaskId) {
-        resumeExistingTaskPolling(order.id, fresh.musicTaskId);
+      if (fresh && (fresh.status === 'generating' || fresh.status === 'processing_provider_result')) {
+        if (fresh.musicTaskId2) {
+          resumeDualTaskPolling(order.id);
+        } else if (fresh.musicTaskId) {
+          resumeExistingTaskPolling(order.id, fresh.musicTaskId);
+        }
       }
       return res.status(409).json({ error: 'Generarea este deja în desfășurare.' });
     }
@@ -2704,6 +2714,23 @@ async function runGeneration(orderId, feedback, options = {}) {
   await db.updateOrder(orderId, { musicTaskId: taskId1, musicTaskId2: taskId2 });
   perfLog(orderId, 'dual_genre_tasks_created', `gen1=${order.genre}, gen2=${order.genre2}`);
 
+  await waitForDualTaskAndFinalize(orderId, taskId1, order.genre, taskId2, order.genre2);
+}
+
+// Extras din runGeneration (Premium/Video) — asteapta AMBELE sarcini Suno independente si
+// finalizeaza doar daca AMBELE reusesc. Reutilizat si de reluarea polling-ului (vezi
+// resumeDualTaskPolling mai jos): fereastra locala de polling a unei SINGURE treceri prin
+// pollForResult (90 incercari * 6s = 9 minute, vezi maxAttempts implicit) poate sa nu fie
+// suficienta pentru DOUA generari Suno simultane — daca ambele Promise.all(...) din
+// pollForResult ajung la 'LOCAL_POLL_TIMEOUT' inainte ca furnizorul sa raporteze un status
+// final, runGeneration se termina fara sa finalizeze NIMIC, lasand comanda 'generating' la
+// nesfarsit — DECAT daca exista o cale explicita de reluare care sa apeleze din nou aceasta
+// functie, cu ACEIASI doi taskId (nu cream niciodata sarcini Suno noi la o reluare — doar
+// verificam din nou statusul celor deja pornite). Inainte de acest hotfix, plasa de siguranta
+// (POST /generate si /regenerate, ramura "deja in desfasurare") relua polling-ul DOAR pentru
+// musicTaskId (prima sarcina), niciodata musicTaskId2 — o comanda Premium/Video ramasa
+// blocata dupa expirarea ferestrei locale nu putea fi niciodata recuperata automat.
+async function waitForDualTaskAndFinalize(orderId, taskId1, genre1, taskId2, genre2) {
   const [r1, r2] = await Promise.all([
     pollForResult(taskId1, orderId),
     pollForResult(taskId2, orderId)
@@ -2718,13 +2745,37 @@ async function runGeneration(orderId, feedback, options = {}) {
   if (r1.status === 'LOCAL_POLL_TIMEOUT' || r2.status === 'LOCAL_POLL_TIMEOUT') return; // ramane 'generating', se reia
 
   if (r1.status !== SUNO_SUCCESS_STATUS || r2.status !== SUNO_SUCCESS_STATUS) {
-    throw new Error(`Generare esuata pentru unul din cele doua genuri (gen1="${order.genre}": ${r1.status}, gen2="${order.genre2}": ${r2.status}).`);
+    throw new Error(`Generare esuata pentru unul din cele doua genuri (gen1="${genre1}": ${r1.status}, gen2="${genre2}": ${r2.status}).`);
   }
 
   await finalizeVariantsIfNeeded(orderId, [
-    { tracks: r1.tracks, genre: order.genre, taskId: taskId1 },
-    { tracks: r2.tracks, genre: order.genre2, taskId: taskId2 }
+    { tracks: r1.tracks, genre: genre1, taskId: taskId1 },
+    { tracks: r2.tracks, genre: genre2, taskId: taskId2 }
   ]);
+}
+
+// Reluare pentru comenzi Premium/Video (doua sarcini) ramase 'generating' peste fereastra
+// locala de polling — simetrica cu resumeExistingTaskPolling (comenzi cu o singura sarcina),
+// dar asteapta din nou AMBELE sarcini existente (fara sa creeze niciuna noua) si finalizeaza
+// atomic prin acelasi waitForDualTaskAndFinalize folosit si la generarea initiala.
+async function resumeDualTaskPolling(orderId) {
+  if (activePollResumptions.has(orderId)) return; // deja se verifica in alta parte
+  activePollResumptions.add(orderId);
+  try {
+    const order = await db.getOrderById(orderId);
+    if (!order || !order.musicTaskId || !order.musicTaskId2) return;
+    await waitForDualTaskAndFinalize(orderId, order.musicTaskId, order.genre, order.musicTaskId2, order.genre2);
+  } catch (err) {
+    console.error(`Reluare polling dual pentru comanda ${orderId}:`, err.message);
+    await db.refundEditIfReserved(orderId).catch(refundErr => {
+      console.error(`Eroare la restituirea editarii pentru comanda ${orderId}:`, refundErr.message);
+    });
+    await db.updateOrder(orderId, { status: 'generation_failed', error: String(err.message || err).slice(0, 500) }).catch(dbErr => {
+      console.error('Eroare suplimentara la salvarea starii de esec:', dbErr.message);
+    });
+  } finally {
+    activePollResumptions.delete(orderId);
+  }
 }
 
 // Descarca+taie+urca in stocare fiecare piesa primita de la Suno, si scrie variantele
@@ -3805,7 +3856,13 @@ async function callMusicProvider(orderId, prompt) {
 // music_task_id. Callback-ul SunoAPI (configurat cu callBackUrl la crearea task-ului) poate
 // finaliza comanda oricand mai tarziu, independent de aceasta bucla locala.
 // ==========================================================================================
-async function pollForResult(taskId, orderId, maxAttempts = 90, intervalMs = 6000) {
+// maxAttempts implicit 150 * intervalMs 6s = 15 minute — marit fata de valoarea initiala
+// (9 minute) dupa un test real Premium (doua genuri, generate in paralel) care a depasit
+// 9 minute per sarcina fara nicio eroare Suno reala, doar generare mai lenta decat o
+// singura sarcina. Fereastra locala e oricum doar un "cel mai probabil" — vezi
+// waitForDualTaskAndFinalize/resumeDualTaskPolling pentru reluarea REALA cand nici 15
+// minute nu sunt suficiente.
+async function pollForResult(taskId, orderId, maxAttempts = 150, intervalMs = 6000) {
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise(r => setTimeout(r, intervalMs));
 
