@@ -520,40 +520,40 @@
       // client), separat, doar audio. Un singur videoclip, o singura melodie principala,
       // o singura melodie cadou — niciodata un al doilea videoclip sau o a treia melodie.
       // Standard/Premium raman NESCHIMBATE (playerul principal + melodia cadou, fara video).
+      // Elementele media (audio/video) sunt DOAR placeholder-uri goale aici — montate explicit
+      // prin API DOM (mountMedia) DUPA ce innerHTML e asignat mai jos, niciodata interpolate
+      // direct ca "<audio src=...>"/"<video src=...>" in acest string (vezi comentariul de la
+      // mountMedia despre de ce).
       let resultHtml;
+      let videoUrl = null;
       if (data.plan === 'video' && variant.hasVideo) {
-        const videoUrl = `/media/video/${orderId}?token=${encodeURIComponent(accessToken || '')}`;
+        videoUrl = `/media/video/${orderId}?token=${encodeURIComponent(accessToken || '')}`;
         resultHtml = `
         <h2 style="margin-top:8px;">${t.video_gift_title}</h2>
-        <video controls playsinline preload="metadata" src="${videoUrl}"></video>
-        <br>
+        <div id="gift-video-wrap"></div>
         <a class="btn" href="${videoUrl}" download>${t.download_video}</a>
 
         <div style="margin-top:24px; padding-top:20px; border-top:1px solid var(--line);">
           <h2>${t.video_song_title}</h2>
-          <audio controls src="${fullUrl}"></audio>
-          <br>
+          <div id="main-audio-wrap"></div>
           <a class="btn" href="${fullUrl}" download>${t.download}</a>
         </div>
 
         ${giftUrl ? `
         <div style="margin-top:24px; padding-top:20px; border-top:1px solid var(--line);">
           <h2>${t.video_gift_song_title}</h2>
-          <audio controls src="${giftUrl}"></audio>
-          <br>
+          <div id="gift-audio-wrap"></div>
           <a class="btn" href="${giftUrl}" download>${t.gift_download}</a>
         </div>` : ''}`;
       } else {
         resultHtml = `
-        <audio controls src="${fullUrl}"></audio>
-        <br>
+        <div id="main-audio-wrap"></div>
         <a class="btn" href="${fullUrl}" download>${t.download}</a>
         ${extrasHtml}
         ${giftUrl ? `
         <div style="margin-top:24px; padding-top:20px; border-top:1px solid var(--line);">
           <h2>${t.gift_title}</h2>
-          <audio controls src="${giftUrl}"></audio>
-          <br>
+          <div id="gift-audio-wrap"></div>
           <a class="btn" href="${giftUrl}" download>${t.gift_download}</a>
         </div>` : ''}`;
       }
@@ -565,6 +565,10 @@
         ${resultHtml}
         ${renderMemories(data, variant)}
       `;
+
+      if (videoUrl) mountMedia(document.getElementById('gift-video-wrap'), videoUrl, 'video');
+      mountMedia(document.getElementById('main-audio-wrap'), fullUrl, 'audio');
+      if (giftUrl) mountMedia(document.getElementById('gift-audio-wrap'), giftUrl, 'audio');
 
       wireMemoriesEvents();
 
