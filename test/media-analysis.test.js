@@ -16,6 +16,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   bufferMatchesDeclaredType,
+  inferMediaType,
   normalizeSectionType,
   extractSectionMarkersFromAlignedWords,
   deriveSectionTimings,
@@ -24,6 +25,9 @@ const {
   MEMORY_SECTION_ORDER,
   sortMediaBySection
 } = require('../lib/media-analysis');
+
+const PHOTO_MIMES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
+const VIDEO_MIMES = ['video/mp4', 'video/quicktime', 'video/webm'];
 
 test('bufferMatchesDeclaredType — accepta JPEG real', () => {
   const buf = Buffer.from([0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10]);
@@ -252,4 +256,49 @@ test('sortMediaBySection — ordoneaza dupa eticheta clientului, pastreaza ordin
 
 test('MEMORY_SECTION_ORDER — contine exact cele 5 chei canonice folosite de UI-ul de upload', () => {
   assert.deepEqual(MEMORY_SECTION_ORDER, ['beginning', 'verse1', 'chorus', 'verse2', 'ending']);
+});
+
+// HOTFIX 2026-08-07: uploadurile de pe iPhone (Safari iOS) esuau COMPLET pentru ca serverul
+// accepta STRICT mimetype-ul brut trimis de browser, gol/generic pentru HEIC sau fisiere
+// nematerializate din iCloud. inferMediaType() adauga fallback pe extensie — testat izolat.
+test('inferMediaType — mimetype valid de la browser, folosit direct (fara fallback)', () => {
+  const r = inferMediaType('poza.jpg', 'image/jpeg', PHOTO_MIMES, VIDEO_MIMES);
+  assert.deepEqual(r, { type: 'photo', mimetype: 'image/jpeg' });
+});
+
+test('inferMediaType — mimetype gol (Safari iOS pentru HEIC) -> fallback pe extensie', () => {
+  const r = inferMediaType('IMG_1234.heic', '', PHOTO_MIMES, VIDEO_MIMES);
+  assert.deepEqual(r, { type: 'photo', mimetype: 'image/heic' });
+});
+
+test('inferMediaType — extensie cu MAJUSCULE (IMG_1234.HEIC) -> fallback functioneaza case-insensitive', () => {
+  const r = inferMediaType('IMG_1234.HEIC', 'application/octet-stream', PHOTO_MIMES, VIDEO_MIMES);
+  assert.deepEqual(r, { type: 'photo', mimetype: 'image/heic' });
+});
+
+test('inferMediaType — MOV cu mimetype generic "application/octet-stream" -> fallback pe extensie .mov', () => {
+  const r = inferMediaType('IMG_5678.MOV', 'application/octet-stream', PHOTO_MIMES, VIDEO_MIMES);
+  assert.deepEqual(r, { type: 'video', mimetype: 'video/quicktime' });
+});
+
+test('inferMediaType — video/quicktime valid de la browser, folosit direct', () => {
+  const r = inferMediaType('clip.mov', 'video/quicktime', PHOTO_MIMES, VIDEO_MIMES);
+  assert.deepEqual(r, { type: 'video', mimetype: 'video/quicktime' });
+});
+
+test('inferMediaType — nume cu mai multe puncte, extensia reala e ultima', () => {
+  const r = inferMediaType('vacanta.2026.iulie.mp4', '', PHOTO_MIMES, VIDEO_MIMES);
+  assert.deepEqual(r, { type: 'video', mimetype: 'video/mp4' });
+});
+
+test('inferMediaType — nici mimetype, nici extensie recunoscute -> null (respins), nu o presupunere', () => {
+  assert.equal(inferMediaType('document.pdf', 'application/pdf', PHOTO_MIMES, VIDEO_MIMES), null);
+  assert.equal(inferMediaType('fara-extensie', '', PHOTO_MIMES, VIDEO_MIMES), null);
+});
+
+test('inferMediaType — mimetype-ul brut are prioritate fata de o extensie contradictorie', () => {
+  // fisier declarat explicit video/mp4 de catre browser, cu o extensie derutanta — avem
+  // incredere in mimetype-ul valid, nu incercam sa "corectam" ceva ce nu e stricat.
+  const r = inferMediaType('export.jpg', 'video/mp4', PHOTO_MIMES, VIDEO_MIMES);
+  assert.deepEqual(r, { type: 'video', mimetype: 'video/mp4' });
 });
