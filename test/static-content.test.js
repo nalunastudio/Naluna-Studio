@@ -97,3 +97,40 @@ test('scenariul 17: emailul de livrare include link direct catre videoclip pentr
   assert.ok(server.includes('videoUrlForEmail'), 'emailul trebuie sa construiasca un link direct catre videoclip');
   assert.ok(server.includes('hasVideoForEmail'), 'linkul catre videoclip trebuie sa fie conditionat de existenta lui reala');
 });
+
+// ==========================================================================================
+// HOTFIX 2026-08-07 — upload iPhone si generare Premium blocata (root cause confirmat prin
+// investigatie live in productie, vezi raportul hotfix pentru detalii complete).
+// ==========================================================================================
+
+test('hotfix upload iPhone: coada de incarcare limiteaza concurenta explicit (nu porneste toate fisierele deodata)', () => {
+  const html = read('public/melodia-mea.html');
+  assert.ok(html.includes('MAX_CONCURRENT_UPLOADS'), 'trebuie sa existe o limita explicita de uploaduri simultane');
+  assert.ok(html.includes('processUploadQueue'), 'trebuie sa existe o functie care porneste doar cate un numar limitat de uploaduri deodata');
+  assert.ok(
+    !/files\.forEach\(file => \{[\s\S]{0,300}startUpload\(entry\);/.test(html),
+    'selectarea fisierelor NU mai trebuie sa apeleze startUpload() direct, sincron, pentru fiecare fisier'
+  );
+});
+
+test('hotfix upload iPhone: fiecare upload are un timeout explicit, niciodata spinner etern', () => {
+  const html = read('public/melodia-mea.html');
+  assert.ok(html.includes('xhr.timeout'), 'trebuie setat un timeout explicit pe XMLHttpRequest');
+  assert.ok(html.includes('xhr.ontimeout'), 'timeoutul trebuie sa produca o stare finala de eroare, nu ramane blocat');
+});
+
+test('hotfix upload iPhone: backend accepta fallback pe extensie cand mimetype-ul de la browser lipseste/e generic', () => {
+  const server = read('server.js');
+  assert.ok(server.includes('inferMediaType'), 'ruta de upload trebuie sa foloseasca inferMediaType (fallback pe extensie)');
+});
+
+test('hotfix upload iPhone: ruta de upload logheaza diagnostic sigur (fara token/URL semnat/nume de fisier)', () => {
+  const server = read('server.js');
+  assert.ok(/perfLog\(order\.id, 'media_upload'/.test(server), 'trebuie sa existe un log de diagnostic pentru fiecare cerere de upload');
+});
+
+test('hotfix Premium blocat: pagina de asteptare reverifica statusul imediat la revenirea din fundal', () => {
+  const html = read('public/se-compune.html');
+  assert.ok(html.includes("visibilitychange"), 'trebuie sa existe un listener pentru revenirea tab-ului in prim-plan');
+  assert.ok(html.includes('forceImmediatePoll'), 'revenirea in prim-plan trebuie sa forteze o verificare imediata a starii reale');
+});

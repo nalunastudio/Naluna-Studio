@@ -55,6 +55,7 @@ const storage = require('./storage');
 const credits = require('./credits');
 const {
   bufferMatchesDeclaredType,
+  inferMediaType,
   normalizeSectionType,
   extractSectionMarkersFromAlignedWords,
   deriveSectionTimings,
@@ -1713,36 +1714,68 @@ app.post('/api/orders/:orderId/media', requireOrderToken, handleOrderMediaUpload
 
     // Validare (magic bytes + decodare ffprobe REALA de pe disc) — inainte de orice scriere
     // in baza de date, deci nu blocheaza tranzactia atomica de mai jos cu I/O lent.
+    //
+    // HOTFIX 2026-08-07: tipul (photo/video) NU se mai decide STRICT dupa Content-Type-ul
+    // trimis de browser — Safari iOS poate trimite un mimetype gol sau generic
+    // ("application/octet-stream") pentru HEIC/HEIF sau pentru fisiere inca nematerializate
+    // din iCloud, desi fisierul e perfect valid; inainte, un asemenea fisier era respins
+    // INSTANT, fara nicio verificare de continut. inferMediaType() incearca intai mimetype-ul
+    // brut, apoi extensia numelui de fisier (case-insensitive) — extensia NU inlocuieste
+    // validarea reala de continut de mai jos (bufferMatchesDeclaredType/ffprobe), doar alege
+    // ce semnatura sa verificam.
     const uploaded = [];
     const failed = [];
+    let rejectedNoType = 0;
+    let rejectedBadContent = 0;
+    let rejectedUndecodable = 0;
+    let rejectedStorageError = 0;
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       const label = file.originalname || `fișier ${i + 1}`;
-      const type = ORDER_MEDIA_MIME_TYPES.photo.includes(file.mimetype) ? 'photo'
-        : ORDER_MEDIA_MIME_TYPES.video.includes(file.mimetype) ? 'video' : null;
-      if (!type) { failed.push({ filename: label, reason: `Tip de fișier neacceptat: ${file.mimetype}` }); continue; }
+      const inferred = inferMediaType(file.originalname, file.mimetype, ORDER_MEDIA_MIME_TYPES.photo, ORDER_MEDIA_MIME_TYPES.video);
+      if (!inferred) {
+        rejectedNoType++;
+        failed.push({ filename: label, reason: `Tip de fișier neacceptat. Sunt acceptate: JPG, PNG, WEBP, HEIC/HEIF pentru fotografii și MP4, MOV, WEBM pentru videoclipuri.` });
+        continue;
+      }
+      const { type, mimetype: effectiveMimetype } = inferred;
 
       const header = await readFileHeader(file.path, 16);
-      if (!bufferMatchesDeclaredType(header, file.mimetype)) {
+      if (!bufferMatchesDeclaredType(header, effectiveMimetype)) {
+        rejectedBadContent++;
         failed.push({ filename: label, reason: 'Conținutul fișierului nu corespunde tipului declarat.' });
         continue;
       }
-      const decodable = await verifyMediaDecodable(file.path, file.mimetype, type);
+      const decodable = await verifyMediaDecodable(file.path, effectiveMimetype, type);
       if (!decodable.ok) {
+        rejectedUndecodable++;
         failed.push({ filename: label, reason: `Fișierul nu poate fi procesat (${decodable.reason}). Încearcă alt fișier sau alt format.` });
         continue;
       }
       const ext = path.extname(file.originalname).toLowerCase() || (type === 'photo' ? '.jpg' : '.mp4');
       const key = `orders/memories/${order.id}/${randomUUID()}${ext}`;
       try {
-        await storage.uploadPrivateFile(file.path, key, file.mimetype);
+        await storage.uploadPrivateFile(file.path, key, effectiveMimetype);
       } catch (err) {
+        rejectedStorageError++;
         failed.push({ filename: label, reason: 'Eroare la salvare — te rugăm încearcă din nou.' });
         continue;
       }
       uploaded.push({ key, type, section: (typeof sections[i] === 'string' && sections[i].trim()) ? sections[i].trim() : null, filename: label });
     }
     cleanup();
+
+    // Diagnostic SIGUR (fara token, URL semnat, cheie de storage sau nume de fisier client) —
+    // gasit lipsind exact in incidentul care a cauzat acest hotfix: uploadul esua complet, pe
+    // iPhone, fara NICIUN log server-side care sa explice de ce (vezi comentariul hotfix de mai
+    // sus). orderId trunchiat la 8 caractere, acelasi tipar ca perfLog().
+    if (failed.length > 0 || uploaded.length > 0) {
+      perfLog(order.id, 'media_upload', `primite=${files.length}, reusite=${uploaded.length}, esuate=${failed.length}` +
+        (rejectedNoType ? `, tip_neacceptat=${rejectedNoType}` : '') +
+        (rejectedBadContent ? `, continut_invalid=${rejectedBadContent}` : '') +
+        (rejectedUndecodable ? `, nedecodabil=${rejectedUndecodable}` : '') +
+        (rejectedStorageError ? `, eroare_storage=${rejectedStorageError}` : ''));
+    }
 
     if (uploaded.length === 0) {
       return res.json({ uploaded: [], failed, total: (order.uploadedMedia || []).length });

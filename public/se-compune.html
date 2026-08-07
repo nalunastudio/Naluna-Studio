@@ -539,6 +539,30 @@
   }
   pollStatus();
 
+  // ==========================================================================================
+  // HOTFIX 2026-08-07: pe iPhone, pagina putea parea "blocata" la "Melodia ta se compune acum"
+  // desi generarea se terminase deja cu succes in fundal — confirmat direct intr-un incident
+  // live (comanda Premium reala, verificata in baza de date de productie: statusul ajunsese
+  // 'preview_ready' cu ambele variante gata, dar interfata ramasese pe ecranul de asteptare).
+  // Cauza cea mai probabila: Safari iOS poate suspenda setTimeout-urile unei pagini cat timp
+  // tab-ul nu e vizibil (ecran blocat, schimbare de aplicatie) — lantul de polling la 4s isi
+  // revine la loc cand tab-ul redevine vizibil, dar poate intarzia perceptibil, si utilizatorul
+  // vede in continuare ecranul vechi pana atunci. Fortam aici o verificare IMEDIATA a starii
+  // reale de fiecare data cand tab-ul redevine vizibil (sau pagina e restaurata din bfcache),
+  // fara sa mai asteptam ca timer-ul intrerupt sa se reactiveze singur.
+  // ==========================================================================================
+  function forceImmediatePoll() {
+    if (finished) return;
+    if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+    pollStatus();
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) forceImmediatePoll();
+  });
+  window.addEventListener('pageshow', (event) => {
+    if (event.persisted) forceImmediatePoll();
+  });
+
   // -------- Reincercare STRICT manuala — singurul loc din pagina care apeleaza /generate.
   // Trimite o singura cerere, dezactiveaza butonul imediat (previne dublu-click), verifica
   // raspunsul HTTP explicit (inclusiv 409 — generare deja in curs, gestionat ca succes,
