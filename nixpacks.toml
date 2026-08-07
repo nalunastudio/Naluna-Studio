@@ -1,21 +1,14 @@
-# nixpacks.toml — configurare build pentru Railway
+# nixpacks.toml — PASTRAT DOAR PENTRU REFERINTA ISTORICA.
 #
-# "..." extinde pachetele detectate automat de Nixpacks pentru proiect (Node.js, npm) —
-# FARA acest spread, array-ul de mai jos ar INLOCUI complet lista auto-detectata, iar
-# Node.js nu ar mai fi instalat deloc (aplicatia nu ar mai porni).
+# HOTFIX 2026-08-07: confirmat direct in build logs Railway ("using build driver
+# railpack-v0.35.0") ca proiectul a migrat de la builder-ul Nixpacks la **Railpack** — acest
+# fisier NU mai e citit de build-ul curent. Pachetele de sistem reale (ffmpeg, exiftool) sunt
+# instalate prin variabila de mediu `RAILPACK_DEPLOY_APT_PACKAGES`, setata direct pe fiecare
+# serviciu Railway (staging + productie), NU printr-un fisier din git. Vezi README.md.
 #
-# Am folosit anterior `aptPkgs = ["ffmpeg"]`, care in practica s-a dovedit nesigur pe
-# Railway pentru exact acest pachet — mai multi dezvoltatori au raportat aceeasi eroare
-# ("ffmpeg": executable file not found / ENOENT) cu acea configurare. `nixPkgs` e metoda
-# documentata oficial si confirmata ca functioneaza pentru ffmpeg.
-#
-# exiftool (hotfix 2026-08-07, suport DNG/Apple ProRAW): ffmpeg NU poate decodifica fisiere
-# DNG (raw de la senzor, needemozaicat) — verificat direct, fara "dng" printre decoders. In
-# schimb, fisierele Apple ProRAW includ intotdeauna o previzualizare JPEG completa, la
-# rezolutia integrala a senzorului, incorporata in structura TIFF a DNG-ului — verificat pe
-# un fisier real (iPhone 12 Pro, raw.pixls.us): PreviewImage la exact 4032x3024, aceeasi
-# rezolutie ca senzorul. exiftool extrage aceasta previzualizare (vezi extractDngPreviewToJpeg
-# in server.js) — suficienta pentru fundalul unui videoclip, fara nevoia unui demozaic RAW
-# complet (dcraw/libraw), mult mai greu de intretinut si inutil de precis pentru acest scop.
+# Descoperit cand testul real cu un fisier DNG a esuat pe staging desi codul functiona local:
+# adaugarea lui "exiftool" AICI nu avea niciun efect (build-ul nu citea deloc fisierul), fara
+# nicio eroare vizibila — repara reala a fost `railway variables --set
+# "RAILPACK_DEPLOY_APT_PACKAGES=... ffmpeg exiftool"` pe fiecare serviciu.
 [phases.setup]
 nixPkgs = ["...", "ffmpeg", "exiftool"]
