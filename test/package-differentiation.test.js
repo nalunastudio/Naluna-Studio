@@ -51,6 +51,22 @@ test('POST /api/orders/:orderId/regenerate: Premium/Video regenereaza DOAR varia
   );
 });
 
+test('Comenzile Premium/Video ramase "generating" pot fi reluate SI finalizate pentru AMBELE sarcini, nu doar prima', () => {
+  const server = read('server.js');
+  assert.ok(server.includes('async function resumeDualTaskPolling(orderId)'), 'trebuie sa existe o reluare dedicata pentru comenzi cu doua sarcini Suno');
+  assert.ok(server.includes('async function waitForDualTaskAndFinalize('), 'logica de asteptare+finalizare duala trebuie extrasa intr-o functie reutilizabila');
+  assert.match(
+    server,
+    /if \(order\.musicTaskId2\) \{\s*resumeDualTaskPolling\(order\.id\);/,
+    'ruta POST /generate trebuie sa reia AMBELE sarcini (resumeDualTaskPolling) pentru comenzi cu musicTaskId2, nu doar prima'
+  );
+  assert.match(
+    server,
+    /if \(fresh\.musicTaskId2\) \{\s*resumeDualTaskPolling\(order\.id\);/,
+    'ruta POST /regenerate trebuie sa reia AMBELE sarcini (resumeDualTaskPolling) pentru comenzi cu musicTaskId2, nu doar prima'
+  );
+});
+
 test('POST /api/music/callback: comenzile cu doua sarcini (musicTaskId2) nu se finalizeaza dintr-un singur callback', () => {
   const server = read('server.js');
   assert.ok(
