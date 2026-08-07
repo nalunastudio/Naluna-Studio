@@ -315,6 +315,9 @@
       el.controls = true;
       el.preload = 'metadata';
       if (tagName === 'video') el.playsInline = true;
+      // media.nalunastudio.com e cross-origin fata de pagina — vezi comentariul din
+      // melodia-mea.html/mountAudio despre de ce crossOrigin explicit conteaza aici.
+      el.crossOrigin = 'anonymous';
 
       let settled = false;
       const loadTimeout = setTimeout(() => { if (!settled) { settled = true; showError(); } }, 15000);

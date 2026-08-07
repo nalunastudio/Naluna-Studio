@@ -2452,7 +2452,17 @@ app.get('/media/video/:orderId', async (req, res, next) => {
     const expectedToken = order ? order.accessToken : DUMMY_TOKEN_FOR_TIMING;
     if (!order || !safeCompare(providedToken, expectedToken)) return denyGeneric();
 
-    if (order.status !== 'ready') return res.status(403).send('Videoclipul se deblochează după plată');
+    // HOTFIX 2026-08-08: fluxul "Cadou video" genereaza videoclipul INAINTE de plata,
+    // exact ca sa poata fi previzualizat de client ca stimulent sa plateasca — dar aceasta
+    // ruta bloca accesul complet pana la 'ready' (platit), deci acel preview nu exista
+    // niciodata cu adevarat (nicio pagina nu afisa vreodata un player video pre-plata).
+    // Ramane un SINGUR fisier video (niciodata unul separat, "de preview") — doar
+    // fereastra de acces se largeste: 'preview_ready' (melodia gata, inainte de plata) SAU
+    // 'ready' (platit) sunt ambele acceptate, intotdeauna cu acelasi token privat de 48
+    // caractere ca protectie (link-ul semnat R2 ramane oricum cu durata scurta, 10 minute).
+    if (order.status !== 'preview_ready' && order.status !== 'ready') {
+      return res.status(403).send('Videoclipul nu este încă disponibil');
+    }
     if (order.plan !== 'video') return denyGeneric();
 
     const variant = (order.variants || []).find(v => v.id === order.selectedVariantId);
