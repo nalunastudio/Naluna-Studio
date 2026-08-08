@@ -130,8 +130,8 @@ test('melodia-mea.html: sectiunea de alegere are titlu + subtext dedicate, afisa
   assert.ok(html.includes('id="standard-choice-title"'), 'elementul de titlu trebuie sa existe in pagina');
   assert.ok(html.includes('id="standard-choice-subtitle"'), 'elementul de subtext trebuie sa existe in pagina');
   assert.ok(
-    html.includes("document.getElementById('standard-choice-title').textContent = t.standard_choice_title;"),
-    'titlul trebuie populat cu textul tradus'
+    html.includes("document.getElementById('standard-choice-title').textContent = `🎵 ${t.standard_choice_title}`;"),
+    'titlul trebuie populat cu textul tradus (+ iconita discreta de nota muzicala)'
   );
   assert.ok(
     html.includes("document.getElementById('standard-choice-subtitle').textContent = t.standard_choice_subtitle;"),
@@ -253,9 +253,40 @@ test('melodia-mea.html: sectiunea de alegere afiseaza doua butoane late, etichet
     'cand ambele variante au acelasi gen, ordinea cuvintelor trebuie sa se schimbe ca sa ramana clar diferentiate'
   );
   assert.ok(
-    html.includes('btn.textContent = isChosen ? `${t.chosen_badge} ✓` : t.choose_variant_btn(genreLabel, isEdited, sameGenre);'),
-    'butonul variantei alese trebuie sa arate bifa si textul "Aleasă ✓"; celalalt ramane etichetat cu genul real'
+    html.includes('btn.textContent = t.choose_variant_btn(genreLabel, isEdited, sameGenre, isChosen);'),
+    'eticheta butonului (ambele stari) trebuie construita printr-o singura functie, cu isChosen ca parametru explicit'
   );
+});
+
+// ==========================================================================================
+// DOUĂ FINISAJE VIZUALE (hotfix 2026-08-08): butonul variantei ALESE trebuie sa PASTREZE
+// denumirea genului vizibila, niciodata inlocuita complet cu "Aleasă ✓" — clientul trebuie sa
+// vada permanent ce melodie a ales (ex. "Emoțional — Aleasă ✓", nu doar "Aleasă ✓").
+// ==========================================================================================
+
+test('melodia-mea.html: butonul variantei ALESE pastreaza genul vizibil, nu il inlocuieste complet cu "Aleasă ✓"', () => {
+  const html = read('public/melodia-mea.html');
+  const idx = html.indexOf("choose_variant_btn: (genre, isEdited, sameGenre, isChosen) => { const v = isEdited ? 'versiunea nouă' : 'versiunea inițială';");
+  assert.ok(idx > -1, 'functia RO choose_variant_btn cu semnatura noua (isChosen) trebuie sa existe');
+  const block = html.slice(idx, idx + 250);
+  assert.ok(
+    block.includes('if (isChosen) return sameGenre ? `${v} — ${genre} — Aleasă ✓` : `${genre} — Aleasă ✓`;'),
+    'starea aleasa trebuie sa contina genul REAL, nu doar bifa/textul "Aleasă ✓" singur'
+  );
+});
+
+test('traduceri: eticheta "PASUL URMĂTOR" exista in toate cele 8 limbi', () => {
+  const html = read('public/melodia-mea.html');
+  const count = (html.match(new RegExp('standard_choice_eyebrow:', 'g')) || []).length;
+  assert.equal(count, 8, `cheia "standard_choice_eyebrow" trebuie sa apara exact 8 ori (cate una per limba), gasita de ${count} ori`);
+});
+
+test('melodia-mea.html: sectiunea de alegere e evidentiata vizual — fundal cald, chenar portocaliu, titlu mare/bold', () => {
+  const html = read('public/melodia-mea.html');
+  assert.ok(html.includes('border:2px solid var(--orange); border-radius:20px;'), 'chenarul portocaliu vizibil trebuie sa existe');
+  assert.ok(html.includes('font-weight:700; font-size:24px;'), 'titlul trebuie sa fie mare si bold');
+  assert.ok(html.includes('id="standard-choice-eyebrow"'), 'eticheta mica "PASUL URMĂTOR" trebuie sa existe in pagina');
+  assert.ok(html.includes('🎵'), 'iconita discreta de nota muzicala trebuie sa existe');
 });
 
 test('melodia-mea.html: cardul selectat Standard primeste chenar portocaliu distinct', () => {
@@ -275,7 +306,7 @@ test('melodia-mea.html: "Editează versurile" si celelalte controale de editare 
 test('traduceri: cheile noi ale imbunatatirii UI exista in toate cele 8 limbi', () => {
   const html = read('public/melodia-mea.html');
   ['confirm_yes_loading', 'checkout_btn_standard', 'msg_regenerating_standard',
-    'standard_choice_title', 'standard_choice_subtitle', 'chosen_badge', 'choose_variant_btn'].forEach(key => {
+    'standard_choice_title', 'standard_choice_subtitle', 'standard_choice_eyebrow', 'choose_variant_btn'].forEach(key => {
     const count = (html.match(new RegExp(key + ':', 'g')) || []).length;
     assert.equal(count, 8, `cheia "${key}" trebuie sa apara exact 8 ori (cate una per limba), gasita de ${count} ori`);
   });
@@ -497,4 +528,57 @@ test('traduceri: regenTitle/regenSubtitle exista in toate cele 8 limbi din se-co
     const count = (html.match(new RegExp(key + ':', 'g')) || []).length;
     assert.equal(count, 8, `cheia "${key}" trebuie sa apara exact 8 ori (cate una per limba), gasita de ${count} ori`);
   });
+});
+
+// ==========================================================================================
+// DOUĂ FINISAJE VIZUALE (hotfix 2026-08-08), Partea 1: ordinea butoanelor in meniul de editare
+// Standard — portocaliu "Creează noua versiune" INTOTDEAUNA inaintea celui de plata (vizual,
+// DOM, tastatura), "Renunță" ultimul. checkoutBtn (mutat in standard-preedit-checkout-slot)
+// nu mai sta inaintea intregului confirm-row — sta ACUM intre confirm-yes si confirm-cancel.
+// ==========================================================================================
+
+test('melodia-mea.html: butonul portocaliu "Creează noua versiune" apare INAINTEA celui de plata in DOM (ordinea ceruta)', () => {
+  const html = read('public/melodia-mea.html');
+  const confirmYesIdx = html.indexOf('id="confirm-yes"');
+  const checkoutSlotIdx = html.indexOf('id="standard-preedit-checkout-slot"');
+  const confirmCancelIdx = html.indexOf('id="confirm-cancel"');
+  assert.ok(confirmYesIdx > -1 && checkoutSlotIdx > -1 && confirmCancelIdx > -1, 'toate cele 3 elemente trebuie sa existe');
+  assert.ok(
+    confirmYesIdx < checkoutSlotIdx && checkoutSlotIdx < confirmCancelIdx,
+    `ordinea DOM trebuie sa fie: portocaliu (${confirmYesIdx}) -> plata (${checkoutSlotIdx}) -> Renunță (${confirmCancelIdx})`
+  );
+});
+
+test('melodia-mea.html: checkoutBtn (Standard, inainte de editare) e mutat ACUM intre confirm-yes si confirm-cancel, nu inaintea intregului confirm-row', () => {
+  const html = read('public/melodia-mea.html');
+  const confirmRowIdx = html.indexOf('id="confirm-row"');
+  const confirmRowBlock = html.slice(confirmRowIdx, confirmRowIdx + 650);
+  assert.ok(
+    confirmRowBlock.includes('id="confirm-yes"') &&
+    confirmRowBlock.includes('id="standard-preedit-checkout-slot"') &&
+    confirmRowBlock.includes('id="confirm-cancel"'),
+    'toate 3 trebuie sa fie in interiorul aceluiasi confirm-row, in aceasta ordine'
+  );
+});
+
+test('melodia-mea.html: la apasarea butonului portocaliu, plata se dezactiveaza temporar (Standard) — nu se poate plati cat timp noua versiune se genereaza', () => {
+  const html = read('public/melodia-mea.html');
+  const idx = html.indexOf("confirmYesBtn.addEventListener('click'");
+  const block = html.slice(idx, idx + 2500);
+  assert.ok(
+    block.includes("if (currentOrder.plan === 'standard') {") && block.includes('checkoutBtn.disabled = true;'),
+    'checkoutBtn trebuie dezactivat explicit la pornirea regenerarii, DOAR pentru Standard (Premium/Video neatinse)'
+  );
+});
+
+test('melodia-mea.html: daca cererea de regenerare esueaza, plata se reactiveaza (Standard)', () => {
+  const html = read('public/melodia-mea.html');
+  const occurrences = (html.match(/if \(currentOrder\.plan === 'standard'\) checkoutBtn\.disabled = false;/g) || []).length;
+  assert.ok(occurrences >= 2, `plata trebuie reactivata in AMBELE ramuri de esec (raspuns cu eroare + eroare de retea), gasite ${occurrences}`);
+});
+
+test('melodia-mea.html: textul de incarcare e "Se creează noua versiune...", nu genericul "Se creează..."', () => {
+  const html = read('public/melodia-mea.html');
+  assert.ok(html.includes("confirm_yes_loading: 'Se creează noua versiune...'"), 'textul RO exact cerut trebuie sa existe');
+  assert.ok(!html.includes("confirm_yes_loading: 'Se creează...'"), 'textul vechi, mai generic, nu mai trebuie sa existe');
 });
