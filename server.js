@@ -2452,17 +2452,15 @@ app.get('/media/video/:orderId', async (req, res, next) => {
     const expectedToken = order ? order.accessToken : DUMMY_TOKEN_FOR_TIMING;
     if (!order || !safeCompare(providedToken, expectedToken)) return denyGeneric();
 
-    // HOTFIX 2026-08-08: fluxul "Cadou video" genereaza videoclipul INAINTE de plata,
-    // exact ca sa poata fi previzualizat de client ca stimulent sa plateasca — dar aceasta
-    // ruta bloca accesul complet pana la 'ready' (platit), deci acel preview nu exista
-    // niciodata cu adevarat (nicio pagina nu afisa vreodata un player video pre-plata).
-    // Ramane un SINGUR fisier video (niciodata unul separat, "de preview") — doar
-    // fereastra de acces se largeste: 'preview_ready' (melodia gata, inainte de plata) SAU
-    // 'ready' (platit) sunt ambele acceptate, intotdeauna cu acelasi token privat de 48
-    // caractere ca protectie (link-ul semnat R2 ramane oricum cu durata scurta, 10 minute).
-    if (order.status !== 'preview_ready' && order.status !== 'ready') {
-      return res.status(403).send('Videoclipul nu este încă disponibil');
-    }
+    // DECIZIE FINALA (hotfix 2026-08-08): videoclipul se GENEREAZA inainte de plata, dar NU
+    // se poate reda inainte de plata — nicio previzualizare video. Incercarea anterioara de a
+    // permite un preview video pre-plata (redirect catre URL semnat R2, cross-origin) e
+    // suspectata ca substrat al unui simptom mult mai grav raportat direct de client
+    // ("Page Unresponsive" — pagina intreaga bloca, nu doar playerul) — eliminata complet.
+    // Inainte de plata, aceasta ruta NU trimite absolut nimic util (fara URL semnat, fara
+    // redirect, fara fragment din fisier) — doar 403. Clientul asculta/editeaza DOAR cele
+    // doua previzualizari audio de 40 de secunde (v.previewUrl, neschimbat).
+    if (order.status !== 'ready') return res.status(403).send('Videoclipul se deblochează după plată');
     if (order.plan !== 'video') return denyGeneric();
 
     const variant = (order.variants || []).find(v => v.id === order.selectedVariantId);

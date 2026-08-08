@@ -209,6 +209,15 @@
   .video-status-msg.ready{ background:rgba(95,143,110,.1); color:var(--success); }
   .video-status-msg.failed, .video-status-msg.stale{ background:rgba(179,87,74,.08); color:var(--error); }
 
+  /* Coperta statica "blocat" pentru videoclipul cadou inainte de plata — fara <video>, fara
+     nicio cerere de retea catre fisierul real. */
+  .gift-video-locked{
+    background:linear-gradient(135deg, #2b2b2b, #1a1a1a); border-radius:16px;
+    padding:48px 24px; text-align:center; color:#f4f0e8;
+  }
+  .gift-video-lock-icon{ font-size:32px; display:block; margin-bottom:12px; }
+  .gift-video-locked p{ font-size:14px; color:#d8d2c4; margin:0; line-height:1.5; }
+
   #status-msg{ margin-top:14px; font-size:13px; text-align:center; }
   .status-ok{ color:var(--success); }
   .status-err{ color:var(--error); }
@@ -291,15 +300,18 @@
           </div>
         </div>
 
-        <!-- Cerinta explicita: pentru pachetul "Cadou video", inainte de plata, se afiseaza
-             AICI (primul, inaintea variantelor audio) un preview protejat (necesita token-ul
-             privat al comenzii) al videoclipului deja randat — acelasi fisier unic folosit si
-             dupa plata (niciodata un al doilea videoclip). Ramane ascuns pentru Standard/Premium
-             si pentru Video cat timp videoclipul inca nu e gata. -->
+        <!-- DECIZIE FINALA (hotfix 2026-08-08): videoclipul se genereaza inainte de plata, dar
+             NU e redabil inainte de plata — nicio previzualizare video, niciun fisier/URL
+             semnat/fragment trimis browserului (vezi server.js, /media/video/:orderId, blocat
+             strict la status='ready'). Afisam DOAR o coperta statica cu lacat si un mesaj —
+             niciun element <video>, nicio cerere de retea catre acea ruta. Ramane ascuns pentru
+             Standard/Premium. -->
         <div id="gift-video-section" style="display:none; margin-bottom:20px;">
           <h2 id="gift-video-title" style="font-family:'Fraunces',serif; font-weight:400; font-size:19px; margin:0 0 10px;"></h2>
-          <div id="gift-video-wrap"></div>
-          <p id="gift-video-error" style="display:none; font-size:13px; color:var(--gold-deep); text-decoration:underline; cursor:pointer; margin:6px 0 0;"></p>
+          <div class="gift-video-locked">
+            <span class="gift-video-lock-icon">🔒</span>
+            <p id="gift-video-locked-msg"></p>
+          </div>
         </div>
 
         <div id="variants-wrap"></div>
@@ -374,7 +386,7 @@
       variant_main_label: 'Varianta principală', variant_gift_label: '🎁 A doua melodie, cadou pentru tine',
       variant_gift_note: 'După plată vei putea descărca ambele melodii complete.',
       genre_emotional: 'Emoțional', genre_suflet: 'De suflet', genre_acustic: 'Acustic / Folk', genre_petrecere: 'Muzică de petrecere', genre_balada: 'Baladă', genre_manele: 'Manele de jale', genre_copii: 'Pentru copii', genre_populara: 'Populară', genre_rock: 'Rock', genre_colind: 'Colind', genre_modern: 'Modern', genre_hiphop: 'Hip-hop', genre_manele_suflet: 'Manele de suflet', genre_motivational: 'Motivațional', genre_pop: 'Pop',
-      variant_second_label: 'A doua melodie', gift_video_title: 'Videoclipul tău cadou', video_song_label: 'Melodia din videoclip', video_gift_song_label: 'Melodia cadou', gift_video_load_error: 'Videoclipul nu s-a putut încărca — atinge pentru a reîncerca.',
+      variant_second_label: 'A doua melodie', gift_video_title: 'Videoclipul tău cadou', video_song_label: 'Melodia din videoclip', video_gift_song_label: 'Melodia cadou', gift_video_locked_msg: 'Videoclipul tău este gata și va fi deblocat după plată.',
       listened: (t, d) => `Ai ascultat ${t} din ${d}`,
       lyrics_empty: 'Versurile nu sunt încă disponibile pentru afișare.',
       lyrics_edited_tag: 'Versuri editate de tine',
@@ -433,7 +445,7 @@
       variant_main_label: 'Main version', variant_gift_label: '🎁 Your second song, a gift for you',
       variant_gift_note: 'After payment you\'ll be able to download both complete songs.',
       genre_emotional: 'Emotional', genre_suflet: 'Soulful', genre_acustic: 'Acoustic / Folk', genre_petrecere: 'Party music', genre_balada: 'Ballad', genre_manele: 'Mournful manele', genre_copii: 'For kids', genre_populara: 'Folk-pop', genre_rock: 'Rock', genre_colind: 'Christmas carol', genre_modern: 'Modern', genre_hiphop: 'Hip-hop', genre_manele_suflet: 'Soulful manele', genre_motivational: 'Motivational', genre_pop: 'Pop',
-      variant_second_label: 'Second song', gift_video_title: 'Your gift video', video_song_label: 'The song in the video', video_gift_song_label: 'The gift song', gift_video_load_error: 'The video could not load — tap to retry.',
+      variant_second_label: 'Second song', gift_video_title: 'Your gift video', video_song_label: 'The song in the video', video_gift_song_label: 'The gift song', gift_video_locked_msg: 'Your video is ready and will unlock after payment.',
       listened: (t, d) => `You've listened to ${t} of ${d}`,
       lyrics_empty: 'Lyrics are not available to display yet.',
       lyrics_edited_tag: 'Lyrics edited by you',
@@ -492,7 +504,7 @@
       variant_main_label: 'Hauptversion', variant_gift_label: '🎁 Dein zweites Lied, ein Geschenk für dich',
       variant_gift_note: 'Nach der Zahlung kannst du beide vollständigen Lieder herunterladen.',
       genre_emotional: 'Emotional', genre_suflet: 'Gefühlvoll', genre_acustic: 'Akustik / Folk', genre_petrecere: 'Partymusik', genre_balada: 'Ballade', genre_manele: 'Manele der Trauer', genre_copii: 'Für Kinder', genre_populara: 'Volkstümlich', genre_rock: 'Rock', genre_colind: 'Weihnachtslied', genre_modern: 'Modern', genre_hiphop: 'Hip-Hop', genre_manele_suflet: 'Manele mit Seele', genre_motivational: 'Motivierend', genre_pop: 'Pop',
-      variant_second_label: 'Zweites Lied', gift_video_title: 'Dein Geschenkvideo', video_song_label: 'Das Lied im Video', video_gift_song_label: 'Das Geschenklied', gift_video_load_error: 'Das Video konnte nicht geladen werden — zum Wiederholen tippen.',
+      variant_second_label: 'Zweites Lied', gift_video_title: 'Dein Geschenkvideo', video_song_label: 'Das Lied im Video', video_gift_song_label: 'Das Geschenklied', gift_video_locked_msg: 'Dein Video ist fertig und wird nach der Zahlung freigeschaltet.',
       listened: (t, d) => `Du hast ${t} von ${d} gehört`,
       lyrics_empty: 'Der Text steht noch nicht zur Anzeige zur Verfügung.',
       lyrics_edited_tag: 'Von dir bearbeiteter Text',
@@ -551,7 +563,7 @@
       variant_main_label: 'Versión principal', variant_gift_label: '🎁 Tu segunda canción, un regalo para ti',
       variant_gift_note: 'Después del pago podrás descargar ambas canciones completas.',
       genre_emotional: 'Emotivo', genre_suflet: 'Con alma', genre_acustic: 'Acústico / Folk', genre_petrecere: 'Música de fiesta', genre_balada: 'Balada', genre_manele: 'Manele de duelo', genre_copii: 'Para niños', genre_populara: 'Popular', genre_rock: 'Rock', genre_colind: 'Villancico', genre_modern: 'Moderno', genre_hiphop: 'Hip-hop', genre_manele_suflet: 'Manele con sentimiento', genre_motivational: 'Motivacional', genre_pop: 'Pop',
-      variant_second_label: 'Segunda canción', gift_video_title: 'Tu video de regalo', video_song_label: 'La canción del video', video_gift_song_label: 'La canción de regalo', gift_video_load_error: 'El video no se pudo cargar — toca para reintentar.',
+      variant_second_label: 'Segunda canción', gift_video_title: 'Tu video de regalo', video_song_label: 'La canción del video', video_gift_song_label: 'La canción de regalo', gift_video_locked_msg: 'Tu video está listo y se desbloqueará después del pago.',
       listened: (t, d) => `Has escuchado ${t} de ${d}`,
       lyrics_empty: 'La letra todavía no está disponible para mostrar.',
       lyrics_edited_tag: 'Letra editada por ti',
@@ -610,7 +622,7 @@
       variant_main_label: 'Versione principale', variant_gift_label: '🎁 La tua seconda canzone, un regalo per te',
       variant_gift_note: 'Dopo il pagamento potrai scaricare entrambe le canzoni complete.',
       genre_emotional: 'Emozionante', genre_suflet: 'Con anima', genre_acustic: 'Acustico / Folk', genre_petrecere: 'Musica da festa', genre_balada: 'Ballata', genre_manele: 'Manele di lutto', genre_copii: 'Per bambini', genre_populara: 'Popolare', genre_rock: 'Rock', genre_colind: 'Canto natalizio', genre_modern: 'Moderno', genre_hiphop: 'Hip-hop', genre_manele_suflet: 'Manele con anima', genre_motivational: 'Motivazionale', genre_pop: 'Pop',
-      variant_second_label: 'Seconda canzone', gift_video_title: 'Il tuo video regalo', video_song_label: 'La canzone nel video', video_gift_song_label: 'La canzone regalo', gift_video_load_error: 'Impossibile caricare il video — tocca per riprovare.',
+      variant_second_label: 'Seconda canzone', gift_video_title: 'Il tuo video regalo', video_song_label: 'La canzone nel video', video_gift_song_label: 'La canzone regalo', gift_video_locked_msg: 'Il tuo video è pronto e si sbloccherà dopo il pagamento.',
       listened: (t, d) => `Hai ascoltato ${t} di ${d}`,
       lyrics_empty: 'Il testo non è ancora disponibile per la visualizzazione.',
       lyrics_edited_tag: 'Testo modificato da te',
@@ -669,7 +681,7 @@
       variant_main_label: 'Version principale', variant_gift_label: '🎁 Votre deuxième chanson, un cadeau pour vous',
       variant_gift_note: 'Après le paiement, vous pourrez télécharger les deux chansons complètes.',
       genre_emotional: 'Émouvant', genre_suflet: 'Avec âme', genre_acustic: 'Acoustique / Folk', genre_petrecere: 'Musique de fête', genre_balada: 'Ballade', genre_manele: 'Manele de deuil', genre_copii: 'Pour enfants', genre_populara: 'Populaire', genre_rock: 'Rock', genre_colind: 'Chant de Noël', genre_modern: 'Moderne', genre_hiphop: 'Hip-hop', genre_manele_suflet: 'Manele avec âme', genre_motivational: 'Motivant', genre_pop: 'Pop',
-      variant_second_label: 'Deuxième chanson', gift_video_title: 'Ta vidéo cadeau', video_song_label: 'La chanson de la vidéo', video_gift_song_label: 'La chanson cadeau', gift_video_load_error: "La vidéo n'a pas pu être chargée — touchez pour réessayer.",
+      variant_second_label: 'Deuxième chanson', gift_video_title: 'Ta vidéo cadeau', video_song_label: 'La chanson de la vidéo', video_gift_song_label: 'La chanson cadeau', gift_video_locked_msg: "Ta vidéo est prête et sera débloquée après le paiement.",
       listened: (t, d) => `Vous avez écouté ${t} sur ${d}`,
       lyrics_empty: "Les paroles ne sont pas encore disponibles à l'affichage.",
       lyrics_edited_tag: 'Paroles modifiées par vous',
@@ -728,7 +740,7 @@
       variant_main_label: 'Основна версия', variant_gift_label: '🎁 Втората ти песен, подарък за теб',
       variant_gift_note: 'След плащането ще можеш да изтеглиш и двете пълни песни.',
       genre_emotional: 'Емоционално', genre_suflet: 'Душевно', genre_acustic: 'Акустика / Фолк', genre_petrecere: 'Парти музика', genre_balada: 'Балада', genre_manele: 'Тъжни манеле', genre_copii: 'За деца', genre_populara: 'Народна', genre_rock: 'Рок', genre_colind: 'Коледна песен', genre_modern: 'Модерна', genre_hiphop: 'Хип-хоп', genre_manele_suflet: 'Задушевни манеле', genre_motivational: 'Мотивационна', genre_pop: 'Pop',
-      variant_second_label: 'Втора песен', gift_video_title: 'Твоето видео подарък', video_song_label: 'Песента във видеото', video_gift_song_label: 'Песента подарък', gift_video_load_error: 'Видеото не можа да се зареди — докосни за повторен опит.',
+      variant_second_label: 'Втора песен', gift_video_title: 'Твоето видео подарък', video_song_label: 'Песента във видеото', video_gift_song_label: 'Песента подарък', gift_video_locked_msg: 'Видеото ти е готово и ще се отключи след плащането.',
       listened: (t, d) => `Изслуша ${t} от ${d}`,
       lyrics_empty: 'Текстът все още не е наличен за показване.',
       lyrics_edited_tag: 'Текст, редактиран от теб',
@@ -787,7 +799,7 @@
       variant_main_label: 'Ana versiyon', variant_gift_label: '🎁 İkinci şarkınız, size bir hediye',
       variant_gift_note: 'Ödemeden sonra her iki tam şarkıyı da indirebileceksiniz.',
       genre_emotional: 'Duygusal', genre_suflet: 'İçten', genre_acustic: 'Akustik / Folk', genre_petrecere: 'Parti müziği', genre_balada: 'Balad', genre_manele: 'Hüzünlü manele', genre_copii: 'Çocuklar için', genre_populara: 'Popüler', genre_rock: 'Rock', genre_colind: 'Noel ilahisi', genre_modern: 'Modern', genre_hiphop: 'Hip-hop', genre_manele_suflet: 'Duygusal manele', genre_motivational: 'Motivasyonel', genre_pop: 'Pop',
-      variant_second_label: 'İkinci şarkı', gift_video_title: 'Hediye videon', video_song_label: 'Videodaki şarkı', video_gift_song_label: 'Hediye şarkı', gift_video_load_error: 'Video yüklenemedi — tekrar denemek için dokun.',
+      variant_second_label: 'İkinci şarkı', gift_video_title: 'Hediye videon', video_song_label: 'Videodaki şarkı', video_gift_song_label: 'Hediye şarkı', gift_video_locked_msg: 'Videon hazır ve ödemeden sonra kilidi açılacak.',
       listened: (t, d) => `${d} şarkının ${t} kadarını dinlediniz`,
       lyrics_empty: 'Sözler henüz görüntülenmeye hazır değil.',
       lyrics_edited_tag: 'Sizin tarafınızdan düzenlenen sözler',
@@ -1077,7 +1089,15 @@
     return text.replace(/\[([^\[\]]+)\]/g, (whole, inner) => `[${normalizeSectionLabel(inner, lang)}]`);
   }
 
+  // Urmareste timeout-urile de incarcare audio active (vezi mountAudio) — golit explicit la
+  // fiecare renderVariants() nou, ca sa nu ramana "orfane" (nici anulate, nici executate pe
+  // elementul corect) daca variantele se re-randeaza din alt motiv decat pollingul video (deja
+  // reparat mai sus sa NU mai re-randeze deloc) — ex. editare versuri, regenerare.
+  let activeAudioLoadTimeouts = [];
+
   function renderVariants(order) {
+    activeAudioLoadTimeouts.forEach(clearTimeout);
+    activeAudioLoadTimeouts = [];
     variantsWrap.innerHTML = '';
     (order.variants || []).forEach((v, i) => {
       const card = document.createElement('div');
@@ -1167,17 +1187,25 @@
         const loadTimeout = setTimeout(() => {
           if (settled) return;
           settled = true;
+          forgetTimeout();
           showAudioError();
         }, 15000);
+        activeAudioLoadTimeouts.push(loadTimeout);
+
+        function forgetTimeout() {
+          const idx = activeAudioLoadTimeouts.indexOf(loadTimeout);
+          if (idx !== -1) activeAudioLoadTimeouts.splice(idx, 1);
+        }
 
         function showAudioError() {
           clearTimeout(loadTimeout);
+          forgetTimeout();
           audioWrap.innerHTML = '';
           audioErrorEl.textContent = t.preview_load_error;
           audioErrorEl.style.display = 'block';
         }
 
-        audioEl.addEventListener('loadedmetadata', () => { settled = true; clearTimeout(loadTimeout); });
+        audioEl.addEventListener('loadedmetadata', () => { settled = true; clearTimeout(loadTimeout); forgetTimeout(); });
         audioEl.addEventListener('error', () => { if (!settled) { settled = true; showAudioError(); } });
         audioEl.addEventListener('timeupdate', () => {
           progressEl.textContent = t.listened(formatTime(audioEl.currentTime), formatTime(v.durationSeconds));
@@ -1848,48 +1876,19 @@
   // Starea videoclipului (pachetul "video") — gateaza explicit plata pe partea de client,
   // reflectand EXACT aceleasi conditii pe care serverul le verifica oricum in /checkout (nu e
   // singura protectie, doar UX: evita un client care apasa plata si primeste direct o eroare).
+  //
+  // DECIZIE FINALA (hotfix 2026-08-08): videoclipul NU e redabil inainte de plata — nicio
+  // cerere de retea catre /media/video/:orderId, niciun element <video>, niciun URL semnat
+  // expus clientului pre-plata. Afisam STRICT o coperta statica cu lacat. Incercarea anterioara
+  // (mountGiftVideo, eliminata) construia un <video> real, cu redirect cross-origin catre R2 —
+  // suspectata direct de client ca substrat al unui blocaj grav de pagina ("Page Unresponsive").
   // ==========================================================================================
-  // Monteaza preview-ul protejat al videoclipului cadou (inainte de plata) — acelasi tipar
-  // DOM-API + timeout + reincercare ca la mountAudio, extins pentru <video>. URL-ul e ruta
-  // server-side /media/video/:orderId, care acum accepta explicit si status='preview_ready'
-  // (nu doar 'ready'/platit) — vezi comentariul din server.js.
-  function mountGiftVideo() {
+  function showLockedGiftVideo() {
     const section = document.getElementById('gift-video-section');
-    const wrap = document.getElementById('gift-video-wrap');
-    const errorEl = document.getElementById('gift-video-error');
-    const titleEl = document.getElementById('gift-video-title');
-    titleEl.textContent = t.gift_video_title;
-    errorEl.style.display = 'none';
-    wrap.innerHTML = '';
+    document.getElementById('gift-video-title').textContent = t.gift_video_title;
+    document.getElementById('gift-video-locked-msg').textContent = t.gift_video_locked_msg;
     section.style.display = 'block';
-
-    const videoEl = document.createElement('video');
-    videoEl.controls = true;
-    videoEl.playsInline = true;
-    videoEl.preload = 'metadata';
-    videoEl.style.width = '100%';
-    videoEl.style.borderRadius = '12px';
-    videoEl.style.background = '#000';
-    videoEl.crossOrigin = 'anonymous';
-
-    let settled = false;
-    const loadTimeout = setTimeout(() => { if (!settled) { settled = true; showVideoError(); } }, 20000);
-
-    function showVideoError() {
-      clearTimeout(loadTimeout);
-      wrap.innerHTML = '';
-      errorEl.textContent = t.gift_video_load_error;
-      errorEl.style.display = 'block';
-    }
-
-    videoEl.addEventListener('loadedmetadata', () => { settled = true; clearTimeout(loadTimeout); });
-    videoEl.addEventListener('error', () => { if (!settled) { settled = true; showVideoError(); } });
-
-    wrap.appendChild(videoEl);
-    videoEl.src = `/media/video/${orderId}?token=${encodeURIComponent(accessToken)}&t=${Date.now()}`;
-    videoEl.load();
   }
-  document.getElementById('gift-video-error').addEventListener('click', mountGiftVideo);
 
   function updateVideoStatusUI(order) {
     const el = document.getElementById('video-status-msg');
@@ -1909,7 +1908,7 @@
     if (order.videoStatus === 'ready') {
       el.style.display = 'none';
       checkoutBtn.disabled = false;
-      mountGiftVideo();
+      showLockedGiftVideo();
       return;
     }
     document.getElementById('gift-video-section').style.display = 'none';
@@ -1939,13 +1938,41 @@
       el.appendChild(retryBtn);
     }
 
-    // Cat timp videoclipul se creeaza/regenereaza, reincarcam periodic starea comenzii —
+    // Cat timp videoclipul se creeaza/regenereaza, reincarcam periodic DOAR starea video —
     // clientul vede automat cand devine gata, fara sa dea refresh manual.
+    //
+    // HOTFIX 2026-08-08 (gasit direct din raportul clientului: playerele ramaneau la 0:00,
+    // pagina ajungea "Page Unresponsive"): acest poll apela INAINTE loadOrder() complet, care
+    // re-randa INTREG variants-wrap (renderVariants -> mountAudio) la fiecare 5 secunde —
+    // inclusiv cat timp clientul asculta efectiv preview-urile audio, deja gata de mult, in
+    // timp ce DOAR videoclipul mai randa in fundal. Fiecare re-randare distrugea playerele
+    // audio EXISTENTE (posibil chiar in mijlocul incarcarii/redarii) si construia altele noi de
+    // la zero — din perspectiva clientului, un player care "nu avanseaza niciodata de la 0:00",
+    // pentru ca era inlocuit la fiecare 5 secunde inainte sa apuce sa se incarce complet.
+    // Videoclipul poate dura si cateva minute — inseamna zeci de cicluri de distrugere+
+    // reconstructie ale acelorasi 2 elemente <audio>, fiecare lasand in urma un timeout de
+    // 15s neanulat (vezi mountAudio) — acumularea lor pe durata a mai multor minute e o cauza
+    // plauzibila si a blocarii intregii pagini. Folosim acum un refresh USOR, care verifica
+    // DOAR starea video (fara sa atinga deloc variantele/playerele audio deja montate).
     if ((order.videoStatus === 'generating' || order.videoStatus === 'stale') && !videoPollTimer) {
-      videoPollTimer = setTimeout(() => { videoPollTimer = null; loadOrder(); }, 5000);
+      videoPollTimer = setTimeout(() => { videoPollTimer = null; refreshVideoStatusOnly(); }, 5000);
     }
   }
   let videoPollTimer = null;
+
+  // Refresh USOR — verifica DOAR starea video (nu re-randeaza variantele/playerele audio, nu
+  // reface nimic altceva). Folosit exclusiv de bucla de mai sus, cat timp videoclipul inca
+  // randa in fundal si comanda ramane altfel neschimbata (melodia deja gata, deja afisata).
+  async function refreshVideoStatusOnly() {
+    try {
+      const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}?token=${encodeURIComponent(accessToken)}`);
+      if (!res.ok) return;
+      const order = await res.json();
+      if (order.status !== 'preview_ready') { loadOrder(); return; } // stare schimbata real -> refresh complet
+      currentOrder = order;
+      updateVideoStatusUI(order);
+    } catch (e) { /* urmatorul tick reincearca oricum */ }
+  }
 
   function renderContent(order) {
     currentOrder = order;
