@@ -248,6 +248,21 @@ async function initDb() {
   // din starea persistenta a comenzii, nu dintr-o variabila locala disparuta odata cu procesul.
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS regenerate_keep_original BOOLEAN NOT NULL DEFAULT false;`);
 
+  // Progres de REGENERARE, SEPARAT complet de progresul generarii initiale (hotfix 2026-08-08,
+  // "FINISAJ FINAL PACHET STANDARD"). Bug real gasit: generation_phase_percent era partajat
+  // intre generarea initiala SI regenerare — o comanda ajunsa deja 100% (generare initiala)
+  // facea ca updateGenerationPhaseIfLater sa respinga TACIT noul milestone "submitted"=10 al
+  // regenerarii (10 < 100), lasand procentul inghetat la 100% pe tot parcursul regenerarii.
+  // regeneration_job_id: identifica FIECARE incercare de regenerare in parte — reluarile
+  // asincrone (resumeExistingTaskPolling, callback SunoAPI) si finalizarea scriu progresul
+  // DOAR daca jobId-ul lor inca se potriveste cu cel curent al comenzii, altfel raspunsul e
+  // considerat "vechi" (dintr-o incercare anterioara/abandonata) si ignorat silentios.
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS regeneration_job_id TEXT;`);
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS regeneration_status TEXT;`);
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS regeneration_phase TEXT;`);
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS regeneration_progress INTEGER;`);
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS regeneration_updated_at TIMESTAMPTZ;`);
+
   // credit_events: jurnal complet al fiecarui apel real catre providerul de muzica (Suno),
   // plus fiecare blocare de generare/checkout facuta de sistemul de protectie a creditelor —
   // baza pentru statistici zilnice, estimarea comenzilor ramase si detectarea consumului
@@ -314,6 +329,11 @@ function rowToOrder(row) {
     generationPhase: row.generation_phase || null,
     generationPhasePercent: row.generation_phase_percent !== null && row.generation_phase_percent !== undefined ? Number(row.generation_phase_percent) : null,
     generationPhaseUpdatedAt: row.generation_phase_updated_at || null,
+    regenerationJobId: row.regeneration_job_id || null,
+    regenerationStatus: row.regeneration_status || null,
+    regenerationPhase: row.regeneration_phase || null,
+    regenerationProgress: row.regeneration_progress !== null && row.regeneration_progress !== undefined ? Number(row.regeneration_progress) : null,
+    regenerationUpdatedAt: row.regeneration_updated_at || null,
     plan: row.plan,
     price: Number(row.price),
     lang: row.lang,
@@ -403,6 +423,46 @@ async function updateGenerationPhaseIfLater(orderId, phase, percent) {
     `UPDATE orders SET generation_phase = $2, generation_phase_percent = $3, generation_phase_updated_at = now()
      WHERE id = $1 AND (generation_phase_percent IS NULL OR generation_phase_percent < $3)`,
     [orderId, phase, percent]
+  );
+}
+
+// Porneste un job de REGENERARE nou — reseteaza explicit progresul la primul milestone (10%),
+// NICIODATA mostenind procentul ramas de la generarea initiala sau de la o regenerare
+// anterioara (vezi comentariul de la migrarea regeneration_* de mai sus). jobId e generat de
+// apelant (randomUUID) si scris necondiționat aici — stabileste "jobul curent" fata de care
+// toate scrierile ulterioare de progres se vor valida (updateRegenerationPhaseIfLater).
+async function startRegenerationJob(orderId, jobId) {
+  await pool.query(
+    `UPDATE orders SET regeneration_job_id = $2, regeneration_status = 'running',
+       regeneration_phase = 'submitted', regeneration_progress = 10, regeneration_updated_at = now()
+     WHERE id = $1`,
+    [orderId, jobId]
+  );
+}
+
+// Simetric cu updateGenerationPhaseIfLater, dar cu o garda SUPLIMENTARA: jobId trebuie sa se
+// potriveasca EXACT cu regeneration_job_id curent al comenzii. Fara aceasta garda, raspunsul
+// intarziat al unui job vechi/abandonat (ex. reluarea polling-ului dupa un restart de server)
+// ar putea suprascrie progresul unui job NOU, mai recent — cerinta explicita: "raspunsurile
+// intarziate ale vechiului job nu pot modifica noul progres".
+async function updateRegenerationPhaseIfLater(orderId, jobId, phase, percent) {
+  await pool.query(
+    `UPDATE orders SET regeneration_phase = $3, regeneration_progress = $4, regeneration_updated_at = now()
+     WHERE id = $1 AND regeneration_job_id = $2
+       AND (regeneration_progress IS NULL OR regeneration_progress < $4)`,
+    [orderId, jobId, phase, percent]
+  );
+}
+
+// Marcheaza explicit rezultatul FINAL al unui job de regenerare ('ready' sau 'failed') —
+// folosit de se-compune.html (in modul de regenerare) ca sa decida cand sa redirectioneze
+// clientul, respectiv cand sa arate starea de eroare cu buton de reincercare. La fel ca mai
+// sus, scrie DOAR daca jobId-ul inca se potriveste cu cel curent.
+async function markRegenerationStatus(orderId, jobId, status) {
+  await pool.query(
+    `UPDATE orders SET regeneration_status = $3, regeneration_updated_at = now()
+     WHERE id = $1 AND regeneration_job_id = $2`,
+    [orderId, jobId, status]
   );
 }
 
@@ -1052,6 +1112,7 @@ async function moveTestimonial(id, direction) {
 module.exports = {
   pool, initDb, createOrder, getOrderById, getOrderByToken, getOrderByMusicTaskId, getOrderByAnyMusicTaskId,
   updateGenerationPhaseIfLater,
+  startRegenerationJob, updateRegenerationPhaseIfLater, markRegenerationStatus,
   claimOrderForProviderFinalization, claimOrderForRegeneration, claimOrderForInitialGeneration,
   refundEditIfReserved,
   claimVideoRender, releaseVideoRender, recordStripeEventIfNew, recordPaidOrderAtomically,

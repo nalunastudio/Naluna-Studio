@@ -1548,18 +1548,23 @@ app.post('/api/orders/:orderId/regenerate', generationLimiter, requireOrderToken
     // regenerate_keep_original in db.js pentru motivul (reluarile asincrone de polling au
     // nevoie de aceasta intentie chiar daca ruleaza independent de aceasta cerere HTTP).
     const keepOriginalForStandardEdit = PLAN_VARIANT_COUNT[order.plan] === 1;
+    // Job de regenerare NOU — progres separat, pornit explicit de la 10% (vezi
+    // recordRegenerationProgress/REGENERATION_PHASE_PERCENT). NICIODATA mosteneste procentul
+    // ramas de la generarea initiala sau de la o incercare anterioara.
+    const regenerationJobId = randomUUID();
     await db.updateOrder(order.id, {
       regenerateSourceVariantId: requestedVariantId,
       regenerateKeepOriginal: keepOriginalForStandardEdit
     });
-    res.json({ started: true });
+    await db.startRegenerationJob(order.id, regenerationJobId);
+    res.json({ started: true, regenerationJobId });
 
     // Premium/Video: variantId cerut mai sus e OBLIGATORIU si identifica exact varianta de
     // reeditat -> regenerare PARTIALA (doar acel gen). Standard: PASTREAZA varianta initiala
     // ca alternativa (nu mai inlocuieste intreg array-ul).
     const regenOptions = (PLAN_VARIANT_COUNT[order.plan] === 2)
-      ? { replaceVariantId: requestedVariantId }
-      : { keepOriginalAsAlternative: true };
+      ? { replaceVariantId: requestedVariantId, regenerationJobId }
+      : { keepOriginalAsAlternative: true, regenerationJobId };
     runGeneration(order.id, combinedFeedback, regenOptions).catch(async (err) => {
       console.error('Eroare la regenerare pentru comanda', order.id, err.message);
       try {
@@ -1567,7 +1572,7 @@ app.post('/api/orders/:orderId/regenerate', generationLimiter, requireOrderToken
         // daca inca era marcata ca rezervata (vezi comentariul din db.refundEditIfReserved
         // despre de ce e sigur sa fie apelata din mai multe locuri, chiar aproape simultan).
         await db.refundEditIfReserved(order.id);
-        await markGenerationFailed(order.id, err.message || err);
+        await markGenerationFailed(order.id, err.message || err, undefined, regenerationJobId);
       } catch (dbErr) {
         console.error('Eroare suplimentara la salvarea starii de esec:', dbErr.message);
       }
@@ -1755,6 +1760,14 @@ app.get('/api/orders/:orderId', async (req, res, next) => {
       // video_processing/video_ready), generationPhasePercent e procentul asociat afisat direct.
       generationPhase: order.generationPhase || null,
       generationPhasePercent: order.generationPhasePercent != null ? order.generationPhasePercent : null,
+      // Progres de REGENERARE — SEPARAT complet de generationPhase/generationPhasePercent de
+      // mai sus (hotfix 2026-08-08, vezi recordRegenerationProgress). regenerationStatus e
+      // singurul semnal fiabil de succes/esec al unei regenerari — order.status revine la
+      // 'preview_ready' in ambele cazuri (vezi markGenerationFailed), deci nu poate fi folosit
+      // singur ca sa decida daca regenerarea a reusit.
+      regenerationStatus: order.regenerationStatus || null,
+      regenerationPhase: order.regenerationPhase || null,
+      regenerationProgress: order.regenerationProgress != null ? order.regenerationProgress : null,
       variants: safeVariants,
       // tip+sectiune per element, NICIODATA cheia de storage — clientul are nevoie sa vada
       // ce a incarcat deja (ca sa poata sterge dupa index) inainte sa apese "creeaza videoclipul"
@@ -2653,6 +2666,7 @@ app.post('/api/music/callback', async (req, res) => {
       const replaceOptions = sourceVariant
         ? { replaceVariantId: sourceVariant.id }
         : (order.regenerateKeepOriginal ? { keepOriginalAsAlternative: true } : {});
+      if (order.regenerationJobId) replaceOptions.regenerationJobId = order.regenerationJobId;
       await finalizeVariantsIfNeeded(order.id, [{ tracks, genre: genreToUse, taskId }], replaceOptions).catch(err => {
         console.error(`Callback SunoAPI: eroare la finalizarea comenzii ${order.id}:`, err.message);
       });
@@ -2665,7 +2679,7 @@ app.post('/api/music/callback', async (req, res) => {
         await db.refundEditIfReserved(order.id).catch(refundErr => {
           console.error(`Eroare la restituirea editarii pentru comanda ${order.id}:`, refundErr.message);
         });
-        await markGenerationFailed(order.id, `Suno callback: ${body.msg || callbackType || 'eroare necunoscuta'}`, current.variants);
+        await markGenerationFailed(order.id, `Suno callback: ${body.msg || callbackType || 'eroare necunoscuta'}`, current.variants, current.regenerationJobId);
       }
     }
     // callbackType 'text' / 'first' (etape intermediare) -> nu facem nimic aici,
@@ -2706,6 +2720,37 @@ async function recordGenerationProgress(orderId, phase) {
     await db.updateGenerationPhaseIfLater(orderId, phase, GENERATION_PHASE_PERCENT[phase]);
   } catch (err) {
     console.error(`Nu am putut inregistra progresul (${phase}) pentru comanda ${orderId}:`, err.message);
+  }
+}
+
+// Progres de REGENERARE — SEPARAT complet de GENERATION_PHASE_PERCENT/recordGenerationProgress
+// de mai sus (hotfix 2026-08-08, "FINISAJ FINAL PACHET STANDARD"). Bug real gasit prin
+// verificare directa a codului: cele doua foloseau ACEEASI coloana (generation_phase_percent),
+// iar updateGenerationPhaseIfLater scrie DOAR daca noul procent e mai mare — o comanda ajunsa
+// deja 100% (generarea initiala) facea ca milestone-ul "submitted"=10% al unei regenerari
+// ulterioare sa fie respins tacit (10 < 100), lasand procentul afisat inghetat la 100% pe tot
+// parcursul regenerarii, desi jobul abia incepuse.
+//
+// jobId (regenerationJobId, generat cu randomUUID() la fiecare POST /regenerate) e OBLIGATORIU
+// aici — fara el nu scriem nimic. Reluarile asincrone (resumeExistingTaskPolling, callback-ul
+// SunoAPI) citesc acest jobId din DB (order.regenerationJobId), nu dintr-o variabila locala a
+// cererii HTTP originale, care ar disparea la un restart de server.
+const REGENERATION_PHASE_PERCENT = {
+  submitted: 10,      // cererea de editare a fost salvata si jobul a fost creat
+  prepared: 25,       // noile instructiuni si genul au fost pregatite (prompt construit)
+  dispatched: 40,      // jobul a fost trimis furnizorului (Suno)
+  processing: 60,      // furnizorul proceseaza noua versiune
+  audio_ready: 80,      // noul fisier audio e disponibil (Suno a intors piese)
+  preview_saved: 90,   // previewul e procesat si salvat (trimAudio + upload)
+  ready: 100            // previewul nou exista, verificat, poate fi redat
+};
+async function recordRegenerationProgress(orderId, jobId, phase) {
+  if (!jobId) return; // fara jobId (ex. generarea initiala) -> nimic de facut aici
+  if (!Object.prototype.hasOwnProperty.call(REGENERATION_PHASE_PERCENT, phase)) return;
+  try {
+    await db.updateRegenerationPhaseIfLater(orderId, jobId, phase, REGENERATION_PHASE_PERCENT[phase]);
+  } catch (err) {
+    console.error(`Nu am putut inregistra progresul de regenerare (${phase}) pentru comanda ${orderId}:`, err.message);
   }
 }
 
@@ -2754,7 +2799,7 @@ async function resumeExistingTaskPolling(orderId, taskId) {
         if (SUNO_ERROR_STATUSES.includes(r1.status) || SUNO_ERROR_STATUSES.includes(r2.status)) {
           console.error(`Reluare polling dual: comanda ${orderId} a esuat (gen1="${order.genre}": ${r1.status}, gen2="${order.genre2}": ${r2.status}).`);
           await db.refundEditIfReserved(orderId);
-          await markGenerationFailed(orderId, `Suno: gen1=${r1.status}, gen2=${r2.status}`, fresh.variants);
+          await markGenerationFailed(orderId, `Suno: gen1=${r1.status}, gen2=${r2.status}`, fresh.variants, fresh.regenerationJobId);
         }
         return;
       }
@@ -2792,13 +2837,14 @@ async function resumeExistingTaskPolling(orderId, taskId) {
       const replaceOptions = sourceVariant
         ? { replaceVariantId: sourceVariant.id }
         : (order.regenerateKeepOriginal ? { keepOriginalAsAlternative: true } : {});
+      if (order.regenerationJobId) replaceOptions.regenerationJobId = order.regenerationJobId;
       await finalizeVariantsIfNeeded(orderId, [{ tracks, genre: genreToUse, taskId }], replaceOptions);
       return;
     }
     if (SUNO_ERROR_STATUSES.includes(finalStatus)) {
       console.error(`Reluare polling: task ${taskId} (comanda ${orderId}) a esuat cu status "${finalStatus}".`);
       await db.refundEditIfReserved(orderId);
-      await markGenerationFailed(orderId, `Suno: ${finalStatus}`, order.variants);
+      await markGenerationFailed(orderId, `Suno: ${finalStatus}`, order.variants, order.regenerationJobId);
     }
   } catch (err) {
     console.error(`Eroare la reluarea polling-ului pentru comanda ${orderId}, taskId ${taskId}:`, err.message);
@@ -2822,7 +2868,13 @@ async function resumeExistingTaskPolling(orderId, taskId) {
 // (ex. finalizeVariantsIfNeeded, care a preluat atomic comanda si stie exact ce continea
 // inainte sa inceapa procesarea curenta), o poate trece direct — evita un SELECT suplimentar
 // si evita orice ambiguitate daca starea din DB s-ar fi schimbat intre timp.
-async function markGenerationFailed(orderId, errMessage, knownVariants) {
+//
+// regenerationJobId (optional, hotfix 2026-08-08): daca esecul a aparut in timpul unei
+// REGENERARI (nu al generarii initiale), marcheaza explicit jobul de regenerare ca 'failed' —
+// singurul semnal pe care se-compune.html (in modul de regenerare) il poate folosi ca sa arate
+// starea de eroare + retry, de vreme ce order.status revine la 'preview_ready' mai jos (nu mai
+// ramane 'generation_failed'), identic cu starea de SUCCES a unei regenerari.
+async function markGenerationFailed(orderId, errMessage, knownVariants, regenerationJobId) {
   const safeError = String(errMessage || 'Eroare necunoscuta').slice(0, 500);
   let hasSellableVariants;
   if (Array.isArray(knownVariants)) {
@@ -2833,6 +2885,11 @@ async function markGenerationFailed(orderId, errMessage, knownVariants) {
   }
   if (hasSellableVariants) {
     await db.updateOrder(orderId, { status: 'preview_ready', error: safeError });
+    if (regenerationJobId) {
+      await db.markRegenerationStatus(orderId, regenerationJobId, 'failed').catch(err => {
+        console.error(`Eroare la marcarea esecului jobului de regenerare pentru comanda ${orderId}:`, err.message);
+      });
+    }
   } else {
     await db.updateOrder(orderId, { status: 'generation_failed', error: safeError });
   }
@@ -2865,9 +2922,12 @@ async function runGeneration(orderId, feedback, options = {}) {
     const siblingVariant = (order.variants || []).find(v => v.id !== options.replaceVariantId);
     const siblingGenre = siblingVariant ? siblingVariant.genre : null;
     const genreToUse = (siblingGenre && siblingGenre === order.genre) ? order.genre2 : order.genre;
+    recordRegenerationProgress(orderId, options.regenerationJobId, 'prepared').catch(() => {});
     const prompt = buildPrompt(order, feedback, genreToUse);
     const taskId = await callMusicProvider(orderId, prompt);
+    recordRegenerationProgress(orderId, options.regenerationJobId, 'dispatched').catch(() => {});
     await db.updateOrder(orderId, { musicTaskId: taskId, musicTaskId2: null });
+    recordRegenerationProgress(orderId, options.regenerationJobId, 'processing').catch(() => {});
     const { status: finalStatus, tracks } = await pollForResult(taskId, orderId);
 
     if (finalStatus === 'ALREADY_FINALIZED_BY_CALLBACK') {
@@ -2878,7 +2938,8 @@ async function runGeneration(orderId, feedback, options = {}) {
     if (finalStatus !== SUNO_SUCCESS_STATUS) {
       throw new Error(`Suno a raportat un status de eroare: ${finalStatus}`);
     }
-    await finalizeVariantsIfNeeded(orderId, [{ tracks, genre: genreToUse, taskId }], { replaceVariantId: options.replaceVariantId });
+    recordRegenerationProgress(orderId, options.regenerationJobId, 'audio_ready').catch(() => {});
+    await finalizeVariantsIfNeeded(orderId, [{ tracks, genre: genreToUse, taskId }], { replaceVariantId: options.replaceVariantId, regenerationJobId: options.regenerationJobId });
     return;
   }
 
@@ -2887,9 +2948,12 @@ async function runGeneration(orderId, feedback, options = {}) {
   // setat de POST /regenerate), PASTREAZA originalul si adauga varianta editata alaturi —
   // clientul alege explicit intre ele (Partea 2, hotfix 2026-08-08).
   if (!isDualGenrePlan) {
+    recordRegenerationProgress(orderId, options.regenerationJobId, 'prepared').catch(() => {});
     const prompt = buildPrompt(order, feedback);
     const taskId = await callMusicProvider(orderId, prompt);
+    recordRegenerationProgress(orderId, options.regenerationJobId, 'dispatched').catch(() => {});
     await db.updateOrder(orderId, { musicTaskId: taskId, musicTaskId2: null });
+    recordRegenerationProgress(orderId, options.regenerationJobId, 'processing').catch(() => {});
     const { status: finalStatus, tracks } = await pollForResult(taskId, orderId);
 
     if (finalStatus === 'ALREADY_FINALIZED_BY_CALLBACK') {
@@ -2900,7 +2964,8 @@ async function runGeneration(orderId, feedback, options = {}) {
     if (finalStatus !== SUNO_SUCCESS_STATUS) {
       throw new Error(`Suno a raportat un status de eroare: ${finalStatus}`);
     }
-    const standardOptions = options.keepOriginalAsAlternative ? { keepOriginalAsAlternative: true } : {};
+    recordRegenerationProgress(orderId, options.regenerationJobId, 'audio_ready').catch(() => {});
+    const standardOptions = options.keepOriginalAsAlternative ? { keepOriginalAsAlternative: true, regenerationJobId: options.regenerationJobId } : {};
     await finalizeVariantsIfNeeded(orderId, [{ tracks, genre: order.genre, taskId }], standardOptions);
     return;
   }
@@ -3054,6 +3119,10 @@ async function finalizeVariantsIfNeeded(orderId, requestsInfo, options = {}) {
     if (builtVariants.length === 0) {
       throw new Error(`Toate cererile au esuat la procesare: ${requestFailures.join(' | ')}`);
     }
+    // buildVariantFromTrack verifica deja explicit accesibilitatea reala a preview-ului
+    // (verifyPreviewReachable) inainte sa returneze cu succes — la acest punct, fisierul
+    // e deja taiat/reincodat SI incarcat in storage, deci "previewul e procesat si salvat".
+    recordRegenerationProgress(orderId, options.regenerationJobId, 'preview_saved').catch(() => {});
     // Pentru Premium/Video, "exact doua melodii" e o promisiune ferma a pachetului — daca UNA
     // din cele doua cereri a esuat definitiv, NU livram tacit o singura melodie sub un pachet
     // care promite doua; tratam esecul PARTIAL ca esec TOTAL, ca ambele genuri sa poata fi
@@ -3112,6 +3181,14 @@ async function finalizeVariantsIfNeeded(orderId, requestsInfo, options = {}) {
     // 100% pentru pachetul Video, care mai are o a doua faza (videoclipul) dupa aceasta; vezi
     // triggerVideoGeneration/generatePremiumExtras pentru 'video_processing'/'video_ready'.
     recordGenerationProgress(orderId, 'ready').catch(() => {});
+    if (options.regenerationJobId) {
+      // "previewul nou exista, este verificat si poate fi redat" — exact acum, dupa ce
+      // scrierea in DB a reusit (variants/status/selectedVariantId sunt deja persistate).
+      recordRegenerationProgress(orderId, options.regenerationJobId, 'ready').catch(() => {});
+      db.markRegenerationStatus(orderId, options.regenerationJobId, 'ready').catch(err => {
+        console.error(`Eroare la marcarea succesului jobului de regenerare pentru comanda ${orderId}:`, err.message);
+      });
+    }
 
     // Fluxul obligatoriu "Cadou video" (cerintele 6-9): imediat ce melodia (initiala SAU
     // regenerata dupa o editare) ajunge 'preview_ready', si DOAR daca materialele au fost
@@ -3179,7 +3256,7 @@ async function finalizeVariantsIfNeeded(orderId, requestsInfo, options = {}) {
     } catch (refundErr) {
       console.error(`Eroare suplimentara la restituirea editarii pentru comanda ${orderId}:`, refundErr.message);
     }
-    await markGenerationFailed(orderId, err.message || err, claimed.variants).catch(dbErr => {
+    await markGenerationFailed(orderId, err.message || err, claimed.variants, options.regenerationJobId).catch(dbErr => {
       console.error(`Eroare suplimentara la marcarea esecului pentru comanda ${orderId}:`, dbErr.message);
     });
     throw err;

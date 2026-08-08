@@ -47,7 +47,7 @@ test('server.js: POST /regenerate seteaza regenerateKeepOriginal=true DOAR pentr
 test('server.js: regenerarea Standard trece keepOriginalAsAlternative catre runGeneration', () => {
   const server = read('server.js');
   assert.ok(
-    server.includes(': { keepOriginalAsAlternative: true };'),
+    server.includes(': { keepOriginalAsAlternative: true, regenerationJobId };'),
     'ramura non-Premium/Video a regenOptions trebuie sa fie keepOriginalAsAlternative, nu {} (inlocuire completa)'
   );
 });
@@ -84,7 +84,7 @@ test('resumeExistingTaskPolling si callback-ul SunoAPI citesc regenerateKeepOrig
 
 test('markGenerationFailed: revine la preview_ready (nu generation_failed) cand exista deja variante vandabile', () => {
   const server = read('server.js');
-  assert.ok(server.includes('async function markGenerationFailed(orderId, errMessage, knownVariants)'), 'functia trebuie sa existe');
+  assert.ok(server.includes('async function markGenerationFailed(orderId, errMessage, knownVariants, regenerationJobId)'), 'functia trebuie sa existe');
   assert.ok(
     server.includes("await db.updateOrder(orderId, { status: 'preview_ready', error: safeError });"),
     'daca hasSellableVariants, comanda trebuie sa revina la preview_ready, NU generation_failed — cerinta explicita: "daca regenerarea esueaza, versiunea initiala ramane disponibila/selectabila"'
@@ -125,10 +125,18 @@ test('melodia-mea.html: checkoutBtn ramane dezactivat pana la alegerea explicita
   assert.ok(html.includes('checkoutBtn.disabled = pendingVariantChoice;'), 'butonul de plata trebuie dezactivat exact cat timp alegerea e in asteptare');
 });
 
-test('melodia-mea.html: mesajul "alege o versiune" e afisat cand alegerea e in asteptare', () => {
+test('melodia-mea.html: sectiunea de alegere are titlu + subtext dedicate, afisate cand exista o alegere Standard de facut', () => {
   const html = read('public/melodia-mea.html');
-  assert.ok(html.includes("id=\"choose-variant-msg\""), 'elementul de prompt trebuie sa existe in pagina');
-  assert.ok(html.includes('chooseVariantMsgEl.textContent = t.choose_variant_msg;'), 'trebuie populat cu mesajul tradus cand alegerea e in asteptare');
+  assert.ok(html.includes('id="standard-choice-title"'), 'elementul de titlu trebuie sa existe in pagina');
+  assert.ok(html.includes('id="standard-choice-subtitle"'), 'elementul de subtext trebuie sa existe in pagina');
+  assert.ok(
+    html.includes("document.getElementById('standard-choice-title').textContent = t.standard_choice_title;"),
+    'titlul trebuie populat cu textul tradus'
+  );
+  assert.ok(
+    html.includes("document.getElementById('standard-choice-subtitle').textContent = t.standard_choice_subtitle;"),
+    'subtextul trebuie populat cu textul tradus'
+  );
 });
 
 test('melodia-mea.html: cardurile Standard cu alegere sunt etichetate "Versiunea inițială"/"Versiunea editată", NU "cadou"', () => {
@@ -176,7 +184,7 @@ test('GET /api/orders/:orderId expune isEditedAlternative pentru fiecare variant
 
 test('traduceri: cheile noi ale fluxului de alegere Standard exista in toate cele 8 limbi', () => {
   const html = read('public/melodia-mea.html');
-  ['variant_original_label', 'variant_edited_label', 'choose_variant_msg', 'regen_failed_recovered_msg'].forEach(key => {
+  ['variant_original_label', 'variant_edited_label', 'regen_failed_recovered_msg'].forEach(key => {
     const count = (html.match(new RegExp(key + ':', 'g')) || []).length;
     assert.equal(count, 8, `cheia "${key}" trebuie sa apara exact 8 ori (cate una per limba), gasita de ${count} ori`);
   });
@@ -236,12 +244,18 @@ test('melodia-mea.html: dupa editare, checkoutBtn e mutat in ecranul dedicat de 
   );
 });
 
-test('melodia-mea.html: fiecare card Standard cu alegere are un buton clar de selectie sau bifa "Versiune selectata"', () => {
+test('melodia-mea.html: sectiunea de alegere afiseaza doua butoane late, etichetate cu genurile reale ale celor doua melodii', () => {
   const html = read('public/melodia-mea.html');
-  assert.ok(html.includes('variant-choose-btn'), 'trebuie sa existe un buton dedicat de selectie pe fiecare card');
-  assert.ok(html.includes('t.choose_edited_btn'), 'butonul cardului editat trebuie etichetat corect');
-  assert.ok(html.includes('t.choose_original_btn'), 'butonul cardului initial trebuie etichetat corect');
-  assert.ok(html.includes('variant-selected-badge'), 'cardul deja selectat trebuie sa arate bifa "Versiune selectata"');
+  assert.ok(html.includes('function renderStandardChoiceButtons(order)'), 'trebuie sa existe o functie dedicata pentru cele doua butoane de alegere');
+  assert.ok(html.includes("id=\"standard-genre-choice-buttons\""), 'containerul celor doua butoane trebuie sa existe in pagina');
+  assert.ok(
+    html.includes('const sameGenre = !!(variants[0].genre && variants[1].genre && variants[0].genre === variants[1].genre);'),
+    'cand ambele variante au acelasi gen, ordinea cuvintelor trebuie sa se schimbe ca sa ramana clar diferentiate'
+  );
+  assert.ok(
+    html.includes('btn.textContent = isChosen ? `${t.chosen_badge} ✓` : t.choose_variant_btn(genreLabel, isEdited, sameGenre);'),
+    'butonul variantei alese trebuie sa arate bifa si textul "Aleasă ✓"; celalalt ramane etichetat cu genul real'
+  );
 });
 
 test('melodia-mea.html: cardul selectat Standard primeste chenar portocaliu distinct', () => {
@@ -260,7 +274,8 @@ test('melodia-mea.html: "Editează versurile" si celelalte controale de editare 
 
 test('traduceri: cheile noi ale imbunatatirii UI exista in toate cele 8 limbi', () => {
   const html = read('public/melodia-mea.html');
-  ['confirm_yes_loading', 'checkout_btn_standard', 'msg_regenerating_standard', 'choose_original_btn', 'choose_edited_btn', 'variant_selected_badge'].forEach(key => {
+  ['confirm_yes_loading', 'checkout_btn_standard', 'msg_regenerating_standard',
+    'standard_choice_title', 'standard_choice_subtitle', 'chosen_badge', 'choose_variant_btn'].forEach(key => {
     const count = (html.match(new RegExp(key + ':', 'g')) || []).length;
     assert.equal(count, 8, `cheia "${key}" trebuie sa apara exact 8 ori (cate una per limba), gasita de ${count} ori`);
   });
@@ -315,4 +330,92 @@ test('emailul si descarcarea dupa plata livreaza EXCLUSIV versiunea selectata pe
     server.includes("const variant = (order.variants || []).find(v => v.id === order.selectedVariantId);"),
     'livrarea principala (email/descarcare) trebuie sa foloseasca exact selectedVariantId, niciodata prima varianta din array sau alta presupunere'
   );
+});
+
+// ==========================================================================================
+// FINISAJ FINAL PACHET STANDARD (hotfix 2026-08-08): elimina pasul intermediar "Editează
+// cântecul" — butonul portocaliu apare direct, pentru Standard, ÎNAINTE de editare. Premium/
+// Video raman neschimbate (2 pasi, regenerateBtn -> confirmRow).
+// ==========================================================================================
+
+test('melodia-mea.html: Standard (inainte de editare) arata direct butonul portocaliu, fara click intermediar', () => {
+  const html = read('public/melodia-mea.html');
+  assert.ok(
+    html.includes("const standardDirectEditMode = order.plan === 'standard' && !isStandardEditChoice;"),
+    'trebuie detectat explicit modul direct — DOAR Standard, DOAR inainte de a folosi editarea gratuita'
+  );
+  assert.ok(html.includes("regenerateBtn.style.display = 'none';") , 'butonul "Editează cântecul" trebuie ascuns in acest mod');
+  assert.ok(html.includes("confirmRow.style.display = 'flex';"), 'confirmRow (cu butonul portocaliu) trebuie afisat DIRECT, nu la un click');
+});
+
+test('melodia-mea.html: Premium/Video NU sunt afectate de eliminarea pasului intermediar (raman cu 2 pasi)', () => {
+  const html = read('public/melodia-mea.html');
+  assert.ok(
+    html.includes("const standardDirectEditMode = order.plan === 'standard' && !isStandardEditChoice;"),
+    'conditia trebuie scopata explicit la plan==="standard" — Premium/Video nu trebuie sa intre niciodata pe aceasta ramura'
+  );
+});
+
+test('melodia-mea.html: "Renunță" e ascuns in modul direct Standard (nimic de anulat, fara pas de reveal)', () => {
+  const html = read('public/melodia-mea.html');
+  assert.ok(html.includes("confirmCancelBtn.style.display = 'none';"), 'butonul Renunță nu are sens fara un pas de reveal de anulat');
+});
+
+// ==========================================================================================
+// FINISAJ FINAL PACHET STANDARD: se-compune.html — pagina/progresul de REGENERARE, complet
+// separate de pagina/progresul generarii initiale.
+// ==========================================================================================
+
+test('se-compune.html: mode=regenerate schimba titlul/subtitlul, separat de generarea initiala', () => {
+  const html = read('public/se-compune.html');
+  assert.ok(html.includes("const isRegenMode = params.get('mode') === 'regenerate';"), 'modul de regenerare trebuie detectat explicit din URL');
+  assert.ok(
+    html.includes("document.getElementById('p-title').textContent = isRegenMode ? t.regenTitle : t.title;"),
+    'titlul trebuie sa difere in modul de regenerare'
+  );
+  assert.ok(html.includes("regenTitle: 'Lucrăm la noua versiune',"), 'titlul RO exact cerut trebuie sa existe');
+  assert.ok(
+    html.includes("regenSubtitle: 'Aplicăm modificările tale. Când este gata, vei putea compara ambele versiuni.',"),
+    'subtitlul RO exact cerut trebuie sa existe'
+  );
+});
+
+test('se-compune.html: progresul de regenerare vine STRICT din regenerationProgress, niciodata din generationPhasePercent', () => {
+  const html = read('public/se-compune.html');
+  assert.ok(
+    html.includes('const percent = isRegenMode ? order.regenerationProgress : order.generationPhasePercent;'),
+    'cele doua surse de progres trebuie sa ramana complet separate'
+  );
+});
+
+test('se-compune.html: succesul/esecul unei regenerari se decid prin regenerationStatus, nu prin order.status (identic in ambele cazuri)', () => {
+  const html = read('public/se-compune.html');
+  assert.ok(html.includes("const regenSucceeded = isRegenMode && order.regenerationStatus === 'ready';"), 'succesul regenerarii trebuie sa foloseasca regenerationStatus');
+  assert.ok(html.includes("const regenFailed = isRegenMode && order.regenerationStatus === 'failed';"), 'esecul regenerarii trebuie sa foloseasca regenerationStatus');
+});
+
+test('se-compune.html: retry-ul unei regenerari esuate navigheaza inapoi la melodia-mea.html, NU apeleaza /generate', () => {
+  const html = read('public/se-compune.html');
+  const idx = html.indexOf("retryBtn.addEventListener('click'");
+  const block = html.slice(idx, idx + 700);
+  assert.ok(
+    block.includes('if (isRegenMode) {') && block.includes('/melodia-mea.html?id='),
+    'in modul de regenerare, retry trebuie sa navigheze la formularul de editare, nu sa porneasca o generare initiala (semantic gresit)'
+  );
+});
+
+test('melodia-mea.html: redirectul dupa o regenerare reusita trece mode=regenerate catre se-compune.html', () => {
+  const html = read('public/melodia-mea.html');
+  assert.ok(
+    html.includes('/se-compune.html?id=${encodeURIComponent(orderId)}&token=${encodeURIComponent(accessToken)}&mode=regenerate'),
+    'redirectul din confirmYesBtn (regenerare) trebuie sa marcheze explicit modul de regenerare'
+  );
+});
+
+test('traduceri: regenTitle/regenSubtitle exista in toate cele 8 limbi din se-compune.html', () => {
+  const html = read('public/se-compune.html');
+  ['regenTitle', 'regenSubtitle'].forEach(key => {
+    const count = (html.match(new RegExp(key + ':', 'g')) || []).length;
+    assert.equal(count, 8, `cheia "${key}" trebuie sa apara exact 8 ori (cate una per limba), gasita de ${count} ori`);
+  });
 });

@@ -187,6 +187,8 @@
     ro: {
       title: 'Melodia ta se compune acum',
       subtitle: 'Melodia ta este în curs de creare. De obicei este gata în aproximativ 3 minute.',
+      regenTitle: 'Lucrăm la noua versiune',
+      regenSubtitle: 'Aplicăm modificările tale. Când este gata, vei putea compara ambele versiuni.',
       keepOpen: 'Nu închide această pagină. Rezultatul va apărea automat când este gata.',
       stages: [
         'Analizăm povestea ta...',
@@ -209,6 +211,8 @@
     en: {
       title: 'Your song is being composed',
       subtitle: 'Your song is being created. It\'s usually ready in about 3 minutes.',
+      regenTitle: 'We\'re working on your new version',
+      regenSubtitle: 'Applying your changes. When it\'s ready, you\'ll be able to compare both versions.',
       keepOpen: 'Don\'t close this page. The result will appear automatically when ready.',
       stages: [
         'Analysing your story...',
@@ -231,6 +235,8 @@
     de: {
       title: 'Dein Lied wird gerade komponiert',
       subtitle: 'Dein Lied wird gerade erstellt. Es ist normalerweise in etwa 3 Minuten fertig.',
+      regenTitle: 'Wir arbeiten an deiner neuen Version',
+      regenSubtitle: 'Wir wenden deine Änderungen an. Sobald sie fertig ist, kannst du beide Versionen vergleichen.',
       keepOpen: 'Schließe diese Seite nicht. Das Ergebnis erscheint automatisch, sobald es fertig ist.',
       stages: [
         'Wir analysieren deine Geschichte...',
@@ -253,6 +259,8 @@
     es: {
       title: 'Tu canción se está componiendo',
       subtitle: 'Tu canción se está creando. Normalmente está lista en unos 3 minutos.',
+      regenTitle: 'Estamos trabajando en tu nueva versión',
+      regenSubtitle: 'Aplicando tus cambios. Cuando esté lista, podrás comparar ambas versiones.',
       keepOpen: 'No cierres esta página. El resultado aparecerá automáticamente cuando esté listo.',
       stages: [
         'Analizando tu historia...',
@@ -275,6 +283,8 @@
     it: {
       title: 'La tua canzone è in composizione',
       subtitle: 'La tua canzone è in fase di creazione. Di solito è pronta in circa 3 minuti.',
+      regenTitle: 'Stiamo lavorando alla tua nuova versione',
+      regenSubtitle: 'Stiamo applicando le tue modifiche. Quando sarà pronta, potrai confrontare entrambe le versioni.',
       keepOpen: 'Non chiudere questa pagina. Il risultato apparirà automaticamente quando sarà pronto.',
       stages: [
         'Analizziamo la tua storia...',
@@ -297,6 +307,8 @@
     fr: {
       title: 'Votre chanson est en cours de composition',
       subtitle: 'Votre chanson est en cours de création. Elle est généralement prête en environ 3 minutes.',
+      regenTitle: 'Nous travaillons sur ta nouvelle version',
+      regenSubtitle: 'Nous appliquons tes modifications. Une fois prête, tu pourras comparer les deux versions.',
       keepOpen: 'Ne fermez pas cette page. Le résultat apparaîtra automatiquement une fois prêt.',
       stages: [
         'Analyse de votre histoire...',
@@ -319,6 +331,8 @@
     bg: {
       title: 'Твоята песен се композира сега',
       subtitle: 'Песента ти се създава в момента. Обикновено е готова за около 3 минути.',
+      regenTitle: 'Работим по новата ти версия',
+      regenSubtitle: 'Прилагаме промените ти. Когато е готова, ще можеш да сравниш двете версии.',
       keepOpen: 'Не затваряй тази страница. Резултатът ще се появи автоматично, когато е готов.',
       stages: [
         'Анализираме историята ти...',
@@ -341,6 +355,8 @@
     tr: {
       title: 'Şarkınız şu anda besteleniyor',
       subtitle: 'Şarkınız oluşturuluyor. Genellikle yaklaşık 3 dakikada hazır olur.',
+      regenTitle: 'Yeni versiyonunuz üzerinde çalışıyoruz',
+      regenSubtitle: 'Değişikliklerinizi uyguluyoruz. Hazır olduğunda, her iki versiyonu karşılaştırabileceksiniz.',
       keepOpen: 'Bu sayfayı kapatmayın. Sonuç hazır olduğunda otomatik olarak görünecektir.',
       stages: [
         'Hikayenizi analiz ediyoruz...',
@@ -368,8 +384,15 @@
   const t = T[lang];
   document.documentElement.lang = lang;
 
-  document.getElementById('p-title').textContent = t.title;
-  document.getElementById('p-subtitle').textContent = t.subtitle;
+  // FINISAJ FINAL PACHET STANDARD (hotfix 2026-08-08): mode=regenerate distinge o REGENERARE
+  // (editare Standard, progres separat — vezi regenerationStatus/regenerationProgress in
+  // server.js) de generarea initiala. Titlul/descrierea difera explicit; pagina de generare
+  // initiala ramane complet neschimbata pentru orice alta comanda.
+  const params = new URLSearchParams(window.location.search);
+  const isRegenMode = params.get('mode') === 'regenerate';
+
+  document.getElementById('p-title').textContent = isRegenMode ? t.regenTitle : t.title;
+  document.getElementById('p-subtitle').textContent = isRegenMode ? t.regenSubtitle : t.subtitle;
   document.getElementById('p-keepopen').textContent = t.keepOpen;
   document.getElementById('err-title').textContent = t.errTitle;
   document.getElementById('err-sub').textContent = t.errSub;
@@ -386,7 +409,6 @@
     soundwaveEl.appendChild(bar);
   }
 
-  const params = new URLSearchParams(window.location.search);
   const orderId = params.get('id');
   const accessToken = params.get('token') || localStorage.getItem('nds_access_token') || '';
 
@@ -460,7 +482,11 @@
   // pentru numarul afisat).
   let highestShownPercent = 0;
   function updateRealProgress(order) {
-    const percent = order.generationPhasePercent;
+    // FINISAJ FINAL PACHET STANDARD: in modul de regenerare, procentul vine STRICT din
+    // regenerationProgress (separat complet de generationPhasePercent) — altfel un job de
+    // regenerare pornit dupa ce generarea initiala ajunsese deja 100% ar ramane vizual
+    // "inghetat" la 100% (bug real, gasit prin verificare directa a codului).
+    const percent = isRegenMode ? order.regenerationProgress : order.generationPhasePercent;
     if (percent == null || typeof percent !== 'number') return;
     // Niciodata regresiv vizual, chiar daca un raspuns intarziat ar aduce o valoare mai veche
     // (polling-ul si callback-ul scriu progresul independent — vezi updateGenerationPhaseIfLater).
@@ -545,9 +571,19 @@
       const order = await res.json();
       updateRealProgress(order);
 
-      if (order.status === 'preview_ready' || order.status === 'ready') {
+      // FINISAJ FINAL PACHET STANDARD: in modul de regenerare, order.status revine la
+      // 'preview_ready' in AMBELE cazuri (succes SAU esec — vezi markGenerationFailed in
+      // server.js, care pastreaza varianta initiala vandabila chiar si dupa un esec) — deci
+      // status-ul singur NU poate distinge cele doua. regenerationStatus (separat, legat de
+      // jobId) e singurul semnal fiabil aici.
+      const regenSucceeded = isRegenMode && order.regenerationStatus === 'ready';
+      const regenFailed = isRegenMode && order.regenerationStatus === 'failed';
+      const initialSucceeded = !isRegenMode && (order.status === 'preview_ready' || order.status === 'ready');
+      const initialFailed = !isRegenMode && order.status === 'generation_failed';
+
+      if (regenSucceeded || initialSucceeded) {
         finishSuccess();
-      } else if (order.status === 'generation_failed') {
+      } else if (regenFailed || initialFailed) {
         handleGenerationFailed();
       } else {
         // Comanda e confirmata inca 'generating' de catre server (nu o eroare de retea) —
@@ -598,6 +634,16 @@
   // raspunsul HTTP explicit (inclusiv 409 — generare deja in curs, gestionat ca succes,
   // pentru ca inseamna ca exista deja un task activ pe server). --------
   retryBtn.addEventListener('click', async () => {
+    // FINISAJ FINAL PACHET STANDARD: un job de REGENERARE esuat NU se reincearca apeland
+    // /generate (ar porni gresit o generare INITIALA, semantic incorect si oricum respins de
+    // server). editsUsed a fost deja restituit la esec (vezi refundEditIfReserved in server.js),
+    // deci clientul poate porni pur si simplu o noua incercare din formularul de editare —
+    // navigam idempotent inapoi acolo, fara nicio cerere de retea suplimentara.
+    if (isRegenMode) {
+      window.location.href = `/melodia-mea.html?id=${encodeURIComponent(orderId)}&token=${encodeURIComponent(accessToken)}`;
+      return;
+    }
+
     retryBtn.disabled = true;
     retryBtn.textContent = t.retrying;
 
