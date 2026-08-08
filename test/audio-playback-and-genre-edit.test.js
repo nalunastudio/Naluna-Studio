@@ -83,6 +83,19 @@ test('server.js: schimbarea genului la regenerare e inclusa in editarea gratuita
   assert.ok(genreIdx > -1 && claimIdx > -1 && genreIdx < claimIdx, 'genul trebuie citit/validat inainte de rezervarea (unica) a editarii gratuite');
 });
 
+test('db.js: COLUMN_MAP include "genre" (nu doar "genre2") — altfel db.updateOrder(id, {genre}) e un no-op TACUT', () => {
+  const dbSrc = read('db.js');
+  // gasit direct la testare reala: schimbarea genului la regenerare "reusea" (raspuns
+  // started:true, regenerare reala pornita), dar genul ramanea cel vechi peste tot — COLUMN_MAP
+  // nu avea deloc cheia "genre" (doar "genre2"), iar db.updateOrder filtreaza silentios orice
+  // cheie absenta din harta, fara nicio eroare.
+  assert.match(
+    dbSrc,
+    /genre:\s*'genre',/,
+    'COLUMN_MAP trebuie sa mapeze explicit genre -> genre, altfel schimbarea genului la editare e un no-op tacut'
+  );
+});
+
 test('server.js: genul se actualizeaza pe coloana corecta (genre sau genre2) inainte de regenerare', () => {
   const server = read('server.js');
   assert.ok(

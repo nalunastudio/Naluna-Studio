@@ -834,6 +834,16 @@ const COLUMN_MAP = {
   selectedVariantId: 'selected_variant_id',
   musicTaskId: 'music_task_id',
   musicTaskId2: 'music_task_id_2',
+  // HOTFIX 2026-08-08: 'genre' lipsea complet din aceasta mapare — genul era setat o
+  // singura data la crearea comenzii (INSERT direct in createOrder) si niciodata considerat
+  // "editabil" pana la cerinta noua de schimbare a genului la regenerare. db.updateOrder
+  // filtreaza silentios orice cheie absenta din COLUMN_MAP (fara nicio eroare) — gasit direct
+  // la testare reala pe staging: POST /regenerate raspundea "started:true" si regenerarea
+  // chiar rula, dar db.updateOrder(id, {genre: nouGen}) era un no-op TACUT — runGeneration
+  // (care reciteste comanda din DB imediat dupa) prelua tot vechiul order.genre, deci prompt-ul
+  // trimis catre Suno folosea genul VECHI, nu cel ales de client, iar eticheta afisata clientului
+  // ramanea la fel de gresita.
+  genre: 'genre',
   genre2: 'genre2',
   error: 'error',
   generatedAt: 'generated_at',
