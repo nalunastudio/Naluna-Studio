@@ -139,27 +139,29 @@ const ALLOWED_LANGS = ['ro', 'en', 'de', 'es', 'it', 'fr', 'bg', 'tr'];
 const FAMILY_OCCASIONS = ['bunici', 'parinti', 'matusa-unchi', 'socri'];
 
 // recipientRole permise per ocazie de familie. CONTINUARE — personalizarea reala a versurilor
-// (hotfix 2026-08-08): "Amândoi" adaugat pentru parinti/matusa-unchi/socri (NU si pentru bunici,
-// cerinta explicita) — reutilizeaza EXACT acelasi mecanism recipientMode='both'+recipientNames
-// deja construit pentru Nuntă/Botez, niciun sistem paralel.
+// (hotfix 2026-08-08): "Amândoi" adaugat pentru parinti/matusa-unchi/socri. CONTINUARE (hotfix
+// 2026-08-09): "Amândoi" adaugat acum si pentru bunici — reutilizeaza EXACT acelasi mecanism
+// recipientMode='both'+recipientNames deja construit pentru Nuntă/Botez, niciun sistem paralel.
 const FAMILY_OCCASION_RECIPIENT_ROLES = {
-  bunici: ['grandmother', 'grandfather'],
+  bunici: ['grandmother', 'grandfather', 'grandparents'],
   parinti: ['mother', 'father', 'parents'],
   'matusa-unchi': ['aunt', 'uncle', 'aunt_uncle'],
   socri: ['mother_in_law', 'father_in_law', 'parents_in_law']
 };
 // Valorile de recipientRole care reprezinta "Amândoi" pentru ocaziile de familie — analog cu
 // WEDDING_RECIPIENT_ROLES_BOTH de mai jos.
-const FAMILY_BOTH_ROLES = ['parents', 'aunt_uncle', 'parents_in_law'];
+const FAMILY_BOTH_ROLES = ['grandparents', 'parents', 'aunt_uncle', 'parents_in_law'];
 // senderRole permise, in functie de recipientRole ales — acelasi selector "Tu ești: ..." e
 // reutilizat pentru bunici SI matusa-unchi (romana foloseste identic "Nepoată"/"Nepot" pentru
 // ambele relatii), dar valorile interne raman distincte, ca buildPrompt sa poata scrie
 // conceptul corect in engleza (Suno traduce apoi natural, la fel ca restul promptului). Rolurile
-// "Amândoi" (parents/aunt_uncle/parents_in_law) folosesc ACELASI expeditor ca varianta lor
-// individuala — relatia expeditorului nu se schimba dupa cate persoane sunt destinatare.
+// "Amândoi" (grandparents/parents/aunt_uncle/parents_in_law) folosesc ACELASI expeditor ca
+// varianta lor individuala — relatia expeditorului nu se schimba dupa cate persoane sunt
+// destinatare.
 const FAMILY_RECIPIENT_TO_SENDER_ROLES = {
   grandmother: ['granddaughter', 'grandson'],
   grandfather: ['granddaughter', 'grandson'],
+  grandparents: ['granddaughter', 'grandson'],
   mother: ['daughter', 'son'],
   father: ['daughter', 'son'],
   parents: ['daughter', 'son'],
@@ -1385,7 +1387,10 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
       }
       safeRecipientRole = recipientRole;
       safeSenderRole = senderRole;
-      if (occasion === 'bunici') safeGrandparentType = recipientRole;
+      // grandparent_type (campul original, ingust) reprezinta DOAR 'grandmother'/'grandfather' —
+      // ramane null pentru 'grandparents' ("Amândoi", hotfix 2026-08-09), care nu are echivalent
+      // in acel camp vechi; sursa de adevar completa ramane recipientRole/recipientNames.
+      if (occasion === 'bunici' && recipientRole !== 'grandparents') safeGrandparentType = recipientRole;
       // CORECȚIE STRICTĂ (hotfix 2026-08-08, punctul 1): submeniul de relatie de la "E ziua
       // lui/ei" a fost ELIMINAT COMPLET — occasion === 'aniversare' nu mai are nicio ramura
       // speciala aici, se comporta identic cu orice ocazie generica (dor, declaratie etc.):
@@ -4576,13 +4581,32 @@ const OCCASION_LABELS = {
 // literal cuvantul englezesc in versuri. Foloseste ACELASI mecanism pentru toate relatiile de
 // familie SI de nunta/botez (inlocuieste ramura ingusta anterioara, specifica doar lui 'bunici').
 const RELATION_NOUNS = {
-  grandmother: 'grandmother', grandfather: 'grandfather',
+  grandmother: 'grandmother', grandfather: 'grandfather', grandparents: 'both grandmother and grandfather',
   mother: 'mother', father: 'father', parents: 'both parents, mother and father',
   aunt: 'aunt', uncle: 'uncle', aunt_uncle: 'both aunt and uncle',
   mother_in_law: 'mother-in-law', father_in_law: 'father-in-law', parents_in_law: 'both parents-in-law',
   groom: 'groom', bride: 'bride', couple: 'the couple (bride and groom)',
   godson: 'godson', goddaughter: 'goddaughter', godchildren: 'the godchildren',
   godfather: 'godfather', godmother: 'godmother', godparents: 'the godparents'
+};
+// CONTINUARE — relatie + nume impreuna, nu doar prenume (hotfix 2026-08-09): perechile de
+// substantive pentru "Amândoi" la cele 4 categorii de familie — cate un substantiv distinct
+// pentru fiecare nume (spre deosebire de substantivul colectiv unic folosit la Nuntă/Botez).
+const FAMILY_BOTH_PAIR_KEYS = {
+  grandparents: ['grandmother', 'grandfather'],
+  parents: ['mother', 'father'],
+  aunt_uncle: ['aunt', 'uncle'],
+  parents_in_law: ['mother_in_law', 'father_in_law']
+};
+// Forma romaneasca EXACTA pentru "soacra"/"socru" — DOAR pentru aceasta pereche, folosita cand
+// versurile sunt in romana (lyricsLanguage === 'Romanian'). Bunica/bunicul, mama/tata,
+// matusa/unchiul sunt cuvinte simple, traduse deja natural si fiabil de Suno direct din
+// conceptul in engleza (RELATION_NOUNS), fara sa fie nevoie de un ghidaj explicit aici (acelasi
+// mecanism folosit deja pentru toate celelalte ocazii/genuri) — DOAR forma compusa "mama-soacră"/
+// "tata-socru" nu ar rezulta previzibil doar din conceptul englezesc "mother-in-law", de aceea
+// e singura hintata explicit, ca sa ramana cat mai scurt bugetul suplimentar de prompt.
+const RO_RELATION_NAME_FORMS = {
+  mother_in_law: 'mama-soacră', father_in_law: 'tata-socru'
 };
 const SENDER_RELATION_NOUNS = {
   daughter: 'daughter', son: 'son',
@@ -4784,17 +4808,46 @@ function buildPrompt(order, feedback, genreOverride) {
   // "La mulți ani" pentru 'aniversare' NU mai depinde de relatie — e acum parte din
   // OCCASION_INSTRUCTIONS.aniversare de mai sus, asa ca se aplica INTOTDEAUNA, nu doar cand
   // exista o relatie de familie aleasa (submeniul de relatie de la aniversare a fost eliminat).
+  //
+  // CONTINUARE — relatie + nume impreuna, nu doar prenume (hotfix 2026-08-09): pentru
+  // Bunică/Bunic, Mamă/Tată, Mătușă/Unchi, Soacră/Socru, generatorul nu mai are voie sa se
+  // adreseze destinatarului doar prin prenume. IMPORTANT: aceasta cerinta e REFORMULATA in
+  // clauza de baza de mai jos (nu ADAUGATA ca propozitie separata) — bugetul de prompt e deja
+  // extrem de strans (verificat direct: chiar si o comanda scurta, tipica, ajunge aproape de
+  // limita de 500 caractere doar cu clauza de relatie existenta) — o propozitie suplimentara
+  // ar fi fost eliminata de cascada de scurtare in aproape toate comenzile reale, facand
+  // cerinta inutila in practica. Pentru Nuntă/Botez (in afara scopului acestei runde),
+  // formularea ramane EXACT cea originala, neschimbata. Numele efectiv NU e repetat aici (Suno
+  // il are deja din linia "Recipient:"/"Sender:", protejata separat de trunchiere) — daca ar fi
+  // repetat, un nume de 60 caractere la "Amândoi" ar fi putut impinge acea linie dincolo de
+  // limita finala de 500, exact riscul pe care recipientIsProtectedCombo il elimina.
   function relationClause() {
     const recipientNoun = RELATION_NOUNS[effectiveRecipientRole];
     if (!recipientNoun) return '';
     const senderNoun = SENDER_RELATION_NOUNS[order.senderRole];
-    return useShortOccasionInstruction
+    if (!FAMILY_OCCASIONS.includes(order.occasion)) {
+      // Comportament ORIGINAL, neschimbat, pentru Nuntă/Botez.
+      return useShortOccasionInstruction
+        ? (senderNoun
+            ? ` Mention once: recipient's ${recipientNoun}, song from their ${senderNoun}.`
+            : ` Mention once: dedicated to recipient as their ${recipientNoun}.`)
+        : (senderNoun
+            ? ` Mention naturally, once, that the recipient is their ${recipientNoun} and the song is from their ${senderNoun}.`
+            : ` Mention naturally, once, that this song is dedicated to the recipient as their ${recipientNoun}.`);
+    }
+    const roForm = RO_RELATION_NAME_FORMS[effectiveRecipientRole];
+    const roNoun = (lyricsLanguage === 'Romanian' && roForm) ? `"${roForm}"` : `"${recipientNoun}"`;
+    const bothKeys = FAMILY_BOTH_PAIR_KEYS[effectiveRecipientRole];
+    const isBoth = bothKeys && order.recipientNames && order.recipientNames.name1 && order.recipientNames.name2;
+    let clause = useShortOccasionInstruction
       ? (senderNoun
-          ? ` Mention once: recipient's ${recipientNoun}, song from their ${senderNoun}.`
-          : ` Mention once: dedicated to recipient as their ${recipientNoun}.`)
+          ? ` Address as ${roNoun}+name, never bare name (from their ${senderNoun}).`
+          : ` Address as ${roNoun}+name, never bare name.`)
       : (senderNoun
-          ? ` Mention naturally, once, that the recipient is their ${recipientNoun} and the song is from their ${senderNoun}.`
-          : ` Mention naturally, once, that this song is dedicated to the recipient as their ${recipientNoun}.`);
+          ? ` Always address the recipient as ${roNoun} plus their name (never bare first name); the song is from their ${senderNoun}.`
+          : ` Always address the recipient as ${roNoun} plus their name, never by first name alone.`);
+    if (isBoth) clause += ' Never omit either person.';
+    return clause;
   }
   function currentOccasionInstruction() {
     if (!includeOccasionInstruction) return '';

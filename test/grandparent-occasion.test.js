@@ -21,8 +21,12 @@ test('server.js: ALLOWED_OCCASIONS include "bunici"', () => {
 // socri — vezi test/occasion-family-relations.test.js pentru acoperirea completa a noului bloc.
 test('server.js: POST /api/orders valideaza strict recipientRole/senderRole pentru occasion="bunici" (acum parte din blocul generalizat de familie)', () => {
   const server = read('server.js');
-  assert.ok(server.includes("bunici: ['grandmother', 'grandfather'],"), 'bunici trebuie sa ramana in FAMILY_OCCASION_RECIPIENT_ROLES, cu exact aceleasi 2 valori ca inainte');
-  assert.ok(server.includes('if (occasion === \'bunici\') safeGrandparentType = recipientRole;'), 'grandparent_type (coloana originala) ramane oglindita pentru compatibilitate');
+  // CONTINUARE (hotfix 2026-08-09): "Amândoi" adaugat si pentru bunici — a treia valoare,
+  // 'grandparents', langa cele 2 originale (grandmother/grandfather), care raman neschimbate.
+  assert.ok(server.includes("bunici: ['grandmother', 'grandfather', 'grandparents'],"), 'bunici trebuie sa pastreze grandmother/grandfather si sa adauge grandparents ("Amândoi")');
+  // grandparent_type (coloana ingusta, originala) ramane oglindita DOAR pentru grandmother/grandfather —
+  // 'grandparents' ("Amândoi") nu are echivalent in acel camp vechi, ramane null (vezi recipientRole/recipientNames).
+  assert.ok(server.includes("if (occasion === 'bunici' && recipientRole !== 'grandparents') safeGrandparentType = recipientRole;"), 'grandparent_type (coloana originala) ramane oglindita pentru compatibilitate, exceptand "Amândoi"');
 });
 
 test('server.js: grandparentTypeRequiredMessage acopera toate cele 8 limbi', () => {
@@ -83,10 +87,10 @@ test('comanda.html: cardul "Pentru bunica sau bunicul" exista in grila de ocazii
   assert.ok(html.includes('data-i18n="theme_bunici_desc"'));
 });
 
-test('comanda.html: sub-alegerea bunica/bunicul exista, ascunsa implicit, cu doua carduri obligatorii (acum panou generalizat de familie)', () => {
+test('comanda.html: sub-alegerea bunica/bunicul exista, ascunsa implicit, cu trei carduri (grandmother/grandfather + Amândoi) (acum panou generalizat de familie)', () => {
   const html = read('public/comanda.html');
   assert.ok(html.includes('id="family-relation-panel" style="display:none;'), 'campul trebuie ascuns implicit');
-  assert.ok(html.includes("bunici: ['grandmother', 'grandfather'],"), 'cele doua optiuni obligatorii pentru bunici raman exact grandmother/grandfather');
+  assert.ok(html.includes("bunici: ['grandmother', 'grandfather', 'grandparents'],"), 'bunici trebuie sa pastreze grandmother/grandfather si sa adauge grandparents ("Amândoi")');
   assert.ok(html.includes('id="recipientRole"'));
   assert.ok(html.includes('id="err-recipientRoleFamily"'));
 });

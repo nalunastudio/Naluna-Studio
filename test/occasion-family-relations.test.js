@@ -25,9 +25,9 @@ test('comanda.html: panoul de relatie de familie e REPOZITIONAT dinamic imediat 
 
 // NOTA (CONTINUARE — personalizarea reala a versurilor, hotfix 2026-08-08): parinti/matusa-unchi/
 // socri au acum 3 optiuni (a treia fiind "Amândoi") — vezi test/occasion-real-personalization.test.js.
-test('comanda.html: RECIPIENT_ROLE_OPTIONS acopera toate cele 4 ocazii de familie (bunici: 2, celelalte 3 cu Amândoi)', () => {
+test('comanda.html: RECIPIENT_ROLE_OPTIONS acopera toate cele 4 ocazii de familie, toate cu 3 optiuni (Amândoi inclus, si la bunici din hotfix 2026-08-09)', () => {
   const html = read('public/comanda.html');
-  assert.ok(html.includes("bunici: ['grandmother', 'grandfather'],"));
+  assert.ok(html.includes("bunici: ['grandmother', 'grandfather', 'grandparents'],"));
   assert.ok(html.includes("parinti: ['mother', 'father', 'parents'],"));
   assert.ok(html.includes("'matusa-unchi': ['aunt', 'uncle', 'aunt_uncle'],"));
   assert.ok(html.includes("socri: ['mother_in_law', 'father_in_law', 'parents_in_law']"));
@@ -184,7 +184,7 @@ test('server.js: client-ul NU poate forta o combinatie recipientRole/occasion in
   // FAMILY_OCCASION_RECIPIENT_ROLES[occasion] e o lista FIXA per ocazie — un rol de nunta
   // (ex. 'groom') nu apare in nicio lista de familie, deci .includes() il respinge automat.
   assert.ok(!/bunici:\s*\[[^\]]*groom/.test(server));
-  assert.ok(server.includes("bunici: ['grandmother', 'grandfather'],"));
+  assert.ok(server.includes("bunici: ['grandmother', 'grandfather', 'grandparents'],"));
 });
 
 // -------------------------------------------------------------------------------------------

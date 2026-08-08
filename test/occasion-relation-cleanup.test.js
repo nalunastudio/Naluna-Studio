@@ -21,12 +21,13 @@ test('comanda.html: NU mai exista niciun panou/submeniu de relatie pentru "E ziu
   assert.ok(!html.includes('label_aniversare_relation') === false || !html.includes('data-i18n="label_aniversare_relation"'), 'eticheta submeniului nu mai trebuie sa apara in HTML');
 });
 
-// NOTA (CONTINUARE — personalizarea reala a versurilor, hotfix 2026-08-08): parinti/matusa-unchi/
-// socri au primit a treia optiune "Amândoi" (cerinta explicita a rundei curente) — DOAR bunici
-// ramane la exact 2 optiuni, neschimbat. Vezi test/occasion-real-personalization.test.js.
-test('comanda.html: cardurile Bunică/Bunic, Mamă/Tată, Mătușă/Unchi, Soacră/Socru exista, cu optiunile corecte (bunici: 2, celelalte 3)', () => {
+// NOTA (CONTINUARE — personalizarea reala a versurilor, hotfix 2026-08-08 si 2026-08-09):
+// parinti/matusa-unchi/socri au primit a treia optiune "Amândoi"; bunici a primit-o si el,
+// intr-o runda ulterioara (2026-08-09) — toate cele 4 ocazii de familie au acum 3 optiuni.
+// Vezi test/occasion-real-personalization.test.js si test/bunici-amandoi-relation-name.test.js.
+test('comanda.html: cardurile Bunică/Bunic, Mamă/Tată, Mătușă/Unchi, Soacră/Socru exista, cu optiunile corecte (toate cu 3 optiuni, Amândoi inclus)', () => {
   const html = read('public/comanda.html');
-  assert.ok(html.includes("bunici: ['grandmother', 'grandfather'],"));
+  assert.ok(html.includes("bunici: ['grandmother', 'grandfather', 'grandparents'],"));
   assert.ok(html.includes("parinti: ['mother', 'father', 'parents'],"));
   assert.ok(html.includes("'matusa-unchi': ['aunt', 'uncle', 'aunt_uncle'],"));
   assert.ok(html.includes("socri: ['mother_in_law', 'father_in_law', 'parents_in_law']"));

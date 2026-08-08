@@ -31,6 +31,7 @@ function loadBuildPrompt() {
   const snippet = server.slice(startIdx, funcEnd);
   const sandboxSrc = `
     const VOICE_PREFERENCES = ['female', 'male', 'duet', 'auto'];
+    const FAMILY_OCCASIONS = ['bunici', 'parinti', 'matusa-unchi', 'socri'];
     ${snippet}
     return buildPrompt;
   `;
@@ -178,18 +179,20 @@ test('server.js: rolul "Miri" nu e acceptat cand weddingType="baptism" si invers
 // -------------------------------------------------------------------------------------------
 // 8. Mamă/Tată, Mătușă/Unchi, Soacră/Socru afiseaza fiecare trei optiuni, inclusiv "Amândoi".
 // -------------------------------------------------------------------------------------------
-test('comanda.html: parinti/matusa-unchi/socri au fiecare 3 optiuni (inclusiv Amândoi), bunici ramane la 2', () => {
+// NOTA (CONTINUARE, hotfix 2026-08-09): bunici a primit ulterior si el a treia optiune
+// "Amândoi" (test/bunici-amandoi-relation-name.test.js) — toate cele 4 ocazii de familie
+// au acum exact 3 optiuni fiecare, acelasi tipar generic.
+test('comanda.html: parinti/matusa-unchi/socri/bunici au fiecare 3 optiuni (inclusiv Amândoi)', () => {
   const html = read('public/comanda.html');
   assert.ok(html.includes("parinti: ['mother', 'father', 'parents'],"));
   assert.ok(html.includes("'matusa-unchi': ['aunt', 'uncle', 'aunt_uncle'],"));
   assert.ok(html.includes("socri: ['mother_in_law', 'father_in_law', 'parents_in_law']"));
-  assert.ok(html.includes("bunici: ['grandmother', 'grandfather'],"), 'bunici NU primeste Amândoi, cerinta explicita');
+  assert.ok(html.includes("bunici: ['grandmother', 'grandfather', 'grandparents'],"), 'bunici a primit si el Amândoi (hotfix 2026-08-09)');
 });
 
-test('server.js: FAMILY_BOTH_ROLES contine exact parents/aunt_uncle/parents_in_law, NU si bunici', () => {
+test('server.js: FAMILY_BOTH_ROLES contine grandparents/parents/aunt_uncle/parents_in_law', () => {
   const server = read('server.js');
-  assert.ok(server.includes("const FAMILY_BOTH_ROLES = ['parents', 'aunt_uncle', 'parents_in_law'];"));
-  assert.ok(!/grandmother|grandfather/.test(server.match(/const FAMILY_BOTH_ROLES[^;]*;/)[0]));
+  assert.ok(server.includes("const FAMILY_BOTH_ROLES = ['grandparents', 'parents', 'aunt_uncle', 'parents_in_law'];"));
 });
 
 // -------------------------------------------------------------------------------------------
