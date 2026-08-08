@@ -93,6 +93,18 @@
   .theme-name{ font-weight:600; font-size:14px; }
   .theme-desc{ color:var(--text-secondary); font-size:12px; margin-top:3px; }
 
+  /* MODIFICARE STRICTĂ — pagina de ocazie (hotfix 2026-08-08): panouri conditionale (relatie
+     destinatar/expeditor, structura nuntă/botez) — traiesc ca elemente ale ACELUIASI grid CSS
+     ca #theme-grid (grid-column:1/-1 = ocupa tot randul), plasate in DOM imediat dupa cardul
+     care le declanseaza -> apar direct sub acel card, niciodata la finalul intregii grile,
+     identic pe mobil (grid-ul devine 1 coloana la <480px, panoul ramane tot direct sub card).
+     display:none le scoate complet din layout-ul grid-ului (fara gol vizual cand sunt ascunse). */
+  .theme-subpanel{
+    grid-column:1/-1; background:var(--bg-secondary); border:1px solid var(--line);
+    border-radius:12px; padding:16px 17px; animation:fadeIn .25s ease;
+  }
+  .theme-subpanel > label{ font-weight:600; font-size:13px; color:var(--text); margin-bottom:9px; }
+
   .voice-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:4px; }
   .voice-card{
     border:1px solid var(--line); border-radius:12px; padding:15px 17px; cursor:pointer;
@@ -231,14 +243,77 @@
           <div class="theme-name" data-i18n="theme_aniversare_name">E ziua lui/ei</div>
           <div class="theme-desc" data-i18n="theme_aniversare_desc">La mulți ani, dar personal</div>
         </div>
+
+        <!-- MODIFICARE STRICTĂ — pagina de ocazie (hotfix 2026-08-08): "Cine își sărbătorește
+             ziua?" — panou plasat, in DOM, IMEDIAT dupa cardul aniversare, ca element din
+             ACELASI grid CSS (grid-column:1/-1 = randul intreg) — apare direct sub card, NU la
+             finalul intregii grile, inclusiv pe mobil (grid devine 1 coloana la <480px, panoul
+             ramane tot direct sub card). Ascuns complet (display:none) = scos din grid, fara
+             gol vizual. Relatia e OPTIONALA — "Altă persoană" pastreaza fluxul generic actual. -->
+        <div class="theme-subpanel" id="aniversare-relation-panel" style="display:none;">
+          <label data-i18n="label_aniversare_relation">Cine își sărbătorește ziua?</label>
+          <div class="theme-grid" id="aniversare-relation-grid" style="grid-template-columns:1fr 1fr;">
+            <div class="theme-card theme-subcard aniversare-relation-card" data-role="grandmother"><div class="theme-name" data-i18n="relation_grandmother">Bunică</div></div>
+            <div class="theme-card theme-subcard aniversare-relation-card" data-role="grandfather"><div class="theme-name" data-i18n="relation_grandfather">Bunic</div></div>
+            <div class="theme-card theme-subcard aniversare-relation-card" data-role="mother"><div class="theme-name" data-i18n="relation_mother">Mamă</div></div>
+            <div class="theme-card theme-subcard aniversare-relation-card" data-role="father"><div class="theme-name" data-i18n="relation_father">Tată</div></div>
+            <div class="theme-card theme-subcard aniversare-relation-card" data-role="aunt"><div class="theme-name" data-i18n="relation_aunt">Mătușă</div></div>
+            <div class="theme-card theme-subcard aniversare-relation-card" data-role="uncle"><div class="theme-name" data-i18n="relation_uncle">Unchi</div></div>
+            <div class="theme-card theme-subcard aniversare-relation-card" data-role="mother_in_law"><div class="theme-name" data-i18n="relation_mother_in_law">Soacră</div></div>
+            <div class="theme-card theme-subcard aniversare-relation-card" data-role="father_in_law"><div class="theme-name" data-i18n="relation_father_in_law">Socru</div></div>
+            <div class="theme-card theme-subcard aniversare-relation-card active" data-role=""><div class="theme-name" data-i18n="relation_other">Altă persoană</div></div>
+          </div>
+          <div class="field-error" id="err-aniversareRelation"></div>
+          <div id="aniversare-sender-role-slot"></div>
+        </div>
+
         <div class="theme-card" data-theme="declaratie">
           <div class="theme-name" data-i18n="theme_declaratie_name">Te iubesc, pe note</div>
           <div class="theme-desc" data-i18n="theme_declaratie_desc">Când mesajul nu ajunge</div>
         </div>
         <div class="theme-card" data-theme="nunta">
-          <div class="theme-name" data-i18n="theme_nunta_name">Nuntă</div>
-          <div class="theme-desc" data-i18n="theme_nunta_desc">Primul dans sau surpriză pentru miri</div>
+          <div class="theme-name" data-i18n="theme_nunta_name">Nuntă/Botez</div>
+          <div class="theme-desc" data-i18n="theme_nunta_desc">Primul dans sau surpriză pentru miri, fini sau nași</div>
         </div>
+
+        <!-- "Nuntă/Botez" (Partea 4) — Miri/Fini/Nași, fiecare cu rol individual sau "Amândoi",
+             plasat identic IMEDIAT dupa cardul nunta. Valoarea interna a ocaziei ramane 'nunta'
+             (neschimbata) — doar eticheta afisata s-a schimbat, pentru compatibilitate deplina
+             cu comenzile vechi. -->
+        <div class="theme-subpanel" id="nunta-panel" style="display:none;">
+          <label data-i18n="label_nunta_group">Pentru cine e melodia?</label>
+          <div class="theme-grid" id="nunta-group-grid" style="grid-template-columns:1fr 1fr 1fr;">
+            <div class="theme-card theme-subcard nunta-group-card" data-group="miri"><div class="theme-name" data-i18n="nunta_group_miri">Miri</div></div>
+            <div class="theme-card theme-subcard nunta-group-card" data-group="fini"><div class="theme-name" data-i18n="nunta_group_fini">Fini</div></div>
+            <div class="theme-card theme-subcard nunta-group-card" data-group="nasi"><div class="theme-name" data-i18n="nunta_group_nasi">Nași</div></div>
+          </div>
+          <div class="field-error" id="err-nuntaGroup"></div>
+
+          <div id="nunta-subrole-field" style="display:none; margin-top:16px;">
+            <label id="nunta-subrole-label" data-i18n="label_nunta_subrole">Cine anume?</label>
+            <div class="theme-grid" id="nunta-subrole-grid" style="grid-template-columns:1fr 1fr 1fr;"></div>
+            <div class="field-error" id="err-recipientRole"></div>
+          </div>
+
+          <div id="nunta-names-field" style="display:none; margin-top:16px;">
+            <div class="field">
+              <label for="nunta-name1" id="nunta-name1-label"></label>
+              <input type="text" id="nunta-name1" maxlength="60">
+              <div class="field-error" id="err-nuntaName1"></div>
+            </div>
+            <div class="field">
+              <label for="nunta-name2" id="nunta-name2-label"></label>
+              <input type="text" id="nunta-name2" maxlength="60">
+              <div class="field-error" id="err-nuntaName2"></div>
+            </div>
+          </div>
+
+          <div class="field" id="nunta-sender-field" style="display:none; margin-top:16px;">
+            <label for="nunta-sender-select" data-i18n="label_nunta_sender">Din partea cui este melodia?</label>
+            <select id="nunta-sender-select"></select>
+          </div>
+        </div>
+
         <div class="theme-card" data-theme="pierdere">
           <div class="theme-name" data-i18n="theme_pierdere_name">În memoria cuiva</div>
           <div class="theme-desc" data-i18n="theme_pierdere_desc">Pentru cei care nu mai sunt aici</div>
@@ -251,28 +326,47 @@
           <div class="theme-name" data-i18n="theme_bunici_name">Pentru bunica sau bunicul</div>
           <div class="theme-desc" data-i18n="theme_bunici_desc">Un cântec plin de iubire, recunoștință și amintiri</div>
         </div>
+        <div class="theme-card" data-theme="parinti">
+          <div class="theme-name" data-i18n="theme_parinti_name">Pentru mama sau tata</div>
+          <div class="theme-desc" data-i18n="theme_parinti_desc">Un cântec plin de iubire, recunoștință și amintiri</div>
+        </div>
+        <div class="theme-card" data-theme="matusa-unchi">
+          <div class="theme-name" data-i18n="theme_matusaunchi_name">Pentru mătușă sau unchi</div>
+          <div class="theme-desc" data-i18n="theme_matusaunchi_desc">Un cântec plin de iubire, recunoștință și amintiri</div>
+        </div>
+        <div class="theme-card" data-theme="socri">
+          <div class="theme-name" data-i18n="theme_socri_name">Pentru soacră sau socru</div>
+          <div class="theme-desc" data-i18n="theme_socri_desc">Un cântec plin de iubire, recunoștință și amintiri</div>
+        </div>
+
+        <!-- Panou COMUN celor 4 ocazii de familie de mai sus — REPOZITIONAT dinamic (JS,
+             card.insertAdjacentElement('afterend', panel)) imediat dupa cardul activ dintre
+             ele, in loc de 4 blocuri de markup aproape identice. Alegerea e OBLIGATORIE si
+             validata STRICT server-side — NICIODATA dedusa din nume/voce. -->
+        <div class="theme-subpanel" id="family-relation-panel" style="display:none;">
+          <label id="family-relation-label" data-i18n="label_recipient_role">Pentru cine e cântecul?</label>
+          <div class="theme-grid" id="family-relation-grid" style="grid-template-columns:1fr 1fr;"></div>
+          <div class="field-error" id="err-recipientRoleFamily"></div>
+          <div id="family-sender-role-slot"></div>
+        </div>
+
         <div class="theme-card" data-theme="altceva">
           <div class="theme-name" data-i18n="theme_altceva_name">Orice altceva</div>
           <div class="theme-desc" data-i18n="theme_altceva_desc">Fără ocazie. Descrie tu</div>
         </div>
       </div>
       <input type="hidden" id="occasion" value="dor">
+      <input type="hidden" id="recipientRole" value="">
+      <input type="hidden" id="senderRole" value="">
+      <input type="hidden" id="recipientMode" value="">
 
-      <!-- ULTIMELE MODIFICĂRI STRICTE (hotfix 2026-08-08): alegerea bunica/bunicul e OBLIGATORIE
-           cand occasion='bunici' — niciodata dedusa din nume/voce. Ascunsa complet pentru orice
-           alta ocazie (acelasi tipar ca #genre2-field, vezi updateGrandparentTypeVisibility). -->
-      <div class="field" id="grandparent-type-field" style="display:none; margin-top:16px;">
-        <label data-i18n="label_grandparent_type">Pentru cine e cântecul?</label>
-        <div class="theme-grid" id="grandparent-type-grid" style="grid-template-columns:1fr 1fr;">
-          <div class="theme-card grandparent-type-card" data-grandparent="grandmother">
-            <div class="theme-name" data-i18n="grandparent_grandmother_name">Pentru bunica</div>
-          </div>
-          <div class="theme-card grandparent-type-card" data-grandparent="grandfather">
-            <div class="theme-name" data-i18n="grandparent_grandfather_name">Pentru bunicul</div>
-          </div>
-        </div>
-        <input type="hidden" id="grandparentType" value="">
-        <div class="field-error" id="err-grandparentType"></div>
+      <!-- Refolosit intre panoul de familie si cel de aniversare (reparentat dinamic, JS,
+           acelasi tipar ca sloturile checkoutBtn din melodia-mea.html) — un singur bloc logic
+           de markup pentru "Tu ești: ...", niciodata duplicat. -->
+      <div id="sender-role-subfield" style="display:none; margin-top:16px;">
+        <label id="sender-role-label" data-i18n="label_sender_role">Tu ești:</label>
+        <div class="theme-grid" id="sender-role-grid" style="grid-template-columns:1fr 1fr;"></div>
+        <div class="field-error" id="err-senderRole"></div>
       </div>
 
       <div class="wizard-nav single">
@@ -473,8 +567,8 @@
       theme_aniversare_desc: 'La mulți ani, dar personal',
       theme_declaratie_name: 'Te iubesc, pe note',
       theme_declaratie_desc: 'Când mesajul nu ajunge',
-      theme_nunta_name: 'Nunta',
-      theme_nunta_desc: 'Primul dans sau surpriză pentru miri',
+      theme_nunta_name: 'Nuntă/Botez',
+      theme_nunta_desc: 'Primul dans sau surpriză pentru miri, fini sau nași',
       theme_pierdere_name: 'În memoria cuiva',
       theme_pierdere_desc: 'Pentru cei care nu mai sunt aici',
       theme_pentrumine_name: 'Pentru mine',
@@ -486,6 +580,28 @@
       label_grandparent_type: 'Pentru cine e cântecul?',
       grandparent_grandmother_name: 'Pentru bunica',
       grandparent_grandfather_name: 'Pentru bunicul',
+      theme_parinti_name: 'Pentru mama sau tata',
+      theme_parinti_desc: 'Un cântec plin de iubire, recunoștință și amintiri',
+      theme_matusaunchi_name: 'Pentru mătușă sau unchi',
+      theme_matusaunchi_desc: 'Un cântec plin de iubire, recunoștință și amintiri',
+      theme_socri_name: 'Pentru soacră sau socru',
+      theme_socri_desc: 'Un cântec plin de iubire, recunoștință și amintiri',
+      relation_grandmother: 'Bunică', relation_grandfather: 'Bunic', relation_mother: 'Mamă', relation_father: 'Tată', relation_aunt: 'Mătușă', relation_uncle: 'Unchi', relation_mother_in_law: 'Soacră', relation_father_in_law: 'Socru',
+      relation_groom: 'Mire', relation_bride: 'Mireasă', relation_godson: 'Fin', relation_goddaughter: 'Fină', relation_godfather: 'Naș', relation_godmother: 'Nașă',
+      relation_other: 'Altă persoană',
+      nunta_both: 'Amândoi',
+      sender_relation_daughter: 'Fiică', sender_relation_son: 'Fiu', sender_relation_granddaughter: 'Nepoată', sender_relation_grandson: 'Nepot', sender_relation_niece: 'Nepoată', sender_relation_nephew: 'Nepot', sender_relation_daughter_in_law: 'Noră', sender_relation_son_in_law: 'Ginere',
+      label_recipient_role: 'Pentru cine e cântecul?',
+      label_sender_role: 'Tu ești:',
+      label_aniversare_relation: 'Cine își sărbătorește ziua?',
+      label_nunta_group: 'Pentru cine e melodia?',
+      label_nunta_subrole: 'Cine anume?',
+      label_nunta_sender: 'Din partea cui este melodia?',
+      nunta_group_miri: 'Miri', nunta_group_fini: 'Fini', nunta_group_nasi: 'Nași',
+      nunta_name_bride_label: 'Numele miresei', nunta_name_groom_label: 'Numele mirelui',
+      nunta_name_goddaughter_label: 'Numele finei', nunta_name_godson_label: 'Numele finului',
+      nunta_name_godmother_label: 'Numele nașei', nunta_name_godfather_label: 'Numele nașului',
+      and_conjunction: 'și',
       label_recipient: 'Pentru cine e cântecul (nume)',
       ph_recipient: 'ex: Maria',
       label_sender: 'Din partea cui e cântecul',
@@ -575,6 +691,9 @@
       val_genre2_required: 'Alege genul celei de-a doua melodii',
       val_genre_same: 'Alege două genuri muzicale diferite.',
       val_grandparent_type: 'Alege pentru cine este cântecul: bunica sau bunicul',
+      val_recipient_role: 'Alege exact pentru cine este cântecul',
+      val_sender_role: 'Alege ce relație ai tu cu destinatarul',
+      val_nunta_names: 'Completează ambele nume',
       step_progress_label: (n) => 'Pasul ' + n + ' din 4',
     },
     en: {
@@ -591,8 +710,8 @@
       theme_aniversare_desc: 'Happy birthday, made personal.',
       theme_declaratie_name: 'I love you, in song',
       theme_declaratie_desc: 'When words are not enough.',
-      theme_nunta_name: 'Wedding',
-      theme_nunta_desc: 'First dance or a surprise for the couple.',
+      theme_nunta_name: 'Wedding/Christening',
+      theme_nunta_desc: 'First dance or a surprise for the couple, godchildren or godparents.',
       theme_pierdere_name: 'In memory of someone',
       theme_pierdere_desc: 'For those who are no longer here.',
       theme_pentrumine_name: 'For myself',
@@ -604,6 +723,28 @@
       label_grandparent_type: 'Who is the song for?',
       grandparent_grandmother_name: 'For grandma',
       grandparent_grandfather_name: 'For grandpa',
+      theme_parinti_name: 'For mom or dad',
+      theme_parinti_desc: 'A song full of love, gratitude and memories',
+      theme_matusaunchi_name: 'For an aunt or uncle',
+      theme_matusaunchi_desc: 'A song full of love, gratitude and memories',
+      theme_socri_name: 'For a mother-in-law or father-in-law',
+      theme_socri_desc: 'A song full of love, gratitude and memories',
+      relation_grandmother: 'Grandmother', relation_grandfather: 'Grandfather', relation_mother: 'Mother', relation_father: 'Father', relation_aunt: 'Aunt', relation_uncle: 'Uncle', relation_mother_in_law: 'Mother-in-law', relation_father_in_law: 'Father-in-law',
+      relation_groom: 'Groom', relation_bride: 'Bride', relation_godson: 'Godson', relation_goddaughter: 'Goddaughter', relation_godfather: 'Godfather', relation_godmother: 'Godmother',
+      relation_other: 'Someone else',
+      nunta_both: 'Both',
+      sender_relation_daughter: 'Daughter', sender_relation_son: 'Son', sender_relation_granddaughter: 'Granddaughter', sender_relation_grandson: 'Grandson', sender_relation_niece: 'Niece', sender_relation_nephew: 'Nephew', sender_relation_daughter_in_law: 'Daughter-in-law', sender_relation_son_in_law: 'Son-in-law',
+      label_recipient_role: 'Who is the song for?',
+      label_sender_role: 'You are:',
+      label_aniversare_relation: 'Whose birthday is it?',
+      label_nunta_group: 'Who is the song for?',
+      label_nunta_subrole: 'Who exactly?',
+      label_nunta_sender: 'Who is the song from?',
+      nunta_group_miri: 'The couple', nunta_group_fini: 'Godchildren', nunta_group_nasi: 'Godparents',
+      nunta_name_bride_label: "Bride's name", nunta_name_groom_label: "Groom's name",
+      nunta_name_goddaughter_label: "Goddaughter's name", nunta_name_godson_label: "Godson's name",
+      nunta_name_godmother_label: "Godmother's name", nunta_name_godfather_label: "Godfather's name",
+      and_conjunction: 'and',
       label_recipient: 'Who is the song for (name)',
       ph_recipient: 'e.g. Maria',
       label_sender: 'Who is the song from',
@@ -693,6 +834,9 @@
       val_genre2_required: "Choose the second song's genre",
       val_genre_same: 'Choose two different musical genres.',
       val_grandparent_type: 'Choose who the song is for: grandma or grandpa',
+      val_recipient_role: 'Choose exactly who the song is for',
+      val_sender_role: 'Choose your relationship to the recipient',
+      val_nunta_names: 'Fill in both names',
       step_progress_label: (n) => 'Step ' + n + ' of 4',
     },
     de: {
@@ -709,8 +853,8 @@
       theme_aniversare_desc: 'Alles Gute, ganz persönlich.',
       theme_declaratie_name: 'Ich liebe dich, in Liedform',
       theme_declaratie_desc: 'Wenn Worte nicht reichen.',
-      theme_nunta_name: 'Hochzeit',
-      theme_nunta_desc: 'Erster Tanz oder Überraschung fürs Brautpaar.',
+      theme_nunta_name: 'Hochzeit/Taufe',
+      theme_nunta_desc: 'Erster Tanz oder Überraschung fürs Brautpaar, Patenkinder oder Paten.',
       theme_pierdere_name: 'In Erinnerung an jemanden',
       theme_pierdere_desc: 'Für die, die nicht mehr hier sind.',
       theme_pentrumine_name: 'Für mich selbst',
@@ -722,6 +866,28 @@
       label_grandparent_type: 'Für wen ist das Lied?',
       grandparent_grandmother_name: 'Für Oma',
       grandparent_grandfather_name: 'Für Opa',
+      theme_parinti_name: 'Für Mama oder Papa',
+      theme_parinti_desc: 'Ein Lied voller Liebe, Dankbarkeit und Erinnerungen',
+      theme_matusaunchi_name: 'Für Tante oder Onkel',
+      theme_matusaunchi_desc: 'Ein Lied voller Liebe, Dankbarkeit und Erinnerungen',
+      theme_socri_name: 'Für Schwiegermutter oder Schwiegervater',
+      theme_socri_desc: 'Ein Lied voller Liebe, Dankbarkeit und Erinnerungen',
+      relation_grandmother: 'Oma', relation_grandfather: 'Opa', relation_mother: 'Mama', relation_father: 'Papa', relation_aunt: 'Tante', relation_uncle: 'Onkel', relation_mother_in_law: 'Schwiegermutter', relation_father_in_law: 'Schwiegervater',
+      relation_groom: 'Bräutigam', relation_bride: 'Braut', relation_godson: 'Patensohn', relation_goddaughter: 'Patentochter', relation_godfather: 'Pate', relation_godmother: 'Patin',
+      relation_other: 'Eine andere Person',
+      nunta_both: 'Beide',
+      sender_relation_daughter: 'Tochter', sender_relation_son: 'Sohn', sender_relation_granddaughter: 'Enkelin', sender_relation_grandson: 'Enkel', sender_relation_niece: 'Nichte', sender_relation_nephew: 'Neffe', sender_relation_daughter_in_law: 'Schwiegertochter', sender_relation_son_in_law: 'Schwiegersohn',
+      label_recipient_role: 'Für wen ist das Lied?',
+      label_sender_role: 'Du bist:',
+      label_aniversare_relation: 'Wer hat Geburtstag?',
+      label_nunta_group: 'Für wen ist das Lied?',
+      label_nunta_subrole: 'Wer genau?',
+      label_nunta_sender: 'Von wem ist das Lied?',
+      nunta_group_miri: 'Brautpaar', nunta_group_fini: 'Patenkinder', nunta_group_nasi: 'Paten',
+      nunta_name_bride_label: 'Name der Braut', nunta_name_groom_label: 'Name des Bräutigams',
+      nunta_name_goddaughter_label: 'Name der Patentochter', nunta_name_godson_label: 'Name des Patensohns',
+      nunta_name_godmother_label: 'Name der Patin', nunta_name_godfather_label: 'Name des Paten',
+      and_conjunction: 'und',
       label_recipient: 'Für wen ist das Lied (Name)',
       ph_recipient: 'z.B. Maria',
       label_sender: 'Von wem ist das Lied',
@@ -811,6 +977,9 @@
       val_genre2_required: 'Wähle die Musikrichtung des zweiten Liedes',
       val_genre_same: 'Wähle zwei unterschiedliche Musikrichtungen.',
       val_grandparent_type: 'Wähle, für wen das Lied ist: Oma oder Opa',
+      val_recipient_role: 'Wähle genau, für wen das Lied ist',
+      val_sender_role: 'Wähle deine Beziehung zur empfangenden Person',
+      val_nunta_names: 'Gib beide Namen ein',
       step_progress_label: (n) => 'Schritt ' + n + ' von 4',
     },
     es: {
@@ -827,8 +996,8 @@
       theme_aniversare_desc: 'Feliz cumpleaños, muy personal.',
       theme_declaratie_name: 'Te quiero, en canción',
       theme_declaratie_desc: 'Cuando las palabras no bastan.',
-      theme_nunta_name: 'Boda',
-      theme_nunta_desc: 'Primer baile o sorpresa para los novios.',
+      theme_nunta_name: 'Boda/Bautizo',
+      theme_nunta_desc: 'Primer baile o sorpresa para los novios, ahijados o padrinos.',
       theme_pierdere_name: 'En memoria de alguien',
       theme_pierdere_desc: 'Para quienes ya no están.',
       theme_pentrumine_name: 'Para mí mismo/a',
@@ -840,6 +1009,28 @@
       label_grandparent_type: '¿Para quién es la canción?',
       grandparent_grandmother_name: 'Para la abuela',
       grandparent_grandfather_name: 'Para el abuelo',
+      theme_parinti_name: 'Para mamá o papá',
+      theme_parinti_desc: 'Una canción llena de amor, gratitud y recuerdos',
+      theme_matusaunchi_name: 'Para una tía o un tío',
+      theme_matusaunchi_desc: 'Una canción llena de amor, gratitud y recuerdos',
+      theme_socri_name: 'Para la suegra o el suegro',
+      theme_socri_desc: 'Una canción llena de amor, gratitud y recuerdos',
+      relation_grandmother: 'Abuela', relation_grandfather: 'Abuelo', relation_mother: 'Mamá', relation_father: 'Papá', relation_aunt: 'Tía', relation_uncle: 'Tío', relation_mother_in_law: 'Suegra', relation_father_in_law: 'Suegro',
+      relation_groom: 'Novio', relation_bride: 'Novia', relation_godson: 'Ahijado', relation_goddaughter: 'Ahijada', relation_godfather: 'Padrino', relation_godmother: 'Madrina',
+      relation_other: 'Otra persona',
+      nunta_both: 'Ambos',
+      sender_relation_daughter: 'Hija', sender_relation_son: 'Hijo', sender_relation_granddaughter: 'Nieta', sender_relation_grandson: 'Nieto', sender_relation_niece: 'Sobrina', sender_relation_nephew: 'Sobrino', sender_relation_daughter_in_law: 'Nuera', sender_relation_son_in_law: 'Yerno',
+      label_recipient_role: '¿Para quién es la canción?',
+      label_sender_role: 'Tú eres:',
+      label_aniversare_relation: '¿Quién cumple años?',
+      label_nunta_group: '¿Para quién es la canción?',
+      label_nunta_subrole: '¿Quién exactamente?',
+      label_nunta_sender: '¿De parte de quién es la canción?',
+      nunta_group_miri: 'Los novios', nunta_group_fini: 'Ahijados', nunta_group_nasi: 'Padrinos',
+      nunta_name_bride_label: 'Nombre de la novia', nunta_name_groom_label: 'Nombre del novio',
+      nunta_name_goddaughter_label: 'Nombre de la ahijada', nunta_name_godson_label: 'Nombre del ahijado',
+      nunta_name_godmother_label: 'Nombre de la madrina', nunta_name_godfather_label: 'Nombre del padrino',
+      and_conjunction: 'y',
       label_recipient: 'Para quién es la canción (nombre)',
       ph_recipient: 'ej: María',
       label_sender: 'De parte de quién es la canción',
@@ -929,6 +1120,9 @@
       val_genre2_required: 'Elige el género de la segunda canción',
       val_genre_same: 'Elige dos géneros musicales diferentes.',
       val_grandparent_type: 'Elige para quién es la canción: la abuela o el abuelo',
+      val_recipient_role: 'Elige exactamente para quién es la canción',
+      val_sender_role: 'Elige tu relación con el destinatario',
+      val_nunta_names: 'Completa ambos nombres',
       step_progress_label: (n) => 'Paso ' + n + ' de 4',
     },
     it: {
@@ -945,8 +1139,8 @@
       theme_aniversare_desc: 'Buon compleanno, in modo personale.',
       theme_declaratie_name: 'Ti amo, in canzone',
       theme_declaratie_desc: 'Quando le parole non bastano.',
-      theme_nunta_name: 'Matrimonio',
-      theme_nunta_desc: 'Primo ballo o sorpresa per gli sposi.',
+      theme_nunta_name: 'Matrimonio/Battesimo',
+      theme_nunta_desc: 'Primo ballo o sorpresa per gli sposi, figliocci o padrini.',
       theme_pierdere_name: 'In memoria di qualcuno',
       theme_pierdere_desc: 'Per chi non c\'è più.',
       theme_pentrumine_name: 'Per me stesso/a',
@@ -958,6 +1152,28 @@
       label_grandparent_type: 'Per chi è la canzone?',
       grandparent_grandmother_name: 'Per la nonna',
       grandparent_grandfather_name: 'Per il nonno',
+      theme_parinti_name: 'Per la mamma o il papà',
+      theme_parinti_desc: 'Una canzone piena di amore, gratitudine e ricordi',
+      theme_matusaunchi_name: 'Per una zia o uno zio',
+      theme_matusaunchi_desc: 'Una canzone piena di amore, gratitudine e ricordi',
+      theme_socri_name: 'Per la suocera o il suocero',
+      theme_socri_desc: 'Una canzone piena di amore, gratitudine e ricordi',
+      relation_grandmother: 'Nonna', relation_grandfather: 'Nonno', relation_mother: 'Mamma', relation_father: 'Papà', relation_aunt: 'Zia', relation_uncle: 'Zio', relation_mother_in_law: 'Suocera', relation_father_in_law: 'Suocero',
+      relation_groom: 'Sposo', relation_bride: 'Sposa', relation_godson: 'Figlioccio', relation_goddaughter: 'Figlioccia', relation_godfather: 'Padrino', relation_godmother: 'Madrina',
+      relation_other: 'Un\'altra persona',
+      nunta_both: 'Entrambi',
+      sender_relation_daughter: 'Figlia', sender_relation_son: 'Figlio', sender_relation_granddaughter: 'Nipote', sender_relation_grandson: 'Nipote', sender_relation_niece: 'Nipote', sender_relation_nephew: 'Nipote', sender_relation_daughter_in_law: 'Nuora', sender_relation_son_in_law: 'Genero',
+      label_recipient_role: 'Per chi è la canzone?',
+      label_sender_role: 'Tu sei:',
+      label_aniversare_relation: 'Chi festeggia il compleanno?',
+      label_nunta_group: 'Per chi è la canzone?',
+      label_nunta_subrole: 'Chi esattamente?',
+      label_nunta_sender: 'Da parte di chi è la canzone?',
+      nunta_group_miri: 'Gli sposi', nunta_group_fini: 'Figliocci', nunta_group_nasi: 'Padrini',
+      nunta_name_bride_label: 'Nome della sposa', nunta_name_groom_label: 'Nome dello sposo',
+      nunta_name_goddaughter_label: 'Nome della figlioccia', nunta_name_godson_label: 'Nome del figlioccio',
+      nunta_name_godmother_label: 'Nome della madrina', nunta_name_godfather_label: 'Nome del padrino',
+      and_conjunction: 'e',
       label_recipient: 'Per chi è la canzone (nome)',
       ph_recipient: 'es: Maria',
       label_sender: 'Da parte di chi è la canzone',
@@ -1047,6 +1263,9 @@
       val_genre2_required: 'Scegli il genere della seconda canzone',
       val_genre_same: 'Scegli due generi musicali diversi.',
       val_grandparent_type: 'Scegli per chi è la canzone: la nonna o il nonno',
+      val_recipient_role: 'Scegli esattamente per chi è la canzone',
+      val_sender_role: 'Scegli il tuo rapporto con il destinatario',
+      val_nunta_names: 'Inserisci entrambi i nomi',
       step_progress_label: (n) => 'Passo ' + n + ' di 4',
     },
     fr: {
@@ -1063,8 +1282,8 @@
       theme_aniversare_desc: 'Joyeux anniversaire, en version personnelle.',
       theme_declaratie_name: 'Je t\'aime, en chanson',
       theme_declaratie_desc: 'Quand les mots ne suffisent pas.',
-      theme_nunta_name: 'Mariage',
-      theme_nunta_desc: 'Première danse ou surprise pour les mariés.',
+      theme_nunta_name: 'Mariage/Baptême',
+      theme_nunta_desc: 'Première danse ou surprise pour les mariés, filleuls ou parrains.',
       theme_pierdere_name: 'À la mémoire de quelqu\'un',
       theme_pierdere_desc: 'Pour ceux qui ne sont plus là.',
       theme_pentrumine_name: 'Pour moi-même',
@@ -1076,6 +1295,28 @@
       label_grandparent_type: 'Pour qui est la chanson ?',
       grandparent_grandmother_name: 'Pour grand-mère',
       grandparent_grandfather_name: 'Pour grand-père',
+      theme_parinti_name: 'Pour maman ou papa',
+      theme_parinti_desc: 'Une chanson pleine d\'amour, de gratitude et de souvenirs',
+      theme_matusaunchi_name: 'Pour une tante ou un oncle',
+      theme_matusaunchi_desc: 'Une chanson pleine d\'amour, de gratitude et de souvenirs',
+      theme_socri_name: 'Pour la belle-mère ou le beau-père',
+      theme_socri_desc: 'Une chanson pleine d\'amour, de gratitude et de souvenirs',
+      relation_grandmother: 'Grand-mère', relation_grandfather: 'Grand-père', relation_mother: 'Maman', relation_father: 'Papa', relation_aunt: 'Tante', relation_uncle: 'Oncle', relation_mother_in_law: 'Belle-mère', relation_father_in_law: 'Beau-père',
+      relation_groom: 'Marié', relation_bride: 'Mariée', relation_godson: 'Filleul', relation_goddaughter: 'Filleule', relation_godfather: 'Parrain', relation_godmother: 'Marraine',
+      relation_other: 'Une autre personne',
+      nunta_both: 'Les deux',
+      sender_relation_daughter: 'Fille', sender_relation_son: 'Fils', sender_relation_granddaughter: 'Petite-fille', sender_relation_grandson: 'Petit-fils', sender_relation_niece: 'Nièce', sender_relation_nephew: 'Neveu', sender_relation_daughter_in_law: 'Belle-fille', sender_relation_son_in_law: 'Beau-fils',
+      label_recipient_role: 'Pour qui est la chanson ?',
+      label_sender_role: 'Vous êtes :',
+      label_aniversare_relation: 'Qui fête son anniversaire ?',
+      label_nunta_group: 'Pour qui est la chanson ?',
+      label_nunta_subrole: 'Qui exactement ?',
+      label_nunta_sender: 'De la part de qui est la chanson ?',
+      nunta_group_miri: 'Les mariés', nunta_group_fini: 'Filleuls', nunta_group_nasi: 'Parrains',
+      nunta_name_bride_label: 'Prénom de la mariée', nunta_name_groom_label: 'Prénom du marié',
+      nunta_name_goddaughter_label: 'Prénom de la filleule', nunta_name_godson_label: 'Prénom du filleul',
+      nunta_name_godmother_label: 'Prénom de la marraine', nunta_name_godfather_label: 'Prénom du parrain',
+      and_conjunction: 'et',
       label_recipient: 'Pour qui est la chanson (prénom)',
       ph_recipient: 'ex : Maria',
       label_sender: 'De la part de qui est la chanson',
@@ -1165,6 +1406,9 @@
       val_genre2_required: 'Choisissez le genre de la deuxième chanson',
       val_genre_same: 'Choisissez deux genres musicaux différents.',
       val_grandparent_type: 'Choisissez pour qui est la chanson : grand-mère ou grand-père',
+      val_recipient_role: 'Choisissez exactement pour qui est la chanson',
+      val_sender_role: 'Choisissez votre relation avec le destinataire',
+      val_nunta_names: 'Renseignez les deux prénoms',
       step_progress_label: (n) => 'Étape ' + n + ' sur 4',
     },
     bg: {
@@ -1181,8 +1425,8 @@
       theme_aniversare_desc: 'Честит рожден ден, съвсем лично.',
       theme_declaratie_name: 'Обичам те, в песен',
       theme_declaratie_desc: 'Когато думите не стигат.',
-      theme_nunta_name: 'Сватба',
-      theme_nunta_desc: 'Първи танц или изненада за младоженците.',
+      theme_nunta_name: 'Сватба/Кръщене',
+      theme_nunta_desc: 'Първи танц или изненада за младоженците, кръщелниците или кумовете.',
       theme_pierdere_name: 'В памет на някого',
       theme_pierdere_desc: 'За тези, които вече ги няма.',
       theme_pentrumine_name: 'За самия мен',
@@ -1194,6 +1438,28 @@
       label_grandparent_type: 'За кого е песента?',
       grandparent_grandmother_name: 'За баба',
       grandparent_grandfather_name: 'За дядо',
+      theme_parinti_name: 'За мама или татко',
+      theme_parinti_desc: 'Песен, изпълнена с любов, благодарност и спомени',
+      theme_matusaunchi_name: 'За леля или чичо',
+      theme_matusaunchi_desc: 'Песен, изпълнена с любов, благодарност и спомени',
+      theme_socri_name: 'За свекърва/тъща или свекър/тъст',
+      theme_socri_desc: 'Песен, изпълнена с любов, благодарност и спомени',
+      relation_grandmother: 'Баба', relation_grandfather: 'Дядо', relation_mother: 'Мама', relation_father: 'Татко', relation_aunt: 'Леля', relation_uncle: 'Чичо', relation_mother_in_law: 'Свекърва', relation_father_in_law: 'Тъст',
+      relation_groom: 'Младоженец', relation_bride: 'Младоженка', relation_godson: 'Кръщелник', relation_goddaughter: 'Кръщелница', relation_godfather: 'Кум', relation_godmother: 'Кума',
+      relation_other: 'Друг човек',
+      nunta_both: 'И двамата',
+      sender_relation_daughter: 'Дъщеря', sender_relation_son: 'Син', sender_relation_granddaughter: 'Внучка', sender_relation_grandson: 'Внук', sender_relation_niece: 'Племенница', sender_relation_nephew: 'Племенник', sender_relation_daughter_in_law: 'Снаха', sender_relation_son_in_law: 'Зет',
+      label_recipient_role: 'За кого е песента?',
+      label_sender_role: 'Ти си:',
+      label_aniversare_relation: 'Кой има рожден ден?',
+      label_nunta_group: 'За кого е песента?',
+      label_nunta_subrole: 'За кого точно?',
+      label_nunta_sender: 'От чие име е песента?',
+      nunta_group_miri: 'Младоженците', nunta_group_fini: 'Кръщелниците', nunta_group_nasi: 'Кумовете',
+      nunta_name_bride_label: 'Име на булката', nunta_name_groom_label: 'Име на младоженеца',
+      nunta_name_goddaughter_label: 'Име на кръщелницата', nunta_name_godson_label: 'Име на кръщелника',
+      nunta_name_godmother_label: 'Име на кумата', nunta_name_godfather_label: 'Име на кума',
+      and_conjunction: 'и',
       label_recipient: 'За кого е песента (име)',
       ph_recipient: 'напр. Мария',
       label_sender: 'От чие име е песента',
@@ -1283,6 +1549,9 @@
       val_genre2_required: 'Избери жанра на втората песен',
       val_genre_same: 'Избери два различни музикални жанра.',
       val_grandparent_type: 'Избери за кого е песента: баба или дядо',
+      val_recipient_role: 'Избери точно за кого е песента',
+      val_sender_role: 'Избери каква е твоята връзка с получателя',
+      val_nunta_names: 'Попълни и двете имена',
       step_progress_label: (n) => 'Стъпка ' + n + ' от 4',
     },
     tr: {
@@ -1299,8 +1568,8 @@
       theme_aniversare_desc: 'Kişiye özel, doğum günü kutlaması.',
       theme_declaratie_name: 'Seni seviyorum, şarkıyla',
       theme_declaratie_desc: 'Kelimeler yetmediğinde.',
-      theme_nunta_name: 'Düğün',
-      theme_nunta_desc: 'İlk dans veya çift için sürpriz.',
+      theme_nunta_name: 'Düğün/Vaftiz',
+      theme_nunta_desc: 'İlk dans veya çift, vaftiz çocukları ya da vaftiz ebeveynleri için sürpriz.',
       theme_pierdere_name: 'Birinin anısına',
       theme_pierdere_desc: 'Artık aramızda olmayanlar için.',
       theme_pentrumine_name: 'Kendim için',
@@ -1312,6 +1581,28 @@
       label_grandparent_type: 'Şarkı kimin için?',
       grandparent_grandmother_name: 'Büyükanne için',
       grandparent_grandfather_name: 'Büyükbaba için',
+      theme_parinti_name: 'Anne veya baba için',
+      theme_parinti_desc: 'Sevgi, minnettarlık ve anılarla dolu bir şarkı',
+      theme_matusaunchi_name: 'Teyze/hala veya amca/dayı için',
+      theme_matusaunchi_desc: 'Sevgi, minnettarlık ve anılarla dolu bir şarkı',
+      theme_socri_name: 'Kayınvalide veya kayınpeder için',
+      theme_socri_desc: 'Sevgi, minnettarlık ve anılarla dolu bir şarkı',
+      relation_grandmother: 'Büyükanne', relation_grandfather: 'Büyükbaba', relation_mother: 'Anne', relation_father: 'Baba', relation_aunt: 'Teyze', relation_uncle: 'Amca', relation_mother_in_law: 'Kayınvalide', relation_father_in_law: 'Kayınpeder',
+      relation_groom: 'Damat', relation_bride: 'Gelin', relation_godson: 'Vaftiz oğlu', relation_goddaughter: 'Vaftiz kızı', relation_godfather: 'Vaftiz babası', relation_godmother: 'Vaftiz annesi',
+      relation_other: 'Başka biri',
+      nunta_both: 'İkisi de',
+      sender_relation_daughter: 'Kız', sender_relation_son: 'Oğul', sender_relation_granddaughter: 'Torun', sender_relation_grandson: 'Torun', sender_relation_niece: 'Yeğen', sender_relation_nephew: 'Yeğen', sender_relation_daughter_in_law: 'Gelin', sender_relation_son_in_law: 'Damat',
+      label_recipient_role: 'Şarkı kimin için?',
+      label_sender_role: 'Sen:',
+      label_aniversare_relation: 'Doğum günü kimin?',
+      label_nunta_group: 'Şarkı kimin için?',
+      label_nunta_subrole: 'Tam olarak kimin?',
+      label_nunta_sender: 'Şarkı kimden geliyor?',
+      nunta_group_miri: 'Çift', nunta_group_fini: 'Vaftiz çocukları', nunta_group_nasi: 'Vaftiz ebeveynleri',
+      nunta_name_bride_label: 'Gelinin adı', nunta_name_groom_label: 'Damadın adı',
+      nunta_name_goddaughter_label: 'Vaftiz kızının adı', nunta_name_godson_label: 'Vaftiz oğlunun adı',
+      nunta_name_godmother_label: 'Vaftiz annesinin adı', nunta_name_godfather_label: 'Vaftiz babasının adı',
+      and_conjunction: 've',
       label_recipient: 'Şarkı kimin için (isim)',
       ph_recipient: 'örn: Ayşe',
       label_sender: 'Şarkı kimden',
@@ -1401,6 +1692,9 @@
       val_genre2_required: 'İkinci şarkının türünü seçin',
       val_genre_same: 'İki farklı müzik türü seçin.',
       val_grandparent_type: 'Şarkının kimin için olduğunu seçin: büyükanne veya büyükbaba',
+      val_recipient_role: 'Şarkının tam olarak kimin için olduğunu seçin',
+      val_sender_role: 'Alıcıyla olan ilişkinizi seçin',
+      val_nunta_names: 'Her iki ismi de girin',
       step_progress_label: (n) => 'Adım ' + n + '/4',
     },
   };
@@ -1568,13 +1862,34 @@
     if (n === 1) {
       const occasionVal = document.getElementById('occasion').value;
       ok = !!occasionVal;
-      // "Pentru bunica sau bunicul" (ULTIMELE MODIFICĂRI STRICTE, hotfix 2026-08-08): alegerea
-      // e OBLIGATORIE cand ocazia e 'bunici' — clientul nu poate continua fara sa aleaga
-      // explicit una dintre cele doua optiuni.
-      if (occasionVal === 'bunici') {
-        const grandparentTypeVal = document.getElementById('grandparentType').value;
-        setFieldError('grandparentType', grandparentTypeVal ? '' : t('val_grandparent_type'));
-        if (!grandparentTypeVal) ok = false;
+
+      // MODIFICARE STRICTĂ — pagina de ocazie (hotfix 2026-08-08): relatia destinatarului si
+      // a expeditorului sunt OBLIGATORII pentru ocaziile de familie — clientul nu poate
+      // continua fara sa aleaga explicit ambele, NICIODATA deduse din nume/voce. Pentru
+      // 'aniversare', relatia e OPTIONALA ("Altă persoană" pastreaza fluxul generic actual),
+      // dar daca a fost aleasa o relatie de familie, expeditorul devine obligatoriu, la fel
+      // ca pentru ocaziile de familie dedicate.
+      if (FAMILY_OCCASIONS.includes(occasionVal)) {
+        setFieldError('recipientRoleFamily', recipientRoleInput.value ? '' : t('val_recipient_role'));
+        setFieldError('senderRole', senderRoleInput.value ? '' : t('val_sender_role'));
+        if (!recipientRoleInput.value || !senderRoleInput.value) ok = false;
+      } else if (occasionVal === 'aniversare' && recipientRoleInput.value) {
+        setFieldError('senderRole', senderRoleInput.value ? '' : t('val_sender_role'));
+        if (!senderRoleInput.value) ok = false;
+      }
+
+      // "Nuntă/Botez" — Miri/Fini/Nași, apoi rol individual sau "Amândoi".
+      if (occasionVal === 'nunta') {
+        setFieldError('nuntaGroup', nuntaGroup ? '' : t('val_recipient_role'));
+        setFieldError('recipientRole', (nuntaGroup && recipientRoleInput.value) ? '' : t('val_recipient_role'));
+        if (!nuntaGroup || !recipientRoleInput.value) ok = false;
+        if (recipientModeInput.value === 'both') {
+          const nuntaName1 = nuntaName1Input.value.trim();
+          const nuntaName2 = nuntaName2Input.value.trim();
+          setFieldError('nuntaName1', nuntaName1 ? '' : t('val_nunta_names'));
+          setFieldError('nuntaName2', nuntaName2 ? '' : t('val_nunta_names'));
+          if (!nuntaName1 || !nuntaName2) ok = false;
+        }
       }
     }
 
@@ -1599,47 +1914,245 @@
     });
   });
 
-  // .grandparent-type-card e EXCLUS explicit — foloseste acelasi tipar deja stabilit pentru
-  // genre2-card (vezi mai jos, ".genre-card:not(.genre2-card)") — fara aceasta excludere,
-  // click-ul pe "Pentru bunica"/"Pentru bunicul" ar fi fost preluat gresit de handler-ul
-  // ocaziei principale (care citeste c.dataset.theme, inexistent pe cardurile de bunica/bunic,
-  // suprascriind occasionInput.value cu undefined).
-  const themeCards = document.querySelectorAll('.theme-card:not(.grandparent-type-card)');
+  // ==========================================================================================
+  // MODIFICARE STRICTĂ — pagina de ocazie (hotfix 2026-08-08): sistem generalizat de relatii de
+  // familie si nunta/botez. Toate valorile interne (recipientRole/senderRole/recipientMode)
+  // oglindesc EXACT enum-urile validate strict server-side (vezi POST /api/orders, server.js) —
+  // niciodata deduse din nume/voce, niciodata trimise fara sa fi fost alese explicit de client.
+  // ==========================================================================================
+  const FAMILY_OCCASIONS = ['bunici', 'parinti', 'matusa-unchi', 'socri'];
+  const RECIPIENT_ROLE_OPTIONS = {
+    bunici: ['grandmother', 'grandfather'],
+    parinti: ['mother', 'father'],
+    'matusa-unchi': ['aunt', 'uncle'],
+    socri: ['mother_in_law', 'father_in_law']
+  };
+  // "Tu ești: ..." — ACELASI selector e reutilizat pentru bunici SI matusa-unchi (romana
+  // foloseste identic "Nepoată"/"Nepot" pentru ambele relatii), dar valorile interne raman
+  // distincte, ca buildPrompt (server.js) sa poata scrie conceptul corect in engleza.
+  const SENDER_ROLE_OPTIONS = {
+    grandmother: ['granddaughter', 'grandson'], grandfather: ['granddaughter', 'grandson'],
+    mother: ['daughter', 'son'], father: ['daughter', 'son'],
+    aunt: ['niece', 'nephew'], uncle: ['niece', 'nephew'],
+    mother_in_law: ['daughter_in_law', 'son_in_law'], father_in_law: ['daughter_in_law', 'son_in_law']
+  };
+  // "Nuntă/Botez" — Miri/Fini/Nași, fiecare cu rol individual sau "Amândoi" (grup). Ordinea
+  // (feminin, masculin, amandoi) determina si ordinea campurilor de nume cand e ales "Amândoi".
+  const NUNTA_SUBROLE_OPTIONS = {
+    miri: ['bride', 'groom', 'couple'],
+    fini: ['goddaughter', 'godson', 'godchildren'],
+    nasi: ['godmother', 'godfather', 'godparents']
+  };
+  const NUNTA_BOTH_ROLES = ['couple', 'godchildren', 'godparents'];
+  const NUNTA_NAME_LABEL_KEYS = {
+    miri: { female: 'nunta_name_bride_label', male: 'nunta_name_groom_label' },
+    fini: { female: 'nunta_name_goddaughter_label', male: 'nunta_name_godson_label' },
+    nasi: { female: 'nunta_name_godmother_label', male: 'nunta_name_godfather_label' }
+  };
+  const NUNTA_SENDER_ROLES = ['other', 'bride', 'groom', 'couple', 'goddaughter', 'godson', 'godchildren', 'godmother', 'godfather', 'godparents'];
+
+  // .theme-subcard e EXCLUS explicit — foloseste acelasi tipar deja stabilit pentru genre2-card
+  // (vezi mai jos, ".genre-card:not(.genre2-card)") — fara aceasta excludere, click-ul pe orice
+  // sub-alegere de relatie ar fi fost preluat gresit de handler-ul ocaziei principale (care
+  // citeste c.dataset.theme, inexistent pe cardurile de sub-alegere, suprascriind
+  // occasionInput.value cu undefined).
+  const themeCards = document.querySelectorAll('.theme-card:not(.theme-subcard)');
   const occasionInput = document.getElementById('occasion');
-  const grandparentTypeField = document.getElementById('grandparent-type-field');
-  const grandparentTypeInput = document.getElementById('grandparentType');
+  const recipientRoleInput = document.getElementById('recipientRole');
+  const senderRoleInput = document.getElementById('senderRole');
+  const recipientModeInput = document.getElementById('recipientMode');
+
+  const familyRelationPanel = document.getElementById('family-relation-panel');
+  const familyRelationGrid = document.getElementById('family-relation-grid');
+  const familySenderRoleSlot = document.getElementById('family-sender-role-slot');
+
+  const aniversareRelationPanel = document.getElementById('aniversare-relation-panel');
+  const aniversareSenderRoleSlot = document.getElementById('aniversare-sender-role-slot');
+
+  const senderRoleSubfield = document.getElementById('sender-role-subfield');
+  const senderRoleGrid = document.getElementById('sender-role-grid');
+
+  const nuntaPanel = document.getElementById('nunta-panel');
+  const nuntaSubroleField = document.getElementById('nunta-subrole-field');
+  const nuntaSubroleGrid = document.getElementById('nunta-subrole-grid');
+  const nuntaNamesField = document.getElementById('nunta-names-field');
+  const nuntaName1Input = document.getElementById('nunta-name1');
+  const nuntaName2Input = document.getElementById('nunta-name2');
+  const nuntaName1Label = document.getElementById('nunta-name1-label');
+  const nuntaName2Label = document.getElementById('nunta-name2-label');
+  const nuntaSenderField = document.getElementById('nunta-sender-field');
+  const nuntaSenderSelect = document.getElementById('nunta-sender-select');
+  let nuntaGroup = ''; // 'miri' | 'fini' | 'nasi' — stare locala UI, oglindita in recipientRole
+
+  nuntaSenderSelect.innerHTML = NUNTA_SENDER_ROLES
+    .map(role => `<option value="${role}">${role === 'other' ? t('relation_other') : (NUNTA_BOTH_ROLES.includes(role) ? t('nunta_both') : t('relation_' + role))}</option>`)
+    .join('');
+
   themeCards.forEach(c => {
     c.addEventListener('click', () => {
       themeCards.forEach(x => x.classList.remove('active'));
       c.classList.add('active');
       occasionInput.value = c.dataset.theme;
-      updateGrandparentTypeVisibility();
+      // Schimbarea ocaziei principale reseteaza TOATE campurile de relatie — nu ramane nicio
+      // valoare "agatata", incompatibila cu noua ocazie (cerinta explicita).
+      recipientRoleInput.value = '';
+      senderRoleInput.value = '';
+      recipientModeInput.value = '';
+      nuntaGroup = '';
+      nuntaName1Input.value = '';
+      nuntaName2Input.value = '';
+      setFieldError('recipientRoleFamily', '');
+      setFieldError('aniversareRelation', '');
+      setFieldError('recipientRole', '');
+      setFieldError('senderRole', '');
+      setFieldError('nuntaGroup', '');
+      setFieldError('nuntaName1', '');
+      setFieldError('nuntaName2', '');
+      refreshRelationUI();
       saveDraft();
     });
   });
 
-  // "Pentru bunica sau bunicul" (ULTIMELE MODIFICĂRI STRICTE, hotfix 2026-08-08): sub-alegerea
-  // obligatorie, aparuta DOAR cand ocazia selectata e 'bunici' — acelasi tipar ca
-  // updateGenre2Visibility() de mai jos. Schimbarea catre orice alta ocazie ascunde campul SI
-  // sterge alegerea anterioara (nu ramane "agatata" o valoare invizibila trimisa la server).
-  function updateGrandparentTypeVisibility() {
-    const needsGrandparentType = occasionInput.value === 'bunici';
-    grandparentTypeField.style.display = needsGrandparentType ? '' : 'none';
-    if (!needsGrandparentType) {
-      grandparentTypeInput.value = '';
-      document.querySelectorAll('.grandparent-type-card').forEach(c => c.classList.remove('active'));
-      setFieldError('grandparentType', '');
+  // "Tu ești: ..." — populeaza si afiseaza sub-alegerea expeditorului pentru relatia data,
+  // reparentand elementul UNIC (nu duplicat) in slotul panoului activ (familie sau aniversare).
+  function renderSenderRoleGrid(recipientRole, targetSlot) {
+    const options = SENDER_ROLE_OPTIONS[recipientRole];
+    if (!options) { senderRoleSubfield.style.display = 'none'; return; }
+    targetSlot.appendChild(senderRoleSubfield);
+    senderRoleGrid.innerHTML = options
+      .map(role => `<div class="theme-card theme-subcard sender-role-card${role === senderRoleInput.value ? ' active' : ''}" data-role="${role}"><div class="theme-name">${t('sender_relation_' + role)}</div></div>`)
+      .join('');
+    senderRoleGrid.querySelectorAll('.sender-role-card').forEach(c => {
+      c.addEventListener('click', () => {
+        senderRoleInput.value = c.dataset.role;
+        setFieldError('senderRole', '');
+        refreshRelationUI();
+        saveDraft();
+      });
+    });
+    senderRoleSubfield.style.display = 'block';
+  }
+
+  function renderNuntaSubroles() {
+    const roles = NUNTA_SUBROLE_OPTIONS[nuntaGroup] || [];
+    nuntaSubroleGrid.innerHTML = roles
+      .map(role => `<div class="theme-card theme-subcard nunta-subrole-card${role === recipientRoleInput.value ? ' active' : ''}" data-role="${role}"><div class="theme-name">${NUNTA_BOTH_ROLES.includes(role) ? t('nunta_both') : t('relation_' + role)}</div></div>`)
+      .join('');
+    nuntaSubroleGrid.querySelectorAll('.nunta-subrole-card').forEach(c => {
+      c.addEventListener('click', () => {
+        recipientRoleInput.value = c.dataset.role;
+        recipientModeInput.value = NUNTA_BOTH_ROLES.includes(c.dataset.role) ? 'both' : 'single';
+        if (recipientModeInput.value === 'single') { nuntaName1Input.value = ''; nuntaName2Input.value = ''; }
+        setFieldError('recipientRole', '');
+        refreshRelationUI();
+        saveDraft();
+      });
+    });
+  }
+
+  // Functie IDEMPOTENTA — reface intreaga stare vizuala (pozitionare panouri, carduri active,
+  // sub-alegeri) DOAR din valorile curente ale campurilor ascunse. Apelata dupa fiecare click
+  // SI la restaurarea unui draft, ca sa nu existe doua cai de cod separate/divergente.
+  function refreshRelationUI() {
+    const occasion = occasionInput.value;
+
+    if (FAMILY_OCCASIONS.includes(occasion)) {
+      const activeCard = document.querySelector(`.theme-card[data-theme="${occasion}"]`);
+      if (activeCard && familyRelationPanel.previousElementSibling !== activeCard) {
+        activeCard.insertAdjacentElement('afterend', familyRelationPanel);
+      }
+      familyRelationGrid.innerHTML = RECIPIENT_ROLE_OPTIONS[occasion]
+        .map(role => `<div class="theme-card theme-subcard family-relation-card${role === recipientRoleInput.value ? ' active' : ''}" data-role="${role}"><div class="theme-name">${t('relation_' + role)}</div></div>`)
+        .join('');
+      familyRelationGrid.querySelectorAll('.family-relation-card').forEach(c => {
+        c.addEventListener('click', () => {
+          recipientRoleInput.value = c.dataset.role;
+          senderRoleInput.value = '';
+          setFieldError('recipientRoleFamily', '');
+          refreshRelationUI();
+          saveDraft();
+        });
+      });
+      familyRelationPanel.style.display = 'block';
+      if (recipientRoleInput.value) renderSenderRoleGrid(recipientRoleInput.value, familySenderRoleSlot);
+      else senderRoleSubfield.style.display = 'none';
+    } else {
+      familyRelationPanel.style.display = 'none';
+    }
+
+    if (occasion === 'aniversare') {
+      aniversareRelationPanel.style.display = 'block';
+      document.querySelectorAll('.aniversare-relation-card').forEach(c => {
+        c.classList.toggle('active', c.dataset.role === recipientRoleInput.value);
+      });
+      if (recipientRoleInput.value) renderSenderRoleGrid(recipientRoleInput.value, aniversareSenderRoleSlot);
+      else senderRoleSubfield.style.display = 'none';
+    } else {
+      aniversareRelationPanel.style.display = 'none';
+    }
+
+    if (occasion === 'nunta') {
+      nuntaPanel.style.display = 'block';
+      document.querySelectorAll('.nunta-group-card').forEach(c => c.classList.toggle('active', c.dataset.group === nuntaGroup));
+      if (nuntaGroup) {
+        renderNuntaSubroles();
+        nuntaSubroleField.style.display = 'block';
+        if (NUNTA_BOTH_ROLES.includes(recipientRoleInput.value)) {
+          const labels = NUNTA_NAME_LABEL_KEYS[nuntaGroup];
+          nuntaName1Label.textContent = t(labels.female);
+          nuntaName2Label.textContent = t(labels.male);
+          nuntaNamesField.style.display = 'block';
+        } else {
+          nuntaNamesField.style.display = 'none';
+        }
+        // "Din partea cui este melodia?" — implicit "Altă persoană" (mereu valid, niciodata
+        // blocheaza continuarea fara un click suplimentar), pastrat daca deja ales.
+        if (!senderRoleInput.value) senderRoleInput.value = 'other';
+        nuntaSenderSelect.value = senderRoleInput.value;
+        nuntaSenderField.style.display = 'block';
+      } else {
+        nuntaSubroleField.style.display = 'none';
+        nuntaNamesField.style.display = 'none';
+        nuntaSenderField.style.display = 'none';
+      }
+    } else {
+      nuntaPanel.style.display = 'none';
     }
   }
-  document.querySelectorAll('.grandparent-type-card').forEach(c => {
+
+  document.querySelectorAll('.aniversare-relation-card').forEach(c => {
     c.addEventListener('click', () => {
-      document.querySelectorAll('.grandparent-type-card').forEach(x => x.classList.remove('active'));
-      c.classList.add('active');
-      grandparentTypeInput.value = c.dataset.grandparent;
-      setFieldError('grandparentType', '');
+      recipientRoleInput.value = c.dataset.role;
+      senderRoleInput.value = '';
+      setFieldError('aniversareRelation', '');
+      refreshRelationUI();
       saveDraft();
     });
   });
+
+  document.querySelectorAll('.nunta-group-card').forEach(c => {
+    c.addEventListener('click', () => {
+      nuntaGroup = c.dataset.group;
+      recipientRoleInput.value = '';
+      recipientModeInput.value = '';
+      nuntaName1Input.value = '';
+      nuntaName2Input.value = '';
+      setFieldError('nuntaGroup', '');
+      setFieldError('recipientRole', '');
+      refreshRelationUI();
+      saveDraft();
+    });
+  });
+
+  nuntaSenderSelect.addEventListener('change', () => {
+    senderRoleInput.value = nuntaSenderSelect.value;
+    saveDraft();
+  });
+
+  nuntaName1Input.addEventListener('input', () => { setFieldError('nuntaName1', ''); saveDraft(); });
+  nuntaName2Input.addEventListener('input', () => { setFieldError('nuntaName2', ''); saveDraft(); });
+
+  refreshRelationUI();
 
   const voiceCards = document.querySelectorAll('.voice-card');
   const voiceInput = document.getElementById('voice-preference');
@@ -1766,9 +2279,18 @@
   const DRAFT_KEY = 'nds_form_draft';
 
   function collectPayload() {
+    // "Amândoi" (Nuntă/Botez): combina cele doua nume distincte intr-un string afisabil pentru
+    // campul EXISTENT `recipient` (niciodata combinate intr-un singur camp de introducere —
+    // clientul tot completeaza doua campuri separate; doar payload-ul le combina pentru
+    // restul fluxului, care asteapa un singur `recipient`). Pentru orice alt caz, `recipient`
+    // ramane exact campul completat de client in pasul 2, neschimbat.
+    const isNuntaBoth = occasionInput.value === 'nunta' && recipientModeInput.value === 'both';
+    const recipientVal = isNuntaBoth
+      ? `${nuntaName1Input.value.trim()} ${t('and_conjunction')} ${nuntaName2Input.value.trim()}`
+      : document.getElementById('recipient').value;
     return {
       occasion: document.getElementById('occasion').value,
-      recipient: document.getElementById('recipient').value,
+      recipient: recipientVal,
       senderName: document.getElementById('sender').value,
       relationship: document.getElementById('relationship').value,
       email: document.getElementById('email').value,
@@ -1783,10 +2305,16 @@
       // FARA price aici — serverul recalculeaza intotdeauna pretul din "plan", niciodata din
       // ce trimite clientul (vezi POST /api/orders). Campul era trimis dar complet ignorat.
       lang: currentLang,
-      // grandparentType e relevant DOAR pentru occasion='bunici' (server-side, POST /api/orders
-      // il cere si il valideaza doar in acel caz) — pentru orice alta ocazie, campul e gol si
-      // serverul il ignora complet (salvat null).
-      grandparentType: grandparentTypeInput.value
+      // MODIFICARE STRICTĂ — pagina de ocazie (hotfix 2026-08-08): relatia destinatarului si a
+      // expeditorului — relevante DOAR pentru ocaziile de familie/nunta (server-side, POST
+      // /api/orders le cere si le valideaza doar in acele cazuri) — pentru orice alta ocazie,
+      // campurile sunt goale si serverul le ignora complet (salvate null).
+      recipientRole: recipientRoleInput.value,
+      senderRole: senderRoleInput.value,
+      recipientMode: recipientModeInput.value,
+      recipientNames: isNuntaBoth
+        ? { name1: nuntaName1Input.value.trim(), name2: nuntaName2Input.value.trim() }
+        : null
     };
   }
 
@@ -1804,7 +2332,12 @@
         genre2: genre2Input.value,
         voicePreference: voiceInput.value,
         plan: selectedPlan.id,
-        grandparentType: grandparentTypeInput.value
+        recipientRole: recipientRoleInput.value,
+        senderRole: senderRoleInput.value,
+        recipientMode: recipientModeInput.value,
+        nuntaGroup: nuntaGroup,
+        nuntaName1: nuntaName1Input.value,
+        nuntaName2: nuntaName2Input.value
       };
       localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
     } catch (err) {
@@ -1827,6 +2360,17 @@
       occasionInput.value = draft.occasion;
       themeCards.forEach(c => c.classList.toggle('active', c.dataset.theme === draft.occasion));
     }
+    // MODIFICARE STRICTĂ — pagina de ocazie (hotfix 2026-08-08): relatia destinatarului/
+    // expeditorului si structura Nuntă/Botez — restaurate INAINTE de refreshRelationUI(),
+    // ca functia idempotenta sa recreeze corect toata starea vizuala (pozitionare panouri,
+    // carduri active) dintr-o singura trecere.
+    if (draft.recipientRole) recipientRoleInput.value = draft.recipientRole;
+    if (draft.senderRole) senderRoleInput.value = draft.senderRole;
+    if (draft.recipientMode) recipientModeInput.value = draft.recipientMode;
+    if (draft.nuntaGroup) nuntaGroup = draft.nuntaGroup;
+    if (draft.nuntaName1) nuntaName1Input.value = draft.nuntaName1;
+    if (draft.nuntaName2) nuntaName2Input.value = draft.nuntaName2;
+    refreshRelationUI();
     if (draft.recipient) document.getElementById('recipient').value = draft.recipient;
     if (draft.sender) document.getElementById('sender').value = draft.sender;
     if (draft.relationship) document.getElementById('relationship').value = draft.relationship;
@@ -1840,11 +2384,6 @@
     if (draft.genre2) {
       genre2Input.value = draft.genre2;
       genre2Cards.forEach(c => c.classList.toggle('active', c.dataset.genre === draft.genre2));
-    }
-    updateGrandparentTypeVisibility();
-    if (draft.grandparentType) {
-      grandparentTypeInput.value = draft.grandparentType;
-      document.querySelectorAll('.grandparent-type-card').forEach(c => c.classList.toggle('active', c.dataset.grandparent === draft.grandparentType));
     }
     if (draft.voicePreference) {
       voiceInput.value = draft.voicePreference;

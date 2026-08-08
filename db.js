@@ -109,6 +109,31 @@ async function initDb() {
   // null pentru orice alta ocazie/comanda veche.
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS grandparent_type TEXT;`);
 
+  // MODIFICARE STRICTĂ — pagina de ocazie (hotfix 2026-08-08): sistem generalizat de relatii
+  // de familie/nunta-botez, care inlocuieste/extinde tiparul ingust "grandparent_type" de mai
+  // sus (pastrat neschimbat, nefolosit pentru comenzi noi, doar pentru comenzile create in
+  // fereastra scurta cat a fost singura relatie disponibila). Toate coloanele sunt NULLABLE —
+  // migrare aditiva, comenzile vechi raman valide cu aceste campuri goale (NULL).
+  // recipient_role: relatia DESTINATARULUI, aleasa explicit de client, NICIODATA dedusa din
+  // nume/voce — 'grandmother'|'grandfather'|'mother'|'father'|'aunt'|'uncle'|'mother_in_law'|
+  // 'father_in_law' pentru ocaziile de familie (si pentru 'aniversare' cand clientul alege o
+  // relatie in loc de "Alta persoana"), sau una din cele 9 valori de nunta/botez
+  // ('groom'|'bride'|'couple'|'godson'|'goddaughter'|'godchildren'|'godfather'|'godmother'|
+  // 'godparents') pentru occasion='nunta'. Vezi server.js, ALLOWED_RECIPIENT_ROLES.
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS recipient_role TEXT;`);
+  // sender_role: relatia persoanei care OFERA melodia fata de destinatar — 'daughter'|'son'|
+  // 'granddaughter'|'grandson'|'niece'|'nephew'|'daughter_in_law'|'son_in_law' pentru relatiile
+  // de familie, sau aceleasi 9 valori de nunta/botez + 'other' pentru occasion='nunta'.
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS sender_role TEXT;`);
+  // recipient_mode: 'single'|'both' — relevant DOAR pentru occasion='nunta' (Miri/Fini/Nasi
+  // pot fi un singur nume sau "Amandoi"). NULL pentru orice alta ocazie.
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS recipient_mode TEXT;`);
+  // recipient_names: {name1, name2} — populat DOAR cand recipient_mode='both' (doua nume
+  // distincte, niciodata combinate intr-un singur camp). NULL in rest; coloana `recipient`
+  // existenta ramane sursa unica pentru orice alt caz (inclusiv un string combinat afisabil,
+  // ex. "Maria si Andrei", generat de frontend cand recipient_mode='both').
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS recipient_names JSONB;`);
+
   // Urmarire: din ce varianta (versuri editate de client) a pornit ultima regenerare —
   // pentru transparenta/audit. Versurile originale/editate/data ultimei editari per
   // varianta se salveaza in JSON-ul deja existent al coloanei `variants` (vezi
@@ -360,6 +385,10 @@ function rowToOrder(row) {
     senderName: row.sender_name,
     relationship: row.relationship,
     grandparentType: row.grandparent_type,
+    recipientRole: row.recipient_role || null,
+    senderRole: row.sender_role || null,
+    recipientMode: row.recipient_mode || null,
+    recipientNames: row.recipient_names || null,
     regenerateSourceVariantId: row.regenerate_source_variant_id,
     regenerateKeepOriginal: !!row.regenerate_keep_original,
     editReserved: row.edit_reserved,
@@ -385,15 +414,17 @@ function rowToOrder(row) {
 async function createOrder(order) {
   const result = await pool.query(
     `INSERT INTO orders
-      (id, access_token, occasion, recipient, email, story, genre, genre2, plan, price, lang, status, edits_used, variants, selected_variant_id, sender_name, relationship, voice_preference, phone, grandparent_type)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+      (id, access_token, occasion, recipient, email, story, genre, genre2, plan, price, lang, status, edits_used, variants, selected_variant_id, sender_name, relationship, voice_preference, phone, grandparent_type, recipient_role, sender_role, recipient_mode, recipient_names)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
      RETURNING *`,
     [
       order.id, order.accessToken, order.occasion, order.recipient, order.email,
       order.story, order.genre, order.genre2 || null, order.plan, order.price, order.lang,
       order.status, order.editsUsed, JSON.stringify(order.variants || []), order.selectedVariantId,
       order.senderName || null, order.relationship || null, order.voicePreference || 'auto',
-      order.phone || null, order.grandparentType || null
+      order.phone || null, order.grandparentType || null,
+      order.recipientRole || null, order.senderRole || null, order.recipientMode || null,
+      order.recipientNames ? JSON.stringify(order.recipientNames) : null
     ]
   );
   return rowToOrder(result.rows[0]);

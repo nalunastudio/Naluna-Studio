@@ -16,16 +16,13 @@ test('server.js: ALLOWED_OCCASIONS include "bunici"', () => {
   assert.match(server, /ALLOWED_OCCASIONS\s*=\s*\[[^\]]*'bunici'[^\]]*\]/);
 });
 
-test('server.js: POST /api/orders cere si valideaza strict grandparentType cand occasion="bunici"', () => {
+// NOTA (MODIFICARE STRICTĂ — pagina de ocazie, hotfix 2026-08-08): validarea ingusta, specifica
+// doar lui 'bunici', a fost GENERALIZATA intr-un bloc unic care acopera si parinti/matusa-unchi/
+// socri — vezi test/occasion-family-relations.test.js pentru acoperirea completa a noului bloc.
+test('server.js: POST /api/orders valideaza strict recipientRole/senderRole pentru occasion="bunici" (acum parte din blocul generalizat de familie)', () => {
   const server = read('server.js');
-  assert.ok(server.includes("if (occasion === 'bunici') {"), 'validarea trebuie sa fie conditionata de occasion === bunici');
-  assert.ok(
-    server.includes("if (grandparentType !== 'grandmother' && grandparentType !== 'grandfather') {"),
-    'trebuie acceptate DOAR valorile grandmother/grandfather, nimic altceva'
-  );
-  assert.ok(server.includes('grandparentTypeRequiredMessage(safeLang)'), 'eroarea trebuie sa foloseasca mesajul tradus');
-  assert.ok(server.includes('safeGrandparentType = grandparentType;'));
-  assert.ok(server.includes('grandparentType: safeGrandparentType'), 'valoarea validata trebuie trimisa catre db.createOrder');
+  assert.ok(server.includes("bunici: ['grandmother', 'grandfather'],"), 'bunici trebuie sa ramana in FAMILY_OCCASION_RECIPIENT_ROLES, cu exact aceleasi 2 valori ca inainte');
+  assert.ok(server.includes('if (occasion === \'bunici\') safeGrandparentType = recipientRole;'), 'grandparent_type (coloana originala) ramane oglindita pentru compatibilitate');
 });
 
 test('server.js: grandparentTypeRequiredMessage acopera toate cele 8 limbi', () => {
@@ -38,25 +35,25 @@ test('server.js: grandparentTypeRequiredMessage acopera toate cele 8 limbi', () 
   });
 });
 
-test('server.js: buildPrompt deriva eticheta/instructiunea din grandparentType, NICIODATA din nume/voce', () => {
+// NOTA: GRANDPARENT_OCCASION_LABELS/GRANDPARENT_OCCASION_INSTRUCTIONS (specifice doar lui
+// 'bunici') au fost inlocuite de sistemul generalizat RELATION_NOUNS/SENDER_RELATION_NOUNS +
+// relationClause(), care acopera acum toate ocaziile de familie SI nunta/botez — vezi
+// test/occasion-family-relations.test.js pentru acoperirea completa.
+test('server.js: buildPrompt deriva relatia din order.recipientRole (fallback grandparentType pentru comenzi vechi), NICIODATA din nume/voce', () => {
   const server = read('server.js');
-  assert.ok(server.includes("const isGrandparentOccasion = order.occasion === 'bunici';"));
+  assert.ok(server.includes('const effectiveRecipientRole = order.recipientRole'));
   assert.ok(
-    server.includes("const grandparentType = (order.grandparentType === 'grandfather') ? 'grandfather' : 'grandmother';"),
+    server.includes("|| (order.occasion === 'bunici' ? (order.grandparentType === 'grandfather' ? 'grandfather' : 'grandmother') : null);"),
     'fallback-ul pentru comenzi vechi/corupte trebuie sa fie grandmother, niciodata dedus din alte campuri'
   );
-  assert.ok(server.includes('GRANDPARENT_OCCASION_LABELS[grandparentType]'));
-  assert.ok(server.includes('GRANDPARENT_OCCASION_INSTRUCTIONS[grandparentType]'));
+  assert.ok(server.includes('RELATION_NOUNS[effectiveRecipientRole]'));
 });
 
-test('server.js: instructiunea pentru bunica/bunicul cere mentionarea NATURALA a relatiei in versuri', () => {
+test('server.js: instructiunea pentru bunica/bunicul cere mentionarea NATURALA a relatiei in versuri, o singura data', () => {
   const server = read('server.js');
-  const match = server.match(/GRANDPARENT_OCCASION_INSTRUCTIONS\s*=\s*\{([\s\S]*?)\n\};/);
-  assert.ok(match, 'GRANDPARENT_OCCASION_INSTRUCTIONS trebuie sa existe');
-  const body = match[1];
-  assert.ok(/grandmother[\s\S]*?full:[\s\S]*?naturally mention/.test(body), 'instructiunea pentru bunica trebuie sa ceara mentionare naturala');
-  assert.ok(/grandfather[\s\S]*?full:[\s\S]*?naturally mention/.test(body), 'instructiunea pentru bunicul trebuie sa ceara mentionare naturala');
-  assert.ok(body.includes('never a forced repetition'), 'relatia nu trebuie repetata fortat');
+  assert.ok(server.includes("grandmother: 'grandmother', grandfather: 'grandfather',"), 'RELATION_NOUNS trebuie sa acopere grandmother/grandfather');
+  assert.ok(server.includes('Mention naturally, once, that the recipient is their'));
+  assert.ok(server.includes('Mention naturally, once, that this song is dedicated to the recipient as their'));
 });
 
 test('db.js: migrarea grandparent_type e aditiva (ADD COLUMN IF NOT EXISTS)', () => {
@@ -64,9 +61,10 @@ test('db.js: migrarea grandparent_type e aditiva (ADD COLUMN IF NOT EXISTS)', ()
   assert.ok(dbjs.includes('ALTER TABLE orders ADD COLUMN IF NOT EXISTS grandparent_type TEXT;'));
 });
 
-test('db.js: createOrder salveaza grandparent_type, rowToOrder il expune ca grandparentType', () => {
+test('db.js: createOrder salveaza grandparent_type (acum urmat de recipient_role/sender_role/recipient_mode/recipient_names), rowToOrder il expune ca grandparentType', () => {
   const dbjs = read('db.js');
-  assert.ok(dbjs.includes('grandparent_type)') && dbjs.includes('$20)'), 'INSERT-ul trebuie sa includa coloana grandparent_type ca al 20-lea parametru');
+  assert.ok(dbjs.includes('grandparent_type, recipient_role, sender_role, recipient_mode, recipient_names)'), 'INSERT-ul trebuie sa includa toate cele 5 coloane, in aceasta ordine');
+  assert.ok(dbjs.includes('$21,$22,$23,$24)'), 'coloanele noi trebuie sa fie ultimii 4 parametri ($21-$24)');
   assert.ok(dbjs.includes('order.grandparentType || null'), 'valoarea trebuie sa vina din order.grandparentType, cu fallback null');
   assert.ok(dbjs.includes('grandparentType: row.grandparent_type,'), 'rowToOrder trebuie sa expuna coloana catre restul aplicatiei');
 });
@@ -85,48 +83,39 @@ test('comanda.html: cardul "Pentru bunica sau bunicul" exista in grila de ocazii
   assert.ok(html.includes('data-i18n="theme_bunici_desc"'));
 });
 
-test('comanda.html: sub-alegerea bunica/bunicul exista, ascunsa implicit, cu doua carduri obligatorii', () => {
+test('comanda.html: sub-alegerea bunica/bunicul exista, ascunsa implicit, cu doua carduri obligatorii (acum panou generalizat de familie)', () => {
   const html = read('public/comanda.html');
-  assert.ok(html.includes('id="grandparent-type-field" style="display:none;'), 'campul trebuie ascuns implicit');
-  assert.ok(html.includes('<div class="theme-card grandparent-type-card" data-grandparent="grandmother">'));
-  assert.ok(html.includes('<div class="theme-card grandparent-type-card" data-grandparent="grandfather">'));
-  assert.ok(html.includes('id="grandparentType"'));
-  assert.ok(html.includes('id="err-grandparentType"'));
+  assert.ok(html.includes('id="family-relation-panel" style="display:none;'), 'campul trebuie ascuns implicit');
+  assert.ok(html.includes("bunici: ['grandmother', 'grandfather'],"), 'cele doua optiuni obligatorii pentru bunici raman exact grandmother/grandfather');
+  assert.ok(html.includes('id="recipientRole"'));
+  assert.ok(html.includes('id="err-recipientRoleFamily"'));
 });
 
-test('comanda.html: handler-ul generic de ocazii exclude .grandparent-type-card (evita bug-ul occasionInput.value = undefined)', () => {
+test('comanda.html: handler-ul generic de ocazii exclude .theme-subcard (evita bug-ul occasionInput.value = undefined)', () => {
   const html = read('public/comanda.html');
   assert.ok(
-    html.includes("document.querySelectorAll('.theme-card:not(.grandparent-type-card)')"),
-    'fara aceasta excludere, click pe "Pentru bunica"/"Pentru bunicul" ar seta occasionInput.value = undefined'
+    html.includes("document.querySelectorAll('.theme-card:not(.theme-subcard)')"),
+    'fara aceasta excludere, click pe orice sub-alegere de relatie ar seta occasionInput.value = undefined'
   );
 });
 
-test('comanda.html: validateStep(1) blocheaza continuarea pana la alegerea bunicii/bunicului', () => {
+test('comanda.html: validateStep(1) blocheaza continuarea pana la alegerea bunicii/bunicului (acum parte din validarea generalizata FAMILY_OCCASIONS)', () => {
   const html = read('public/comanda.html');
-  assert.ok(html.includes("if (occasionVal === 'bunici') {"));
-  assert.ok(html.includes("const grandparentTypeVal = document.getElementById('grandparentType').value;"));
-  assert.ok(html.includes("if (!grandparentTypeVal) ok = false;"));
+  assert.ok(html.includes('if (FAMILY_OCCASIONS.includes(occasionVal)) {'));
+  assert.ok(html.includes("setFieldError('recipientRoleFamily', recipientRoleInput.value ? '' : t('val_recipient_role'));"));
+  assert.ok(html.includes("if (!recipientRoleInput.value || !senderRoleInput.value) ok = false;"));
 });
 
-test('comanda.html: collectPayload trimite grandparentType catre server', () => {
+// NOTA (MODIFICARE STRICTĂ — pagina de ocazie, hotfix 2026-08-08): campul ingust
+// grandparentType/grandparentTypeInput/updateGrandparentTypeVisibility() a fost GENERALIZAT
+// intr-un sistem unificat de relatii (recipientRole/senderRole), reutilizat acum si pentru
+// parinti/matusa-unchi/socri/aniversare/nunta — vezi test/occasion-family-relations.test.js
+// pentru acoperirea completa a noului sistem (collectPayload, saveDraft/restoreDraft,
+// refreshRelationUI). Testele de mai jos raman doar pentru partea inca valabila (traducerile
+// existente, pastrate neutilizate direct dar nesterse, pentru compatibilitate).
+test('comanda.html: collectPayload trimite recipientRole catre server (grandparentType generalizat)', () => {
   const html = read('public/comanda.html');
-  assert.ok(html.includes('grandparentType: grandparentTypeInput.value'));
-});
-
-test('comanda.html: saveDraft/restoreDraft persista grandparentType si re-afiseaza campul la restaurare', () => {
-  const html = read('public/comanda.html');
-  const idx = html.indexOf('function saveDraft()');
-  assert.ok(idx !== -1);
-  const saveDraftSlice = html.slice(idx, idx + 800);
-  assert.ok(saveDraftSlice.includes('grandparentType: grandparentTypeInput.value'));
-
-  const restoreIdx = html.indexOf('function restoreDraft()');
-  assert.ok(restoreIdx !== -1);
-  const restoreSlice = html.slice(restoreIdx, restoreIdx + 2500);
-  assert.ok(restoreSlice.includes('updateGrandparentTypeVisibility();'), 'trebuie apelata dupa restaurarea occasion, ca sa re-afiseze campul daca e "bunici"');
-  assert.ok(restoreSlice.includes('if (draft.grandparentType) {'));
-  assert.ok(restoreSlice.includes("grandparentTypeInput.value = draft.grandparentType;"));
+  assert.ok(html.includes('recipientRole: recipientRoleInput.value,'));
 });
 
 test('comanda.html: cele 6 chei noi de traducere exista pentru toate cele 8 limbi', () => {
@@ -141,9 +130,9 @@ test('comanda.html: cele 6 chei noi de traducere exista pentru toate cele 8 limb
   });
 });
 
-test('comanda.html: label-urile de sub-alegere folosesc data-i18n, nu text hardcodat', () => {
+test('comanda.html: label-urile de sub-alegere folosesc data-i18n, nu text hardcodat (sistem generalizat)', () => {
   const html = read('public/comanda.html');
-  assert.ok(html.includes('data-i18n="label_grandparent_type"'));
-  assert.ok(html.includes('data-i18n="grandparent_grandmother_name"'));
-  assert.ok(html.includes('data-i18n="grandparent_grandfather_name"'));
+  assert.ok(html.includes('data-i18n="label_recipient_role"'));
+  assert.ok(html.includes('data-i18n="relation_grandmother"'));
+  assert.ok(html.includes('data-i18n="relation_grandfather"'));
 });

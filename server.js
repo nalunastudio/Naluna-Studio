@@ -126,9 +126,50 @@ const PLAN_PRICES = { standard: 15, premium: 25, video: 35 };
 // un singur gen. Premium/Video = doua melodii COMPLETE, in doua genuri DIFERITE, alese
 // explicit de client (nu "prima varianta + a doua varianta a ACELUIASI gen").
 const PLAN_VARIANT_COUNT = { standard: 1, premium: 2, video: 2 };
-const ALLOWED_OCCASIONS = ['dor', 'onomastica', 'aniversare', 'declaratie', 'nunta', 'pierdere', 'pentru-mine', 'altceva', 'bunici'];
+const ALLOWED_OCCASIONS = ['dor', 'onomastica', 'aniversare', 'declaratie', 'nunta', 'pierdere', 'pentru-mine', 'altceva', 'bunici', 'parinti', 'matusa-unchi', 'socri'];
 const ALLOWED_GENRES = ['emotional', 'suflet', 'pop', 'acustic', 'petrecere', 'balada', 'manele', 'copii', 'populara', 'rock', 'colind', 'modern', 'hiphop', 'manele_suflet', 'motivational'];
 const ALLOWED_LANGS = ['ro', 'en', 'de', 'es', 'it', 'fr', 'bg', 'tr'];
+
+// MODIFICARE STRICTĂ — pagina de ocazie (hotfix 2026-08-08): sistem generalizat de relatii de
+// familie si nunta/botez. Ocaziile de mai jos cer o relatie EXPLICITA a destinatarului
+// (recipientRole), aleasa de client, NICIODATA dedusa din nume/voce — si, in oglinda, relatia
+// persoanei care ofera melodia (senderRole), pentru formulari corecte precum "din partea
+// nepotului Andrei". 'aniversare' foloseste ACELASI set de relatii de familie, dar OPTIONAL
+// (clientul poate alege in continuare "Altă persoană", pastrand comportamentul generic actual).
+const FAMILY_OCCASIONS = ['bunici', 'parinti', 'matusa-unchi', 'socri'];
+
+// recipientRole permise per ocazie de familie.
+const FAMILY_OCCASION_RECIPIENT_ROLES = {
+  bunici: ['grandmother', 'grandfather'],
+  parinti: ['mother', 'father'],
+  'matusa-unchi': ['aunt', 'uncle'],
+  socri: ['mother_in_law', 'father_in_law']
+};
+// Toate relatiile de familie posibile — folosit pentru validarea optionala la 'aniversare'.
+const ALL_FAMILY_RECIPIENT_ROLES = Object.values(FAMILY_OCCASION_RECIPIENT_ROLES).flat();
+
+// senderRole permise, in functie de recipientRole ales — acelasi selector "Tu ești: ..." e
+// reutilizat pentru bunici SI matusa-unchi (romana foloseste identic "Nepoată"/"Nepot" pentru
+// ambele relatii), dar valorile interne raman distincte, ca buildPrompt sa poata scrie
+// conceptul corect in engleza (Suno traduce apoi natural, la fel ca restul promptului).
+const FAMILY_RECIPIENT_TO_SENDER_ROLES = {
+  grandmother: ['granddaughter', 'grandson'],
+  grandfather: ['granddaughter', 'grandson'],
+  mother: ['daughter', 'son'],
+  father: ['daughter', 'son'],
+  aunt: ['niece', 'nephew'],
+  uncle: ['niece', 'nephew'],
+  mother_in_law: ['daughter_in_law', 'son_in_law'],
+  father_in_law: ['daughter_in_law', 'son_in_law']
+};
+
+// "Nuntă/Botez" (occasion='nunta' — valoarea interna ramane neschimbata, doar eticheta
+// afisata s-a schimbat in comanda.html, pentru compatibilitate deplina cu comenzile vechi).
+// Trei niveluri (Miri/Fini/Nași), fiecare cu rol individual SAU "Amândoi" (grup).
+const WEDDING_RECIPIENT_ROLES_SINGLE = ['groom', 'bride', 'godson', 'goddaughter', 'godfather', 'godmother'];
+const WEDDING_RECIPIENT_ROLES_BOTH = ['couple', 'godchildren', 'godparents'];
+// Din partea cui e melodia — acelasi set de roluri de nunta/botez, plus "altă persoană".
+const WEDDING_SENDER_ROLES = [...WEDDING_RECIPIENT_ROLES_SINGLE, ...WEDDING_RECIPIENT_ROLES_BOTH, 'other'];
 
 // Mesaje de validare traduse pentru campurile obligatorii legate de personalizare
 // (destinatar, expeditor, relatie, poveste) — afisate clientului in limba aleasa de el,
@@ -174,6 +215,37 @@ const MISSING_FIELD_MESSAGES = {
     fr: 'Ajoutez quelques détails sur votre histoire',
     bg: 'Добави няколко детайла за вашата история',
     tr: 'Hikayeniz hakkında birkaç detay ekleyin'
+  },
+  // MODIFICARE STRICTĂ — pagina de ocazie (hotfix 2026-08-08): relatiile de familie/nunta-botez.
+  recipientRole: {
+    ro: 'Alege exact pentru cine este cântecul',
+    en: 'Choose exactly who the song is for',
+    de: 'Wähle genau, für wen das Lied ist',
+    es: 'Elige exactamente para quién es la canción',
+    it: 'Scegli esattamente per chi è la canzone',
+    fr: 'Choisissez exactement pour qui est la chanson',
+    bg: 'Избери точно за кого е песента',
+    tr: 'Şarkının tam olarak kimin için olduğunu seçin'
+  },
+  senderRole: {
+    ro: 'Alege ce relație ai tu cu destinatarul',
+    en: 'Choose your relationship to the recipient',
+    de: 'Wähle deine Beziehung zur empfangenden Person',
+    es: 'Elige tu relación con el destinatario',
+    it: 'Scegli il tuo rapporto con il destinatario',
+    fr: 'Choisissez votre relation avec le destinataire',
+    bg: 'Избери каква е твоята връзка с получателя',
+    tr: 'Alıcıyla olan ilişkinizi seçin'
+  },
+  recipientNames: {
+    ro: 'Completează ambele nume',
+    en: 'Fill in both names',
+    de: 'Gib beide Namen ein',
+    es: 'Completa ambos nombres',
+    it: 'Inserisci entrambi i nomi',
+    fr: 'Renseignez les deux prénoms',
+    bg: 'Попълни и двете имена',
+    tr: 'Her iki ismi de girin'
   }
 };
 function missingFieldMessage(field, lang) {
@@ -1236,23 +1308,82 @@ app.use(express.static(path.join(__dirname, 'public'), {
 // ==========================================================================================
 app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
   try {
-    const { occasion, recipient, senderName, relationship, email, phone, story, genre, genre2, plan, lang, voicePreference, grandparentType } = req.body || {};
+    const {
+      occasion, recipient, senderName, relationship, email, phone, story, genre, genre2, plan, lang, voicePreference,
+      grandparentType, recipientRole, senderRole, recipientMode, recipientNames
+    } = req.body || {};
     const safeLang = ALLOWED_LANGS.includes(lang) ? lang : 'ro';
 
     if (!ALLOWED_OCCASIONS.includes(occasion)) {
       return res.status(400).json({ error: 'Ocazie invalidă.' });
     }
-    // "Pentru bunica sau bunicul" (ULTIMELE MODIFICĂRI STRICTE, hotfix 2026-08-08): alegerea
-    // e OBLIGATORIE si validata STRICT server-side pentru aceasta ocazie — NICIODATA dedusa
-    // din nume sau din vocea melodiei. Pentru orice alta ocazie, campul e pur si simplu ignorat
-    // (salvat null), indiferent ce ar trimite un client care manipuleaza cererea din devtools.
+
+    // MODIFICARE STRICTĂ — pagina de ocazie (hotfix 2026-08-08): relatia destinatarului
+    // (recipientRole) si a expeditorului (senderRole), validate STRICT server-side, NICIODATA
+    // deduse din nume/voce. `grandparentType` (campul original, ingust, al feature-ului
+    // "bunica/bunicul") ramane acceptat pentru compatibilitate, dar e acum doar o OGLINDA a
+    // recipientRole pentru occasion='bunici' — sursa de adevar e sistemul generalizat de mai jos.
     let safeGrandparentType = null;
-    if (occasion === 'bunici') {
-      if (grandparentType !== 'grandmother' && grandparentType !== 'grandfather') {
-        return res.status(400).json({ error: grandparentTypeRequiredMessage(safeLang) });
+    let safeRecipientRole = null;
+    let safeSenderRole = null;
+    let safeRecipientMode = null;
+    let safeRecipientNames = null;
+
+    if (FAMILY_OCCASIONS.includes(occasion)) {
+      const allowedRecipientRoles = FAMILY_OCCASION_RECIPIENT_ROLES[occasion];
+      if (!allowedRecipientRoles.includes(recipientRole)) {
+        return res.status(400).json({ error: missingFieldMessage('recipientRole', safeLang) });
       }
-      safeGrandparentType = grandparentType;
+      const allowedSenderRoles = FAMILY_RECIPIENT_TO_SENDER_ROLES[recipientRole];
+      if (!allowedSenderRoles.includes(senderRole)) {
+        return res.status(400).json({ error: missingFieldMessage('senderRole', safeLang) });
+      }
+      safeRecipientRole = recipientRole;
+      safeSenderRole = senderRole;
+      if (occasion === 'bunici') safeGrandparentType = recipientRole;
+    } else if (occasion === 'aniversare') {
+      // "E ziua lui/ei" — relatia e OPTIONALA (clientul poate alege "Altă persoană" si
+      // pastreaza exact comportamentul generic actual). Daca ALEGE o relatie de familie insa,
+      // senderRole devine obligatoriu, la fel ca pentru ocaziile dedicate de mai sus.
+      if (recipientRole) {
+        if (!ALL_FAMILY_RECIPIENT_ROLES.includes(recipientRole)) {
+          return res.status(400).json({ error: missingFieldMessage('recipientRole', safeLang) });
+        }
+        const allowedSenderRoles = FAMILY_RECIPIENT_TO_SENDER_ROLES[recipientRole];
+        if (!allowedSenderRoles.includes(senderRole)) {
+          return res.status(400).json({ error: missingFieldMessage('senderRole', safeLang) });
+        }
+        safeRecipientRole = recipientRole;
+        safeSenderRole = senderRole;
+      }
+    } else if (occasion === 'nunta') {
+      // "Nuntă/Botez" — Miri/Fini/Nași, fiecare cu rol individual sau "Amândoi". Valoarea
+      // interna a ocaziei ramane 'nunta' (neschimbata) — doar eticheta afisata s-a schimbat.
+      const isSingleRole = WEDDING_RECIPIENT_ROLES_SINGLE.includes(recipientRole);
+      const isBothRole = WEDDING_RECIPIENT_ROLES_BOTH.includes(recipientRole);
+      if (!isSingleRole && !isBothRole) {
+        return res.status(400).json({ error: missingFieldMessage('recipientRole', safeLang) });
+      }
+      const expectedMode = isBothRole ? 'both' : 'single';
+      if (recipientMode !== expectedMode) {
+        return res.status(400).json({ error: missingFieldMessage('recipientRole', safeLang) });
+      }
+      if (expectedMode === 'both') {
+        const name1 = recipientNames && typeof recipientNames.name1 === 'string' ? recipientNames.name1.trim() : '';
+        const name2 = recipientNames && typeof recipientNames.name2 === 'string' ? recipientNames.name2.trim() : '';
+        if (!isValidString(name1, 1, 60) || !isValidString(name2, 1, 60)) {
+          return res.status(400).json({ error: missingFieldMessage('recipientNames', safeLang) });
+        }
+        safeRecipientNames = { name1, name2 };
+      }
+      if (!WEDDING_SENDER_ROLES.includes(senderRole)) {
+        return res.status(400).json({ error: missingFieldMessage('senderRole', safeLang) });
+      }
+      safeRecipientRole = recipientRole;
+      safeSenderRole = senderRole;
+      safeRecipientMode = expectedMode;
     }
+
     if (!isValidString(recipient, 1, 60)) {
       return res.status(400).json({ error: missingFieldMessage('recipient', safeLang) });
     }
@@ -1320,7 +1451,11 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
       senderName: senderName.trim(), relationship: relationship.trim(),
       voicePreference: safeVoicePreference,
       phone: safePhone,
-      grandparentType: safeGrandparentType
+      grandparentType: safeGrandparentType,
+      recipientRole: safeRecipientRole,
+      senderRole: safeSenderRole,
+      recipientMode: safeRecipientMode,
+      recipientNames: safeRecipientNames
     });
 
     res.json({ orderId: order.id, accessToken: order.accessToken });
@@ -4330,36 +4465,45 @@ const OCCASION_LABELS = {
   onomastica: 'name day',
   aniversare: 'birthday',
   declaratie: 'declaration of love',
-  nunta: 'wedding',
+  nunta: 'wedding or christening',
   pierdere: 'in loving memory',
   'pentru-mine': 'a song for oneself',
-  altceva: 'a personal occasion'
-  // 'bunici' (ULTIMELE MODIFICĂRI STRICTE, hotfix 2026-08-08) NU are o singura eticheta fixa
-  // aici — depinde de order.grandparentType ('grandmother'/'grandfather'), ales explicit de
-  // client (niciodata dedus din nume/voce) — vezi GRANDPARENT_OCCASION_LABELS mai jos si
-  // derivarea lui occasionLabel in buildPrompt.
+  altceva: 'a personal occasion',
+  // MODIFICARE STRICTĂ — pagina de ocazie (hotfix 2026-08-08): etichete generice de rezerva
+  // pentru ocaziile de familie — folosite doar daca recipientRole lipseste (nu ar trebui sa se
+  // intample, validat strict la POST /api/orders). Relatia EXACTA (bunica/bunicul/mama/tata/
+  // etc.) e adaugata separat, natural, de buildRelationInstruction() mai jos.
+  bunici: 'a tribute to a grandparent',
+  parinti: 'a tribute to a parent',
+  'matusa-unchi': 'a tribute to an aunt or uncle',
+  socri: 'a tribute to an in-law'
 };
 
-// Ocazia "Pentru bunica sau bunicul" (ULTIMELE MODIFICĂRI STRICTE, hotfix 2026-08-08) — SINGURA
-// ocazie cu doua variante posibile de eticheta/instructiune, alese pe baza order.grandparentType.
-// Instructiunea cere explicit ca relatia sa fie mentionata NATURAL in versuri — Suno scrie
-// versurile in limba comenzii (lyricsLanguage), deci "grandmother"/"grandfather" aici e doar
-// CONCEPTUL trimis modelului; traducerea naturala ("bunica"/"bunicul" in romana, "abuela"/
-// "abuelo" in spaniola etc.) o face Suno insusi, la fel ca pentru toate celelalte ocazii/genuri
-// (nici Suno, nici acest prompt, nu scriu vreodata literal cuvantul englezesc in versuri).
-const GRANDPARENT_OCCASION_LABELS = {
-  grandmother: 'a heartfelt tribute to a beloved grandmother',
-  grandfather: 'a heartfelt tribute to a beloved grandfather'
+// MODIFICARE STRICTĂ — pagina de ocazie (hotfix 2026-08-08): substantivele de relatie (concept
+// in engleza, trimis catre model) pentru destinatar si, respectiv, pentru expeditor. Suno scrie
+// versurile in limba comenzii (lyricsLanguage) si traduce natural conceptul in cuvantul potrivit
+// ("bunica"/"bunicul" in romana, "abuela"/"abuelo" in spaniola etc.), la fel ca pentru toate
+// celelalte ocazii/genuri deja existente — nici Suno, nici acest prompt, nu scriu niciodata
+// literal cuvantul englezesc in versuri. Foloseste ACELASI mecanism pentru toate relatiile de
+// familie SI de nunta/botez (inlocuieste ramura ingusta anterioara, specifica doar lui 'bunici').
+const RELATION_NOUNS = {
+  grandmother: 'grandmother', grandfather: 'grandfather',
+  mother: 'mother', father: 'father',
+  aunt: 'aunt', uncle: 'uncle',
+  mother_in_law: 'mother-in-law', father_in_law: 'father-in-law',
+  groom: 'groom', bride: 'bride', couple: 'the couple (bride and groom)',
+  godson: 'godson', goddaughter: 'goddaughter', godchildren: 'the godchildren',
+  godfather: 'godfather', godmother: 'godmother', godparents: 'the godparents'
 };
-const GRANDPARENT_OCCASION_INSTRUCTIONS = {
-  grandmother: {
-    full: 'Warm, loving tribute dedicated to the grandmother — the lyrics must naturally mention, at least once, that this song is for her as a grandmother (use the natural word for "grandmother" in the lyrics language), full of gratitude and cherished memories, never generic and never a forced repetition.',
-    short: 'Warm tribute, naturally mentions the grandmother once, gratitude and memories.'
-  },
-  grandfather: {
-    full: 'Warm, loving tribute dedicated to the grandfather — the lyrics must naturally mention, at least once, that this song is for him as a grandfather (use the natural word for "grandfather" in the lyrics language), full of gratitude and cherished memories, never generic and never a forced repetition.',
-    short: 'Warm tribute, naturally mentions the grandfather once, gratitude and memories.'
-  }
+const SENDER_RELATION_NOUNS = {
+  daughter: 'daughter', son: 'son',
+  granddaughter: 'granddaughter', grandson: 'grandson',
+  niece: 'niece', nephew: 'nephew',
+  daughter_in_law: 'daughter-in-law', son_in_law: 'son-in-law',
+  groom: 'groom', bride: 'bride', couple: 'the couple',
+  godson: 'godson', goddaughter: 'goddaughter', godchildren: 'the godchildren',
+  godfather: 'godfather', godmother: 'godmother', godparents: 'the godparents'
+  // 'other' lipseste deliberat -> nicio clauza de expeditor (client a ales "Altă persoană").
 };
 
 // Instructiune de ATMOSFERA/TON pentru fiecare ocazie — separata de OCCASION_LABELS (care e
@@ -4401,6 +4545,25 @@ const OCCASION_INSTRUCTIONS = {
   altceva: {
     full: 'Infer the mood and atmosphere from the story below rather than assuming any specific occasion.',
     short: 'Infer the mood from the story.'
+  },
+  // MODIFICARE STRICTĂ — pagina de ocazie (hotfix 2026-08-08): toate cele 4 ocazii de familie
+  // impartasesc aceeasi atmosfera de baza — relatia EXACTA (bunica/mama/matusa/soacra etc.) e
+  // adaugata separat, natural, de buildRelationInstruction() mai jos, nu aici.
+  bunici: {
+    full: 'Warm, loving family tribute — full of gratitude and cherished memories, never generic.',
+    short: 'Warm family tribute, gratitude and memories.'
+  },
+  parinti: {
+    full: 'Warm, loving family tribute — full of gratitude and cherished memories, never generic.',
+    short: 'Warm family tribute, gratitude and memories.'
+  },
+  'matusa-unchi': {
+    full: 'Warm, loving family tribute — full of gratitude and cherished memories, never generic.',
+    short: 'Warm family tribute, gratitude and memories.'
+  },
+  socri: {
+    full: 'Warm, respectful family tribute — full of gratitude and appreciation, never generic.',
+    short: 'Warm family tribute, gratitude and appreciation.'
   }
 };
 // Fallback pentru comenzi vechi/valoare necunoscuta de ocazie (Partea 2, punctul 11) —
@@ -4473,28 +4636,48 @@ function buildPrompt(order, feedback, genreOverride) {
   // cele doua cereri; DOAR stilul muzical difera, ca ambele melodii sa fie despre aceeasi
   // poveste reala, in doua interpretari muzicale reale, distincte.
   const styleTags = genreMap[genreOverride || order.genre] || 'pop, warm vocals';
-  // "bunici" (ULTIMELE MODIFICĂRI STRICTE, hotfix 2026-08-08): eticheta/instructiunea depind
-  // de grandparentType, ales explicit de client la creare — NICIODATA dedus aici din nume/voce.
-  // O comanda veche/corupta cu occasion='bunici' dar fara grandparentType valid (nu ar trebui
-  // sa existe, validat strict la POST /api/orders) foloseste implicit 'grandmother', ca sa nu
-  // blocheze generarea (acelasi spirit defensiv ca fallback-ul general de mai jos).
-  const isGrandparentOccasion = order.occasion === 'bunici';
-  const grandparentType = (order.grandparentType === 'grandfather') ? 'grandfather' : 'grandmother';
-  const occasionLabel = isGrandparentOccasion
-    ? GRANDPARENT_OCCASION_LABELS[grandparentType]
-    : (OCCASION_LABELS[order.occasion] || order.occasion);
+  // MODIFICARE STRICTĂ — pagina de ocazie (hotfix 2026-08-08): relatia EXACTA (recipientRole/
+  // senderRole), aleasa explicit de client la creare — NICIODATA dedusa aici din nume/voce.
+  // Fallback pentru comenzi vechi cu occasion='bunici' create in fereastra scurta cat a existat
+  // doar campul ingust grandparentType, fara inca recipientRole (nu ar trebui sa existe comenzi
+  // noi in aceasta situatie, validat strict la POST /api/orders) — foloseste grandparentType,
+  // sau implicit 'grandmother', ca sa nu blocheze generarea (acelasi spirit defensiv ca
+  // fallback-ul general de mai jos).
+  const effectiveRecipientRole = order.recipientRole
+    || (order.occasion === 'bunici' ? (order.grandparentType === 'grandfather' ? 'grandfather' : 'grandmother') : null);
+  const occasionLabel = OCCASION_LABELS[order.occasion] || order.occasion;
 
   // Instructiunea de atmosfera/ton pentru ocazia aleasa — comenzi vechi sau o valoare
   // necunoscuta de ocazie NU blocheaza generarea (Partea 2, punctul 11): folosim fallback-ul
   // neutru, bazat pe poveste.
-  const occasionInstructionSet = isGrandparentOccasion
-    ? GRANDPARENT_OCCASION_INSTRUCTIONS[grandparentType]
-    : (OCCASION_INSTRUCTIONS[order.occasion] || OCCASION_INSTRUCTION_FALLBACK);
+  const occasionInstructionSet = OCCASION_INSTRUCTIONS[order.occasion] || OCCASION_INSTRUCTION_FALLBACK;
   let useShortOccasionInstruction = false;
   let includeOccasionInstruction = true;
+  // Clauza de relatie — mentioneaza NATURAL, o singura data, relatia exacta a destinatarului
+  // si (daca e cunoscuta) a expeditorului. NICIODATA eliminata complet de cascada de scurtare
+  // (acelasi tratament ca vocea aleasa explicit) — doar comprimata la forma scurta, pentru ca
+  // e cerinta explicita ("relatia trebuie mentionata natural cel putin o data").
+  function relationClause() {
+    const recipientNoun = RELATION_NOUNS[effectiveRecipientRole];
+    if (!recipientNoun) return '';
+    const senderNoun = SENDER_RELATION_NOUNS[order.senderRole];
+    let clause = useShortOccasionInstruction
+      ? (senderNoun
+          ? ` Mention once: recipient's ${recipientNoun}, song from their ${senderNoun}.`
+          : ` Mention once: dedicated to recipient as their ${recipientNoun}.`)
+      : (senderNoun
+          ? ` Mention naturally, once, that the recipient is their ${recipientNoun} and the song is from their ${senderNoun}.`
+          : ` Mention naturally, once, that this song is dedicated to the recipient as their ${recipientNoun}.`);
+    // "E ziua lui/ei" cu relatie aleasa (Partea 2): urarea de "La mulți ani" trebuie sa apara
+    // natural, in limba versurilor — nu doar mood-ul general "birthday" din OCCASION_INSTRUCTIONS.
+    if (order.occasion === 'aniversare') {
+      clause += useShortOccasionInstruction ? ' Natural birthday wish included.' : ' Include a natural birthday wish in the lyrics language.';
+    }
+    return clause;
+  }
   function currentOccasionInstruction() {
     if (!includeOccasionInstruction) return '';
-    return ' ' + (useShortOccasionInstruction ? occasionInstructionSet.short : occasionInstructionSet.full);
+    return ' ' + (useShortOccasionInstruction ? occasionInstructionSet.short : occasionInstructionSet.full) + relationClause();
   }
 
   // Comenzile vechi (dinainte de sender/relationship) nu au aceste campuri — tratate optional.

@@ -587,6 +587,80 @@
     return null;
   }
 
+  // MODIFICARE STRICTĂ — pagina de ocazie (hotfix 2026-08-08): antet personalizat, afisat DOAR
+  // cand comanda are recipientRole (relatie structurata, aleasa explicit de client pe pagina de
+  // ocazie comanda.html) — pentru comenzile vechi/fara relatie, ramane EXACT antetul generic
+  // actual (t.heading + t.dedication), neschimbat, mai jos in renderContent(). Substantivele de
+  // mai jos sunt STRICT text de AFISARE client-side (nu ajung niciodata la Suno — buildPrompt
+  // din server.js foloseste propriul sistem, separat, in engleza, tradus natural de Suno insusi).
+  const RELATION_DISPLAY_NOUNS = {
+    ro: {
+      recipient: { grandmother: 'bunica', grandfather: 'bunicul', mother: 'mama', father: 'tatăl', aunt: 'mătușa', uncle: 'unchiul', mother_in_law: 'soacra', father_in_law: 'socrul', groom: 'mirele', bride: 'mireasa', couple: 'mirii', godson: 'finul', goddaughter: 'fina', godchildren: 'finii', godfather: 'nașul', godmother: 'nașa', godparents: 'nașii' },
+      sender: { daughter: 'fiicei', son: 'fiului', granddaughter: 'nepoatei', grandson: 'nepotului', niece: 'nepoatei', nephew: 'nepotului', daughter_in_law: 'nurorii', son_in_law: 'ginerelui', groom: 'mirelui', bride: 'miresei', couple: 'mirilor', godson: 'finului', goddaughter: 'finei', godchildren: 'finilor', godfather: 'nașului', godmother: 'nașei', godparents: 'nașilor' }
+    },
+    en: {
+      recipient: { grandmother: 'grandmother', grandfather: 'grandfather', mother: 'mother', father: 'father', aunt: 'aunt', uncle: 'uncle', mother_in_law: 'mother-in-law', father_in_law: 'father-in-law', groom: 'groom', bride: 'bride', couple: 'the newlyweds', godson: 'godson', goddaughter: 'goddaughter', godchildren: 'the godchildren', godfather: 'godfather', godmother: 'godmother', godparents: 'the godparents' },
+      sender: { daughter: 'daughter', son: 'son', granddaughter: 'granddaughter', grandson: 'grandson', niece: 'niece', nephew: 'nephew', daughter_in_law: 'daughter-in-law', son_in_law: 'son-in-law', groom: 'groom', bride: 'bride', couple: 'the newlyweds', godson: 'godson', goddaughter: 'goddaughter', godchildren: 'the godchildren', godfather: 'godfather', godmother: 'godmother', godparents: 'the godparents' }
+    },
+    de: {
+      recipient: { grandmother: 'Oma', grandfather: 'Opa', mother: 'Mama', father: 'Papa', aunt: 'Tante', uncle: 'Onkel', mother_in_law: 'Schwiegermutter', father_in_law: 'Schwiegervater', groom: 'Bräutigam', bride: 'Braut', couple: 'das Brautpaar', godson: 'Patensohn', goddaughter: 'Patentochter', godchildren: 'die Patenkinder', godfather: 'Pate', godmother: 'Patin', godparents: 'die Paten' },
+      sender: { daughter: 'Tochter', son: 'Sohn', granddaughter: 'Enkelin', grandson: 'Enkel', niece: 'Nichte', nephew: 'Neffe', daughter_in_law: 'Schwiegertochter', son_in_law: 'Schwiegersohn', groom: 'Bräutigam', bride: 'Braut', couple: 'das Brautpaar', godson: 'Patensohn', goddaughter: 'Patentochter', godchildren: 'die Patenkinder', godfather: 'Pate', godmother: 'Patin', godparents: 'die Paten' }
+    },
+    es: {
+      recipient: { grandmother: 'la abuela', grandfather: 'el abuelo', mother: 'la mamá', father: 'el papá', aunt: 'la tía', uncle: 'el tío', mother_in_law: 'la suegra', father_in_law: 'el suegro', groom: 'el novio', bride: 'la novia', couple: 'los novios', godson: 'el ahijado', goddaughter: 'la ahijada', godchildren: 'los ahijados', godfather: 'el padrino', godmother: 'la madrina', godparents: 'los padrinos' },
+      sender: { daughter: 'de su hija', son: 'de su hijo', granddaughter: 'de su nieta', grandson: 'de su nieto', niece: 'de su sobrina', nephew: 'de su sobrino', daughter_in_law: 'de su nuera', son_in_law: 'de su yerno', groom: 'del novio', bride: 'de la novia', couple: 'de los novios', godson: 'del ahijado', goddaughter: 'de la ahijada', godchildren: 'de los ahijados', godfather: 'del padrino', godmother: 'de la madrina', godparents: 'de los padrinos' }
+    },
+    it: {
+      recipient: { grandmother: 'la nonna', grandfather: 'il nonno', mother: 'la mamma', father: 'il papà', aunt: 'la zia', uncle: 'lo zio', mother_in_law: 'la suocera', father_in_law: 'il suocero', groom: 'lo sposo', bride: 'la sposa', couple: 'gli sposi', godson: 'il figlioccio', goddaughter: 'la figlioccia', godchildren: 'i figliocci', godfather: 'il padrino', godmother: 'la madrina', godparents: 'i padrini' },
+      sender: { daughter: 'di sua figlia', son: 'di suo figlio', granddaughter: 'di sua nipote', grandson: 'di suo nipote', niece: 'di sua nipote', nephew: 'di suo nipote', daughter_in_law: 'di sua nuora', son_in_law: 'di suo genero', groom: 'dello sposo', bride: 'della sposa', couple: 'degli sposi', godson: 'del figlioccio', goddaughter: 'della figlioccia', godchildren: 'dei figliocci', godfather: 'del padrino', godmother: 'della madrina', godparents: 'dei padrini' }
+    },
+    fr: {
+      recipient: { grandmother: 'la grand-mère', grandfather: 'le grand-père', mother: 'la maman', father: 'le papa', aunt: 'la tante', uncle: "l'oncle", mother_in_law: 'la belle-mère', father_in_law: 'le beau-père', groom: 'le marié', bride: 'la mariée', couple: 'les mariés', godson: 'le filleul', goddaughter: 'la filleule', godchildren: 'les filleuls', godfather: 'le parrain', godmother: 'la marraine', godparents: 'les parrains' },
+      sender: { daughter: 'de sa fille', son: 'de son fils', granddaughter: 'de sa petite-fille', grandson: 'de son petit-fils', niece: 'de sa nièce', nephew: 'de son neveu', daughter_in_law: 'de sa belle-fille', son_in_law: 'de son beau-fils', groom: 'du marié', bride: 'de la mariée', couple: 'des mariés', godson: 'du filleul', goddaughter: 'de la filleule', godchildren: 'des filleuls', godfather: 'du parrain', godmother: 'de la marraine', godparents: 'des parrains' }
+    },
+    bg: {
+      recipient: { grandmother: 'баба', grandfather: 'дядо', mother: 'мама', father: 'татко', aunt: 'леля', uncle: 'чичо', mother_in_law: 'свекърва', father_in_law: 'тъст', groom: 'младоженецът', bride: 'младоженката', couple: 'младоженците', godson: 'кръщелникът', goddaughter: 'кръщелницата', godchildren: 'кръщелниците', godfather: 'кумът', godmother: 'кумата', godparents: 'кумовете' },
+      sender: { daughter: 'дъщеря', son: 'син', granddaughter: 'внучка', grandson: 'внук', niece: 'племенница', nephew: 'племенник', daughter_in_law: 'снаха', son_in_law: 'зет', groom: 'младоженецът', bride: 'младоженката', couple: 'младоженците', godson: 'кръщелникът', goddaughter: 'кръщелницата', godchildren: 'кръщелниците', godfather: 'кумът', godmother: 'кумата', godparents: 'кумовете' }
+    },
+    tr: {
+      recipient: { grandmother: 'büyükanne', grandfather: 'büyükbaba', mother: 'anne', father: 'baba', aunt: 'teyze', uncle: 'amca', mother_in_law: 'kayınvalide', father_in_law: 'kayınpeder', groom: 'damat', bride: 'gelin', couple: 'çift', godson: 'vaftiz oğlu', goddaughter: 'vaftiz kızı', godchildren: 'vaftiz çocukları', godfather: 'vaftiz babası', godmother: 'vaftiz annesi', godparents: 'vaftiz ebeveynleri' },
+      sender: { daughter: 'kızı', son: 'oğlu', granddaughter: 'torunu', grandson: 'torunu', niece: 'yeğeni', nephew: 'yeğeni', daughter_in_law: 'gelini', son_in_law: 'damadı', groom: 'damat', bride: 'gelin', couple: 'çift', godson: 'vaftiz oğlu', goddaughter: 'vaftiz kızı', godchildren: 'vaftiz çocukları', godfather: 'vaftiz babası', godmother: 'vaftiz annesi', godparents: 'vaftiz ebeveynleri' }
+    }
+  };
+  const HEADING_PERSONALIZED_TEMPLATE = {
+    ro: (rn, name) => `Melodia pentru ${rn} ${name}`,
+    en: (rn, name) => `The song for ${rn} ${name}`,
+    de: (rn, name) => `Das Lied für ${rn} ${name}`,
+    es: (rn, name) => `La canción para ${rn} ${name}`,
+    it: (rn, name) => `La canzone per ${rn} ${name}`,
+    fr: (rn, name) => `La chanson pour ${rn} ${name}`,
+    bg: (rn, name) => `Песента за ${rn} ${name}`,
+    tr: (rn, name) => `${rn} ${name} için şarkı`
+  };
+  const DEDICATION_PERSONALIZED_TEMPLATE = {
+    ro: (sn, name) => `Din partea ${sn} ${name}`,
+    en: (sn, name) => `From ${sn} ${name}`,
+    de: (sn, name) => `Von ${sn} ${name}`,
+    es: (sn, name) => `De parte ${sn} ${name}`,
+    it: (sn, name) => `Da parte ${sn} ${name}`,
+    fr: (sn, name) => `De la part ${sn} ${name}`,
+    bg: (sn, name) => `От ${sn} ${name}`,
+    tr: (sn, name) => `${sn} ${name} tarafından`
+  };
+  // Comenzile fara recipientRole (vechi, sau ocazie fara relatie structurata) intorc null —
+  // apelantul (renderContent) foloseste atunci EXACT antetul generic actual, neschimbat.
+  function composePersonalizedHeading(order, activeLang) {
+    const nouns = RELATION_DISPLAY_NOUNS[activeLang] || RELATION_DISPLAY_NOUNS.en;
+    const recipientNoun = order.recipientRole && nouns.recipient[order.recipientRole];
+    if (!recipientNoun) return null;
+    const headingFn = HEADING_PERSONALIZED_TEMPLATE[activeLang] || HEADING_PERSONALIZED_TEMPLATE.en;
+    const heading = headingFn(recipientNoun, order.recipient || '');
+    const senderNoun = order.senderRole && nouns.sender[order.senderRole];
+    if (!senderNoun || !order.senderName) return { heading, dedication: null };
+    const dedicationFn = DEDICATION_PERSONALIZED_TEMPLATE[activeLang] || DEDICATION_PERSONALIZED_TEMPLATE.en;
+    return { heading, dedication: dedicationFn(senderNoun, order.senderName) };
+  }
+
   const T = {
     ro: {
       loading: 'Se încarcă melodia ta...',
@@ -2459,13 +2533,31 @@
   function renderContent(order) {
     currentOrder = order;
 
-    document.getElementById('song-heading').textContent = t.heading(order.recipient || '');
+    // MODIFICARE STRICTĂ — pagina de ocazie (hotfix 2026-08-08): antet personalizat, DOAR
+    // pentru comenzile cu recipientRole (relatie structurata, aleasa explicit de client pe
+    // comanda.html). Comenzile vechi/fara relatie pastreaza EXACT antetul generic actual —
+    // nicio comanda existenta nu e afectata.
+    const personalized = composePersonalizedHeading(order, lang);
     const dedicationEl = document.getElementById('dedication-line');
-    if (order.senderName) {
-      dedicationEl.textContent = t.dedication(order.senderName);
-      dedicationEl.style.display = 'block';
+    if (personalized) {
+      document.getElementById('song-heading').textContent = personalized.heading;
+      if (personalized.dedication) {
+        dedicationEl.textContent = personalized.dedication;
+        dedicationEl.style.display = 'block';
+      } else if (order.senderName) {
+        dedicationEl.textContent = t.dedication(order.senderName);
+        dedicationEl.style.display = 'block';
+      } else {
+        dedicationEl.style.display = 'none';
+      }
     } else {
-      dedicationEl.style.display = 'none';
+      document.getElementById('song-heading').textContent = t.heading(order.recipient || '');
+      if (order.senderName) {
+        dedicationEl.textContent = t.dedication(order.senderName);
+        dedicationEl.style.display = 'block';
+      } else {
+        dedicationEl.style.display = 'none';
+      }
     }
 
     // Insigna de pachet — arata explicit ce a ales clientul, in loc sa lase pretul singur
