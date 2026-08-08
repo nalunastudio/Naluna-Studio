@@ -2542,8 +2542,17 @@
     if (personalized) {
       document.getElementById('song-heading').textContent = personalized.heading;
       if (personalized.dedication) {
+        // Comanda VECHE "Nuntă/Botez" cu senderRole deja salvat (dinainte de CORECȚIA STRICTĂ
+        // care a eliminat "Din partea cui este melodia?") — pastreaza exact comportamentul.
         dedicationEl.textContent = personalized.dedication;
         dedicationEl.style.display = 'block';
+      } else if (order.occasion === 'nunta') {
+        // CORECȚIE STRICTĂ (hotfix 2026-08-08, punctul 4): comenzile NOI "Nuntă/Botez" nu mai
+        // colecteaza senderRole ("Din partea cui este melodia?" a fost eliminat complet) — NU
+        // cadem pe formularea generica "Cu drag, X" (ar afisa ceva de genul "Cu drag, Finilor",
+        // derivat dintr-un camp liber, neintentionat). Titlul personalizat ramane singur, fara
+        // niciun text secundar si fara spatiu gol.
+        dedicationEl.style.display = 'none';
       } else if (order.senderName) {
         dedicationEl.textContent = t.dedication(order.senderName);
         dedicationEl.style.display = 'block';

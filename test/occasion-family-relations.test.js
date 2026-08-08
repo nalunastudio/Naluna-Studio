@@ -49,31 +49,10 @@ test('comanda.html: sub-alegerea expeditorului ("Tu ești: Nepoată/Nepot" etc.)
 });
 
 // -------------------------------------------------------------------------------------------
-// 5: "E ziua lui/ei" permite selectarea relatiei.
+// 5 (SUPERSEDAT de CORECȚIA STRICTĂ, hotfix 2026-08-08, punctul 1): submeniul de relatie de la
+// "E ziua lui/ei" a fost ELIMINAT COMPLET — vezi test/occasion-relation-cleanup.test.js pentru
+// acoperirea completa a eliminarii (12 teste de acceptare din cererea de corectie).
 // -------------------------------------------------------------------------------------------
-test('comanda.html: "E ziua lui/ei" afiseaza toate cele 8 relatii de familie plus "Altă persoană"', () => {
-  const html = read('public/comanda.html');
-  const idx = html.indexOf('id="aniversare-relation-panel"');
-  assert.ok(idx !== -1);
-  const panelSlice = html.slice(idx, idx + 2200);
-  ['grandmother', 'grandfather', 'mother', 'father', 'aunt', 'uncle', 'mother_in_law', 'father_in_law'].forEach(role => {
-    assert.ok(panelSlice.includes(`data-role="${role}"`), `lipseste optiunea ${role} din panoul aniversare`);
-  });
-  assert.ok(panelSlice.includes('data-role=""'), 'trebuie sa existe optiunea "Altă persoană" (valoare goala)');
-  assert.ok(panelSlice.includes('data-i18n="relation_other"'));
-});
-
-test('comanda.html: alegerea unei relatii la "aniversare" cere si expeditorul, pastrand fluxul generic pentru "Altă persoană"', () => {
-  const html = read('public/comanda.html');
-  assert.ok(html.includes("} else if (occasionVal === 'aniversare' && recipientRoleInput.value) {"));
-  assert.ok(html.includes("setFieldError('senderRole', senderRoleInput.value ? '' : t('val_sender_role'));"));
-});
-
-test('server.js: "aniversare" accepta relatia OPTIONAL, dar cere senderRole daca a fost aleasa una', () => {
-  const server = read('server.js');
-  assert.ok(server.includes("} else if (occasion === 'aniversare') {"));
-  assert.ok(server.includes('if (recipientRole) {') && server.includes('ALL_FAMILY_RECIPIENT_ROLES.includes(recipientRole)'));
-});
 
 // -------------------------------------------------------------------------------------------
 // 6: Schimbarea cardului elimina valorile ascunse incompatibile.

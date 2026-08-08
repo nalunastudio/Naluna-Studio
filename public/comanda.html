@@ -244,28 +244,12 @@
           <div class="theme-desc" data-i18n="theme_aniversare_desc">La mulți ani, dar personal</div>
         </div>
 
-        <!-- MODIFICARE STRICTĂ — pagina de ocazie (hotfix 2026-08-08): "Cine își sărbătorește
-             ziua?" — panou plasat, in DOM, IMEDIAT dupa cardul aniversare, ca element din
-             ACELASI grid CSS (grid-column:1/-1 = randul intreg) — apare direct sub card, NU la
-             finalul intregii grile, inclusiv pe mobil (grid devine 1 coloana la <480px, panoul
-             ramane tot direct sub card). Ascuns complet (display:none) = scos din grid, fara
-             gol vizual. Relatia e OPTIONALA — "Altă persoană" pastreaza fluxul generic actual. -->
-        <div class="theme-subpanel" id="aniversare-relation-panel" style="display:none;">
-          <label data-i18n="label_aniversare_relation">Cine își sărbătorește ziua?</label>
-          <div class="theme-grid" id="aniversare-relation-grid" style="grid-template-columns:1fr 1fr;">
-            <div class="theme-card theme-subcard aniversare-relation-card" data-role="grandmother"><div class="theme-name" data-i18n="relation_grandmother">Bunică</div></div>
-            <div class="theme-card theme-subcard aniversare-relation-card" data-role="grandfather"><div class="theme-name" data-i18n="relation_grandfather">Bunic</div></div>
-            <div class="theme-card theme-subcard aniversare-relation-card" data-role="mother"><div class="theme-name" data-i18n="relation_mother">Mamă</div></div>
-            <div class="theme-card theme-subcard aniversare-relation-card" data-role="father"><div class="theme-name" data-i18n="relation_father">Tată</div></div>
-            <div class="theme-card theme-subcard aniversare-relation-card" data-role="aunt"><div class="theme-name" data-i18n="relation_aunt">Mătușă</div></div>
-            <div class="theme-card theme-subcard aniversare-relation-card" data-role="uncle"><div class="theme-name" data-i18n="relation_uncle">Unchi</div></div>
-            <div class="theme-card theme-subcard aniversare-relation-card" data-role="mother_in_law"><div class="theme-name" data-i18n="relation_mother_in_law">Soacră</div></div>
-            <div class="theme-card theme-subcard aniversare-relation-card" data-role="father_in_law"><div class="theme-name" data-i18n="relation_father_in_law">Socru</div></div>
-            <div class="theme-card theme-subcard aniversare-relation-card active" data-role=""><div class="theme-name" data-i18n="relation_other">Altă persoană</div></div>
-          </div>
-          <div class="field-error" id="err-aniversareRelation"></div>
-          <div id="aniversare-sender-role-slot"></div>
-        </div>
+        <!-- CORECȚIE STRICTĂ (hotfix 2026-08-08, punctul 1): submeniul de relatie de la "E ziua
+             lui/ei" a fost ELIMINAT COMPLET — cardul ramane selectabil normal, fara niciun
+             submeniu/sub-buton, iar occasion='aniversare' nu mai colecteaza/trimite
+             recipientRole/senderRole (vezi refreshRelationUI, validateStep si POST /api/orders
+             in server.js). Optiunile separate Bunica/Bunic, Mama/Tata, Matusa/Unchi, Soacra/Socru
+             din partea de jos a paginii raman EXACT neschimbate. -->
 
         <div class="theme-card" data-theme="declaratie">
           <div class="theme-name" data-i18n="theme_declaratie_name">Te iubesc, pe note</div>
@@ -308,10 +292,11 @@
             </div>
           </div>
 
-          <div class="field" id="nunta-sender-field" style="display:none; margin-top:16px;">
-            <label for="nunta-sender-select" data-i18n="label_nunta_sender">Din partea cui este melodia?</label>
-            <select id="nunta-sender-select"></select>
-          </div>
+          <!-- CORECȚIE STRICTĂ (hotfix 2026-08-08, punctul 2): "Din partea cui este melodia?"
+               a fost ELIMINAT COMPLET pentru Nuntă/Botez — nu mai e afisat, nu mai ocupa spatiu,
+               nu mai e obligatoriu, nu mai trimite o valoare implicita si nu mai influenteaza
+               antetul/versurile comenzilor NOI. Comenzile vechi care au deja senderRole salvat
+               isi pastreaza exact comportamentul (vezi melodia-mea.html, renderContent). -->
         </div>
 
         <div class="theme-card" data-theme="pierdere">
@@ -1865,17 +1850,14 @@
 
       // MODIFICARE STRICTĂ — pagina de ocazie (hotfix 2026-08-08): relatia destinatarului si
       // a expeditorului sunt OBLIGATORII pentru ocaziile de familie — clientul nu poate
-      // continua fara sa aleaga explicit ambele, NICIODATA deduse din nume/voce. Pentru
-      // 'aniversare', relatia e OPTIONALA ("Altă persoană" pastreaza fluxul generic actual),
-      // dar daca a fost aleasa o relatie de familie, expeditorul devine obligatoriu, la fel
-      // ca pentru ocaziile de familie dedicate.
+      // continua fara sa aleaga explicit ambele, NICIODATA deduse din nume/voce.
+      // CORECȚIE STRICTĂ (hotfix 2026-08-08, punctul 1): "E ziua lui/ei" NU mai are niciun
+      // submeniu de relatie — occasionVal === 'aniversare' se comporta identic cu orice
+      // ocazie generica (dor, declaratie etc.), fara nicio validare suplimentara aici.
       if (FAMILY_OCCASIONS.includes(occasionVal)) {
         setFieldError('recipientRoleFamily', recipientRoleInput.value ? '' : t('val_recipient_role'));
         setFieldError('senderRole', senderRoleInput.value ? '' : t('val_sender_role'));
         if (!recipientRoleInput.value || !senderRoleInput.value) ok = false;
-      } else if (occasionVal === 'aniversare' && recipientRoleInput.value) {
-        setFieldError('senderRole', senderRoleInput.value ? '' : t('val_sender_role'));
-        if (!senderRoleInput.value) ok = false;
       }
 
       // "Nuntă/Botez" — Miri/Fini/Nași, apoi rol individual sau "Amândoi".
@@ -1949,7 +1931,6 @@
     fini: { female: 'nunta_name_goddaughter_label', male: 'nunta_name_godson_label' },
     nasi: { female: 'nunta_name_godmother_label', male: 'nunta_name_godfather_label' }
   };
-  const NUNTA_SENDER_ROLES = ['other', 'bride', 'groom', 'couple', 'goddaughter', 'godson', 'godchildren', 'godmother', 'godfather', 'godparents'];
 
   // .theme-subcard e EXCLUS explicit — foloseste acelasi tipar deja stabilit pentru genre2-card
   // (vezi mai jos, ".genre-card:not(.genre2-card)") — fara aceasta excludere, click-ul pe orice
@@ -1966,9 +1947,6 @@
   const familyRelationGrid = document.getElementById('family-relation-grid');
   const familySenderRoleSlot = document.getElementById('family-sender-role-slot');
 
-  const aniversareRelationPanel = document.getElementById('aniversare-relation-panel');
-  const aniversareSenderRoleSlot = document.getElementById('aniversare-sender-role-slot');
-
   const senderRoleSubfield = document.getElementById('sender-role-subfield');
   const senderRoleGrid = document.getElementById('sender-role-grid');
 
@@ -1980,13 +1958,7 @@
   const nuntaName2Input = document.getElementById('nunta-name2');
   const nuntaName1Label = document.getElementById('nunta-name1-label');
   const nuntaName2Label = document.getElementById('nunta-name2-label');
-  const nuntaSenderField = document.getElementById('nunta-sender-field');
-  const nuntaSenderSelect = document.getElementById('nunta-sender-select');
   let nuntaGroup = ''; // 'miri' | 'fini' | 'nasi' — stare locala UI, oglindita in recipientRole
-
-  nuntaSenderSelect.innerHTML = NUNTA_SENDER_ROLES
-    .map(role => `<option value="${role}">${role === 'other' ? t('relation_other') : (NUNTA_BOTH_ROLES.includes(role) ? t('nunta_both') : t('relation_' + role))}</option>`)
-    .join('');
 
   themeCards.forEach(c => {
     c.addEventListener('click', () => {
@@ -2002,7 +1974,6 @@
       nuntaName1Input.value = '';
       nuntaName2Input.value = '';
       setFieldError('recipientRoleFamily', '');
-      setFieldError('aniversareRelation', '');
       setFieldError('recipientRole', '');
       setFieldError('senderRole', '');
       setFieldError('nuntaGroup', '');
@@ -2080,17 +2051,6 @@
       familyRelationPanel.style.display = 'none';
     }
 
-    if (occasion === 'aniversare') {
-      aniversareRelationPanel.style.display = 'block';
-      document.querySelectorAll('.aniversare-relation-card').forEach(c => {
-        c.classList.toggle('active', c.dataset.role === recipientRoleInput.value);
-      });
-      if (recipientRoleInput.value) renderSenderRoleGrid(recipientRoleInput.value, aniversareSenderRoleSlot);
-      else senderRoleSubfield.style.display = 'none';
-    } else {
-      aniversareRelationPanel.style.display = 'none';
-    }
-
     if (occasion === 'nunta') {
       nuntaPanel.style.display = 'block';
       document.querySelectorAll('.nunta-group-card').forEach(c => c.classList.toggle('active', c.dataset.group === nuntaGroup));
@@ -2105,30 +2065,14 @@
         } else {
           nuntaNamesField.style.display = 'none';
         }
-        // "Din partea cui este melodia?" — implicit "Altă persoană" (mereu valid, niciodata
-        // blocheaza continuarea fara un click suplimentar), pastrat daca deja ales.
-        if (!senderRoleInput.value) senderRoleInput.value = 'other';
-        nuntaSenderSelect.value = senderRoleInput.value;
-        nuntaSenderField.style.display = 'block';
       } else {
         nuntaSubroleField.style.display = 'none';
         nuntaNamesField.style.display = 'none';
-        nuntaSenderField.style.display = 'none';
       }
     } else {
       nuntaPanel.style.display = 'none';
     }
   }
-
-  document.querySelectorAll('.aniversare-relation-card').forEach(c => {
-    c.addEventListener('click', () => {
-      recipientRoleInput.value = c.dataset.role;
-      senderRoleInput.value = '';
-      setFieldError('aniversareRelation', '');
-      refreshRelationUI();
-      saveDraft();
-    });
-  });
 
   document.querySelectorAll('.nunta-group-card').forEach(c => {
     c.addEventListener('click', () => {
@@ -2142,11 +2086,6 @@
       refreshRelationUI();
       saveDraft();
     });
-  });
-
-  nuntaSenderSelect.addEventListener('change', () => {
-    senderRoleInput.value = nuntaSenderSelect.value;
-    saveDraft();
   });
 
   nuntaName1Input.addEventListener('input', () => { setFieldError('nuntaName1', ''); saveDraft(); });

@@ -145,9 +145,6 @@ const FAMILY_OCCASION_RECIPIENT_ROLES = {
   'matusa-unchi': ['aunt', 'uncle'],
   socri: ['mother_in_law', 'father_in_law']
 };
-// Toate relatiile de familie posibile — folosit pentru validarea optionala la 'aniversare'.
-const ALL_FAMILY_RECIPIENT_ROLES = Object.values(FAMILY_OCCASION_RECIPIENT_ROLES).flat();
-
 // senderRole permise, in functie de recipientRole ales — acelasi selector "Tu ești: ..." e
 // reutilizat pentru bunici SI matusa-unchi (romana foloseste identic "Nepoată"/"Nepot" pentru
 // ambele relatii), dar valorile interne raman distincte, ca buildPrompt sa poata scrie
@@ -168,8 +165,6 @@ const FAMILY_RECIPIENT_TO_SENDER_ROLES = {
 // Trei niveluri (Miri/Fini/Nași), fiecare cu rol individual SAU "Amândoi" (grup).
 const WEDDING_RECIPIENT_ROLES_SINGLE = ['groom', 'bride', 'godson', 'goddaughter', 'godfather', 'godmother'];
 const WEDDING_RECIPIENT_ROLES_BOTH = ['couple', 'godchildren', 'godparents'];
-// Din partea cui e melodia — acelasi set de roluri de nunta/botez, plus "altă persoană".
-const WEDDING_SENDER_ROLES = [...WEDDING_RECIPIENT_ROLES_SINGLE, ...WEDDING_RECIPIENT_ROLES_BOTH, 'other'];
 
 // Mesaje de validare traduse pentru campurile obligatorii legate de personalizare
 // (destinatar, expeditor, relatie, poveste) — afisate clientului in limba aleasa de el,
@@ -1341,21 +1336,11 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
       safeRecipientRole = recipientRole;
       safeSenderRole = senderRole;
       if (occasion === 'bunici') safeGrandparentType = recipientRole;
-    } else if (occasion === 'aniversare') {
-      // "E ziua lui/ei" — relatia e OPTIONALA (clientul poate alege "Altă persoană" si
-      // pastreaza exact comportamentul generic actual). Daca ALEGE o relatie de familie insa,
-      // senderRole devine obligatoriu, la fel ca pentru ocaziile dedicate de mai sus.
-      if (recipientRole) {
-        if (!ALL_FAMILY_RECIPIENT_ROLES.includes(recipientRole)) {
-          return res.status(400).json({ error: missingFieldMessage('recipientRole', safeLang) });
-        }
-        const allowedSenderRoles = FAMILY_RECIPIENT_TO_SENDER_ROLES[recipientRole];
-        if (!allowedSenderRoles.includes(senderRole)) {
-          return res.status(400).json({ error: missingFieldMessage('senderRole', safeLang) });
-        }
-        safeRecipientRole = recipientRole;
-        safeSenderRole = senderRole;
-      }
+      // CORECȚIE STRICTĂ (hotfix 2026-08-08, punctul 1): submeniul de relatie de la "E ziua
+      // lui/ei" a fost ELIMINAT COMPLET — occasion === 'aniversare' nu mai are nicio ramura
+      // speciala aici, se comporta identic cu orice ocazie generica (dor, declaratie etc.):
+      // recipientRole/senderRole raman null, indiferent ce ar trimite un client vechi din
+      // devtools sau dintr-un draft localStorage neactualizat.
     } else if (occasion === 'nunta') {
       // "Nuntă/Botez" — Miri/Fini/Nași, fiecare cu rol individual sau "Amândoi". Valoarea
       // interna a ocaziei ramane 'nunta' (neschimbata) — doar eticheta afisata s-a schimbat.
@@ -1376,11 +1361,12 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
         }
         safeRecipientNames = { name1, name2 };
       }
-      if (!WEDDING_SENDER_ROLES.includes(senderRole)) {
-        return res.status(400).json({ error: missingFieldMessage('senderRole', safeLang) });
-      }
+      // CORECȚIE STRICTĂ (hotfix 2026-08-08, punctul 2): "Din partea cui este melodia?" a fost
+      // ELIMINAT COMPLET pentru comenzile NOI Nuntă/Botez — senderRole NU mai e cerut si NU
+      // mai e salvat (ramane null), indiferent ce ar trimite clientul. Comenzile VECHI care au
+      // deja sender_role salvat in DB (create inainte de aceasta corectie) isi pastreaza exact
+      // valoarea si comportamentul (vezi melodia-mea.html, composePersonalizedHeading).
       safeRecipientRole = recipientRole;
-      safeSenderRole = senderRole;
       safeRecipientMode = expectedMode;
     }
 
@@ -4692,9 +4678,23 @@ function buildPrompt(order, feedback, genreOverride) {
   const hasSender = typeof order.senderName === 'string' && order.senderName.trim().length > 0;
   const hasRelationship = hasSender && typeof order.relationship === 'string' && order.relationship.trim().length > 0;
 
+  // CORECȚIE STRICTĂ (hotfix 2026-08-08, punctul 3): pentru "Nuntă/Botez" cu "Amândoi",
+  // `recipient` e o combinatie a DOUA nume complete (ex. "Alina și Andrei", construita de
+  // frontend din recipientNames.name1/name2) — NICIODATA trunchiata mai jos, indiferent de
+  // buget. Fara aceasta protectie, cascada de scurtare (mai jos) putea reduce al doilea nume
+  // la o initiala ("Alina și A."), exact bug-ul raportat — recipient e tratat ca UN SINGUR
+  // nume normal (max 60 caractere) in toate celelalte cazuri, inclusiv rolurile individuale
+  // de nunta (Mireasă/Mire/Fin/Fină/Naș/Nașă), care raman supuse cascadei ca orice alt nume.
+  const recipientIsProtectedCombo = order.recipientMode === 'both'
+    && order.recipientNames
+    && typeof order.recipientNames.name1 === 'string' && order.recipientNames.name1.trim()
+    && typeof order.recipientNames.name2 === 'string' && order.recipientNames.name2.trim();
+
   // Trunchiere defensiva — chiar daca validarea la creare limiteaza deja lungimea, aplicam
-  // din nou aici, sigur, pe caractere Unicode complete.
-  let recipient = truncateSafely(String(order.recipient || '').trim(), RECIPIENT_MAX_LEN);
+  // din nou aici, sigur, pe caractere Unicode complete. Pentru un combo protejat, plafonul e
+  // mult mai mare (doua nume de maxim 60 caractere fiecare + conjunctia), niciodata cel al
+  // unui singur nume (RECIPIENT_MAX_LEN) — ar taia al doilea nume chiar la acest prim pas.
+  let recipient = truncateSafely(String(order.recipient || '').trim(), recipientIsProtectedCombo ? 140 : RECIPIENT_MAX_LEN);
   let sender = hasSender ? truncateSafely(order.senderName.trim(), SENDER_MAX_LEN) : '';
   let relationship = hasRelationship ? truncateSafely(order.relationship.trim(), RELATIONSHIP_MAX_LEN) : '';
 
@@ -4776,18 +4776,22 @@ function buildPrompt(order, feedback, genreOverride) {
   // Povestea insasi nu e scurtata aici — bugetul ei se calculeaza separat mai jos, cu o
   // rezerva minima garantata (STORY_MIN_RESERVE, 160-180 caractere utile).
   const budgetForFixedPart = SUNO_PROMPT_MAX_LEN - STORY_MIN_RESERVE;
+  // recipientIsProtectedCombo (Nuntă/Botez, "Amândoi"): pasii care ar trunchia `recipient`
+  // devin no-op — ambele nume raman intotdeauna complete, cerinta stricta, mai importanta
+  // decat bugetul de prompt (in cazuri extreme, povestea primeste corespunzator mai putin
+  // spatiu, niciodata numele).
   const shrinkSteps = [
     () => { useShortOccasionInstruction = true; },
     () => { useShortInstruction = true; },
     () => { useShortVoiceInstruction = true; },
     () => { relationship = truncateSafely(relationship, 20); },
     () => { sender = truncateSafely(sender, 30); },
-    () => { recipient = truncateSafely(recipient, 30); },
+    () => { if (!recipientIsProtectedCombo) recipient = truncateSafely(recipient, 30); },
     () => { relationship = truncateSafely(relationship, 10); },
     () => { sender = truncateSafely(sender, 15); },
-    () => { recipient = truncateSafely(recipient, 15); },
+    () => { if (!recipientIsProtectedCombo) recipient = truncateSafely(recipient, 15); },
     () => { sender = truncateSafely(sender, 8); },
-    () => { recipient = truncateSafely(recipient, 10); }
+    () => { if (!recipientIsProtectedCombo) recipient = truncateSafely(recipient, 10); }
   ];
   for (const step of shrinkSteps) {
     if (head.length <= budgetForFixedPart) break;

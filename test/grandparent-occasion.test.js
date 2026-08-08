@@ -130,9 +130,12 @@ test('comanda.html: cele 6 chei noi de traducere exista pentru toate cele 8 limb
   });
 });
 
-test('comanda.html: label-urile de sub-alegere folosesc data-i18n, nu text hardcodat (sistem generalizat)', () => {
+// NOTA (CORECȚIE STRICTĂ, hotfix 2026-08-08, punctul 1): submeniul de relatie de la "E ziua
+// lui/ei" (singurul loc unde relation_grandmother/relation_grandfather aparea static, via
+// data-i18n, pe langa panoul de familie) a fost ELIMINAT COMPLET. Panoul de familie insusi
+// genereaza etichetele dinamic, prin t('relation_' + role) in JS, nu prin data-i18n static.
+test('comanda.html: label-ul panoului de familie foloseste data-i18n (nu text hardcodat), iar etichetele Bunică/Bunic sunt generate din traduceri (t()), nu hardcodate', () => {
   const html = read('public/comanda.html');
   assert.ok(html.includes('data-i18n="label_recipient_role"'));
-  assert.ok(html.includes('data-i18n="relation_grandmother"'));
-  assert.ok(html.includes('data-i18n="relation_grandfather"'));
+  assert.ok(html.includes("t('relation_' + role)"), 'cardurile de relatie de familie trebuie generate din traduceri, nu text fix');
 });
