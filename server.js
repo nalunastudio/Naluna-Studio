@@ -1908,6 +1908,14 @@ app.get('/api/orders/:orderId', async (req, res, next) => {
       recipient: order.recipient,
       senderName: order.senderName || null,
       relationship: order.relationship || null,
+      // MODIFICARE STRICTĂ — pagina de ocazie (hotfix 2026-08-08): la fel ca recipient/
+      // senderName/relationship mai sus, NU sunt secrete — necesare in melodia-mea.html
+      // pentru antetul personalizat ("Melodia pentru bunica Maria, din partea nepotului
+      // Andrei"). Fara ele in acest whitelist explicit, composePersonalizedHeading()
+      // primeste mereu undefined si antetul personalizat nu s-ar afisa niciodata.
+      occasion: order.occasion || null,
+      recipientRole: order.recipientRole || null,
+      senderRole: order.senderRole || null,
       voicePreference: order.voicePreference,
       plan: order.plan,
       lang: order.lang,

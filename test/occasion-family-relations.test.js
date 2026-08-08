@@ -246,6 +246,19 @@ test('comanda.html: collectPayload() trimite recipientRole/senderRole/recipientM
   assert.ok(slice.includes('? { name1: nuntaName1Input.value.trim(), name2: nuntaName2Input.value.trim() }'));
 });
 
+test('server.js: GET /api/orders/:orderId expune occasion/recipientRole/senderRole (altfel antetul personalizat nu primeste niciodata datele)', () => {
+  // Gasit direct la testarea live pe staging: whitelist-ul explicit de raspuns (fara spread pe
+  // `order`, ca sa nu se scurga accessToken/email) omitea aceste 3 campuri — composePersonalizedHeading
+  // din melodia-mea.html primea mereu order.recipientRole undefined, desi era salvat corect in DB.
+  const server = read('server.js');
+  const idx = server.indexOf("app.get('/api/orders/:orderId'");
+  const endIdx = server.indexOf('app.post', idx);
+  const slice = server.slice(idx, endIdx);
+  assert.ok(slice.includes('occasion: order.occasion || null,'));
+  assert.ok(slice.includes('recipientRole: order.recipientRole || null,'));
+  assert.ok(slice.includes('senderRole: order.senderRole || null,'));
+});
+
 test('server.js: db.createOrder primeste recipientRole/senderRole/recipientMode/recipientNames validate', () => {
   const server = read('server.js');
   assert.ok(server.includes('recipientRole: safeRecipientRole,'));
