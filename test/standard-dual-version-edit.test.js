@@ -540,7 +540,7 @@ test('traduceri: regenTitle/regenSubtitle exista in toate cele 8 limbi din se-co
 test('melodia-mea.html: butonul portocaliu "Creează noua versiune" apare INAINTEA celui de plata in DOM (ordinea ceruta)', () => {
   const html = read('public/melodia-mea.html');
   const confirmYesIdx = html.indexOf('id="confirm-yes"');
-  const checkoutSlotIdx = html.indexOf('id="standard-preedit-checkout-slot"');
+  const checkoutSlotIdx = html.indexOf('id="standard-preedit-checkout-slot-expanded"');
   const confirmCancelIdx = html.indexOf('id="confirm-cancel"');
   assert.ok(confirmYesIdx > -1 && checkoutSlotIdx > -1 && confirmCancelIdx > -1, 'toate cele 3 elemente trebuie sa existe');
   assert.ok(
@@ -555,7 +555,7 @@ test('melodia-mea.html: checkoutBtn (Standard, inainte de editare) e mutat ACUM 
   const confirmRowBlock = html.slice(confirmRowIdx, confirmRowIdx + 650);
   assert.ok(
     confirmRowBlock.includes('id="confirm-yes"') &&
-    confirmRowBlock.includes('id="standard-preedit-checkout-slot"') &&
+    confirmRowBlock.includes('id="standard-preedit-checkout-slot-expanded"') &&
     confirmRowBlock.includes('id="confirm-cancel"'),
     'toate 3 trebuie sa fie in interiorul aceluiasi confirm-row, in aceasta ordine'
   );
@@ -581,4 +581,87 @@ test('melodia-mea.html: textul de incarcare e "Se creează noua versiune...", nu
   const html = read('public/melodia-mea.html');
   assert.ok(html.includes("confirm_yes_loading: 'Se creează noua versiune...'"), 'textul RO exact cerut trebuie sa existe');
   assert.ok(!html.includes("confirm_yes_loading: 'Se creează...'"), 'textul vechi, mai generic, nu mai trebuie sa existe');
+});
+
+// ==========================================================================================
+// ULTIMELE MODIFICĂRI STRICTE (hotfix 2026-08-08), Partea 1 (continuare): REGRESIE REALA
+// reparata — checkoutBtn traia DOAR in interiorul confirm-row (ascuns cat timp meniul e
+// inchis), facand plata invizibila exact in starea implicita a paginii. checkoutBtn e ACUM
+// UN SINGUR element logic, reparentat intre DOUA sloturi posibile in functie de menuExpanded.
+// ==========================================================================================
+
+test('melodia-mea.html: exista DOUA sloturi pentru checkoutBtn (inchis/deschis) — un singur buton logic, niciodata duplicat', () => {
+  const html = read('public/melodia-mea.html');
+  assert.ok(html.includes('id="standard-preedit-checkout-slot-collapsed"'), 'slotul pentru meniul INCHIS trebuie sa existe, in afara confirm-row');
+  assert.ok(html.includes('id="standard-preedit-checkout-slot-expanded"'), 'slotul pentru meniul DESCHIS trebuie sa existe, in interiorul confirm-row');
+});
+
+test('melodia-mea.html: cand meniul e INCHIS, plata e reparentata in slotul de langa butonul de editare, NU in cel din confirm-row (ascuns)', () => {
+  const html = read('public/melodia-mea.html');
+  const idx = html.indexOf('standardPreeditCheckoutSlotExpanded.appendChild(checkoutBtn);');
+  assert.ok(idx > -1, 'ramura if/else de reparentare trebuie sa existe');
+  const block = html.slice(idx - 250, idx + 350);
+  assert.ok(block.includes('standardPreeditCheckoutSlotCollapsed.appendChild(checkoutBtn);'), 'meniu inchis -> checkoutBtn trebuie mutat in slotul vizibil de langa butonul de editare');
+  assert.ok(block.includes('standardPreeditCheckoutSlotExpanded.appendChild(checkoutBtn);'), 'meniu deschis -> checkoutBtn trebuie mutat in slotul din confirm-row (intre portocaliu si Renunță)');
+});
+
+test('melodia-mea.html: slotul de plata (meniu inchis) e imediat dupa butonul de editare, fara alt continut intre ele', () => {
+  const html = read('public/melodia-mea.html');
+  const toggleWrapIdx = html.indexOf('id="standard-preedit-toggle-wrap"');
+  const collapsedSlotIdx = html.indexOf('id="standard-preedit-checkout-slot-collapsed"');
+  const editMenuFieldsIdx = html.indexOf('id="edit-menu-fields"');
+  assert.ok(
+    toggleWrapIdx < collapsedSlotIdx && collapsedSlotIdx < editMenuFieldsIdx,
+    'ordinea DOM trebuie sa fie: buton editare -> plata -> (meniul propriu-zis, ascuns cat timp e inchis)'
+  );
+});
+
+test('melodia-mea.html: explicatia butonului de editare e MUTATA deasupra butonului, nu intre buton si plata', () => {
+  const html = read('public/melodia-mea.html');
+  const idx = html.indexOf('id="standard-preedit-toggle-wrap"');
+  const block = html.slice(idx, idx + 400);
+  const hintIdx = block.indexOf('id="edit-menu-toggle-hint"');
+  const btnIdx = block.indexOf('id="edit-menu-toggle-btn"');
+  assert.ok(hintIdx > -1 && btnIdx > -1 && hintIdx < btnIdx, 'explicatia trebuie sa apara INAINTE de buton in DOM');
+});
+
+// ==========================================================================================
+// ULTIMELE MODIFICĂRI STRICTE, Partea 2: cele doua zone evidentiate din meniul de editare.
+// ==========================================================================================
+
+test('melodia-mea.html: zona de schimbare a genului e evidentiata, cu titlu + explicatie noi', () => {
+  const html = read('public/melodia-mea.html');
+  assert.ok(html.includes('id="edit-genre-explain"'), 'elementul de explicatie trebuie sa existe');
+  assert.ok(html.includes("edit_genre_label: '🎵 Schimbă genul muzical'"), 'titlul RO trebuie sa includa iconita si textul exact cerut');
+  assert.ok(html.includes(".edit-zone{"), 'clasa CSS de evidentiere trebuie sa existe');
+});
+
+test('melodia-mea.html: zona de feedback e evidentiata, cu titlu nou + eticheta "Opțional" vizibila', () => {
+  const html = read('public/melodia-mea.html');
+  assert.ok(html.includes('id="feedback-explain"'), 'elementul de explicatie trebuie sa existe');
+  assert.ok(html.includes('id="feedback-optional-badge"'), 'eticheta "Opțional" trebuie sa existe ca element vizibil separat');
+  assert.ok(html.includes("feedback_label: '✏️ Nu este exact cum îți dorești? Spune-ne ce să schimbăm'"), 'titlul RO trebuie sa fie exact cel cerut');
+});
+
+test('melodia-mea.html: textarea de feedback ramane STRICT optionala — fara atributul required', () => {
+  const html = read('public/melodia-mea.html');
+  const idx = html.indexOf('<textarea id="feedback"');
+  const tag = html.slice(idx, idx + 200).split('>')[0];
+  assert.ok(!tag.includes('required'), 'textarea nu trebuie sa aiba niciodata atributul required — clientul trebuie sa poata regenera cu campul gol');
+});
+
+test('server.js: feedback ramane optional in backend (fara validare de tip "camp obligatoriu")', () => {
+  const server = read('server.js');
+  assert.ok(
+    server.includes("const feedback = typeof req.body?.feedback === 'string' ? req.body.feedback.slice(0, 500) : null;"),
+    'feedback trebuie sa ramana strict optional in ruta de regenerare (null daca lipseste, niciodata respins)'
+  );
+});
+
+test('traduceri: edit_genre_explain, feedback_explain, feedback_optional_badge exista in toate cele 8 limbi', () => {
+  const html = read('public/melodia-mea.html');
+  ['edit_genre_explain', 'feedback_explain', 'feedback_optional_badge'].forEach(key => {
+    const count = (html.match(new RegExp(key + ':', 'g')) || []).length;
+    assert.equal(count, 8, `cheia "${key}" trebuie sa apara exact 8 ori (cate una per limba), gasita de ${count} ori`);
+  });
 });

@@ -104,6 +104,10 @@ async function initDb() {
   // aceste campuri goale (NULL), buildPrompt() le trateaza ca optionale pentru compatibilitate.
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS sender_name TEXT;`);
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS relationship TEXT;`);
+  // "Pentru bunica sau bunicul" (ULTIMELE MODIFICĂRI STRICTE, hotfix 2026-08-08) — 'grandmother'
+  // sau 'grandfather', obligatoriu DOAR pentru occasion='bunici' (validat la POST /api/orders),
+  // null pentru orice alta ocazie/comanda veche.
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS grandparent_type TEXT;`);
 
   // Urmarire: din ce varianta (versuri editate de client) a pornit ultima regenerare —
   // pentru transparenta/audit. Versurile originale/editate/data ultimei editari per
@@ -355,6 +359,7 @@ function rowToOrder(row) {
     stripePaymentIntentId: row.stripe_payment_intent_id,
     senderName: row.sender_name,
     relationship: row.relationship,
+    grandparentType: row.grandparent_type,
     regenerateSourceVariantId: row.regenerate_source_variant_id,
     regenerateKeepOriginal: !!row.regenerate_keep_original,
     editReserved: row.edit_reserved,
@@ -380,15 +385,15 @@ function rowToOrder(row) {
 async function createOrder(order) {
   const result = await pool.query(
     `INSERT INTO orders
-      (id, access_token, occasion, recipient, email, story, genre, genre2, plan, price, lang, status, edits_used, variants, selected_variant_id, sender_name, relationship, voice_preference, phone)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+      (id, access_token, occasion, recipient, email, story, genre, genre2, plan, price, lang, status, edits_used, variants, selected_variant_id, sender_name, relationship, voice_preference, phone, grandparent_type)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
      RETURNING *`,
     [
       order.id, order.accessToken, order.occasion, order.recipient, order.email,
       order.story, order.genre, order.genre2 || null, order.plan, order.price, order.lang,
       order.status, order.editsUsed, JSON.stringify(order.variants || []), order.selectedVariantId,
       order.senderName || null, order.relationship || null, order.voicePreference || 'auto',
-      order.phone || null
+      order.phone || null, order.grandparentType || null
     ]
   );
   return rowToOrder(result.rows[0]);

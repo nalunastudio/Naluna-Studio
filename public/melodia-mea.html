@@ -119,6 +119,20 @@
   .btn-toggle-orange:focus-visible{ outline:3px solid var(--orange-deep); outline-offset:2px; }
   @keyframes editMenuFadeIn{ from{ opacity:0; transform:translateY(-6px); } to{ opacity:1; transform:translateY(0); } }
   #edit-menu-fields:not([hidden]){ animation:editMenuFadeIn .25s ease; }
+  /* ULTIMELE MODIFICĂRI STRICTE (hotfix 2026-08-08): cele doua zone evidentiate din meniul de
+     editare (schimbare gen + descriere optionala) — fundal cald, titlu mare/bold, contrast bun. */
+  .edit-zone{
+    background:linear-gradient(180deg, rgba(245,166,35,.08), rgba(245,166,35,.03));
+    border-radius:14px; padding:16px 16px 18px;
+  }
+  .edit-zone-title{ display:block; font-size:16px; font-weight:700; color:#8A4B0A; margin-bottom:6px; }
+  .edit-zone-explain{ font-size:13px; color:var(--text-secondary); margin:0 0 12px; }
+  .edit-zone-title-row{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px; }
+  .edit-zone-title-row .edit-zone-title{ margin-bottom:0; }
+  .edit-zone-optional{
+    font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em;
+    color:var(--text-secondary); background:rgba(43,43,43,.07); padding:3px 10px; border-radius:999px;
+  }
   /* Butonul unic de plata din ecranul de alegere Standard — acelasi stil primar existent,
      doar mai mare/centrat, ca sa ramana singurul punct de actiune vizibil dupa editare. */
   .btn-cta-wide{ width:100%; max-width:420px; min-height:56px; font-size:15px; }
@@ -398,11 +412,18 @@
              updateStandardEditMenuVisibility). Ascuns complet (display:none) pentru orice alt
              caz (Premium/Video, sau Standard dupa editare). -->
         <div id="standard-preedit-toggle-wrap" style="display:none; margin:10px 0 4px; text-align:center;">
+          <p id="edit-menu-toggle-hint" style="font-size:13px; color:var(--text-secondary); margin:0 0 8px;"></p>
           <button type="button" id="edit-menu-toggle-btn" class="btn-toggle-orange" aria-expanded="false" aria-controls="edit-menu-fields">
             <span aria-hidden="true">✏️</span> <span id="edit-menu-toggle-label"></span>
           </button>
-          <p id="edit-menu-toggle-hint" style="font-size:13px; color:var(--text-secondary); margin:8px 0 0;"></p>
         </div>
+
+        <!-- ULTIMELE MODIFICĂRI STRICTE (hotfix 2026-08-08): cand meniul e INCHIS, plata trebuie
+             sa apara IMEDIAT sub butonul de editare, fara alt continut intre ele — checkoutBtn
+             (UN SINGUR element logic, niciodata duplicat) traieste AICI cat timp meniul e inchis,
+             si e reparentat in interiorul confirm-row (intre portocaliu si Renunță) DOAR cand
+             meniul e deschis — vezi updateStandardEditMenuVisibility. -->
+        <div id="standard-preedit-checkout-slot-collapsed" style="display:none; justify-content:center; margin-top:10px;"></div>
 
         <div id="edit-menu-fields">
           <div class="field" style="margin-top:8px;">
@@ -419,15 +440,26 @@
           <!-- Schimbarea genului muzical la editare (hotfix 2026-08-08) — inclusa in aceeasi
                editare gratuita, nu una suplimentara. Populat dinamic (populateGenreSelect) cu
                genul CURENT al variantei selectate; pentru Premium/Video, genul ales nu poate
-               coincide cu genul celeilalte variante (validat si server-side). -->
-          <div class="field" style="margin-top:8px;">
-            <label for="edit-genre-select" id="edit-genre-label">Schimbă genul muzical</label>
+               coincide cu genul celeilalte variante (validat si server-side).
+               ULTIMELE MODIFICĂRI STRICTE (hotfix 2026-08-08): zona evidentiata vizual — fundal
+               cald, titlu mare/bold, explicatie clara. -->
+          <div class="field edit-zone" style="margin-top:8px;">
+            <label for="edit-genre-select" class="edit-zone-title" id="edit-genre-label">🎵 Schimbă genul muzical</label>
+            <p class="edit-zone-explain" id="edit-genre-explain"></p>
             <select id="edit-genre-select"></select>
             <div class="field-error" id="edit-genre-error" style="display:none;"></div>
           </div>
 
-          <div class="field" style="margin-top:8px;">
-            <label for="feedback" id="feedback-label">Nu e exact cum vrei? Descrie ce să schimbăm</label>
+          <!-- Textarea ramane STRICT optionala — nici frontend, nici backend nu o marcheaza
+               obligatorie (fara atributul "required"); clientul poate genera noua versiune cu
+               campul complet gol, schimband doar vocea/genul. Eticheta "Opțional" e vizibila
+               explicit langa titlu, ca sa fie limpede de la prima privire. -->
+          <div class="field edit-zone" style="margin-top:8px;">
+            <div class="edit-zone-title-row">
+              <label for="feedback" class="edit-zone-title" id="feedback-label">✏️ Nu este exact cum îți dorești? Spune-ne ce să schimbăm</label>
+              <span class="edit-zone-optional" id="feedback-optional-badge"></span>
+            </div>
+            <p class="edit-zone-explain" id="feedback-explain"></p>
             <textarea id="feedback" placeholder="ex: mai vesel, mai lent, alt început..."></textarea>
           </div>
 
@@ -461,7 +493,7 @@
         <div id="confirm-row" style="display:none; flex-direction:column; align-items:center; gap:14px; margin-top:16px;">
           <span id="confirm-msg" style="font-size:13px; color:var(--text-secondary); text-align:center;"></span>
           <button type="button" class="btn-cta-orange" id="confirm-yes">Creează noua versiune</button>
-          <div id="standard-preedit-checkout-slot" style="display:none; justify-content:center; width:100%;"></div>
+          <div id="standard-preedit-checkout-slot-expanded" style="display:none; justify-content:center; width:100%;"></div>
           <button type="button" class="btn btn-ghost btn-small" id="confirm-cancel">Renunță</button>
         </div>
 
@@ -565,7 +597,7 @@
       variant_main_label: 'Varianta principală', variant_gift_label: '🎁 A doua melodie, cadou pentru tine',
       variant_gift_note: 'După plată vei putea descărca ambele melodii complete.',
       genre_emotional: 'Emoțional', genre_suflet: 'De suflet', genre_acustic: 'Acustic / Folk', genre_petrecere: 'Muzică de petrecere', genre_balada: 'Baladă', genre_manele: 'Manele de jale', genre_copii: 'Pentru copii', genre_populara: 'Populară', genre_rock: 'Rock', genre_colind: 'Colind', genre_modern: 'Modern', genre_hiphop: 'Hip-hop', genre_manele_suflet: 'Manele de suflet', genre_motivational: 'Motivațional', genre_pop: 'Pop',
-      variant_second_label: 'A doua melodie', gift_video_title: 'Videoclipul tău cadou', video_song_label: 'Melodia din videoclip', video_gift_song_label: 'Melodia cadou', gift_video_locked_msg: 'Videoclipul tău este gata și va fi deblocat după plată.', edit_genre_label: 'Schimbă genul muzical', edit_genre_same_error: 'Alege un gen diferit de celălalt cântec.', variant_original_label: 'Versiunea inițială', variant_edited_label: 'Versiunea editată', regen_failed_recovered_msg: 'Ultima editare nu a reușit, dar poți asculta și alege în continuare varianta existentă.', standard_choice_eyebrow: 'PASUL URMĂTOR', standard_choice_title: 'Ce versiune vrei să primești?', standard_choice_subtitle: 'Ascultă ambele melodii, apoi alege una pentru a continua la plată.', choose_variant_btn: (genre, isEdited, sameGenre, isChosen) => { const v = isEdited ? 'versiunea nouă' : 'versiunea inițială'; if (isChosen) return sameGenre ? `${v} — ${genre} — Aleasă ✓` : `${genre} — Aleasă ✓`; return sameGenre ? `${v} — ${genre}` : `${genre} — ${v}`; },
+      variant_second_label: 'A doua melodie', gift_video_title: 'Videoclipul tău cadou', video_song_label: 'Melodia din videoclip', video_gift_song_label: 'Melodia cadou', gift_video_locked_msg: 'Videoclipul tău este gata și va fi deblocat după plată.', edit_genre_label: '🎵 Schimbă genul muzical', edit_genre_explain: 'Alege genul în care vrei să creăm noua versiune.', edit_genre_same_error: 'Alege un gen diferit de celălalt cântec.', variant_original_label: 'Versiunea inițială', variant_edited_label: 'Versiunea editată', regen_failed_recovered_msg: 'Ultima editare nu a reușit, dar poți asculta și alege în continuare varianta existentă.', standard_choice_eyebrow: 'PASUL URMĂTOR', standard_choice_title: 'Ce versiune vrei să primești?', standard_choice_subtitle: 'Ascultă ambele melodii, apoi alege una pentru a continua la plată.', choose_variant_btn: (genre, isEdited, sameGenre, isChosen) => { const v = isEdited ? 'versiunea nouă' : 'versiunea inițială'; if (isChosen) return sameGenre ? `${v} — ${genre} — Aleasă ✓` : `${genre} — Aleasă ✓`; return sameGenre ? `${v} — ${genre}` : `${genre} — ${v}`; },
       listened: (t, d) => `Ai ascultat ${t} din ${d}`,
       lyrics_empty: 'Versurile nu sunt încă disponibile pentru afișare.',
       lyrics_edited_tag: 'Versuri editate de tine',
@@ -574,7 +606,7 @@
       save_btn: 'Salvează modificările', cancel_btn: 'Renunță',
       lyrics_saved_msg: 'Versurile au fost salvate. Pentru a auzi modificările, regenerează melodia',
       lyrics_empty_error: 'Versurile nu pot fi goale',
-      feedback_label: 'Nu e exact cum vrei? Descrie ce să schimbăm', feedback_ph: 'ex: mai vesel, mai lent, alt început...',
+      feedback_label: '✏️ Nu este exact cum îți dorești? Spune-ne ce să schimbăm', feedback_explain: 'Dacă totul este în regulă și vrei să schimbi doar vocea sau genul muzical, poți lăsa acest câmp gol.', feedback_optional_badge: 'Opțional', feedback_ph: 'ex: mai vesel, mai lent, alt început...',
       regenerate_btn: 'Editează cântecul',
       edits_info_msg: 'Primești 2 variante gratuite și ai dreptul la o singură editare gratuită',
       edits_exhausted_msg: 'Ai folosit editarea gratuită pentru această comandă. Alege varianta preferată pentru a continua',
@@ -624,7 +656,7 @@
       variant_main_label: 'Main version', variant_gift_label: '🎁 Your second song, a gift for you',
       variant_gift_note: 'After payment you\'ll be able to download both complete songs.',
       genre_emotional: 'Emotional', genre_suflet: 'Soulful', genre_acustic: 'Acoustic / Folk', genre_petrecere: 'Party music', genre_balada: 'Ballad', genre_manele: 'Mournful manele', genre_copii: 'For kids', genre_populara: 'Folk-pop', genre_rock: 'Rock', genre_colind: 'Christmas carol', genre_modern: 'Modern', genre_hiphop: 'Hip-hop', genre_manele_suflet: 'Soulful manele', genre_motivational: 'Motivational', genre_pop: 'Pop',
-      variant_second_label: 'Second song', gift_video_title: 'Your gift video', video_song_label: 'The song in the video', video_gift_song_label: 'The gift song', gift_video_locked_msg: 'Your video is ready and will unlock after payment.', edit_genre_label: 'Change the musical genre', edit_genre_same_error: 'Choose a genre different from the other song.', variant_original_label: 'Original version', variant_edited_label: 'Edited version', regen_failed_recovered_msg: 'Your last edit attempt failed, but you can still listen to and choose the existing version.', standard_choice_eyebrow: 'NEXT STEP', standard_choice_title: 'Which version do you want?', standard_choice_subtitle: 'Listen to both songs, then choose one to continue to payment.', choose_variant_btn: (genre, isEdited, sameGenre, isChosen) => { const v = isEdited ? 'the new version' : 'the original version'; if (isChosen) return sameGenre ? `${v} — ${genre} — Chosen ✓` : `${genre} — Chosen ✓`; return sameGenre ? `${v} — ${genre}` : `${genre} — ${v}`; },
+      variant_second_label: 'Second song', gift_video_title: 'Your gift video', video_song_label: 'The song in the video', video_gift_song_label: 'The gift song', gift_video_locked_msg: 'Your video is ready and will unlock after payment.', edit_genre_label: '🎵 Change the musical genre', edit_genre_explain: 'Choose the genre for the new version.', edit_genre_same_error: 'Choose a genre different from the other song.', variant_original_label: 'Original version', variant_edited_label: 'Edited version', regen_failed_recovered_msg: 'Your last edit attempt failed, but you can still listen to and choose the existing version.', standard_choice_eyebrow: 'NEXT STEP', standard_choice_title: 'Which version do you want?', standard_choice_subtitle: 'Listen to both songs, then choose one to continue to payment.', choose_variant_btn: (genre, isEdited, sameGenre, isChosen) => { const v = isEdited ? 'the new version' : 'the original version'; if (isChosen) return sameGenre ? `${v} — ${genre} — Chosen ✓` : `${genre} — Chosen ✓`; return sameGenre ? `${v} — ${genre}` : `${genre} — ${v}`; },
       listened: (t, d) => `You've listened to ${t} of ${d}`,
       lyrics_empty: 'Lyrics are not available to display yet.',
       lyrics_edited_tag: 'Lyrics edited by you',
@@ -633,7 +665,7 @@
       save_btn: 'Save changes', cancel_btn: 'Cancel',
       lyrics_saved_msg: 'Lyrics saved. Regenerate the song to hear the changes',
       lyrics_empty_error: 'Lyrics cannot be empty',
-      feedback_label: 'Not quite right? Describe what to change', feedback_ph: 'e.g. more upbeat, slower, different intro...',
+      feedback_label: "✏️ Not quite what you wanted? Tell us what to change", feedback_explain: "If everything is fine and you only want to change the voice or genre, you can leave this field empty.", feedback_optional_badge: 'Optional', feedback_ph: 'e.g. more upbeat, slower, different intro...',
       regenerate_btn: 'Edit the song',
       edits_info_msg: 'You get 2 free versions and one free edit for this order',
       edits_exhausted_msg: "You've used your free edit for this order. Choose your favourite version to continue",
@@ -683,7 +715,7 @@
       variant_main_label: 'Hauptversion', variant_gift_label: '🎁 Dein zweites Lied, ein Geschenk für dich',
       variant_gift_note: 'Nach der Zahlung kannst du beide vollständigen Lieder herunterladen.',
       genre_emotional: 'Emotional', genre_suflet: 'Gefühlvoll', genre_acustic: 'Akustik / Folk', genre_petrecere: 'Partymusik', genre_balada: 'Ballade', genre_manele: 'Manele der Trauer', genre_copii: 'Für Kinder', genre_populara: 'Volkstümlich', genre_rock: 'Rock', genre_colind: 'Weihnachtslied', genre_modern: 'Modern', genre_hiphop: 'Hip-Hop', genre_manele_suflet: 'Manele mit Seele', genre_motivational: 'Motivierend', genre_pop: 'Pop',
-      variant_second_label: 'Zweites Lied', gift_video_title: 'Dein Geschenkvideo', video_song_label: 'Das Lied im Video', video_gift_song_label: 'Das Geschenklied', gift_video_locked_msg: 'Dein Video ist fertig und wird nach der Zahlung freigeschaltet.', edit_genre_label: 'Musikrichtung ändern', edit_genre_same_error: 'Wähle ein Genre, das sich vom anderen Lied unterscheidet.', variant_original_label: 'Ursprüngliche Version', variant_edited_label: 'Bearbeitete Version', regen_failed_recovered_msg: 'Deine letzte Bearbeitung ist fehlgeschlagen, aber du kannst die vorhandene Version weiterhin anhören und auswählen.', standard_choice_eyebrow: 'NÄCHSTER SCHRITT', standard_choice_title: 'Welche Version möchtest du erhalten?', standard_choice_subtitle: 'Höre dir beide Lieder an und wähle dann eines aus, um mit der Zahlung fortzufahren.', choose_variant_btn: (genre, isEdited, sameGenre, isChosen) => { const v = isEdited ? 'die neue Version' : 'die ursprüngliche Version'; if (isChosen) return sameGenre ? `${v} — ${genre} — Ausgewählt ✓` : `${genre} — Ausgewählt ✓`; return sameGenre ? `${v} — ${genre}` : `${genre} — ${v}`; },
+      variant_second_label: 'Zweites Lied', gift_video_title: 'Dein Geschenkvideo', video_song_label: 'Das Lied im Video', video_gift_song_label: 'Das Geschenklied', gift_video_locked_msg: 'Dein Video ist fertig und wird nach der Zahlung freigeschaltet.', edit_genre_label: '🎵 Musikrichtung ändern', edit_genre_explain: 'Wähle das Genre für die neue Version.', edit_genre_same_error: 'Wähle ein Genre, das sich vom anderen Lied unterscheidet.', variant_original_label: 'Ursprüngliche Version', variant_edited_label: 'Bearbeitete Version', regen_failed_recovered_msg: 'Deine letzte Bearbeitung ist fehlgeschlagen, aber du kannst die vorhandene Version weiterhin anhören und auswählen.', standard_choice_eyebrow: 'NÄCHSTER SCHRITT', standard_choice_title: 'Welche Version möchtest du erhalten?', standard_choice_subtitle: 'Höre dir beide Lieder an und wähle dann eines aus, um mit der Zahlung fortzufahren.', choose_variant_btn: (genre, isEdited, sameGenre, isChosen) => { const v = isEdited ? 'die neue Version' : 'die ursprüngliche Version'; if (isChosen) return sameGenre ? `${v} — ${genre} — Ausgewählt ✓` : `${genre} — Ausgewählt ✓`; return sameGenre ? `${v} — ${genre}` : `${genre} — ${v}`; },
       listened: (t, d) => `Du hast ${t} von ${d} gehört`,
       lyrics_empty: 'Der Text steht noch nicht zur Anzeige zur Verfügung.',
       lyrics_edited_tag: 'Von dir bearbeiteter Text',
@@ -692,7 +724,7 @@
       save_btn: 'Änderungen speichern', cancel_btn: 'Abbrechen',
       lyrics_saved_msg: 'Text gespeichert. Regeneriere das Lied, um die Änderungen zu hören',
       lyrics_empty_error: 'Der Text darf nicht leer sein',
-      feedback_label: 'Nicht ganz richtig? Beschreibe, was geändert werden soll', feedback_ph: 'z.B. fröhlicher, langsamer, anderer Anfang...',
+      feedback_label: '✏️ Nicht genau das, was du wolltest? Sag uns, was geändert werden soll', feedback_explain: 'Wenn alles passt und du nur die Stimme oder das Genre ändern möchtest, kannst du dieses Feld leer lassen.', feedback_optional_badge: 'Optional', feedback_ph: 'z.B. fröhlicher, langsamer, anderer Anfang...',
       regenerate_btn: 'Lied bearbeiten',
       edits_info_msg: 'Du erhältst 2 kostenlose Versionen und hast Anspruch auf eine kostenlose Änderung',
       edits_exhausted_msg: 'Du hast deine kostenlose Änderung für diese Bestellung genutzt. Wähle deine bevorzugte Version, um fortzufahren',
@@ -742,7 +774,7 @@
       variant_main_label: 'Versión principal', variant_gift_label: '🎁 Tu segunda canción, un regalo para ti',
       variant_gift_note: 'Después del pago podrás descargar ambas canciones completas.',
       genre_emotional: 'Emotivo', genre_suflet: 'Con alma', genre_acustic: 'Acústico / Folk', genre_petrecere: 'Música de fiesta', genre_balada: 'Balada', genre_manele: 'Manele de duelo', genre_copii: 'Para niños', genre_populara: 'Popular', genre_rock: 'Rock', genre_colind: 'Villancico', genre_modern: 'Moderno', genre_hiphop: 'Hip-hop', genre_manele_suflet: 'Manele con sentimiento', genre_motivational: 'Motivacional', genre_pop: 'Pop',
-      variant_second_label: 'Segunda canción', gift_video_title: 'Tu video de regalo', video_song_label: 'La canción del video', video_gift_song_label: 'La canción de regalo', gift_video_locked_msg: 'Tu video está listo y se desbloqueará después del pago.', edit_genre_label: 'Cambiar el género musical', edit_genre_same_error: 'Elige un género diferente al de la otra canción.', variant_original_label: 'Versión inicial', variant_edited_label: 'Versión editada', regen_failed_recovered_msg: 'Tu último intento de edición falló, pero aún puedes escuchar y elegir la versión existente.', standard_choice_eyebrow: 'SIGUIENTE PASO', standard_choice_title: '¿Qué versión quieres recibir?', standard_choice_subtitle: 'Escucha ambas canciones y luego elige una para continuar con el pago.', choose_variant_btn: (genre, isEdited, sameGenre, isChosen) => { const v = isEdited ? 'la versión nueva' : 'la versión inicial'; if (isChosen) return sameGenre ? `${v} — ${genre} — Elegida ✓` : `${genre} — Elegida ✓`; return sameGenre ? `${v} — ${genre}` : `${genre} — ${v}`; },
+      variant_second_label: 'Segunda canción', gift_video_title: 'Tu video de regalo', video_song_label: 'La canción del video', video_gift_song_label: 'La canción de regalo', gift_video_locked_msg: 'Tu video está listo y se desbloqueará después del pago.', edit_genre_label: '🎵 Cambiar el género musical', edit_genre_explain: 'Elige el género para la nueva versión.', edit_genre_same_error: 'Elige un género diferente al de la otra canción.', variant_original_label: 'Versión inicial', variant_edited_label: 'Versión editada', regen_failed_recovered_msg: 'Tu último intento de edición falló, pero aún puedes escuchar y elegir la versión existente.', standard_choice_eyebrow: 'SIGUIENTE PASO', standard_choice_title: '¿Qué versión quieres recibir?', standard_choice_subtitle: 'Escucha ambas canciones y luego elige una para continuar con el pago.', choose_variant_btn: (genre, isEdited, sameGenre, isChosen) => { const v = isEdited ? 'la versión nueva' : 'la versión inicial'; if (isChosen) return sameGenre ? `${v} — ${genre} — Elegida ✓` : `${genre} — Elegida ✓`; return sameGenre ? `${v} — ${genre}` : `${genre} — ${v}`; },
       listened: (t, d) => `Has escuchado ${t} de ${d}`,
       lyrics_empty: 'La letra todavía no está disponible para mostrar.',
       lyrics_edited_tag: 'Letra editada por ti',
@@ -751,7 +783,7 @@
       save_btn: 'Guardar cambios', cancel_btn: 'Cancelar',
       lyrics_saved_msg: 'Letra guardada. Regenera la canción para escuchar los cambios',
       lyrics_empty_error: 'La letra no puede estar vacía',
-      feedback_label: '¿No es exactamente lo que quieres? Describe qué cambiar', feedback_ph: 'ej: más alegre, más lenta, otro inicio...',
+      feedback_label: '✏️ ¿No es exactamente lo que querías? Cuéntanos qué cambiar', feedback_explain: 'Si todo está bien y solo quieres cambiar la voz o el género, puedes dejar este campo vacío.', feedback_optional_badge: 'Opcional', feedback_ph: 'ej: más alegre, más lenta, otro inicio...',
       regenerate_btn: 'Editar la canción',
       edits_info_msg: 'Recibes 2 versiones gratuitas y tienes derecho a una edición gratuita',
       edits_exhausted_msg: 'Has usado tu edición gratuita para este pedido. Elige tu versión preferida para continuar',
@@ -801,7 +833,7 @@
       variant_main_label: 'Versione principale', variant_gift_label: '🎁 La tua seconda canzone, un regalo per te',
       variant_gift_note: 'Dopo il pagamento potrai scaricare entrambe le canzoni complete.',
       genre_emotional: 'Emozionante', genre_suflet: 'Con anima', genre_acustic: 'Acustico / Folk', genre_petrecere: 'Musica da festa', genre_balada: 'Ballata', genre_manele: 'Manele di lutto', genre_copii: 'Per bambini', genre_populara: 'Popolare', genre_rock: 'Rock', genre_colind: 'Canto natalizio', genre_modern: 'Moderno', genre_hiphop: 'Hip-hop', genre_manele_suflet: 'Manele con anima', genre_motivational: 'Motivazionale', genre_pop: 'Pop',
-      variant_second_label: 'Seconda canzone', gift_video_title: 'Il tuo video regalo', video_song_label: 'La canzone nel video', video_gift_song_label: 'La canzone regalo', gift_video_locked_msg: 'Il tuo video è pronto e si sbloccherà dopo il pagamento.', edit_genre_label: 'Cambia il genere musicale', edit_genre_same_error: "Scegli un genere diverso dall'altra canzone.", variant_original_label: 'Versione iniziale', variant_edited_label: 'Versione modificata', regen_failed_recovered_msg: "L'ultimo tentativo di modifica non è riuscito, ma puoi ancora ascoltare e scegliere la versione esistente.", standard_choice_eyebrow: 'PROSSIMO PASSO', standard_choice_title: 'Quale versione vuoi ricevere?', standard_choice_subtitle: 'Ascolta entrambe le canzoni, poi scegline una per continuare al pagamento.', choose_variant_btn: (genre, isEdited, sameGenre, isChosen) => { const v = isEdited ? 'la versione nuova' : 'la versione iniziale'; if (isChosen) return sameGenre ? `${v} — ${genre} — Scelta ✓` : `${genre} — Scelta ✓`; return sameGenre ? `${v} — ${genre}` : `${genre} — ${v}`; },
+      variant_second_label: 'Seconda canzone', gift_video_title: 'Il tuo video regalo', video_song_label: 'La canzone nel video', video_gift_song_label: 'La canzone regalo', gift_video_locked_msg: 'Il tuo video è pronto e si sbloccherà dopo il pagamento.', edit_genre_label: '🎵 Cambia il genere musicale', edit_genre_explain: 'Scegli il genere per la nuova versione.', edit_genre_same_error: "Scegli un genere diverso dall'altra canzone.", variant_original_label: 'Versione iniziale', variant_edited_label: 'Versione modificata', regen_failed_recovered_msg: "L'ultimo tentativo di modifica non è riuscito, ma puoi ancora ascoltare e scegliere la versione esistente.", standard_choice_eyebrow: 'PROSSIMO PASSO', standard_choice_title: 'Quale versione vuoi ricevere?', standard_choice_subtitle: 'Ascolta entrambe le canzoni, poi scegline una per continuare al pagamento.', choose_variant_btn: (genre, isEdited, sameGenre, isChosen) => { const v = isEdited ? 'la versione nuova' : 'la versione iniziale'; if (isChosen) return sameGenre ? `${v} — ${genre} — Scelta ✓` : `${genre} — Scelta ✓`; return sameGenre ? `${v} — ${genre}` : `${genre} — ${v}`; },
       listened: (t, d) => `Hai ascoltato ${t} di ${d}`,
       lyrics_empty: 'Il testo non è ancora disponibile per la visualizzazione.',
       lyrics_edited_tag: 'Testo modificato da te',
@@ -810,7 +842,7 @@
       save_btn: 'Salva le modifiche', cancel_btn: 'Annulla',
       lyrics_saved_msg: 'Testo salvato. Rigenera la canzone per ascoltare le modifiche',
       lyrics_empty_error: 'Il testo non può essere vuoto',
-      feedback_label: 'Non è esattamente come vuoi? Descrivi cosa cambiare', feedback_ph: 'es: più allegra, più lenta, inizio diverso...',
+      feedback_label: '✏️ Non è esattamente come volevi? Dicci cosa cambiare', feedback_explain: 'Se va tutto bene e vuoi solo cambiare la voce o il genere, puoi lasciare questo campo vuoto.', feedback_optional_badge: 'Facoltativo', feedback_ph: 'es: più allegra, più lenta, inizio diverso...',
       regenerate_btn: 'Modifica la canzone',
       edits_info_msg: 'Ricevi 2 versioni gratuite e hai diritto a una modifica gratuita',
       edits_exhausted_msg: 'Hai usato la tua modifica gratuita per questo ordine. Scegli la versione preferita per continuare',
@@ -860,7 +892,7 @@
       variant_main_label: 'Version principale', variant_gift_label: '🎁 Votre deuxième chanson, un cadeau pour vous',
       variant_gift_note: 'Après le paiement, vous pourrez télécharger les deux chansons complètes.',
       genre_emotional: 'Émouvant', genre_suflet: 'Avec âme', genre_acustic: 'Acoustique / Folk', genre_petrecere: 'Musique de fête', genre_balada: 'Ballade', genre_manele: 'Manele de deuil', genre_copii: 'Pour enfants', genre_populara: 'Populaire', genre_rock: 'Rock', genre_colind: 'Chant de Noël', genre_modern: 'Moderne', genre_hiphop: 'Hip-hop', genre_manele_suflet: 'Manele avec âme', genre_motivational: 'Motivant', genre_pop: 'Pop',
-      variant_second_label: 'Deuxième chanson', gift_video_title: 'Ta vidéo cadeau', video_song_label: 'La chanson de la vidéo', video_gift_song_label: 'La chanson cadeau', gift_video_locked_msg: "Ta vidéo est prête et sera débloquée après le paiement.", edit_genre_label: 'Changer le genre musical', edit_genre_same_error: "Choisissez un genre différent de l'autre chanson.", variant_original_label: 'Version initiale', variant_edited_label: 'Version modifiée', regen_failed_recovered_msg: "Votre dernière tentative de modification a échoué, mais vous pouvez toujours écouter et choisir la version existante.", standard_choice_eyebrow: 'ÉTAPE SUIVANTE', standard_choice_title: 'Quelle version veux-tu recevoir ?', standard_choice_subtitle: 'Écoute les deux chansons, puis choisis-en une pour continuer vers le paiement.', choose_variant_btn: (genre, isEdited, sameGenre, isChosen) => { const v = isEdited ? 'la nouvelle version' : 'la version initiale'; if (isChosen) return sameGenre ? `${v} — ${genre} — Choisie ✓` : `${genre} — Choisie ✓`; return sameGenre ? `${v} — ${genre}` : `${genre} — ${v}`; },
+      variant_second_label: 'Deuxième chanson', gift_video_title: 'Ta vidéo cadeau', video_song_label: 'La chanson de la vidéo', video_gift_song_label: 'La chanson cadeau', gift_video_locked_msg: "Ta vidéo est prête et sera débloquée après le paiement.", edit_genre_label: '🎵 Changer le genre musical', edit_genre_explain: 'Choisis le genre pour la nouvelle version.', edit_genre_same_error: "Choisissez un genre différent de l'autre chanson.", variant_original_label: 'Version initiale', variant_edited_label: 'Version modifiée', regen_failed_recovered_msg: "Votre dernière tentative de modification a échoué, mais vous pouvez toujours écouter et choisir la version existante.", standard_choice_eyebrow: 'ÉTAPE SUIVANTE', standard_choice_title: 'Quelle version veux-tu recevoir ?', standard_choice_subtitle: 'Écoute les deux chansons, puis choisis-en une pour continuer vers le paiement.', choose_variant_btn: (genre, isEdited, sameGenre, isChosen) => { const v = isEdited ? 'la nouvelle version' : 'la version initiale'; if (isChosen) return sameGenre ? `${v} — ${genre} — Choisie ✓` : `${genre} — Choisie ✓`; return sameGenre ? `${v} — ${genre}` : `${genre} — ${v}`; },
       listened: (t, d) => `Vous avez écouté ${t} sur ${d}`,
       lyrics_empty: "Les paroles ne sont pas encore disponibles à l'affichage.",
       lyrics_edited_tag: 'Paroles modifiées par vous',
@@ -869,7 +901,7 @@
       save_btn: 'Enregistrer les modifications', cancel_btn: 'Annuler',
       lyrics_saved_msg: 'Paroles enregistrées. Régénérez la chanson pour entendre les changements',
       lyrics_empty_error: 'Les paroles ne peuvent pas être vides',
-      feedback_label: "Pas tout à fait ce que vous voulez ? Décrivez ce qu'il faut changer", feedback_ph: 'ex : plus joyeux, plus lent, autre intro...',
+      feedback_label: "✏️ Pas tout à fait ce que tu voulais ? Dis-nous ce qu'il faut changer", feedback_explain: "Si tout est bien et que tu veux seulement changer la voix ou le genre, tu peux laisser ce champ vide.", feedback_optional_badge: 'Facultatif', feedback_ph: 'ex : plus joyeux, plus lent, autre intro...',
       regenerate_btn: 'Modifier la chanson',
       edits_info_msg: 'Vous recevez 2 versions gratuites et avez droit à une modification gratuite',
       edits_exhausted_msg: 'Vous avez utilisé votre modification gratuite pour cette commande. Choisissez votre version préférée pour continuer',
@@ -919,7 +951,7 @@
       variant_main_label: 'Основна версия', variant_gift_label: '🎁 Втората ти песен, подарък за теб',
       variant_gift_note: 'След плащането ще можеш да изтеглиш и двете пълни песни.',
       genre_emotional: 'Емоционално', genre_suflet: 'Душевно', genre_acustic: 'Акустика / Фолк', genre_petrecere: 'Парти музика', genre_balada: 'Балада', genre_manele: 'Тъжни манеле', genre_copii: 'За деца', genre_populara: 'Народна', genre_rock: 'Рок', genre_colind: 'Коледна песен', genre_modern: 'Модерна', genre_hiphop: 'Хип-хоп', genre_manele_suflet: 'Задушевни манеле', genre_motivational: 'Мотивационна', genre_pop: 'Pop',
-      variant_second_label: 'Втора песен', gift_video_title: 'Твоето видео подарък', video_song_label: 'Песента във видеото', video_gift_song_label: 'Песента подарък', gift_video_locked_msg: 'Видеото ти е готово и ще се отключи след плащането.', edit_genre_label: 'Смени музикалния жанр', edit_genre_same_error: 'Избери жанр, различен от другата песен.', variant_original_label: 'Оригинална версия', variant_edited_label: 'Редактирана версия', regen_failed_recovered_msg: 'Последният опит за редакция не успя, но все още можеш да чуеш и избереш съществуващата версия.', standard_choice_eyebrow: 'СЛЕДВАЩА СТЪПКА', standard_choice_title: 'Коя версия искаш да получиш?', standard_choice_subtitle: 'Чуй и двете песни, после избери една, за да продължиш към плащане.', choose_variant_btn: (genre, isEdited, sameGenre, isChosen) => { const v = isEdited ? 'новата версия' : 'оригиналната версия'; if (isChosen) return sameGenre ? `${v} — ${genre} — Избрана ✓` : `${genre} — Избрана ✓`; return sameGenre ? `${v} — ${genre}` : `${genre} — ${v}`; },
+      variant_second_label: 'Втора песен', gift_video_title: 'Твоето видео подарък', video_song_label: 'Песента във видеото', video_gift_song_label: 'Песента подарък', gift_video_locked_msg: 'Видеото ти е готово и ще се отключи след плащането.', edit_genre_label: '🎵 Смени музикалния жанр', edit_genre_explain: 'Избери жанра за новата версия.', edit_genre_same_error: 'Избери жанр, различен от другата песен.', variant_original_label: 'Оригинална версия', variant_edited_label: 'Редактирана версия', regen_failed_recovered_msg: 'Последният опит за редакция не успя, но все още можеш да чуеш и избереш съществуващата версия.', standard_choice_eyebrow: 'СЛЕДВАЩА СТЪПКА', standard_choice_title: 'Коя версия искаш да получиш?', standard_choice_subtitle: 'Чуй и двете песни, после избери една, за да продължиш към плащане.', choose_variant_btn: (genre, isEdited, sameGenre, isChosen) => { const v = isEdited ? 'новата версия' : 'оригиналната версия'; if (isChosen) return sameGenre ? `${v} — ${genre} — Избрана ✓` : `${genre} — Избрана ✓`; return sameGenre ? `${v} — ${genre}` : `${genre} — ${v}`; },
       listened: (t, d) => `Изслуша ${t} от ${d}`,
       lyrics_empty: 'Текстът все още не е наличен за показване.',
       lyrics_edited_tag: 'Текст, редактиран от теб',
@@ -928,7 +960,7 @@
       save_btn: 'Запази промените', cancel_btn: 'Откажи',
       lyrics_saved_msg: 'Текстът е запазен. Регенерирай песента, за да чуеш промените',
       lyrics_empty_error: 'Текстът не може да бъде празен',
-      feedback_label: 'Не е точно както искаш? Опиши какво да променим', feedback_ph: 'напр. по-весело, по-бавно, друго начало...',
+      feedback_label: '✏️ Не е точно както искаше? Кажи ни какво да променим', feedback_explain: 'Ако всичко е наред и искаш да смениш само гласа или жанра, можеш да оставиш това поле празно.', feedback_optional_badge: 'По избор', feedback_ph: 'напр. по-весело, по-бавно, друго начало...',
       regenerate_btn: 'Редактирай песента',
       edits_info_msg: 'Получаваш 2 безплатни версии и имаш право на една безплатна редакция',
       edits_exhausted_msg: 'Използва безплатната си редакция за тази поръчка. Избери предпочитаната версия, за да продължиш',
@@ -978,7 +1010,7 @@
       variant_main_label: 'Ana versiyon', variant_gift_label: '🎁 İkinci şarkınız, size bir hediye',
       variant_gift_note: 'Ödemeden sonra her iki tam şarkıyı da indirebileceksiniz.',
       genre_emotional: 'Duygusal', genre_suflet: 'İçten', genre_acustic: 'Akustik / Folk', genre_petrecere: 'Parti müziği', genre_balada: 'Balad', genre_manele: 'Hüzünlü manele', genre_copii: 'Çocuklar için', genre_populara: 'Popüler', genre_rock: 'Rock', genre_colind: 'Noel ilahisi', genre_modern: 'Modern', genre_hiphop: 'Hip-hop', genre_manele_suflet: 'Duygusal manele', genre_motivational: 'Motivasyonel', genre_pop: 'Pop',
-      variant_second_label: 'İkinci şarkı', gift_video_title: 'Hediye videon', video_song_label: 'Videodaki şarkı', video_gift_song_label: 'Hediye şarkı', gift_video_locked_msg: 'Videon hazır ve ödemeden sonra kilidi açılacak.', edit_genre_label: 'Müzik türünü değiştir', edit_genre_same_error: 'Diğer şarkıdan farklı bir tür seçin.', variant_original_label: 'Orijinal versiyon', variant_edited_label: 'Düzenlenmiş versiyon', regen_failed_recovered_msg: 'Son düzenleme denemeniz başarısız oldu, ancak mevcut versiyonu dinlemeye ve seçmeye devam edebilirsiniz.', standard_choice_eyebrow: 'SONRAKI ADIM', standard_choice_title: 'Hangi versiyonu almak istiyorsunuz?', standard_choice_subtitle: 'Her iki şarkıyı da dinleyin, ardından ödemeye devam etmek için birini seçin.', choose_variant_btn: (genre, isEdited, sameGenre, isChosen) => { const v = isEdited ? 'yeni versiyonu' : 'orijinal versiyonu'; if (isChosen) return sameGenre ? `${v} — ${genre} — Seçildi ✓` : `${genre} — Seçildi ✓`; return sameGenre ? `${v} — ${genre}` : `${genre} — ${v}`; },
+      variant_second_label: 'İkinci şarkı', gift_video_title: 'Hediye videon', video_song_label: 'Videodaki şarkı', video_gift_song_label: 'Hediye şarkı', gift_video_locked_msg: 'Videon hazır ve ödemeden sonra kilidi açılacak.', edit_genre_label: '🎵 Müzik türünü değiştir', edit_genre_explain: 'Yeni versiyon için türü seçin.', edit_genre_same_error: 'Diğer şarkıdan farklı bir tür seçin.', variant_original_label: 'Orijinal versiyon', variant_edited_label: 'Düzenlenmiş versiyon', regen_failed_recovered_msg: 'Son düzenleme denemeniz başarısız oldu, ancak mevcut versiyonu dinlemeye ve seçmeye devam edebilirsiniz.', standard_choice_eyebrow: 'SONRAKI ADIM', standard_choice_title: 'Hangi versiyonu almak istiyorsunuz?', standard_choice_subtitle: 'Her iki şarkıyı da dinleyin, ardından ödemeye devam etmek için birini seçin.', choose_variant_btn: (genre, isEdited, sameGenre, isChosen) => { const v = isEdited ? 'yeni versiyonu' : 'orijinal versiyonu'; if (isChosen) return sameGenre ? `${v} — ${genre} — Seçildi ✓` : `${genre} — Seçildi ✓`; return sameGenre ? `${v} — ${genre}` : `${genre} — ${v}`; },
       listened: (t, d) => `${d} şarkının ${t} kadarını dinlediniz`,
       lyrics_empty: 'Sözler henüz görüntülenmeye hazır değil.',
       lyrics_edited_tag: 'Sizin tarafınızdan düzenlenen sözler',
@@ -987,7 +1019,7 @@
       save_btn: 'Değişiklikleri kaydet', cancel_btn: 'Vazgeç',
       lyrics_saved_msg: 'Sözler kaydedildi. Değişiklikleri duymak için şarkıyı yeniden oluşturun',
       lyrics_empty_error: 'Sözler boş olamaz',
-      feedback_label: 'Tam istediğiniz gibi değil mi? Neyin değişmesini istediğinizi yazın', feedback_ph: 'örn: daha neşeli, daha yavaş, farklı bir giriş...',
+      feedback_label: '✏️ Tam istediğiniz gibi değil mi? Neyi değiştireceğimizi söyleyin', feedback_explain: 'Her şey yolundaysa ve yalnızca sesi veya türü değiştirmek istiyorsanız, bu alanı boş bırakabilirsiniz.', feedback_optional_badge: 'İsteğe bağlı', feedback_ph: 'örn: daha neşeli, daha yavaş, farklı bir giriş...',
       regenerate_btn: 'Şarkıyı düzenle',
       edits_info_msg: '2 ücretsiz versiyon alırsınız ve bir ücretsiz düzenleme hakkınız vardır',
       edits_exhausted_msg: 'Bu sipariş için ücretsiz düzenlemenizi kullandınız. Devam etmek için tercih ettiğiniz versiyonu seçin',
@@ -1053,8 +1085,11 @@
     document.getElementById('paid-sub').textContent = t.paid_sub;
     document.getElementById('resume-msg').textContent = t.resume_msg;
     document.getElementById('feedback-label').textContent = t.feedback_label;
+    document.getElementById('feedback-explain').textContent = t.feedback_explain;
+    document.getElementById('feedback-optional-badge').textContent = t.feedback_optional_badge;
     document.getElementById('feedback').placeholder = t.feedback_ph;
     document.getElementById('edit-genre-label').textContent = t.edit_genre_label;
+    document.getElementById('edit-genre-explain').textContent = t.edit_genre_explain;
     document.getElementById('confirm-cancel').textContent = t.confirm_no;
     document.getElementById('confirm-yes').textContent = t.confirm_yes;
     document.getElementById('editor-title').textContent = t.editor_title;
@@ -1113,7 +1148,8 @@
   const standardChoiceSection = document.getElementById('standard-choice-section');
   const standardChoiceCheckoutSlot = document.getElementById('standard-choice-checkout-slot');
   const standardPreeditToggleWrap = document.getElementById('standard-preedit-toggle-wrap');
-  const standardPreeditCheckoutSlot = document.getElementById('standard-preedit-checkout-slot');
+  const standardPreeditCheckoutSlotCollapsed = document.getElementById('standard-preedit-checkout-slot-collapsed');
+  const standardPreeditCheckoutSlotExpanded = document.getElementById('standard-preedit-checkout-slot-expanded');
   const editMenuToggleBtn = document.getElementById('edit-menu-toggle-btn');
   const editMenuToggleLabel = document.getElementById('edit-menu-toggle-label');
   const editMenuToggleHint = document.getElementById('edit-menu-toggle-hint');
@@ -2331,7 +2367,8 @@
     if (isStandardEditChoice) {
       // Dupa editare: ecranul de alegere (neschimbat) — meniul pliabil nu mai exista niciodata.
       standardPreeditToggleWrap.style.display = 'none';
-      standardPreeditCheckoutSlot.style.display = 'none';
+      standardPreeditCheckoutSlotCollapsed.style.display = 'none';
+      standardPreeditCheckoutSlotExpanded.style.display = 'none';
       editMenuFields.hidden = true;
       confirmRow.style.display = 'none';
       regenerateRow.style.display = 'flex';
@@ -2354,7 +2391,8 @@
       // Premium/Video: comportament ORIGINAL, complet neschimbat — 2 pasi (regenerateBtn ->
       // confirmRow), checkoutBtn ramane in #regenerate-row, meniul pliabil nu exista pentru ele.
       standardPreeditToggleWrap.style.display = 'none';
-      standardPreeditCheckoutSlot.style.display = 'none';
+      standardPreeditCheckoutSlotCollapsed.style.display = 'none';
+      standardPreeditCheckoutSlotExpanded.style.display = 'none';
       editMenuFields.hidden = false;
       regenerateRow.appendChild(checkoutBtn);
       checkoutBtn.classList.remove('btn-cta-wide');
@@ -2368,11 +2406,26 @@
     }
 
     // Standard, INAINTE de prima regenerare — meniul e PLIABIL, inchis implicit (menuExpanded).
+    // UN SINGUR checkoutBtn logic, reparentat intre DOUA sloturi posibile — niciodata duplicat:
+    //  - meniu INCHIS: imediat sub butonul de editare (niciun alt continut intre ele — cerinta
+    //    explicita), in standardPreeditCheckoutSlotCollapsed.
+    //  - meniu DESCHIS: in interiorul confirm-row, intre butonul portocaliu si Renunță
+    //    (standardPreeditCheckoutSlotExpanded, comportament pastrat din runda anterioara).
+    // BUG REAL reparat aici: inainte, checkoutBtn traia DOAR in slotul din confirm-row, care e
+    // display:none cat timp meniul e inchis — facand plata invizibila exact in starea implicita
+    // a paginii (gasit prin verificare directa a codului, dupa cererea clientului).
     standardPreeditToggleWrap.style.display = 'block';
-    standardPreeditCheckoutSlot.style.display = 'flex';
-    standardPreeditCheckoutSlot.appendChild(checkoutBtn);
     checkoutBtn.classList.add('btn-cta-wide');
     checkoutBtn.style.flex = 'none';
+    if (menuExpanded) {
+      standardPreeditCheckoutSlotCollapsed.style.display = 'none';
+      standardPreeditCheckoutSlotExpanded.style.display = 'flex';
+      standardPreeditCheckoutSlotExpanded.appendChild(checkoutBtn);
+    } else {
+      standardPreeditCheckoutSlotExpanded.style.display = 'none';
+      standardPreeditCheckoutSlotCollapsed.style.display = 'flex';
+      standardPreeditCheckoutSlotCollapsed.appendChild(checkoutBtn);
+    }
 
     editMenuToggleBtn.setAttribute('aria-expanded', String(menuExpanded));
     // Reutilizeaza EXACT acelasi text ca butonul existent de editare a versurilor per-varianta

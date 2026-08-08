@@ -247,12 +247,33 @@
           <div class="theme-name" data-i18n="theme_pentrumine_name">Pentru mine</div>
           <div class="theme-desc" data-i18n="theme_pentrumine_desc">Un cântec doar pentru tine</div>
         </div>
+        <div class="theme-card" data-theme="bunici">
+          <div class="theme-name" data-i18n="theme_bunici_name">Pentru bunica sau bunicul</div>
+          <div class="theme-desc" data-i18n="theme_bunici_desc">Un cântec plin de iubire, recunoștință și amintiri</div>
+        </div>
         <div class="theme-card" data-theme="altceva">
           <div class="theme-name" data-i18n="theme_altceva_name">Orice altceva</div>
           <div class="theme-desc" data-i18n="theme_altceva_desc">Fără ocazie. Descrie tu</div>
         </div>
       </div>
       <input type="hidden" id="occasion" value="dor">
+
+      <!-- ULTIMELE MODIFICĂRI STRICTE (hotfix 2026-08-08): alegerea bunica/bunicul e OBLIGATORIE
+           cand occasion='bunici' — niciodata dedusa din nume/voce. Ascunsa complet pentru orice
+           alta ocazie (acelasi tipar ca #genre2-field, vezi updateGrandparentTypeVisibility). -->
+      <div class="field" id="grandparent-type-field" style="display:none; margin-top:16px;">
+        <label data-i18n="label_grandparent_type">Pentru cine e cântecul?</label>
+        <div class="theme-grid" id="grandparent-type-grid" style="grid-template-columns:1fr 1fr;">
+          <div class="theme-card grandparent-type-card" data-grandparent="grandmother">
+            <div class="theme-name" data-i18n="grandparent_grandmother_name">Pentru bunica</div>
+          </div>
+          <div class="theme-card grandparent-type-card" data-grandparent="grandfather">
+            <div class="theme-name" data-i18n="grandparent_grandfather_name">Pentru bunicul</div>
+          </div>
+        </div>
+        <input type="hidden" id="grandparentType" value="">
+        <div class="field-error" id="err-grandparentType"></div>
+      </div>
 
       <div class="wizard-nav single">
         <button type="button" class="btn btn-primary btn-continue" data-next="2" data-validate="1" data-i18n="btn_continue">Continuă</button>
@@ -460,6 +481,11 @@
       theme_pentrumine_desc: 'Un cântec doar pentru tine',
       theme_altceva_name: 'Orice altceva',
       theme_altceva_desc: 'Fără ocazie. Descrie tu',
+      theme_bunici_name: 'Pentru bunica sau bunicul',
+      theme_bunici_desc: 'Un cântec plin de iubire, recunoștință și amintiri',
+      label_grandparent_type: 'Pentru cine e cântecul?',
+      grandparent_grandmother_name: 'Pentru bunica',
+      grandparent_grandfather_name: 'Pentru bunicul',
       label_recipient: 'Pentru cine e cântecul (nume)',
       ph_recipient: 'ex: Maria',
       label_sender: 'Din partea cui e cântecul',
@@ -548,6 +574,7 @@
       val_genre: 'Alege un gen muzical',
       val_genre2_required: 'Alege genul celei de-a doua melodii',
       val_genre_same: 'Alege două genuri muzicale diferite.',
+      val_grandparent_type: 'Alege pentru cine este cântecul: bunica sau bunicul',
       step_progress_label: (n) => 'Pasul ' + n + ' din 4',
     },
     en: {
@@ -572,6 +599,11 @@
       theme_pentrumine_desc: 'A song just for you.',
       theme_altceva_name: 'Something else',
       theme_altceva_desc: 'No occasion. Describe it yourself.',
+      theme_bunici_name: 'For grandma or grandpa',
+      theme_bunici_desc: 'A song full of love, gratitude and memories',
+      label_grandparent_type: 'Who is the song for?',
+      grandparent_grandmother_name: 'For grandma',
+      grandparent_grandfather_name: 'For grandpa',
       label_recipient: 'Who is the song for (name)',
       ph_recipient: 'e.g. Maria',
       label_sender: 'Who is the song from',
@@ -660,6 +692,7 @@
       val_genre: 'Choose a musical genre',
       val_genre2_required: "Choose the second song's genre",
       val_genre_same: 'Choose two different musical genres.',
+      val_grandparent_type: 'Choose who the song is for: grandma or grandpa',
       step_progress_label: (n) => 'Step ' + n + ' of 4',
     },
     de: {
@@ -684,6 +717,11 @@
       theme_pentrumine_desc: 'Ein Lied nur für dich.',
       theme_altceva_name: 'Etwas anderes',
       theme_altceva_desc: 'Kein Anlass. Beschreibe es selbst.',
+      theme_bunici_name: 'Für Oma oder Opa',
+      theme_bunici_desc: 'Ein Lied voller Liebe, Dankbarkeit und Erinnerungen',
+      label_grandparent_type: 'Für wen ist das Lied?',
+      grandparent_grandmother_name: 'Für Oma',
+      grandparent_grandfather_name: 'Für Opa',
       label_recipient: 'Für wen ist das Lied (Name)',
       ph_recipient: 'z.B. Maria',
       label_sender: 'Von wem ist das Lied',
@@ -772,6 +810,7 @@
       val_genre: 'Wähle eine Musikrichtung',
       val_genre2_required: 'Wähle die Musikrichtung des zweiten Liedes',
       val_genre_same: 'Wähle zwei unterschiedliche Musikrichtungen.',
+      val_grandparent_type: 'Wähle, für wen das Lied ist: Oma oder Opa',
       step_progress_label: (n) => 'Schritt ' + n + ' von 4',
     },
     es: {
@@ -796,6 +835,11 @@
       theme_pentrumine_desc: 'Una canción solo para ti.',
       theme_altceva_name: 'Otra cosa',
       theme_altceva_desc: 'Sin ocasión especial. Descríbelo tú.',
+      theme_bunici_name: 'Para la abuela o el abuelo',
+      theme_bunici_desc: 'Una canción llena de amor, gratitud y recuerdos',
+      label_grandparent_type: '¿Para quién es la canción?',
+      grandparent_grandmother_name: 'Para la abuela',
+      grandparent_grandfather_name: 'Para el abuelo',
       label_recipient: 'Para quién es la canción (nombre)',
       ph_recipient: 'ej: María',
       label_sender: 'De parte de quién es la canción',
@@ -884,6 +928,7 @@
       val_genre: 'Elige un género musical',
       val_genre2_required: 'Elige el género de la segunda canción',
       val_genre_same: 'Elige dos géneros musicales diferentes.',
+      val_grandparent_type: 'Elige para quién es la canción: la abuela o el abuelo',
       step_progress_label: (n) => 'Paso ' + n + ' de 4',
     },
     it: {
@@ -908,6 +953,11 @@
       theme_pentrumine_desc: 'Una canzone solo per te.',
       theme_altceva_name: 'Altro',
       theme_altceva_desc: 'Nessuna occasione. Descrivilo tu.',
+      theme_bunici_name: 'Per la nonna o il nonno',
+      theme_bunici_desc: 'Una canzone piena di amore, gratitudine e ricordi',
+      label_grandparent_type: 'Per chi è la canzone?',
+      grandparent_grandmother_name: 'Per la nonna',
+      grandparent_grandfather_name: 'Per il nonno',
       label_recipient: 'Per chi è la canzone (nome)',
       ph_recipient: 'es: Maria',
       label_sender: 'Da parte di chi è la canzone',
@@ -996,6 +1046,7 @@
       val_genre: 'Scegli un genere musicale',
       val_genre2_required: 'Scegli il genere della seconda canzone',
       val_genre_same: 'Scegli due generi musicali diversi.',
+      val_grandparent_type: 'Scegli per chi è la canzone: la nonna o il nonno',
       step_progress_label: (n) => 'Passo ' + n + ' di 4',
     },
     fr: {
@@ -1020,6 +1071,11 @@
       theme_pentrumine_desc: 'Une chanson juste pour vous.',
       theme_altceva_name: 'Autre chose',
       theme_altceva_desc: 'Sans occasion particulière. Décrivez-la vous-même.',
+      theme_bunici_name: 'Pour grand-mère ou grand-père',
+      theme_bunici_desc: 'Une chanson pleine d\'amour, de gratitude et de souvenirs',
+      label_grandparent_type: 'Pour qui est la chanson ?',
+      grandparent_grandmother_name: 'Pour grand-mère',
+      grandparent_grandfather_name: 'Pour grand-père',
       label_recipient: 'Pour qui est la chanson (prénom)',
       ph_recipient: 'ex : Maria',
       label_sender: 'De la part de qui est la chanson',
@@ -1108,6 +1164,7 @@
       val_genre: 'Choisissez un genre musical',
       val_genre2_required: 'Choisissez le genre de la deuxième chanson',
       val_genre_same: 'Choisissez deux genres musicaux différents.',
+      val_grandparent_type: 'Choisissez pour qui est la chanson : grand-mère ou grand-père',
       step_progress_label: (n) => 'Étape ' + n + ' sur 4',
     },
     bg: {
@@ -1132,6 +1189,11 @@
       theme_pentrumine_desc: 'Песен само за теб.',
       theme_altceva_name: 'Нещо друго',
       theme_altceva_desc: 'Без повод. Опиши сам.',
+      theme_bunici_name: 'За баба или дядо',
+      theme_bunici_desc: 'Песен, изпълнена с любов, благодарност и спомени',
+      label_grandparent_type: 'За кого е песента?',
+      grandparent_grandmother_name: 'За баба',
+      grandparent_grandfather_name: 'За дядо',
       label_recipient: 'За кого е песента (име)',
       ph_recipient: 'напр. Мария',
       label_sender: 'От чие име е песента',
@@ -1220,6 +1282,7 @@
       val_genre: 'Избери музикален жанр',
       val_genre2_required: 'Избери жанра на втората песен',
       val_genre_same: 'Избери два различни музикални жанра.',
+      val_grandparent_type: 'Избери за кого е песента: баба или дядо',
       step_progress_label: (n) => 'Стъпка ' + n + ' от 4',
     },
     tr: {
@@ -1244,6 +1307,11 @@
       theme_pentrumine_desc: 'Sadece sizin için bir şarkı.',
       theme_altceva_name: 'Başka bir şey',
       theme_altceva_desc: 'Özel bir sebep yok. Kendiniz anlatın.',
+      theme_bunici_name: 'Büyükanne veya büyükbaba için',
+      theme_bunici_desc: 'Sevgi, minnettarlık ve anılarla dolu bir şarkı',
+      label_grandparent_type: 'Şarkı kimin için?',
+      grandparent_grandmother_name: 'Büyükanne için',
+      grandparent_grandfather_name: 'Büyükbaba için',
       label_recipient: 'Şarkı kimin için (isim)',
       ph_recipient: 'örn: Ayşe',
       label_sender: 'Şarkı kimden',
@@ -1332,6 +1400,7 @@
       val_genre: 'Bir müzik türü seçin',
       val_genre2_required: 'İkinci şarkının türünü seçin',
       val_genre_same: 'İki farklı müzik türü seçin.',
+      val_grandparent_type: 'Şarkının kimin için olduğunu seçin: büyükanne veya büyükbaba',
       step_progress_label: (n) => 'Adım ' + n + '/4',
     },
   };
@@ -1497,7 +1566,16 @@
     }
 
     if (n === 1) {
-      ok = !!document.getElementById('occasion').value;
+      const occasionVal = document.getElementById('occasion').value;
+      ok = !!occasionVal;
+      // "Pentru bunica sau bunicul" (ULTIMELE MODIFICĂRI STRICTE, hotfix 2026-08-08): alegerea
+      // e OBLIGATORIE cand ocazia e 'bunici' — clientul nu poate continua fara sa aleaga
+      // explicit una dintre cele doua optiuni.
+      if (occasionVal === 'bunici') {
+        const grandparentTypeVal = document.getElementById('grandparentType').value;
+        setFieldError('grandparentType', grandparentTypeVal ? '' : t('val_grandparent_type'));
+        if (!grandparentTypeVal) ok = false;
+      }
     }
 
     if (!ok && firstInvalid) {
@@ -1521,13 +1599,44 @@
     });
   });
 
-  const themeCards = document.querySelectorAll('.theme-card');
+  // .grandparent-type-card e EXCLUS explicit — foloseste acelasi tipar deja stabilit pentru
+  // genre2-card (vezi mai jos, ".genre-card:not(.genre2-card)") — fara aceasta excludere,
+  // click-ul pe "Pentru bunica"/"Pentru bunicul" ar fi fost preluat gresit de handler-ul
+  // ocaziei principale (care citeste c.dataset.theme, inexistent pe cardurile de bunica/bunic,
+  // suprascriind occasionInput.value cu undefined).
+  const themeCards = document.querySelectorAll('.theme-card:not(.grandparent-type-card)');
   const occasionInput = document.getElementById('occasion');
+  const grandparentTypeField = document.getElementById('grandparent-type-field');
+  const grandparentTypeInput = document.getElementById('grandparentType');
   themeCards.forEach(c => {
     c.addEventListener('click', () => {
       themeCards.forEach(x => x.classList.remove('active'));
       c.classList.add('active');
       occasionInput.value = c.dataset.theme;
+      updateGrandparentTypeVisibility();
+      saveDraft();
+    });
+  });
+
+  // "Pentru bunica sau bunicul" (ULTIMELE MODIFICĂRI STRICTE, hotfix 2026-08-08): sub-alegerea
+  // obligatorie, aparuta DOAR cand ocazia selectata e 'bunici' — acelasi tipar ca
+  // updateGenre2Visibility() de mai jos. Schimbarea catre orice alta ocazie ascunde campul SI
+  // sterge alegerea anterioara (nu ramane "agatata" o valoare invizibila trimisa la server).
+  function updateGrandparentTypeVisibility() {
+    const needsGrandparentType = occasionInput.value === 'bunici';
+    grandparentTypeField.style.display = needsGrandparentType ? '' : 'none';
+    if (!needsGrandparentType) {
+      grandparentTypeInput.value = '';
+      document.querySelectorAll('.grandparent-type-card').forEach(c => c.classList.remove('active'));
+      setFieldError('grandparentType', '');
+    }
+  }
+  document.querySelectorAll('.grandparent-type-card').forEach(c => {
+    c.addEventListener('click', () => {
+      document.querySelectorAll('.grandparent-type-card').forEach(x => x.classList.remove('active'));
+      c.classList.add('active');
+      grandparentTypeInput.value = c.dataset.grandparent;
+      setFieldError('grandparentType', '');
       saveDraft();
     });
   });
@@ -1673,7 +1782,11 @@
       plan: selectedPlan.id,
       // FARA price aici — serverul recalculeaza intotdeauna pretul din "plan", niciodata din
       // ce trimite clientul (vezi POST /api/orders). Campul era trimis dar complet ignorat.
-      lang: currentLang
+      lang: currentLang,
+      // grandparentType e relevant DOAR pentru occasion='bunici' (server-side, POST /api/orders
+      // il cere si il valideaza doar in acel caz) — pentru orice alta ocazie, campul e gol si
+      // serverul il ignora complet (salvat null).
+      grandparentType: grandparentTypeInput.value
     };
   }
 
@@ -1690,7 +1803,8 @@
         genre: document.getElementById('genre').value,
         genre2: genre2Input.value,
         voicePreference: voiceInput.value,
-        plan: selectedPlan.id
+        plan: selectedPlan.id,
+        grandparentType: grandparentTypeInput.value
       };
       localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
     } catch (err) {
@@ -1726,6 +1840,11 @@
     if (draft.genre2) {
       genre2Input.value = draft.genre2;
       genre2Cards.forEach(c => c.classList.toggle('active', c.dataset.genre === draft.genre2));
+    }
+    updateGrandparentTypeVisibility();
+    if (draft.grandparentType) {
+      grandparentTypeInput.value = draft.grandparentType;
+      document.querySelectorAll('.grandparent-type-card').forEach(c => c.classList.toggle('active', c.dataset.grandparent === draft.grandparentType));
     }
     if (draft.voicePreference) {
       voiceInput.value = draft.voicePreference;

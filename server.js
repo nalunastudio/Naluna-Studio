@@ -126,7 +126,7 @@ const PLAN_PRICES = { standard: 15, premium: 25, video: 35 };
 // un singur gen. Premium/Video = doua melodii COMPLETE, in doua genuri DIFERITE, alese
 // explicit de client (nu "prima varianta + a doua varianta a ACELUIASI gen").
 const PLAN_VARIANT_COUNT = { standard: 1, premium: 2, video: 2 };
-const ALLOWED_OCCASIONS = ['dor', 'onomastica', 'aniversare', 'declaratie', 'nunta', 'pierdere', 'pentru-mine', 'altceva'];
+const ALLOWED_OCCASIONS = ['dor', 'onomastica', 'aniversare', 'declaratie', 'nunta', 'pierdere', 'pentru-mine', 'altceva', 'bunici'];
 const ALLOWED_GENRES = ['emotional', 'suflet', 'pop', 'acustic', 'petrecere', 'balada', 'manele', 'copii', 'populara', 'rock', 'colind', 'modern', 'hiphop', 'manele_suflet', 'motivational'];
 const ALLOWED_LANGS = ['ro', 'en', 'de', 'es', 'it', 'fr', 'bg', 'tr'];
 
@@ -258,6 +258,22 @@ const SAME_GENRE_MESSAGES = {
   bg: 'Избери два различни музикални жанра.',
   tr: 'İki farklı müzik türü seçin.'
 };
+// Ocazia "Pentru bunica sau bunicul" (ULTIMELE MODIFICĂRI STRICTE, hotfix 2026-08-08) — alegerea
+// e OBLIGATORIE cand occasion='bunici', niciodata dedusa din nume/voce. Vezi POST /api/orders.
+const GRANDPARENT_TYPE_REQUIRED_MESSAGES = {
+  ro: 'Alege pentru cine e cântecul: bunica sau bunicul.',
+  en: 'Choose who the song is for: grandmother or grandfather.',
+  de: 'Wähle, für wen das Lied ist: Oma oder Opa.',
+  es: 'Elige para quién es la canción: abuela o abuelo.',
+  it: 'Scegli per chi è la canzone: nonna o nonno.',
+  fr: 'Choisis pour qui est la chanson : grand-mère ou grand-père.',
+  bg: 'Избери за кого е песента: баба или дядо.',
+  tr: 'Şarkının kimin için olduğunu seçin: anneanne/babaanne mi, dede mi.'
+};
+function grandparentTypeRequiredMessage(lang) {
+  const safe = ALLOWED_LANGS.includes(lang) ? lang : 'ro';
+  return GRANDPARENT_TYPE_REQUIRED_MESSAGES[safe];
+}
 function sameGenreMessage(lang) {
   const safe = ALLOWED_LANGS.includes(lang) ? lang : 'ro';
   return SAME_GENRE_MESSAGES[safe];
@@ -1220,11 +1236,22 @@ app.use(express.static(path.join(__dirname, 'public'), {
 // ==========================================================================================
 app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
   try {
-    const { occasion, recipient, senderName, relationship, email, phone, story, genre, genre2, plan, lang, voicePreference } = req.body || {};
+    const { occasion, recipient, senderName, relationship, email, phone, story, genre, genre2, plan, lang, voicePreference, grandparentType } = req.body || {};
     const safeLang = ALLOWED_LANGS.includes(lang) ? lang : 'ro';
 
     if (!ALLOWED_OCCASIONS.includes(occasion)) {
       return res.status(400).json({ error: 'Ocazie invalidă.' });
+    }
+    // "Pentru bunica sau bunicul" (ULTIMELE MODIFICĂRI STRICTE, hotfix 2026-08-08): alegerea
+    // e OBLIGATORIE si validata STRICT server-side pentru aceasta ocazie — NICIODATA dedusa
+    // din nume sau din vocea melodiei. Pentru orice alta ocazie, campul e pur si simplu ignorat
+    // (salvat null), indiferent ce ar trimite un client care manipuleaza cererea din devtools.
+    let safeGrandparentType = null;
+    if (occasion === 'bunici') {
+      if (grandparentType !== 'grandmother' && grandparentType !== 'grandfather') {
+        return res.status(400).json({ error: grandparentTypeRequiredMessage(safeLang) });
+      }
+      safeGrandparentType = grandparentType;
     }
     if (!isValidString(recipient, 1, 60)) {
       return res.status(400).json({ error: missingFieldMessage('recipient', safeLang) });
@@ -1292,7 +1319,8 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
       status: 'draft', editsUsed: 0, variants: [], selectedVariantId: null,
       senderName: senderName.trim(), relationship: relationship.trim(),
       voicePreference: safeVoicePreference,
-      phone: safePhone
+      phone: safePhone,
+      grandparentType: safeGrandparentType
     });
 
     res.json({ orderId: order.id, accessToken: order.accessToken });
@@ -4306,6 +4334,32 @@ const OCCASION_LABELS = {
   pierdere: 'in loving memory',
   'pentru-mine': 'a song for oneself',
   altceva: 'a personal occasion'
+  // 'bunici' (ULTIMELE MODIFICĂRI STRICTE, hotfix 2026-08-08) NU are o singura eticheta fixa
+  // aici — depinde de order.grandparentType ('grandmother'/'grandfather'), ales explicit de
+  // client (niciodata dedus din nume/voce) — vezi GRANDPARENT_OCCASION_LABELS mai jos si
+  // derivarea lui occasionLabel in buildPrompt.
+};
+
+// Ocazia "Pentru bunica sau bunicul" (ULTIMELE MODIFICĂRI STRICTE, hotfix 2026-08-08) — SINGURA
+// ocazie cu doua variante posibile de eticheta/instructiune, alese pe baza order.grandparentType.
+// Instructiunea cere explicit ca relatia sa fie mentionata NATURAL in versuri — Suno scrie
+// versurile in limba comenzii (lyricsLanguage), deci "grandmother"/"grandfather" aici e doar
+// CONCEPTUL trimis modelului; traducerea naturala ("bunica"/"bunicul" in romana, "abuela"/
+// "abuelo" in spaniola etc.) o face Suno insusi, la fel ca pentru toate celelalte ocazii/genuri
+// (nici Suno, nici acest prompt, nu scriu vreodata literal cuvantul englezesc in versuri).
+const GRANDPARENT_OCCASION_LABELS = {
+  grandmother: 'a heartfelt tribute to a beloved grandmother',
+  grandfather: 'a heartfelt tribute to a beloved grandfather'
+};
+const GRANDPARENT_OCCASION_INSTRUCTIONS = {
+  grandmother: {
+    full: 'Warm, loving tribute dedicated to the grandmother — the lyrics must naturally mention, at least once, that this song is for her as a grandmother (use the natural word for "grandmother" in the lyrics language), full of gratitude and cherished memories, never generic and never a forced repetition.',
+    short: 'Warm tribute, naturally mentions the grandmother once, gratitude and memories.'
+  },
+  grandfather: {
+    full: 'Warm, loving tribute dedicated to the grandfather — the lyrics must naturally mention, at least once, that this song is for him as a grandfather (use the natural word for "grandfather" in the lyrics language), full of gratitude and cherished memories, never generic and never a forced repetition.',
+    short: 'Warm tribute, naturally mentions the grandfather once, gratitude and memories.'
+  }
 };
 
 // Instructiune de ATMOSFERA/TON pentru fiecare ocazie — separata de OCCASION_LABELS (care e
@@ -4419,12 +4473,23 @@ function buildPrompt(order, feedback, genreOverride) {
   // cele doua cereri; DOAR stilul muzical difera, ca ambele melodii sa fie despre aceeasi
   // poveste reala, in doua interpretari muzicale reale, distincte.
   const styleTags = genreMap[genreOverride || order.genre] || 'pop, warm vocals';
-  const occasionLabel = OCCASION_LABELS[order.occasion] || order.occasion;
+  // "bunici" (ULTIMELE MODIFICĂRI STRICTE, hotfix 2026-08-08): eticheta/instructiunea depind
+  // de grandparentType, ales explicit de client la creare — NICIODATA dedus aici din nume/voce.
+  // O comanda veche/corupta cu occasion='bunici' dar fara grandparentType valid (nu ar trebui
+  // sa existe, validat strict la POST /api/orders) foloseste implicit 'grandmother', ca sa nu
+  // blocheze generarea (acelasi spirit defensiv ca fallback-ul general de mai jos).
+  const isGrandparentOccasion = order.occasion === 'bunici';
+  const grandparentType = (order.grandparentType === 'grandfather') ? 'grandfather' : 'grandmother';
+  const occasionLabel = isGrandparentOccasion
+    ? GRANDPARENT_OCCASION_LABELS[grandparentType]
+    : (OCCASION_LABELS[order.occasion] || order.occasion);
 
   // Instructiunea de atmosfera/ton pentru ocazia aleasa — comenzi vechi sau o valoare
   // necunoscuta de ocazie NU blocheaza generarea (Partea 2, punctul 11): folosim fallback-ul
   // neutru, bazat pe poveste.
-  const occasionInstructionSet = OCCASION_INSTRUCTIONS[order.occasion] || OCCASION_INSTRUCTION_FALLBACK;
+  const occasionInstructionSet = isGrandparentOccasion
+    ? GRANDPARENT_OCCASION_INSTRUCTIONS[grandparentType]
+    : (OCCASION_INSTRUCTIONS[order.occasion] || OCCASION_INSTRUCTION_FALLBACK);
   let useShortOccasionInstruction = false;
   let includeOccasionInstruction = true;
   function currentOccasionInstruction() {
