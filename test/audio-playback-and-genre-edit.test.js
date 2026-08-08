@@ -49,6 +49,21 @@ test('server.js: trimAudio reincodeaza (libmp3lame), nu mai foloseste "-acodec c
   assert.ok(server.includes("'-c:a', 'libmp3lame'"), 'trimAudio trebuie sa reincodeze explicit cu libmp3lame');
 });
 
+test('server.js: trimAudio foloseste VBR calitate maxima, fara reesantionare fortata (fix distorsiune la inceput)', () => {
+  const server = read('server.js');
+  assert.ok(server.includes("'-q:a', '0'"), 'trimAudio trebuie sa foloseasca VBR calitate maxima (-q:a 0) — CBR redus (128k) produce artefacte pe tranziente bruste, exact unde incep preview-urile');
+  assert.ok(!server.includes("'-b:a', '128k'"), 'nu mai trebuie folosit un bitrate fix redus, care sacrifica exact calitatea la tranziente');
+  assert.ok(!server.includes("'-ar', '44100'"), 'nu mai trebuie fortata reesantionarea — pastram sample rate-ul nativ al sursei (48000Hz de la Suno), un pas de procesare inutil eliminat');
+});
+
+test('server.js: trimAudio aplica un fade-in de 15ms (doar clickuri de taiere, nu mascheaza distorsiune)', () => {
+  const server = read('server.js');
+  assert.ok(
+    server.includes("'afade=t=in:st=0:d=0.015'"),
+    'trebuie sa existe un fade-in FOARTE scurt (15ms) care elimina doar un eventual click de esantion la taietura, fara sa ascunda o distorsiune mai lunga'
+  );
+});
+
 test('server.js: /media/video/:orderId ramane strict blocat inainte de plata (fara preview video)', () => {
   const server = read('server.js');
   assert.ok(

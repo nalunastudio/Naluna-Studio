@@ -4083,24 +4083,31 @@ async function downloadFile(url, destPath) {
 // Cand e 0 (comportamentul dintotdeauna), NU adaugam deloc flag-ul -ss, ca sa pastram
 // exact aceeasi comanda ffmpeg de dinainte. Fisierul COMPLET (tempFull, folosit pentru
 // descarcarea platita) nu trece NICIODATA prin aceasta functie — doar preview-ul.
-// HOTFIX 2026-08-08: previewurile de 40s ramaneau blocate la "--:--" pe iPhone (Safari),
-// desi acelasi fisier trecea fara nicio eroare prin ffprobe/ffmpeg (decodoare foarte tolerante)
-// si prin curl (CORS, Range, Content-Type — toate corecte, verificate direct). Suspiciune
-// principala ramasa: `-acodec copy` (fara reincodare) taie fisierul comprimat la un punct
-// care NU e neaparat aliniat exact la o granita de cadru MP3 (cadrele MPEG1 Layer3 au un numar
-// FIX de esantioane, 1152 — un "-ss"/"-t" in secunde rareori cade exact pe o asemenea granita)
-// — decodoare foarte stricte (pipeline-ul media al Safari/AVFoundation e cunoscut ca mult mai
-// putin tolerant decat ffmpeg la cadre partiale/nealiniate la inceputul/sfarsitul fisierului)
-// pot esua tacit la initializare (fara eveniment 'error', doar ramane la readyState 0) exact
-// pe un fisier pe care ffprobe il citeste fara nicio problema. Reincodam acum explicit (CBR,
-// nu VBR — mai simplu si mai predictibil de decodat/cautat pentru orice player, inclusiv cele
-// stricte) in loc sa copiem stream-ul — elimina complet clasa asta de problema la taiere,
-// indiferent de cauza exacta, cu un cost de procesare neglijabil (sub o secunda pentru 40s).
+// HOTFIX 2026-08-07: previewurile ramaneau blocate la "--:--" — cauza REALA (gasita ulterior,
+// 2026-08-08) a fost o bucla infinita de re-randare in JS (melodia-mea.html), nu formatul
+// fisierului. Reincodarea (in loc de "-acodec copy") a ramas totusi, ca imbunatatire corecta
+// independenta — elimina orice ambiguitate de aliniere la o granita de cadru MP3 la un punct
+// de taiere arbitrar.
+//
+// HOTFIX 2026-08-08 (sunet "gajait"/distorsionat la inceputul preview-urilor): comparat direct
+// fisierul complet (nemodificat, ~identic cu ce trimite furnizorul) cu preview-ul — sursa e
+// curata (verificat: fara clipping, Peak level sub -1.9dB, Flat factor 0 chiar la tranzientul
+// initial). Problema era in REINCODARE: (1) bitrate fix 128kbps, mai mic decat cele ~192kbps
+// ale sursei — MP3 la bitrate redus se descurca cel mai prost exact pe TRANZIENTE bruste (un
+// instrument/o voce care incepe brusc din liniste, exact cum incep majoritatea preview-urilor
+// noastre) — fenomen cunoscut ("pre-echo"/artefacte de tip "sub apa") — nu clipping, deci nu
+// aparea in verificarile de nivel; (2) reesantionare fortata la 44100Hz cand sursa Suno e la
+// 48000Hz — un pas de procesare in plus, complet inutil (Safari nu are nicio problema reala cu
+// 48kHz), eliminat. Solutie: VBR calitate maxima (-q:a 0, ~220-260kbps mediu — aloca mai multi
+// biti exact pe tranziente, unde CBR redus esueaza) + pastram sample rate-ul nativ al sursei.
+// Suplimentar (NU inlocuieste fixul de mai sus): un fade-in de 15ms — doar atat cat sa elimine
+// un eventual "click" de esantion daca taietura (-ss) nu cade exact pe zero-crossing; 15ms e
+// mult prea scurt ca sa masce vreo distorsiune reala, doar rotunjeste tranzitia bruta silence->sunet.
 async function trimAudio(srcPath, destPath, seconds, startSeconds = 0) {
   const safeStart = Math.max(0, Number(startSeconds) || 0);
   const args = ['-y'];
   if (safeStart > 0) args.push('-ss', String(safeStart));
-  args.push('-i', srcPath, '-t', String(seconds), '-c:a', 'libmp3lame', '-b:a', '128k', '-ar', '44100', destPath);
+  args.push('-i', srcPath, '-t', String(seconds), '-af', 'afade=t=in:st=0:d=0.015', '-c:a', 'libmp3lame', '-q:a', '0', destPath);
   await execFfmpeg(args);
 }
 
