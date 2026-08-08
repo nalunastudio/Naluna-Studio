@@ -1,0 +1,133 @@
+// Teste de regresie STATICE (citesc direct sursa, fara server/DB) pentru hotfixul urgent
+// 2026-08-08: bucla infinita care distrugea playerele audio + "Page Unresponsive" pe TOATE
+// pachetele, taierea preview-urilor audio (stream copy -> reincodare), si schimbarea genului
+// muzical la editare (Standard + Premium/Video, cu doua genuri distincte per comanda).
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+
+function read(relPath) {
+  return fs.readFileSync(path.join(__dirname, '..', relPath), 'utf8');
+}
+
+test('melodia-mea.html: renderContent NU mai apeleaza selectVariant() direct (cauza buclei infinite)', () => {
+  const html = read('public/melodia-mea.html');
+  assert.ok(
+    html.includes('syncSelectedVariantUI(selectedVariantIndex);'),
+    'renderContent trebuie sa foloseasca varianta STRICT vizuala (fara retea/reload)'
+  );
+  assert.ok(html.includes('function renderContent(order)'), 'functia renderContent trebuie sa existe');
+  // linia veche, bugata, care declansa bucla infinita (renderContent -> selectVariant ->
+  // loadOrder -> renderContent -> ...) nu mai trebuie sa existe deloc in fisier.
+  assert.ok(
+    !html.includes('    selectVariant(selectedVariantIndex);'),
+    'nu mai trebuie sa existe niciun apel automat la selectVariant() (cu efecte de retea + reload) in afara click handler-ului real'
+  );
+});
+
+test('melodia-mea.html: selectVariant() ramane rezervat click-ului real al clientului pe un card', () => {
+  const html = read('public/melodia-mea.html');
+  assert.ok(html.includes('async function selectVariant(index)'), 'selectVariant trebuie sa existe in continuare, pentru selectia manuala reala');
+  assert.ok(html.includes('selectVariant(i);'), 'click handler-ul cardului trebuie sa apeleze in continuare selectVariant');
+});
+
+test('melodia-mea.html: playerele audio nu mai folosesc crossOrigin (inutil pentru redare simpla, putea doar strica)', () => {
+  const html = read('public/melodia-mea.html');
+  assert.ok(!html.includes("audioEl.crossOrigin"), 'crossOrigin a fost eliminat din mountAudio dupa ce clientul a confirmat ca playback-ul tot nu functiona cu el activ');
+});
+
+test('succes.html: playerele audio/video nu mai folosesc crossOrigin', () => {
+  const html = read('public/succes.html');
+  assert.ok(!html.includes('el.crossOrigin'), 'crossOrigin eliminat si din mountMedia (succes.html)');
+});
+
+test('server.js: trimAudio reincodeaza (libmp3lame), nu mai foloseste "-acodec copy"', () => {
+  const server = read('server.js');
+  assert.ok(server.includes('async function trimAudio(srcPath, destPath, seconds, startSeconds = 0)'), 'functia trimAudio trebuie sa existe');
+  assert.ok(!server.includes("'-acodec', 'copy'"), 'nu mai trebuie folosit stream-copy pentru taierea preview-ului');
+  assert.ok(server.includes("'-c:a', 'libmp3lame'"), 'trimAudio trebuie sa reincodeze explicit cu libmp3lame');
+});
+
+test('server.js: /media/video/:orderId ramane strict blocat inainte de plata (fara preview video)', () => {
+  const server = read('server.js');
+  assert.ok(
+    server.includes("if (order.status !== 'ready') return res.status(403).send('Videoclipul se deblochează după plată');"),
+    'ruta video trebuie sa refuze STRICT orice acces inainte de status=ready (fara URL semnat, fara redirect, fara fragment)'
+  );
+});
+
+test('melodia-mea.html: videoclipul cadou e afisat ca coperta STATICA blocata, fara element <video> sau cerere de retea', () => {
+  const html = read('public/melodia-mea.html');
+  assert.ok(html.includes('gift-video-locked'), 'trebuie sa existe coperta statica cu lacat');
+  assert.ok(!html.includes('function mountGiftVideo'), 'nu mai trebuie sa existe cod care construieste un <video> real pre-plata');
+  assert.ok(!html.includes("videoEl.src = `/media/video/"), 'nu mai trebuie sa existe nicio cerere de retea catre /media/video inainte de plata');
+});
+
+test('server.js: POST /api/orders/:orderId/regenerate accepta si valideaza schimbarea genului', () => {
+  const server = read('server.js');
+  assert.ok(server.includes('const requestedGenre = typeof req.body?.genre'), 'regenerate trebuie sa citeasca genre din body');
+  assert.ok(server.includes('invalidGenreMessage(order.lang)'), 'un gen invalid trebuie respins cu mesaj tradus');
+  assert.ok(
+    server.includes('if (otherGenre && requestedGenre === otherGenre)'),
+    'Premium/Video: noul gen nu poate coincide cu genul CELEILALTE variante (neatinse)'
+  );
+});
+
+test('server.js: schimbarea genului la regenerare e inclusa in editarea gratuita existenta, nu una suplimentara', () => {
+  const server = read('server.js');
+  // genre se citeste si valideaza INAINTE de claimOrderForRegeneration (rezervarea editarii
+  // gratuite) — nu exista o a doua rezervare/limita separata doar pentru schimbarea genului.
+  const genreIdx = server.indexOf('const requestedGenre = typeof req.body?.genre');
+  const claimIdx = server.indexOf('db.claimOrderForRegeneration(order.id, FREE_EDITS');
+  assert.ok(genreIdx > -1 && claimIdx > -1 && genreIdx < claimIdx, 'genul trebuie citit/validat inainte de rezervarea (unica) a editarii gratuite');
+});
+
+test('server.js: genul se actualizeaza pe coloana corecta (genre sau genre2) inainte de regenerare', () => {
+  const server = read('server.js');
+  assert.ok(
+    server.includes("editingGenre2Slot ? { genre2: requestedGenre } : { genre: requestedGenre }"),
+    'trebuie sa scrie explicit in coloana corecta (genre1 sau genre2) inainte de a porni regenerarea'
+  );
+});
+
+test('server.js: runGeneration/reluari NU mai citesc genul din varianta VECHE (sourceVariant.genre) la regenerare partiala', () => {
+  const server = read('server.js');
+  // vechiul tipar bugat, eliminat complet
+  assert.ok(
+    !server.includes('const genreToUse = (sourceVariant && sourceVariant.genre) || order.genre;'),
+    'tiparul vechi (citea genul STALE al variantei inainte de editare, ignorand o schimbare de gen) trebuie eliminat complet'
+  );
+  // noul tipar, corect: gasit prin eliminare, folosind varianta SORA (neatinsa, deci actuala)
+  const occurrences = (server.match(/siblingGenre && siblingGenre === order\.genre\)/g) || []).length;
+  assert.ok(occurrences >= 3, `genul trebuie aflat prin eliminare (folosind varianta sora) in toate cele 3 locuri (runGeneration, resumeExistingTaskPolling, callback) — gasite ${occurrences}`);
+});
+
+test('melodia-mea.html: selectorul de gen la editare exista, populat cu genurile reale ale formularului', () => {
+  const html = read('public/melodia-mea.html');
+  assert.ok(html.includes('id="edit-genre-select"'), 'selectorul de gen trebuie sa existe in zona de editare');
+  assert.ok(html.includes("EDIT_GENRE_KEYS = ['emotional', 'suflet', 'pop'"), 'trebuie sa foloseasca aceeasi lista reala de genuri ca formularul de comanda');
+  assert.ok(html.includes('function populateGenreSelect'), 'selectorul trebuie populat dinamic cu genul curent al variantei editate');
+});
+
+test('melodia-mea.html: genul selectat e trimis efectiv la regenerare', () => {
+  const html = read('public/melodia-mea.html');
+  assert.ok(
+    html.includes('body: JSON.stringify({ feedback, variantId: sourceVariantId, voicePreference: selectedVoicePreference, genre: requestedGenre })'),
+    'cererea de regenerare trebuie sa includa genul ales de client'
+  );
+});
+
+test('melodia-mea.html: validare client-side ca cele doua genuri raman diferite (Premium/Video)', () => {
+  const html = read('public/melodia-mea.html');
+  assert.ok(html.includes('t.edit_genre_same_error'), 'trebuie sa existe un mesaj de eroare tradus pentru genuri identice la editare');
+  assert.ok(html.includes("otherVariant.genre === requestedGenre"), 'validarea trebuie sa compare cu genul CELEILALTE variante');
+});
+
+test('traduceri: cheile noi (edit_genre_label, edit_genre_same_error, gift_video_locked_msg) exista in toate cele 8 limbi', () => {
+  const html = read('public/melodia-mea.html');
+  ['edit_genre_label', 'edit_genre_same_error', 'gift_video_locked_msg', 'gift_video_title', 'video_song_label', 'video_gift_song_label'].forEach(key => {
+    const count = (html.match(new RegExp(key + ':', 'g')) || []).length;
+    assert.equal(count, 8, `cheia "${key}" trebuie sa apara exact 8 ori (cate una per limba), gasita de ${count} ori`);
+  });
+});

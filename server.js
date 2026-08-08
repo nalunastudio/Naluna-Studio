@@ -263,6 +263,23 @@ function sameGenreMessage(lang) {
   return SAME_GENRE_MESSAGES[safe];
 }
 
+// Mesaj de validare tradus — gen muzical invalid la editare (hotfix 2026-08-08, schimbarea
+// genului la regenerare).
+const INVALID_GENRE_MESSAGES = {
+  ro: 'Genul muzical ales nu este valid',
+  en: 'The chosen musical genre is not valid',
+  de: 'Das gewählte Musikgenre ist ungültig',
+  es: 'El género musical elegido no es válido',
+  it: 'Il genere musicale scelto non è valido',
+  fr: "Le genre musical choisi n'est pas valide",
+  bg: 'Избраният музикален жанр не е валиден',
+  tr: 'Seçilen müzik türü geçerli değil'
+};
+function invalidGenreMessage(lang) {
+  const safe = ALLOWED_LANGS.includes(lang) ? lang : 'ro';
+  return INVALID_GENRE_MESSAGES[safe];
+}
+
 // Validare E.164 STRICT independenta de tara — NU presupune si NU forteaza niciodata un
 // prefix anume (ex. +44). Accepta orice tara valida: "+" urmat de 7-15 cifre, prima cifra
 // nefiind 0 (asa cum cere standardul E.164). Numarul trebuie sa fi fost deja normalizat de
@@ -1423,6 +1440,24 @@ app.post('/api/orders/:orderId/regenerate', generationLimiter, requireOrderToken
       return res.status(400).json({ error: invalidVoiceMessage(order.lang) });
     }
 
+    // Schimbarea genului muzical la editare (hotfix 2026-08-08) — OPTIONALA, la fel ca vocea:
+    // clientul poate lasa genul neschimbat. Daca e trimis, trebuie sa fie unul din genurile
+    // reale ale formularului. Pentru Premium/Video (doua genuri diferite, cate unul per
+    // varianta), noul gen NU poate fi identic cu genul CELEILALTE variante (neatinsa de
+    // aceasta regenerare) — cele doua genuri raman mereu diferite, cerinta explicita.
+    const requestedGenre = typeof req.body?.genre === 'string' ? req.body.genre : null;
+    if (requestedGenre !== null && !ALLOWED_GENRES.includes(requestedGenre)) {
+      return res.status(400).json({ error: invalidGenreMessage(order.lang) });
+    }
+    const isDualGenrePlanForRegen = PLAN_VARIANT_COUNT[order.plan] === 2;
+    if (requestedGenre !== null && isDualGenrePlanForRegen) {
+      const otherVariant = (order.variants || []).find(v => v.id !== requestedVariantId);
+      const otherGenre = (otherVariant && otherVariant.genre) || null;
+      if (otherGenre && requestedGenre === otherGenre) {
+        return res.status(400).json({ error: sameGenreMessage(order.lang) });
+      }
+    }
+
     // Protectie credite Suno — vezi credits.js. Verificata INAINTE de rezervarea atomica de
     // mai jos, care oricum aplica separat limita de incercari (generation_attempts) direct
     // in SQL — verificarea de aici doar da un mesaj clar clientului fara sa mai incerce
@@ -1490,6 +1525,21 @@ app.post('/api/orders/:orderId/regenerate', generationLimiter, requireOrderToken
     if (editedLyrics) {
       const lyricsInstruction = `Try to follow lyrics close to this rewritten version: ${editedLyrics}`;
       combinedFeedback = feedback ? `${lyricsInstruction}. Also: ${feedback}` : lyricsInstruction;
+    }
+
+    // Daca clientul a cerut si o schimbare de gen, actualizam ACUM coloana corecta din DB
+    // (genre pentru Standard sau varianta 1, genre2 pentru varianta 2 la Premium/Video) —
+    // runGeneration reciteste comanda din DB chiar la inceput, deci noul gen ajunge automat in
+    // prompt-ul trimis furnizorului, fara sa mai fie nevoie sa-l trecem separat prin optiuni.
+    // sourceVariant.genre lipseste doar pe comenzi Standard vechi (o singura varianta, fara
+    // gen per-varianta) — acolo genul se schimba mereu pe coloana principala (genre). Validarea
+    // "cele doua genuri raman diferite" a rulat deja mai sus — aici comparam DOAR cu genul
+    // CURENT al variantei editate, ca sa nu facem o scriere inutila cand genul de fapt nu s-a
+    // schimbat.
+    const currentGenreOfEditedVariant = (sourceVariant && sourceVariant.genre) || order.genre;
+    if (requestedGenre !== null && requestedGenre !== currentGenreOfEditedVariant) {
+      const editingGenre2Slot = isDualGenrePlanForRegen && sourceVariant.genre && sourceVariant.genre === order.genre2;
+      await db.updateOrder(order.id, editingGenre2Slot ? { genre2: requestedGenre } : { genre: requestedGenre });
     }
 
     await db.updateOrder(order.id, { regenerateSourceVariantId: requestedVariantId });
@@ -2571,11 +2621,17 @@ app.post('/api/music/callback', async (req, res) => {
       // Aceeasi logica de gen/inlocuire partiala ca in resumeExistingTaskPolling (vezi
       // comentariul de acolo) — necesara pentru ca acest cod ruleaza si pentru regenerari
       // partiale Premium/Video (musicTaskId2 e null in acel caz, deci trece garda de mai sus).
+      // Genul se afla PRIN ELIMINARE (vezi comentariul din runGeneration) — NICIODATA din
+      // sourceVariant.genre (VECHI, dinainte de o eventuala schimbare de gen la editare).
       const isDualGenrePlan = PLAN_VARIANT_COUNT[order.plan] === 2;
       const sourceVariant = (isDualGenrePlan && order.regenerateSourceVariantId)
         ? (order.variants || []).find(v => v.id === order.regenerateSourceVariantId)
         : null;
-      const genreToUse = (sourceVariant && sourceVariant.genre) || order.genre;
+      const siblingVariant = sourceVariant ? (order.variants || []).find(v => v.id !== sourceVariant.id) : null;
+      const siblingGenre = siblingVariant ? siblingVariant.genre : null;
+      const genreToUse = sourceVariant
+        ? ((siblingGenre && siblingGenre === order.genre) ? order.genre2 : order.genre)
+        : order.genre;
       const replaceOptions = sourceVariant ? { replaceVariantId: sourceVariant.id } : {};
       await finalizeVariantsIfNeeded(order.id, [{ tracks, genre: genreToUse, taskId }], replaceOptions).catch(err => {
         console.error(`Callback SunoAPI: eroare la finalizarea comenzii ${order.id}:`, err.message);
@@ -2700,12 +2756,18 @@ async function resumeExistingTaskPolling(orderId, taskId) {
       // Regenerare partiala (Premium/Video, o singura varianta reeditata): foloseste genul
       // deja asociat variantei sursa si inlocuieste DOAR acea varianta — niciodata sora ei.
       // Pentru generare initiala sau Standard, regenerateSourceVariantId e null/nu se aplica,
-      // deci acesta ramane implicit un inlocuitor COMPLET (comportamentul dinainte).
+      // deci acesta ramane implicit un inlocuitor COMPLET (comportamentul dinainte). Genul se
+      // afla PRIN ELIMINARE (vezi comentariul din runGeneration) — NICIODATA din
+      // sourceVariant.genre (VECHI, dinainte de o eventuala schimbare de gen la editare).
       const isDualGenrePlan = PLAN_VARIANT_COUNT[order.plan] === 2;
       const sourceVariant = (isDualGenrePlan && order.regenerateSourceVariantId)
         ? (order.variants || []).find(v => v.id === order.regenerateSourceVariantId)
         : null;
-      const genreToUse = (sourceVariant && sourceVariant.genre) || order.genre;
+      const siblingVariant = sourceVariant ? (order.variants || []).find(v => v.id !== sourceVariant.id) : null;
+      const siblingGenre = siblingVariant ? siblingVariant.genre : null;
+      const genreToUse = sourceVariant
+        ? ((siblingGenre && siblingGenre === order.genre) ? order.genre2 : order.genre)
+        : order.genre;
       const replaceOptions = sourceVariant ? { replaceVariantId: sourceVariant.id } : {};
       await finalizeVariantsIfNeeded(orderId, [{ tracks, genre: genreToUse, taskId }], replaceOptions);
       return;
@@ -2734,13 +2796,21 @@ async function runGeneration(orderId, feedback, options = {}) {
   // Regenerare PARTIALA (doar Premium/Video): clientul a ales explicit sa reediteze O SINGURA
   // varianta existenta (POST .../regenerate cere variantId obligatoriu) — regeneram DOAR genul
   // acelei variante, cealalta ramane complet neatinsa (nu risipim un al doilea apel Suno pentru
-  // un gen pe care clientul nu l-a cerut sa fie schimbat). Genul folosit e cel deja asociat
-  // variantei (comenzi noi, cu genre2); pentru comenzi Standard vechi cu doua variante (pastrate
-  // pentru compatibilitate) aceasta cale nu se foloseste niciodata — vezi ramura Standard de mai
-  // jos, care inlocuieste intotdeauna intreg array-ul, ca inainte.
+  // un gen pe care clientul nu l-a cerut sa fie schimbat). Pentru comenzi Standard vechi cu
+  // doua variante (pastrate pentru compatibilitate) aceasta cale nu se foloseste niciodata —
+  // vezi ramura Standard de mai jos, care inlocuieste intotdeauna intreg array-ul, ca inainte.
+  //
+  // Genul de folosit: NICIODATA citit direct din sourceVariant.genre (VECHI — e valoarea
+  // dinainte de editare, ramane neschimbata pana variantele sunt inlocuite la finalul acestei
+  // generari) — daca clientul a cerut o schimbare de gen (hotfix 2026-08-08), POST /regenerate
+  // a scris deja noua valoare in order.genre/genre2 INAINTE sa apeleze aceasta functie. Aflam
+  // ce coloana ii corespunde variantei editate PRIN ELIMINARE, uitandu-ne la varianta SORA
+  // (neatinsa, deci genul ei curent e mereu corect/actual): oricare din order.genre/genre2 NU
+  // apartine surorii e genul de folosit acum.
   if (options.replaceVariantId && isDualGenrePlan) {
-    const sourceVariant = (order.variants || []).find(v => v.id === options.replaceVariantId);
-    const genreToUse = (sourceVariant && sourceVariant.genre) || order.genre;
+    const siblingVariant = (order.variants || []).find(v => v.id !== options.replaceVariantId);
+    const siblingGenre = siblingVariant ? siblingVariant.genre : null;
+    const genreToUse = (siblingGenre && siblingGenre === order.genre) ? order.genre2 : order.genre;
     const prompt = buildPrompt(order, feedback, genreToUse);
     const taskId = await callMusicProvider(orderId, prompt);
     await db.updateOrder(orderId, { musicTaskId: taskId, musicTaskId2: null });
@@ -4013,11 +4083,24 @@ async function downloadFile(url, destPath) {
 // Cand e 0 (comportamentul dintotdeauna), NU adaugam deloc flag-ul -ss, ca sa pastram
 // exact aceeasi comanda ffmpeg de dinainte. Fisierul COMPLET (tempFull, folosit pentru
 // descarcarea platita) nu trece NICIODATA prin aceasta functie — doar preview-ul.
+// HOTFIX 2026-08-08: previewurile de 40s ramaneau blocate la "--:--" pe iPhone (Safari),
+// desi acelasi fisier trecea fara nicio eroare prin ffprobe/ffmpeg (decodoare foarte tolerante)
+// si prin curl (CORS, Range, Content-Type — toate corecte, verificate direct). Suspiciune
+// principala ramasa: `-acodec copy` (fara reincodare) taie fisierul comprimat la un punct
+// care NU e neaparat aliniat exact la o granita de cadru MP3 (cadrele MPEG1 Layer3 au un numar
+// FIX de esantioane, 1152 — un "-ss"/"-t" in secunde rareori cade exact pe o asemenea granita)
+// — decodoare foarte stricte (pipeline-ul media al Safari/AVFoundation e cunoscut ca mult mai
+// putin tolerant decat ffmpeg la cadre partiale/nealiniate la inceputul/sfarsitul fisierului)
+// pot esua tacit la initializare (fara eveniment 'error', doar ramane la readyState 0) exact
+// pe un fisier pe care ffprobe il citeste fara nicio problema. Reincodam acum explicit (CBR,
+// nu VBR — mai simplu si mai predictibil de decodat/cautat pentru orice player, inclusiv cele
+// stricte) in loc sa copiem stream-ul — elimina complet clasa asta de problema la taiere,
+// indiferent de cauza exacta, cu un cost de procesare neglijabil (sub o secunda pentru 40s).
 async function trimAudio(srcPath, destPath, seconds, startSeconds = 0) {
   const safeStart = Math.max(0, Number(startSeconds) || 0);
   const args = ['-y'];
   if (safeStart > 0) args.push('-ss', String(safeStart));
-  args.push('-i', srcPath, '-t', String(seconds), '-acodec', 'copy', destPath);
+  args.push('-i', srcPath, '-t', String(seconds), '-c:a', 'libmp3lame', '-b:a', '128k', '-ar', '44100', destPath);
   await execFfmpeg(args);
 }
 
