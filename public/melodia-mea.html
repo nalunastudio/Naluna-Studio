@@ -105,6 +105,20 @@
   .btn-cta-orange:hover{ background:var(--orange-deep); box-shadow:0 12px 28px -8px rgba(201,127,20,.55); }
   .btn-cta-orange:focus-visible{ outline:3px solid var(--orange-deep); outline-offset:2px; }
   .btn-cta-orange:disabled{ opacity:.6; box-shadow:none; }
+  /* ULTIMUL FINISAJ (hotfix 2026-08-08): butonul care deschide/inchide meniul de editare
+     Standard — deschis, portocaliu FOARTE deschis, chenar+text portocaliu inchis (contrast
+     accesibil pe fundal deschis — verificat, nu doar "portocaliu" generic). */
+  .btn-toggle-orange{
+    display:flex; align-items:center; justify-content:center; gap:8px;
+    width:100%; max-width:420px; margin:0 auto; min-height:52px;
+    padding:13px 22px; font-size:15px; font-weight:700; border-radius:14px;
+    background:rgba(245,166,35,.1); border:2px solid var(--orange-deep); color:#8A4B0A;
+    transition:background-color .2s ease, transform .15s ease;
+  }
+  .btn-toggle-orange:hover{ background:rgba(245,166,35,.18); transform:translateY(-1px); }
+  .btn-toggle-orange:focus-visible{ outline:3px solid var(--orange-deep); outline-offset:2px; }
+  @keyframes editMenuFadeIn{ from{ opacity:0; transform:translateY(-6px); } to{ opacity:1; transform:translateY(0); } }
+  #edit-menu-fields:not([hidden]){ animation:editMenuFadeIn .25s ease; }
   /* Butonul unic de plata din ecranul de alegere Standard — acelasi stil primar existent,
      doar mai mare/centrat, ca sa ramana singurul punct de actiune vizibil dupa editare. */
   .btn-cta-wide{ width:100%; max-width:420px; min-height:56px; font-size:15px; }
@@ -366,6 +380,18 @@
           </div>
         </div>
 
+        <!-- ULTIMUL FINISAJ (hotfix 2026-08-08): Standard, INAINTE de prima regenerare — meniul
+             de editare e acum PLIABIL, inchis implicit. Butonul de mai jos deschide/inchide
+             #edit-menu-fields (folosit deja de Premium/Video, mereu vizibil pentru ele — vezi
+             updateStandardEditMenuVisibility). Ascuns complet (display:none) pentru orice alt
+             caz (Premium/Video, sau Standard dupa editare). -->
+        <div id="standard-preedit-toggle-wrap" style="display:none; margin:10px 0 4px; text-align:center;">
+          <button type="button" id="edit-menu-toggle-btn" class="btn-toggle-orange" aria-expanded="false" aria-controls="edit-menu-fields">
+            <span aria-hidden="true">✏️</span> <span id="edit-menu-toggle-label"></span>
+          </button>
+          <p id="edit-menu-toggle-hint" style="font-size:13px; color:var(--text-secondary); margin:8px 0 0;"></p>
+        </div>
+
         <div id="edit-menu-fields">
           <div class="field" style="margin-top:8px;">
             <label id="voice-current-label">Voce selectată: automat</label>
@@ -399,6 +425,11 @@
           </div>
           <div id="edits-info-msg" style="font-size:13px; color:var(--text-secondary); margin-top:10px;"></div>
         </div>
+
+        <!-- checkoutBtn e MUTAT fizic aici pentru Standard, INAINTE de editare — trebuie sa
+             ramana vizibil INDIFERENT daca meniul pliabil e deschis sau inchis (ordinea ceruta:
+             card+preview, buton editare, buton plata). Ascuns complet pentru orice alt caz. -->
+        <div id="standard-preedit-checkout-slot" style="display:none; justify-content:center; margin-top:10px;"></div>
 
         <div class="memories" id="memories-section" style="display:none;">
           <h2 id="memories-title"></h2>
@@ -538,7 +569,7 @@
       voice_female: 'feminină', voice_male: 'masculină', voice_duet: 'duet', voice_auto: 'automat',
       voice_change_hint: 'Se aplică doar la următoarea regenerare',
       voice_selected_label: (v) => `Voce selectată: ${v}`,
-      confirm_yes: 'Creează noua versiune', confirm_yes_loading: 'Se creează...', confirm_no: 'Renunță',
+      confirm_yes: 'Creează noua versiune', confirm_yes_loading: 'Se creează...', confirm_no: 'Renunță', edit_menu_close_btn: 'Închide editarea', edit_menu_toggle_hint: 'Poți modifica versurile, vocea sau genul muzical.',
       checkout_btn: 'Finalizează cadoul', variant_word: 'varianta', checkout_btn_standard: 'Continuă la plată',
       msg_regenerating: 'Se regenerează 2 variante noi...', msg_regenerating_standard: 'Creăm noua versiune a melodiei...', msg_conn_error: 'Eroare de conexiune. Încearcă din nou',
       msg_try_again: 'încearcă din nou', msg_error_prefix: 'Eroare: ', msg_already_paid: 'Această comandă a fost deja plătită și finalizată',
@@ -597,7 +628,7 @@
       voice_female: 'female', voice_male: 'male', voice_duet: 'duet', voice_auto: 'automatic',
       voice_change_hint: 'Applies only to the next regeneration',
       voice_selected_label: (v) => `Selected voice: ${v}`,
-      confirm_yes: 'Create the new version', confirm_yes_loading: 'Creating...', confirm_no: 'Cancel',
+      confirm_yes: 'Create the new version', confirm_yes_loading: 'Creating...', confirm_no: 'Cancel', edit_menu_close_btn: 'Close editing', edit_menu_toggle_hint: 'You can change the lyrics, voice or genre.',
       checkout_btn: 'Finish the gift', variant_word: 'version', checkout_btn_standard: 'Continue to payment',
       msg_regenerating: 'Regenerating 2 new versions...', msg_regenerating_standard: 'Creating your new version...', msg_conn_error: 'Connection error. Please try again.',
       msg_try_again: 'please try again.', msg_error_prefix: 'Error: ', msg_already_paid: 'This order has already been paid and completed.',
@@ -656,7 +687,7 @@
       voice_female: 'weiblich', voice_male: 'männlich', voice_duet: 'Duett', voice_auto: 'automatisch',
       voice_change_hint: 'Gilt nur für die nächste Regenerierung',
       voice_selected_label: (v) => `Ausgewählte Stimme: ${v}`,
-      confirm_yes: 'Neue Version erstellen', confirm_yes_loading: 'Wird erstellt...', confirm_no: 'Abbrechen',
+      confirm_yes: 'Neue Version erstellen', confirm_yes_loading: 'Wird erstellt...', confirm_no: 'Abbrechen', edit_menu_close_btn: 'Bearbeitung schließen', edit_menu_toggle_hint: 'Du kannst Text, Stimme oder Genre ändern.',
       checkout_btn: 'Geschenk abschließen', variant_word: 'Version', checkout_btn_standard: 'Weiter zur Zahlung',
       msg_regenerating: '2 neue Versionen werden erstellt...', msg_regenerating_standard: 'Deine neue Version wird erstellt...', msg_conn_error: 'Verbindungsfehler. Bitte versuche es erneut.',
       msg_try_again: 'bitte versuche es erneut.', msg_error_prefix: 'Fehler: ', msg_already_paid: 'Diese Bestellung wurde bereits bezahlt und abgeschlossen.',
@@ -715,7 +746,7 @@
       voice_female: 'femenina', voice_male: 'masculina', voice_duet: 'dúo', voice_auto: 'automática',
       voice_change_hint: 'Se aplica solo a la próxima regeneración',
       voice_selected_label: (v) => `Voz seleccionada: ${v}`,
-      confirm_yes: 'Crear la nueva versión', confirm_yes_loading: 'Creando...', confirm_no: 'Cancelar',
+      confirm_yes: 'Crear la nueva versión', confirm_yes_loading: 'Creando...', confirm_no: 'Cancelar', edit_menu_close_btn: 'Cerrar edición', edit_menu_toggle_hint: 'Puedes cambiar la letra, la voz o el género.',
       checkout_btn: 'Finalizar el regalo', variant_word: 'versión', checkout_btn_standard: 'Continuar al pago',
       msg_regenerating: 'Regenerando 2 versiones nuevas...', msg_regenerating_standard: 'Creando tu nueva versión...', msg_conn_error: 'Error de conexión. Inténtalo de nuevo.',
       msg_try_again: 'inténtalo de nuevo.', msg_error_prefix: 'Error: ', msg_already_paid: 'Este pedido ya ha sido pagado y completado.',
@@ -774,7 +805,7 @@
       voice_female: 'femminile', voice_male: 'maschile', voice_duet: 'duetto', voice_auto: 'automatica',
       voice_change_hint: 'Si applica solo alla prossima rigenerazione',
       voice_selected_label: (v) => `Voce selezionata: ${v}`,
-      confirm_yes: 'Crea la nuova versione', confirm_yes_loading: 'Creazione in corso...', confirm_no: 'Annulla',
+      confirm_yes: 'Crea la nuova versione', confirm_yes_loading: 'Creazione in corso...', confirm_no: 'Annulla', edit_menu_close_btn: 'Chiudi modifica', edit_menu_toggle_hint: 'Puoi modificare il testo, la voce o il genere.',
       checkout_btn: 'Completa il regalo', variant_word: 'versione', checkout_btn_standard: 'Continua al pagamento',
       msg_regenerating: 'Rigenerazione di 2 nuove versioni...', msg_regenerating_standard: 'Stiamo creando la tua nuova versione...', msg_conn_error: 'Errore di connessione. Riprova.',
       msg_try_again: 'riprova.', msg_error_prefix: 'Errore: ', msg_already_paid: 'Questo ordine è già stato pagato e completato.',
@@ -833,7 +864,7 @@
       voice_female: 'féminine', voice_male: 'masculine', voice_duet: 'duo', voice_auto: 'automatique',
       voice_change_hint: 'Ne s\'applique qu\'à la prochaine régénération',
       voice_selected_label: (v) => `Voix sélectionnée : ${v}`,
-      confirm_yes: 'Créer la nouvelle version', confirm_yes_loading: 'Création en cours...', confirm_no: 'Annuler',
+      confirm_yes: 'Créer la nouvelle version', confirm_yes_loading: 'Création en cours...', confirm_no: 'Annuler', edit_menu_close_btn: "Fermer l'édition", edit_menu_toggle_hint: 'Tu peux modifier les paroles, la voix ou le genre.',
       checkout_btn: 'Finaliser le cadeau', variant_word: 'version', checkout_btn_standard: 'Continuer vers le paiement',
       msg_regenerating: 'Régénération de 2 nouvelles versions...', msg_regenerating_standard: 'Nous créons ta nouvelle version...', msg_conn_error: 'Erreur de connexion. Veuillez réessayer.',
       msg_try_again: 'veuillez réessayer.', msg_error_prefix: 'Erreur : ', msg_already_paid: 'Cette commande a déjà été payée et finalisée.',
@@ -892,7 +923,7 @@
       voice_female: 'женски', voice_male: 'мъжки', voice_duet: 'дует', voice_auto: 'автоматично',
       voice_change_hint: 'Важи само за следващото регенериране',
       voice_selected_label: (v) => `Избран глас: ${v}`,
-      confirm_yes: 'Създай новата версия', confirm_yes_loading: 'Създава се...', confirm_no: 'Откажи',
+      confirm_yes: 'Създай новата версия', confirm_yes_loading: 'Създава се...', confirm_no: 'Откажи', edit_menu_close_btn: 'Затвори редакцията', edit_menu_toggle_hint: 'Можеш да промениш текста, гласа или жанра.',
       checkout_btn: 'Завърши подаръка', variant_word: 'версия', checkout_btn_standard: 'Продължи към плащане',
       msg_regenerating: 'Генерират се 2 нови версии...', msg_regenerating_standard: 'Създаваме новата ти версия...', msg_conn_error: 'Грешка във връзката. Опитай отново.',
       msg_try_again: 'опитай отново.', msg_error_prefix: 'Грешка: ', msg_already_paid: 'Тази поръчка вече е платена и завършена.',
@@ -951,7 +982,7 @@
       voice_female: 'kadın', voice_male: 'erkek', voice_duet: 'düet', voice_auto: 'otomatik',
       voice_change_hint: 'Yalnızca bir sonraki yeniden oluşturmaya uygulanır',
       voice_selected_label: (v) => `Seçilen ses: ${v}`,
-      confirm_yes: 'Yeni versiyonu oluştur', confirm_yes_loading: 'Oluşturuluyor...', confirm_no: 'Vazgeç',
+      confirm_yes: 'Yeni versiyonu oluştur', confirm_yes_loading: 'Oluşturuluyor...', confirm_no: 'Vazgeç', edit_menu_close_btn: 'Düzenlemeyi kapat', edit_menu_toggle_hint: 'Sözleri, sesi veya türü değiştirebilirsiniz.',
       checkout_btn: 'Hediyeyi tamamla', variant_word: 'versiyon', checkout_btn_standard: 'Ödemeye devam et',
       msg_regenerating: '2 yeni versiyon yeniden oluşturuluyor...', msg_regenerating_standard: 'Yeni versiyonunuz oluşturuluyor...', msg_conn_error: 'Bağlantı hatası. Lütfen tekrar deneyin.',
       msg_try_again: 'lütfen tekrar deneyin.', msg_error_prefix: 'Hata: ', msg_already_paid: 'Bu sipariş zaten ödendi ve tamamlandı.',
@@ -1067,6 +1098,11 @@
   const editMenuFields = document.getElementById('edit-menu-fields');
   const standardChoiceSection = document.getElementById('standard-choice-section');
   const standardChoiceCheckoutSlot = document.getElementById('standard-choice-checkout-slot');
+  const standardPreeditToggleWrap = document.getElementById('standard-preedit-toggle-wrap');
+  const standardPreeditCheckoutSlot = document.getElementById('standard-preedit-checkout-slot');
+  const editMenuToggleBtn = document.getElementById('edit-menu-toggle-btn');
+  const editMenuToggleLabel = document.getElementById('edit-menu-toggle-label');
+  const editMenuToggleHint = document.getElementById('edit-menu-toggle-hint');
   const confirmMsgEl = document.getElementById('confirm-msg');
   const confirmYesBtn = document.getElementById('confirm-yes');
   const confirmCancelBtn = document.getElementById('confirm-cancel');
@@ -1083,6 +1119,12 @@
   let currentOrder = null;
   let selectedVariantIndex = 0;
   let selectedVoicePreference = 'auto';
+  // ULTIMUL FINISAJ (hotfix 2026-08-08): meniul de editare Standard (voce/gen/instructiuni/
+  // buton portocaliu), inainte de prima regenerare, e ACUM pliabil — inchis implicit. Stare
+  // STRICT locala (nu persista intre reincarcari de pagina — se reseteaza la fiecare vizita
+  // noua, deliberat: cerinta cere doar pastrarea valorilor NESALVATE in aceeasi vizita, nu
+  // memorie pe termen lung). NU se aplica Premium/Video (2 pasi, comportament neschimbat).
+  let menuExpanded = false;
   let editingVariantId = null;
 
   // Aceeasi lista de genuri reale ca in formularul de comanda (comanda.html) — folosita de
@@ -1573,8 +1615,36 @@
   });
 
   confirmCancelBtn.addEventListener('click', () => {
+    if (currentOrder && currentOrder.plan === 'standard') {
+      // ULTIMUL FINISAJ: Standard — "Renunță" inchide meniul pliabil SI anuleaza orice
+      // modificare nesalvata (voce/gen/instructiuni), revenind la valorile reale ale comenzii.
+      editGenreError.style.display = 'none';
+      feedbackEl.value = '';
+      selectedVoicePreference = currentOrder.voicePreference || 'auto';
+      setVoiceCardActive(selectedVoicePreference);
+      populateGenreSelect(currentOrder);
+      menuExpanded = false;
+      const pendingVariantChoiceNow = !currentOrder.selectedVariantId && (currentOrder.variants || []).length > 1;
+      updateStandardEditMenuVisibility(currentOrder, pendingVariantChoiceNow);
+      return;
+    }
     confirmRow.style.display = 'none';
     regenerateRow.style.display = 'flex';
+  });
+
+  // ULTIMUL FINISAJ (hotfix 2026-08-08): deschide/inchide meniul de editare Standard — DOAR
+  // schimbare vizuala locala (updateStandardEditMenuVisibility), NICIODATA renderContent complet
+  // (ar re-construi inutil playerele audio) si NICIODATA vreo cerere de retea — "deschiderea sau
+  // inchiderea meniului nu modifica selecția si nu creeaza niciun job" e adevarat prin constructie.
+  editMenuToggleBtn.addEventListener('click', () => {
+    if (!currentOrder) return;
+    menuExpanded = !menuExpanded;
+    const pendingVariantChoiceNow = !currentOrder.selectedVariantId && (currentOrder.variants || []).length > 1;
+    updateStandardEditMenuVisibility(currentOrder, pendingVariantChoiceNow);
+    if (menuExpanded) {
+      // Pe mobil, derulare lina catre inceputul meniului nou deschis.
+      editMenuFields.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   });
 
   confirmYesBtn.addEventListener('click', async () => {
@@ -2217,6 +2287,88 @@
     } catch (e) { /* urmatorul tick reincearca oricum */ }
   }
 
+  // ULTIMUL FINISAJ (hotfix 2026-08-08): centralizeaza TOATA logica de vizibilitate legata de
+  // fluxul de editare Standard (meniul pliabil INAINTE de editare + ecranul de alegere DUPA
+  // editare) + reparentarea checkoutBtn intre cele 3 containere posibile — un singur loc,
+  // apelat atat din renderContent (dupa fiecare incarcare reala a comenzii), CAT SI direct din
+  // click handler-ul butonului de deschidere/inchidere (fara sa re-randeze variantele/playerele
+  // audio — evita exact bucla/re-randarea inutila reparata anterior in acest fisier).
+  function updateStandardEditMenuVisibility(order, pendingVariantChoice) {
+    const isStandardEditChoice = order.plan === 'standard' && (order.variants || []).length > 1;
+    const standardDirectEditMode = order.plan === 'standard' && !isStandardEditChoice;
+
+    if (isStandardEditChoice) {
+      // Dupa editare: ecranul de alegere (neschimbat) — meniul pliabil nu mai exista niciodata.
+      standardPreeditToggleWrap.style.display = 'none';
+      standardPreeditCheckoutSlot.style.display = 'none';
+      editMenuFields.hidden = true;
+      confirmRow.style.display = 'none';
+      regenerateRow.style.display = 'flex';
+      standardChoiceSection.style.display = 'block';
+      standardChoiceCheckoutSlot.appendChild(checkoutBtn);
+      document.getElementById('standard-choice-title').textContent = t.standard_choice_title;
+      document.getElementById('standard-choice-subtitle').textContent = t.standard_choice_subtitle;
+      renderStandardChoiceButtons(order);
+      checkoutBtn.classList.add('btn-cta-wide');
+      checkoutBtn.style.flex = 'none';
+      return;
+    }
+
+    standardChoiceSection.style.display = 'none';
+
+    if (!standardDirectEditMode) {
+      // Premium/Video: comportament ORIGINAL, complet neschimbat — 2 pasi (regenerateBtn ->
+      // confirmRow), checkoutBtn ramane in #regenerate-row, meniul pliabil nu exista pentru ele.
+      standardPreeditToggleWrap.style.display = 'none';
+      standardPreeditCheckoutSlot.style.display = 'none';
+      editMenuFields.hidden = false;
+      regenerateRow.appendChild(checkoutBtn);
+      checkoutBtn.classList.remove('btn-cta-wide');
+      checkoutBtn.style.flex = '1';
+      regenerateBtn.style.display = '';
+      confirmCancelBtn.style.display = '';
+      confirmMsgEl.style.display = '';
+      // confirmRow.style.display ramane sub controlul exclusiv al click handler-ului
+      // regenerateBtn/confirmCancelBtn (neschimbat) — nu il atingem aici.
+      return;
+    }
+
+    // Standard, INAINTE de prima regenerare — meniul e PLIABIL, inchis implicit (menuExpanded).
+    standardPreeditToggleWrap.style.display = 'block';
+    standardPreeditCheckoutSlot.style.display = 'flex';
+    standardPreeditCheckoutSlot.appendChild(checkoutBtn);
+    checkoutBtn.classList.add('btn-cta-wide');
+    checkoutBtn.style.flex = 'none';
+
+    editMenuToggleBtn.setAttribute('aria-expanded', String(menuExpanded));
+    // Reutilizeaza EXACT acelasi text ca butonul existent de editare a versurilor per-varianta
+    // (t.edit_lyrics_btn = "Editează versurile") — cerinta explicita a clientului, text
+    // recunoscut deja de client, fara sa mai adaugam o cheie noua doar pentru asta.
+    editMenuToggleLabel.textContent = menuExpanded ? t.edit_menu_close_btn : t.edit_lyrics_btn;
+    editMenuToggleHint.textContent = t.edit_menu_toggle_hint;
+
+    // [hidden] scoate elementul complet din navigarea cu tastatura SI din arborele de
+    // accesibilitate (nu doar invizibil vizual) — cerinta explicita.
+    editMenuFields.hidden = !menuExpanded;
+    regenerateBtn.style.display = 'none';
+    confirmCancelBtn.style.display = menuExpanded ? '' : 'none';
+    confirmRow.style.display = menuExpanded ? 'flex' : 'none';
+
+    if (menuExpanded) {
+      confirmYesBtn.textContent = t.confirm_yes;
+      confirmYesBtn.disabled = false;
+      // pastram reamintirea despre versurile editate manual, daca exista, direct la deschidere.
+      const selectedForNotice = order.variants && order.variants[selectedVariantIndex];
+      const hasEditedLyricsForNotice = !!(selectedForNotice && selectedForNotice.editedLyrics && selectedForNotice.editedLyrics.trim());
+      if (hasEditedLyricsForNotice) {
+        confirmMsgEl.textContent = t.lyrics_guidance_notice;
+        confirmMsgEl.style.display = '';
+      } else {
+        confirmMsgEl.style.display = 'none';
+      }
+    }
+  }
+
   function renderContent(order) {
     currentOrder = order;
 
@@ -2265,62 +2417,7 @@
     syncSelectedVariantUI(selectedVariantIndex);
     checkoutBtn.disabled = pendingVariantChoice;
 
-    // ÎMBUNĂTĂȚIRE UI (hotfix 2026-08-08): dupa ce editarea Standard produce a doua varianta,
-    // intreg meniul de editare (voce/gen/feedback/regenerare) dispare definitiv — editarea
-    // gratuita a fost deja folosita, niciun control de acolo nu mai are sens. In locul lui,
-    // un ecran dedicat de alegere: titlu + subtext + doua butoane etichetate cu genurile REALE
-    // ale celor doua melodii + butonul unic de plata (checkoutBtn e MUTAT fizic in noul lui
-    // container — ramane acelasi element, cu acelasi listener de click, doar reparentat, ca sa
-    // nu duplicam logica de checkout in doua locuri).
-    if (isStandardEditChoice) {
-      editMenuFields.style.display = 'none';
-      confirmRow.style.display = 'none';
-      regenerateRow.style.display = 'flex';
-      standardChoiceSection.style.display = 'block';
-      standardChoiceCheckoutSlot.appendChild(checkoutBtn);
-      document.getElementById('standard-choice-title').textContent = t.standard_choice_title;
-      document.getElementById('standard-choice-subtitle').textContent = t.standard_choice_subtitle;
-      renderStandardChoiceButtons(order);
-      checkoutBtn.classList.add('btn-cta-wide');
-      checkoutBtn.style.flex = 'none';
-    } else {
-      standardChoiceSection.style.display = 'none';
-      editMenuFields.style.display = '';
-      regenerateRow.appendChild(checkoutBtn);
-      checkoutBtn.classList.remove('btn-cta-wide');
-      checkoutBtn.style.flex = '1';
-    }
-
-    // ÎMBUNĂTĂȚIRE UI (hotfix 2026-08-08): Standard, INAINTE de editare — elimina pasul
-    // intermediar "Editează cântecul" (regenerateBtn). Butonul portocaliu "Creează noua
-    // versiune" (confirmYesBtn, in confirmRow) apare DIRECT, fara niciun click de reveal.
-    // "Renunță" nu mai are sens (nimic de "revenit" — campurile sunt oricum editabile direct),
-    // deci ramane ascuns exact in acest mod. Premium/Video: comportament NESCHIMBAT (2 pasi,
-    // regenerateBtn -> confirmRow), pentru ca nu au fost cerute modificari pentru ele.
-    const standardDirectEditMode = order.plan === 'standard' && !isStandardEditChoice;
-    if (standardDirectEditMode) {
-      regenerateBtn.style.display = 'none';
-      confirmCancelBtn.style.display = 'none';
-      confirmRow.style.display = 'flex';
-      confirmYesBtn.textContent = t.confirm_yes;
-      confirmYesBtn.disabled = false;
-      // pastram reamintirea despre versurile editate (altfel aparea DOAR dupa click-ul pe
-      // "Editează cântecul", eliminat acum) — afisata direct daca varianta curenta are deja
-      // versuri editate manual.
-      const selectedForNotice = order.variants && order.variants[selectedVariantIndex];
-      const hasEditedLyricsForNotice = !!(selectedForNotice && selectedForNotice.editedLyrics && selectedForNotice.editedLyrics.trim());
-      if (hasEditedLyricsForNotice) {
-        confirmMsgEl.textContent = t.lyrics_guidance_notice;
-        confirmMsgEl.style.display = '';
-      } else {
-        confirmMsgEl.style.display = 'none';
-      }
-    } else {
-      regenerateBtn.style.display = '';
-      confirmCancelBtn.style.display = '';
-      confirmMsgEl.style.display = '';
-      confirmRow.style.display = 'none';
-    }
+    updateStandardEditMenuVisibility(order, pendingVariantChoice);
 
     // O incercare anterioara de editare a esuat, dar comanda a revenit la preview_ready cu
     // varianta(le) existenta(e) inca disponibila(e) (vezi markGenerationFailed in server.js) —

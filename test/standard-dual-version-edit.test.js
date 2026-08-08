@@ -230,8 +230,8 @@ test('melodia-mea.html: meniul de editare (voce/gen/feedback/regenerare) e compl
   const html = read('public/melodia-mea.html');
   assert.ok(html.includes('id="edit-menu-fields"'), 'meniul de editare trebuie infasurat intr-un singur container, usor de ascuns complet');
   assert.ok(
-    html.includes('editMenuFields.style.display = \'none\';'),
-    'containerul intreg trebuie ascuns (voce, gen, feedback, butoane) cand exista deja o alegere Standard de facut'
+    html.includes('editMenuFields.hidden = true;'),
+    'containerul intreg trebuie scos din DOM/tastatura ([hidden]) cand exista deja o alegere Standard de facut'
   );
 });
 
@@ -338,14 +338,13 @@ test('emailul si descarcarea dupa plata livreaza EXCLUSIV versiunea selectata pe
 // Video raman neschimbate (2 pasi, regenerateBtn -> confirmRow).
 // ==========================================================================================
 
-test('melodia-mea.html: Standard (inainte de editare) arata direct butonul portocaliu, fara click intermediar', () => {
+test('melodia-mea.html: Standard (inainte de editare) foloseste modul direct — regenerateBtn ramane ascuns intotdeauna', () => {
   const html = read('public/melodia-mea.html');
   assert.ok(
     html.includes("const standardDirectEditMode = order.plan === 'standard' && !isStandardEditChoice;"),
     'trebuie detectat explicit modul direct — DOAR Standard, DOAR inainte de a folosi editarea gratuita'
   );
-  assert.ok(html.includes("regenerateBtn.style.display = 'none';") , 'butonul "Editează cântecul" trebuie ascuns in acest mod');
-  assert.ok(html.includes("confirmRow.style.display = 'flex';"), 'confirmRow (cu butonul portocaliu) trebuie afisat DIRECT, nu la un click');
+  assert.ok(html.includes("regenerateBtn.style.display = 'none';") , 'butonul "Editează cântecul" trebuie ascuns in acest mod (inlocuit de meniul pliabil)');
 });
 
 test('melodia-mea.html: Premium/Video NU sunt afectate de eliminarea pasului intermediar (raman cu 2 pasi)', () => {
@@ -354,11 +353,91 @@ test('melodia-mea.html: Premium/Video NU sunt afectate de eliminarea pasului int
     html.includes("const standardDirectEditMode = order.plan === 'standard' && !isStandardEditChoice;"),
     'conditia trebuie scopata explicit la plan==="standard" — Premium/Video nu trebuie sa intre niciodata pe aceasta ramura'
   );
+  assert.ok(
+    html.includes('standardPreeditToggleWrap.style.display = \'none\';') && html.includes('editMenuFields.hidden = false;'),
+    'Premium/Video trebuie sa aiba mereu meniul de editare vizibil, fara butonul pliabil Standard'
+  );
 });
 
-test('melodia-mea.html: "Renunță" e ascuns in modul direct Standard (nimic de anulat, fara pas de reveal)', () => {
+// ==========================================================================================
+// ULTIMUL FINISAJ PENTRU STANDARD (hotfix 2026-08-08): meniul de editare Standard (voce/gen/
+// instructiuni/buton portocaliu), INAINTE de prima regenerare, e acum PLIABIL — inchis
+// implicit. Butonul "✏️ Editează versurile" il deschide/inchide; "Renunță" il inchide SI
+// anuleaza modificarile nesalvate.
+// ==========================================================================================
+
+test('melodia-mea.html: meniul pliabil Standard e INCHIS implicit (menuExpanded=false)', () => {
   const html = read('public/melodia-mea.html');
-  assert.ok(html.includes("confirmCancelBtn.style.display = 'none';"), 'butonul Renunță nu are sens fara un pas de reveal de anulat');
+  assert.ok(html.includes('let menuExpanded = false;'), 'starea initiala trebuie sa fie inchisa');
+});
+
+test('melodia-mea.html: [hidden] scoate meniul din navigarea cu tastatura, nu doar vizual (cerinta explicita)', () => {
+  const html = read('public/melodia-mea.html');
+  assert.ok(
+    html.includes('editMenuFields.hidden = !menuExpanded;'),
+    'trebuie folosit atributul nativ [hidden] (scoate din arborele de accesibilitate SI din tab-order), nu doar opacity/visibility'
+  );
+});
+
+test('melodia-mea.html: butonul de deschidere/inchidere reutilizeaza textul "Editează versurile" existent, cu iconita de creion', () => {
+  const html = read('public/melodia-mea.html');
+  assert.ok(html.includes('id="edit-menu-toggle-btn"'), 'butonul trebuie sa existe');
+  assert.ok(html.includes('>✏️<'), 'iconita de creion trebuie sa existe');
+  assert.ok(
+    html.includes('editMenuToggleLabel.textContent = menuExpanded ? t.edit_menu_close_btn : t.edit_lyrics_btn;'),
+    'eticheta trebuie sa alterneze intre "Editează versurile" (inchis) si "Închide editarea" (deschis), reutilizand cheia existenta'
+  );
+  assert.ok(html.includes('aria-expanded="false"') && html.includes("aria-controls=\"edit-menu-fields\""), 'aria-expanded/aria-controls trebuie sa existe pentru accesibilitate');
+});
+
+test('melodia-mea.html: butonul de deschidere/inchidere e mare/portocaliu deschis/centrat, minimum 52px', () => {
+  const html = read('public/melodia-mea.html');
+  assert.ok(html.includes('.btn-toggle-orange{'), 'clasa CSS dedicata trebuie sa existe');
+  assert.ok(html.includes('min-height:52px'), 'inaltimea minima ceruta trebuie respectata');
+  assert.ok(html.includes('max-width:420px; margin:0 auto;'), 'trebuie centrat, aproape toata latimea pe mobil');
+});
+
+test('melodia-mea.html: deschiderea meniului e o schimbare STRICT locala, fara renderContent complet si fara cerere de retea', () => {
+  const html = read('public/melodia-mea.html');
+  const idx = html.indexOf("editMenuToggleBtn.addEventListener('click'");
+  assert.ok(idx > -1, 'click handler-ul trebuie sa existe');
+  const block = html.slice(idx, idx + 500);
+  assert.ok(block.includes('updateStandardEditMenuVisibility(currentOrder, pendingVariantChoiceNow);'), 'trebuie apelata DOAR functia locala de vizibilitate, niciodata renderContent/loadOrder (ar re-construi inutil playerele audio sau ar face o cerere de retea)');
+  assert.ok(!block.includes('fetch('), 'deschiderea/inchiderea meniului nu trebuie sa faca nicio cerere de retea');
+});
+
+test('melodia-mea.html: la deschidere, pagina deruleaza lin catre inceputul meniului', () => {
+  const html = read('public/melodia-mea.html');
+  assert.ok(html.includes("editMenuFields.scrollIntoView({ behavior: 'smooth', block: 'start' });"), 'trebuie sa deruleze lin catre meniu dupa deschidere, util mai ales pe mobil');
+});
+
+test('melodia-mea.html: "Renunță" e vizibil DOAR cand meniul e deschis, si inchide meniul + anuleaza modificarile nesalvate', () => {
+  const html = read('public/melodia-mea.html');
+  assert.ok(
+    html.includes("confirmCancelBtn.style.display = menuExpanded ? '' : 'none';"),
+    'Renunță trebuie sa fie vizibil DOAR cat timp meniul e deschis — are acum un pas de reveal real de anulat'
+  );
+  const idx = html.indexOf("confirmCancelBtn.addEventListener('click'");
+  const block = html.slice(idx, idx + 700);
+  assert.ok(block.includes("currentOrder.plan === 'standard'"), 'handler-ul trebuie sa distinga explicit Standard de Premium/Video');
+  assert.ok(block.includes('feedbackEl.value = \'\';'), 'textul de feedback nesalvat trebuie golit la Renunță');
+  assert.ok(block.includes('populateGenreSelect(currentOrder);'), 'selectorul de gen trebuie resetat la valoarea reala a comenzii');
+  assert.ok(block.includes('menuExpanded = false;'), 'Renunță trebuie sa inchida meniul');
+});
+
+test('melodia-mea.html: dupa editare, meniul pliabil (buton + hint) dispare complet, la fel ca inainte', () => {
+  const html = read('public/melodia-mea.html');
+  const idx = html.indexOf('if (isStandardEditChoice) {');
+  const block = html.slice(idx, idx + 400);
+  assert.ok(block.includes("standardPreeditToggleWrap.style.display = 'none';"), 'butonul pliabil nu mai trebuie sa existe dupa editare — editarea gratuita a fost deja folosita');
+});
+
+test('traduceri: cheile noi ale meniului pliabil exista in toate cele 8 limbi', () => {
+  const html = read('public/melodia-mea.html');
+  ['edit_menu_close_btn', 'edit_menu_toggle_hint'].forEach(key => {
+    const count = (html.match(new RegExp(key + ':', 'g')) || []).length;
+    assert.equal(count, 8, `cheia "${key}" trebuie sa apara exact 8 ori (cate una per limba), gasita de ${count} ori`);
+  });
 });
 
 // ==========================================================================================
