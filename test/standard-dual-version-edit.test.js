@@ -163,6 +163,17 @@ test('melodia-mea.html: o editare esuata (dar cu varianta existenta pastrata) ar
   );
 });
 
+test('GET /api/orders/:orderId expune isEditedAlternative pentru fiecare varianta (altfel frontend-ul nu poate distinge original de editat)', () => {
+  const server = read('server.js');
+  // gasit direct la testarea reala pe staging: campul era scris corect in DB
+  // (finalizeVariantsIfNeeded), dar lipsea din whitelist-ul safeVariants — ambele carduri
+  // aparea etichetate "Versiunea inițială", niciodata "Versiunea editată".
+  assert.ok(
+    server.includes('isEditedAlternative: !!v.isEditedAlternative'),
+    'safeVariants trebuie sa expuna explicit isEditedAlternative catre client'
+  );
+});
+
 test('traduceri: cheile noi ale fluxului de alegere Standard exista in toate cele 8 limbi', () => {
   const html = read('public/melodia-mea.html');
   ['variant_original_label', 'variant_edited_label', 'choose_variant_msg', 'regen_failed_recovered_msg'].forEach(key => {

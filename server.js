@@ -1707,7 +1707,12 @@ app.get('/api/orders/:orderId', async (req, res, next) => {
       // daca extrasul de pachet (WAV/video, vezi generatePremiumExtras) e deja gata.
       hasWav: !!v.wavKey,
       hasVideo: !!v.videoKey,
-      videoFailedReason: v.videoFailedReason || null
+      videoFailedReason: v.videoFailedReason || null,
+      // Standard, fluxul de editare cu alegere (Partea 2, hotfix 2026-08-08) — fara acest
+      // camp, melodia-mea.html nu poate distinge "Versiunea inițială" de "Versiunea editată"
+      // (gasit direct la testarea reala: ambele carduri aparea etichetate "inițială", pentru
+      // ca acest camp lipsea din whitelist-ul de raspuns, desi era scris corect in DB).
+      isEditedAlternative: !!v.isEditedAlternative
     }));
 
     // Stare video derivata, expusa explicit clientului — vezi cerinta "A. Arhitectura si
