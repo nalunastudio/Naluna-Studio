@@ -260,18 +260,29 @@
           <div class="theme-desc" data-i18n="theme_nunta_desc">Primul dans sau surpriză pentru miri, fini sau nași</div>
         </div>
 
-        <!-- "Nuntă/Botez" (Partea 4) — Miri/Fini/Nași, fiecare cu rol individual sau "Amândoi",
-             plasat identic IMEDIAT dupa cardul nunta. Valoarea interna a ocaziei ramane 'nunta'
-             (neschimbata) — doar eticheta afisata s-a schimbat, pentru compatibilitate deplina
-             cu comenzile vechi. -->
+        <!-- "Nuntă/Botez" (Partea 4, extins CONTINUARE hotfix 2026-08-08) — nivel 0 (Nuntă/Botez,
+             OBLIGATORIU, distinge explicit cele doua teme complet diferite), apoi Miri/Fini/Nași
+             (filtrate dupa nivelul 0 — Miri doar la nunta, Fini doar la botez, Nași la ambele),
+             fiecare cu rol individual sau "Amândoi", plasat identic IMEDIAT dupa cardul nunta.
+             Valoarea interna a ocaziei ramane 'nunta' (neschimbata) — doar eticheta afisata s-a
+             schimbat, pentru compatibilitate deplina cu comenzile vechi. -->
         <div class="theme-subpanel" id="nunta-panel" style="display:none;">
-          <label data-i18n="label_nunta_group">Pentru cine e melodia?</label>
-          <div class="theme-grid" id="nunta-group-grid" style="grid-template-columns:1fr 1fr 1fr;">
-            <div class="theme-card theme-subcard nunta-group-card" data-group="miri"><div class="theme-name" data-i18n="nunta_group_miri">Miri</div></div>
-            <div class="theme-card theme-subcard nunta-group-card" data-group="fini"><div class="theme-name" data-i18n="nunta_group_fini">Fini</div></div>
-            <div class="theme-card theme-subcard nunta-group-card" data-group="nasi"><div class="theme-name" data-i18n="nunta_group_nasi">Nași</div></div>
+          <label data-i18n="label_nunta_type">Ce sărbătorești?</label>
+          <div class="theme-grid" id="nunta-type-grid" style="grid-template-columns:1fr 1fr;">
+            <div class="theme-card theme-subcard nunta-type-card" data-type="wedding"><div class="theme-name" data-i18n="nunta_type_wedding">Nuntă</div></div>
+            <div class="theme-card theme-subcard nunta-type-card" data-type="baptism"><div class="theme-name" data-i18n="nunta_type_baptism">Botez</div></div>
           </div>
-          <div class="field-error" id="err-nuntaGroup"></div>
+          <div class="field-error" id="err-nuntaType"></div>
+
+          <div id="nunta-group-field" style="display:none; margin-top:16px;">
+            <label data-i18n="label_nunta_group">Pentru cine e melodia?</label>
+            <div class="theme-grid" id="nunta-group-grid" style="grid-template-columns:1fr 1fr 1fr;">
+              <div class="theme-card theme-subcard nunta-group-card" data-group="miri"><div class="theme-name" data-i18n="nunta_group_miri">Miri</div></div>
+              <div class="theme-card theme-subcard nunta-group-card" data-group="fini"><div class="theme-name" data-i18n="nunta_group_fini">Fini</div></div>
+              <div class="theme-card theme-subcard nunta-group-card" data-group="nasi"><div class="theme-name" data-i18n="nunta_group_nasi">Nași</div></div>
+            </div>
+            <div class="field-error" id="err-nuntaGroup"></div>
+          </div>
 
           <div id="nunta-subrole-field" style="display:none; margin-top:16px;">
             <label id="nunta-subrole-label" data-i18n="label_nunta_subrole">Cine anume?</label>
@@ -279,18 +290,7 @@
             <div class="field-error" id="err-recipientRole"></div>
           </div>
 
-          <div id="nunta-names-field" style="display:none; margin-top:16px;">
-            <div class="field">
-              <label for="nunta-name1" id="nunta-name1-label"></label>
-              <input type="text" id="nunta-name1" maxlength="60">
-              <div class="field-error" id="err-nuntaName1"></div>
-            </div>
-            <div class="field">
-              <label for="nunta-name2" id="nunta-name2-label"></label>
-              <input type="text" id="nunta-name2" maxlength="60">
-              <div class="field-error" id="err-nuntaName2"></div>
-            </div>
-          </div>
+          <div id="nunta-names-slot"></div>
 
           <!-- CORECȚIE STRICTĂ (hotfix 2026-08-08, punctul 2): "Din partea cui este melodia?"
                a fost ELIMINAT COMPLET pentru Nuntă/Botez — nu mai e afisat, nu mai ocupa spatiu,
@@ -332,6 +332,7 @@
           <label id="family-relation-label" data-i18n="label_recipient_role">Pentru cine e cântecul?</label>
           <div class="theme-grid" id="family-relation-grid" style="grid-template-columns:1fr 1fr;"></div>
           <div class="field-error" id="err-recipientRoleFamily"></div>
+          <div id="family-names-slot"></div>
           <div id="family-sender-role-slot"></div>
         </div>
 
@@ -344,14 +345,32 @@
       <input type="hidden" id="recipientRole" value="">
       <input type="hidden" id="senderRole" value="">
       <input type="hidden" id="recipientMode" value="">
+      <input type="hidden" id="weddingType" value="">
 
-      <!-- Refolosit intre panoul de familie si cel de aniversare (reparentat dinamic, JS,
-           acelasi tipar ca sloturile checkoutBtn din melodia-mea.html) — un singur bloc logic
-           de markup pentru "Tu ești: ...", niciodata duplicat. -->
+      <!-- Reparentat dinamic (JS, acelasi tipar ca sloturile checkoutBtn din melodia-mea.html)
+           in slotul panoului activ (familie) — un singur bloc logic de markup pentru
+           "Tu ești: ...", niciodata duplicat. -->
       <div id="sender-role-subfield" style="display:none; margin-top:16px;">
         <label id="sender-role-label" data-i18n="label_sender_role">Tu ești:</label>
         <div class="theme-grid" id="sender-role-grid" style="grid-template-columns:1fr 1fr;"></div>
         <div class="field-error" id="err-senderRole"></div>
+      </div>
+
+      <!-- CONTINUARE — personalizarea reala a versurilor (hotfix 2026-08-08): "Amândoi" —
+           REFOLOSIT (nu duplicat) intre Nuntă/Botez si cele 3 ocazii de familie (parinti/
+           matusa-unchi/socri), reparentat dinamic in slotul panoului activ, exact acelasi
+           tipar ca sender-role-subfield de mai sus. -->
+      <div id="both-names-field" style="display:none; margin-top:16px;">
+        <div class="field">
+          <label for="name1" id="name1-label"></label>
+          <input type="text" id="name1" maxlength="60">
+          <div class="field-error" id="err-name1"></div>
+        </div>
+        <div class="field">
+          <label for="name2" id="name2-label"></label>
+          <input type="text" id="name2" maxlength="60">
+          <div class="field-error" id="err-name2"></div>
+        </div>
       </div>
 
       <div class="wizard-nav single">
@@ -586,6 +605,10 @@
       nunta_name_bride_label: 'Numele miresei', nunta_name_groom_label: 'Numele mirelui',
       nunta_name_goddaughter_label: 'Numele finei', nunta_name_godson_label: 'Numele finului',
       nunta_name_godmother_label: 'Numele nașei', nunta_name_godfather_label: 'Numele nașului',
+      label_nunta_type: 'Ce sărbătorești?', nunta_type_wedding: 'Nuntă', nunta_type_baptism: 'Botez',
+      name_mother_label: 'Numele mamei', name_father_label: 'Numele tatălui',
+      name_aunt_label: 'Numele mătușii', name_uncle_label: 'Numele unchiului',
+      name_mother_in_law_label: 'Numele soacrei', name_father_in_law_label: 'Numele socrului',
       and_conjunction: 'și',
       label_recipient: 'Pentru cine e cântecul (nume)',
       ph_recipient: 'ex: Maria',
@@ -679,6 +702,7 @@
       val_recipient_role: 'Alege exact pentru cine este cântecul',
       val_sender_role: 'Alege ce relație ai tu cu destinatarul',
       val_nunta_names: 'Completează ambele nume',
+      val_nunta_type: 'Alege dacă este vorba despre o nuntă sau un botez',
       step_progress_label: (n) => 'Pasul ' + n + ' din 4',
     },
     en: {
@@ -729,6 +753,10 @@
       nunta_name_bride_label: "Bride's name", nunta_name_groom_label: "Groom's name",
       nunta_name_goddaughter_label: "Goddaughter's name", nunta_name_godson_label: "Godson's name",
       nunta_name_godmother_label: "Godmother's name", nunta_name_godfather_label: "Godfather's name",
+      label_nunta_type: 'What are you celebrating?', nunta_type_wedding: 'Wedding', nunta_type_baptism: 'Christening',
+      name_mother_label: "Mother's name", name_father_label: "Father's name",
+      name_aunt_label: "Aunt's name", name_uncle_label: "Uncle's name",
+      name_mother_in_law_label: "Mother-in-law's name", name_father_in_law_label: "Father-in-law's name",
       and_conjunction: 'and',
       label_recipient: 'Who is the song for (name)',
       ph_recipient: 'e.g. Maria',
@@ -822,6 +850,7 @@
       val_recipient_role: 'Choose exactly who the song is for',
       val_sender_role: 'Choose your relationship to the recipient',
       val_nunta_names: 'Fill in both names',
+      val_nunta_type: 'Choose whether this is a wedding or a christening',
       step_progress_label: (n) => 'Step ' + n + ' of 4',
     },
     de: {
@@ -872,6 +901,10 @@
       nunta_name_bride_label: 'Name der Braut', nunta_name_groom_label: 'Name des Bräutigams',
       nunta_name_goddaughter_label: 'Name der Patentochter', nunta_name_godson_label: 'Name des Patensohns',
       nunta_name_godmother_label: 'Name der Patin', nunta_name_godfather_label: 'Name des Paten',
+      label_nunta_type: 'Was feierst du?', nunta_type_wedding: 'Hochzeit', nunta_type_baptism: 'Taufe',
+      name_mother_label: 'Name der Mutter', name_father_label: 'Name des Vaters',
+      name_aunt_label: 'Name der Tante', name_uncle_label: 'Name des Onkels',
+      name_mother_in_law_label: 'Name der Schwiegermutter', name_father_in_law_label: 'Name des Schwiegervaters',
       and_conjunction: 'und',
       label_recipient: 'Für wen ist das Lied (Name)',
       ph_recipient: 'z.B. Maria',
@@ -965,6 +998,7 @@
       val_recipient_role: 'Wähle genau, für wen das Lied ist',
       val_sender_role: 'Wähle deine Beziehung zur empfangenden Person',
       val_nunta_names: 'Gib beide Namen ein',
+      val_nunta_type: 'Wähle, ob es sich um eine Hochzeit oder eine Taufe handelt',
       step_progress_label: (n) => 'Schritt ' + n + ' von 4',
     },
     es: {
@@ -1015,6 +1049,10 @@
       nunta_name_bride_label: 'Nombre de la novia', nunta_name_groom_label: 'Nombre del novio',
       nunta_name_goddaughter_label: 'Nombre de la ahijada', nunta_name_godson_label: 'Nombre del ahijado',
       nunta_name_godmother_label: 'Nombre de la madrina', nunta_name_godfather_label: 'Nombre del padrino',
+      label_nunta_type: '¿Qué celebras?', nunta_type_wedding: 'Boda', nunta_type_baptism: 'Bautizo',
+      name_mother_label: 'Nombre de la madre', name_father_label: 'Nombre del padre',
+      name_aunt_label: 'Nombre de la tía', name_uncle_label: 'Nombre del tío',
+      name_mother_in_law_label: 'Nombre de la suegra', name_father_in_law_label: 'Nombre del suegro',
       and_conjunction: 'y',
       label_recipient: 'Para quién es la canción (nombre)',
       ph_recipient: 'ej: María',
@@ -1108,6 +1146,7 @@
       val_recipient_role: 'Elige exactamente para quién es la canción',
       val_sender_role: 'Elige tu relación con el destinatario',
       val_nunta_names: 'Completa ambos nombres',
+      val_nunta_type: 'Elige si se trata de una boda o un bautizo',
       step_progress_label: (n) => 'Paso ' + n + ' de 4',
     },
     it: {
@@ -1158,6 +1197,10 @@
       nunta_name_bride_label: 'Nome della sposa', nunta_name_groom_label: 'Nome dello sposo',
       nunta_name_goddaughter_label: 'Nome della figlioccia', nunta_name_godson_label: 'Nome del figlioccio',
       nunta_name_godmother_label: 'Nome della madrina', nunta_name_godfather_label: 'Nome del padrino',
+      label_nunta_type: 'Cosa festeggi?', nunta_type_wedding: 'Matrimonio', nunta_type_baptism: 'Battesimo',
+      name_mother_label: 'Nome della madre', name_father_label: 'Nome del padre',
+      name_aunt_label: 'Nome della zia', name_uncle_label: 'Nome dello zio',
+      name_mother_in_law_label: 'Nome della suocera', name_father_in_law_label: 'Nome del suocero',
       and_conjunction: 'e',
       label_recipient: 'Per chi è la canzone (nome)',
       ph_recipient: 'es: Maria',
@@ -1251,6 +1294,7 @@
       val_recipient_role: 'Scegli esattamente per chi è la canzone',
       val_sender_role: 'Scegli il tuo rapporto con il destinatario',
       val_nunta_names: 'Inserisci entrambi i nomi',
+      val_nunta_type: 'Scegli se si tratta di un matrimonio o di un battesimo',
       step_progress_label: (n) => 'Passo ' + n + ' di 4',
     },
     fr: {
@@ -1301,6 +1345,10 @@
       nunta_name_bride_label: 'Prénom de la mariée', nunta_name_groom_label: 'Prénom du marié',
       nunta_name_goddaughter_label: 'Prénom de la filleule', nunta_name_godson_label: 'Prénom du filleul',
       nunta_name_godmother_label: 'Prénom de la marraine', nunta_name_godfather_label: 'Prénom du parrain',
+      label_nunta_type: 'Que célébrez-vous ?', nunta_type_wedding: 'Mariage', nunta_type_baptism: 'Baptême',
+      name_mother_label: 'Prénom de la mère', name_father_label: 'Prénom du père',
+      name_aunt_label: 'Prénom de la tante', name_uncle_label: "Prénom de l'oncle",
+      name_mother_in_law_label: 'Prénom de la belle-mère', name_father_in_law_label: 'Prénom du beau-père',
       and_conjunction: 'et',
       label_recipient: 'Pour qui est la chanson (prénom)',
       ph_recipient: 'ex : Maria',
@@ -1394,6 +1442,7 @@
       val_recipient_role: 'Choisissez exactement pour qui est la chanson',
       val_sender_role: 'Choisissez votre relation avec le destinataire',
       val_nunta_names: 'Renseignez les deux prénoms',
+      val_nunta_type: "Choisissez s'il s'agit d'un mariage ou d'un baptême",
       step_progress_label: (n) => 'Étape ' + n + ' sur 4',
     },
     bg: {
@@ -1444,6 +1493,10 @@
       nunta_name_bride_label: 'Име на булката', nunta_name_groom_label: 'Име на младоженеца',
       nunta_name_goddaughter_label: 'Име на кръщелницата', nunta_name_godson_label: 'Име на кръщелника',
       nunta_name_godmother_label: 'Име на кумата', nunta_name_godfather_label: 'Име на кума',
+      label_nunta_type: 'Какво празнуваш?', nunta_type_wedding: 'Сватба', nunta_type_baptism: 'Кръщене',
+      name_mother_label: 'Име на майката', name_father_label: 'Име на бащата',
+      name_aunt_label: 'Име на лелята', name_uncle_label: 'Име на чичото',
+      name_mother_in_law_label: 'Име на свекървата', name_father_in_law_label: 'Име на тъста',
       and_conjunction: 'и',
       label_recipient: 'За кого е песента (име)',
       ph_recipient: 'напр. Мария',
@@ -1537,6 +1590,7 @@
       val_recipient_role: 'Избери точно за кого е песента',
       val_sender_role: 'Избери каква е твоята връзка с получателя',
       val_nunta_names: 'Попълни и двете имена',
+      val_nunta_type: 'Избери дали е сватба или кръщене',
       step_progress_label: (n) => 'Стъпка ' + n + ' от 4',
     },
     tr: {
@@ -1587,6 +1641,10 @@
       nunta_name_bride_label: 'Gelinin adı', nunta_name_groom_label: 'Damadın adı',
       nunta_name_goddaughter_label: 'Vaftiz kızının adı', nunta_name_godson_label: 'Vaftiz oğlunun adı',
       nunta_name_godmother_label: 'Vaftiz annesinin adı', nunta_name_godfather_label: 'Vaftiz babasının adı',
+      label_nunta_type: 'Neyi kutluyorsun?', nunta_type_wedding: 'Düğün', nunta_type_baptism: 'Vaftiz',
+      name_mother_label: 'Annenin adı', name_father_label: 'Babanın adı',
+      name_aunt_label: 'Teyzenin adı', name_uncle_label: 'Amcanın adı',
+      name_mother_in_law_label: 'Kayınvalidenin adı', name_father_in_law_label: 'Kayınpederin adı',
       and_conjunction: 've',
       label_recipient: 'Şarkı kimin için (isim)',
       ph_recipient: 'örn: Ayşe',
@@ -1680,6 +1738,7 @@
       val_recipient_role: 'Şarkının tam olarak kimin için olduğunu seçin',
       val_sender_role: 'Alıcıyla olan ilişkinizi seçin',
       val_nunta_names: 'Her iki ismi de girin',
+      val_nunta_type: 'Düğün mü yoksa vaftiz mi olduğunu seçin',
       step_progress_label: (n) => 'Adım ' + n + '/4',
     },
   };
@@ -1858,18 +1917,30 @@
         setFieldError('recipientRoleFamily', recipientRoleInput.value ? '' : t('val_recipient_role'));
         setFieldError('senderRole', senderRoleInput.value ? '' : t('val_sender_role'));
         if (!recipientRoleInput.value || !senderRoleInput.value) ok = false;
+        // CONTINUARE — personalizarea reala a versurilor (hotfix 2026-08-08): "Amândoi" cere
+        // exact doua nume complete, acelasi tipar ca la Nuntă/Botez mai jos.
+        if (recipientModeInput.value === 'both') {
+          const familyName1 = name1Input.value.trim();
+          const familyName2 = name2Input.value.trim();
+          setFieldError('name1', familyName1 ? '' : t('val_nunta_names'));
+          setFieldError('name2', familyName2 ? '' : t('val_nunta_names'));
+          if (!familyName1 || !familyName2) ok = false;
+        }
       }
 
-      // "Nuntă/Botez" — Miri/Fini/Nași, apoi rol individual sau "Amândoi".
+      // "Nuntă/Botez" — tip (Nuntă/Botez, OBLIGATORIU), apoi Miri/Fini/Nași, apoi rol
+      // individual sau "Amândoi".
       if (occasionVal === 'nunta') {
+        setFieldError('nuntaType', nuntaType ? '' : t('val_nunta_type'));
+        if (!nuntaType) ok = false;
         setFieldError('nuntaGroup', nuntaGroup ? '' : t('val_recipient_role'));
         setFieldError('recipientRole', (nuntaGroup && recipientRoleInput.value) ? '' : t('val_recipient_role'));
         if (!nuntaGroup || !recipientRoleInput.value) ok = false;
         if (recipientModeInput.value === 'both') {
-          const nuntaName1 = nuntaName1Input.value.trim();
-          const nuntaName2 = nuntaName2Input.value.trim();
-          setFieldError('nuntaName1', nuntaName1 ? '' : t('val_nunta_names'));
-          setFieldError('nuntaName2', nuntaName2 ? '' : t('val_nunta_names'));
+          const nuntaName1 = name1Input.value.trim();
+          const nuntaName2 = name2Input.value.trim();
+          setFieldError('name1', nuntaName1 ? '' : t('val_nunta_names'));
+          setFieldError('name2', nuntaName2 ? '' : t('val_nunta_names'));
           if (!nuntaName1 || !nuntaName2) ok = false;
         }
       }
@@ -1903,20 +1974,40 @@
   // niciodata deduse din nume/voce, niciodata trimise fara sa fi fost alese explicit de client.
   // ==========================================================================================
   const FAMILY_OCCASIONS = ['bunici', 'parinti', 'matusa-unchi', 'socri'];
+  // CONTINUARE — personalizarea reala a versurilor (hotfix 2026-08-08): "Amândoi" adaugat DOAR
+  // pentru parinti/matusa-unchi/socri (NU si bunici, cerinta explicita) — reutilizeaza EXACT
+  // acelasi mecanism recipientMode='both'+recipientNames ca la Nuntă/Botez.
   const RECIPIENT_ROLE_OPTIONS = {
     bunici: ['grandmother', 'grandfather'],
-    parinti: ['mother', 'father'],
-    'matusa-unchi': ['aunt', 'uncle'],
-    socri: ['mother_in_law', 'father_in_law']
+    parinti: ['mother', 'father', 'parents'],
+    'matusa-unchi': ['aunt', 'uncle', 'aunt_uncle'],
+    socri: ['mother_in_law', 'father_in_law', 'parents_in_law']
+  };
+  const FAMILY_BOTH_ROLES = ['parents', 'aunt_uncle', 'parents_in_law'];
+  // Etichetele campurilor de nume pentru "Amândoi" — ordinea (feminin, masculin) e aceeasi
+  // conventie ca la Nuntă/Botez mai jos.
+  const FAMILY_BOTH_NAME_LABEL_KEYS = {
+    parents: { female: 'name_mother_label', male: 'name_father_label' },
+    aunt_uncle: { female: 'name_aunt_label', male: 'name_uncle_label' },
+    parents_in_law: { female: 'name_mother_in_law_label', male: 'name_father_in_law_label' }
   };
   // "Tu ești: ..." — ACELASI selector e reutilizat pentru bunici SI matusa-unchi (romana
   // foloseste identic "Nepoată"/"Nepot" pentru ambele relatii), dar valorile interne raman
-  // distincte, ca buildPrompt (server.js) sa poata scrie conceptul corect in engleza.
+  // distincte, ca buildPrompt (server.js) sa poata scrie conceptul corect in engleza. Rolurile
+  // "Amândoi" folosesc ACELASI expeditor ca varianta lor individuala.
   const SENDER_ROLE_OPTIONS = {
     grandmother: ['granddaughter', 'grandson'], grandfather: ['granddaughter', 'grandson'],
-    mother: ['daughter', 'son'], father: ['daughter', 'son'],
-    aunt: ['niece', 'nephew'], uncle: ['niece', 'nephew'],
-    mother_in_law: ['daughter_in_law', 'son_in_law'], father_in_law: ['daughter_in_law', 'son_in_law']
+    mother: ['daughter', 'son'], father: ['daughter', 'son'], parents: ['daughter', 'son'],
+    aunt: ['niece', 'nephew'], uncle: ['niece', 'nephew'], aunt_uncle: ['niece', 'nephew'],
+    mother_in_law: ['daughter_in_law', 'son_in_law'], father_in_law: ['daughter_in_law', 'son_in_law'],
+    parents_in_law: ['daughter_in_law', 'son_in_law']
+  };
+  // CONTINUARE — personalizarea reala a versurilor (hotfix 2026-08-08): "Nuntă" si "Botez" sunt
+  // acum ALEGERE EXPLICITA, separata, OBLIGATORIE — filtreaza care grupuri (Miri/Fini/Nași) sunt
+  // disponibile ("Nași" ramane valabil la ambele, singurul rol comun celor doua teme).
+  const WEDDING_TYPE_GROUPS = {
+    wedding: ['miri', 'nasi'],
+    baptism: ['fini', 'nasi']
   };
   // "Nuntă/Botez" — Miri/Fini/Nași, fiecare cu rol individual sau "Amândoi" (grup). Ordinea
   // (feminin, masculin, amandoi) determina si ordinea campurilor de nume cand e ales "Amândoi".
@@ -1942,22 +2033,30 @@
   const recipientRoleInput = document.getElementById('recipientRole');
   const senderRoleInput = document.getElementById('senderRole');
   const recipientModeInput = document.getElementById('recipientMode');
+  const weddingTypeInput = document.getElementById('weddingType');
 
   const familyRelationPanel = document.getElementById('family-relation-panel');
   const familyRelationGrid = document.getElementById('family-relation-grid');
+  const familyNamesSlot = document.getElementById('family-names-slot');
   const familySenderRoleSlot = document.getElementById('family-sender-role-slot');
 
   const senderRoleSubfield = document.getElementById('sender-role-subfield');
   const senderRoleGrid = document.getElementById('sender-role-grid');
 
   const nuntaPanel = document.getElementById('nunta-panel');
+  const nuntaGroupField = document.getElementById('nunta-group-field');
   const nuntaSubroleField = document.getElementById('nunta-subrole-field');
   const nuntaSubroleGrid = document.getElementById('nunta-subrole-grid');
-  const nuntaNamesField = document.getElementById('nunta-names-field');
-  const nuntaName1Input = document.getElementById('nunta-name1');
-  const nuntaName2Input = document.getElementById('nunta-name2');
-  const nuntaName1Label = document.getElementById('nunta-name1-label');
-  const nuntaName2Label = document.getElementById('nunta-name2-label');
+  const nuntaNamesSlot = document.getElementById('nunta-names-slot');
+
+  // Refolosit (nu duplicat) intre Nuntă/Botez si cele 3 ocazii de familie cu "Amândoi".
+  const bothNamesField = document.getElementById('both-names-field');
+  const name1Input = document.getElementById('name1');
+  const name2Input = document.getElementById('name2');
+  const name1Label = document.getElementById('name1-label');
+  const name2Label = document.getElementById('name2-label');
+
+  let nuntaType = ''; // 'wedding' | 'baptism' — stare locala UI, oglindita in weddingType
   let nuntaGroup = ''; // 'miri' | 'fini' | 'nasi' — stare locala UI, oglindita in recipientRole
 
   themeCards.forEach(c => {
@@ -1970,22 +2069,25 @@
       recipientRoleInput.value = '';
       senderRoleInput.value = '';
       recipientModeInput.value = '';
+      weddingTypeInput.value = '';
+      nuntaType = '';
       nuntaGroup = '';
-      nuntaName1Input.value = '';
-      nuntaName2Input.value = '';
+      name1Input.value = '';
+      name2Input.value = '';
       setFieldError('recipientRoleFamily', '');
       setFieldError('recipientRole', '');
       setFieldError('senderRole', '');
+      setFieldError('nuntaType', '');
       setFieldError('nuntaGroup', '');
-      setFieldError('nuntaName1', '');
-      setFieldError('nuntaName2', '');
+      setFieldError('name1', '');
+      setFieldError('name2', '');
       refreshRelationUI();
       saveDraft();
     });
   });
 
   // "Tu ești: ..." — populeaza si afiseaza sub-alegerea expeditorului pentru relatia data,
-  // reparentand elementul UNIC (nu duplicat) in slotul panoului activ (familie sau aniversare).
+  // reparentand elementul UNIC (nu duplicat) in slotul panoului activ.
   function renderSenderRoleGrid(recipientRole, targetSlot) {
     const options = SENDER_ROLE_OPTIONS[recipientRole];
     if (!options) { senderRoleSubfield.style.display = 'none'; return; }
@@ -2004,6 +2106,15 @@
     senderRoleSubfield.style.display = 'block';
   }
 
+  // "Amândoi" — populeaza si afiseaza cele doua campuri de nume, reparentand elementul UNIC
+  // (nu duplicat) in slotul panoului activ (Nuntă/Botez sau familie).
+  function renderBothNamesField(labelKeys, targetSlot) {
+    targetSlot.appendChild(bothNamesField);
+    name1Label.textContent = t(labelKeys.female);
+    name2Label.textContent = t(labelKeys.male);
+    bothNamesField.style.display = 'block';
+  }
+
   function renderNuntaSubroles() {
     const roles = NUNTA_SUBROLE_OPTIONS[nuntaGroup] || [];
     nuntaSubroleGrid.innerHTML = roles
@@ -2013,7 +2124,7 @@
       c.addEventListener('click', () => {
         recipientRoleInput.value = c.dataset.role;
         recipientModeInput.value = NUNTA_BOTH_ROLES.includes(c.dataset.role) ? 'both' : 'single';
-        if (recipientModeInput.value === 'single') { nuntaName1Input.value = ''; nuntaName2Input.value = ''; }
+        if (recipientModeInput.value === 'single') { name1Input.value = ''; name2Input.value = ''; }
         setFieldError('recipientRole', '');
         refreshRelationUI();
         saveDraft();
@@ -2032,19 +2143,28 @@
       if (activeCard && familyRelationPanel.previousElementSibling !== activeCard) {
         activeCard.insertAdjacentElement('afterend', familyRelationPanel);
       }
-      familyRelationGrid.innerHTML = RECIPIENT_ROLE_OPTIONS[occasion]
-        .map(role => `<div class="theme-card theme-subcard family-relation-card${role === recipientRoleInput.value ? ' active' : ''}" data-role="${role}"><div class="theme-name">${t('relation_' + role)}</div></div>`)
+      const roleOptions = RECIPIENT_ROLE_OPTIONS[occasion];
+      familyRelationGrid.style.gridTemplateColumns = roleOptions.length === 3 ? '1fr 1fr 1fr' : '1fr 1fr';
+      familyRelationGrid.innerHTML = roleOptions
+        .map(role => `<div class="theme-card theme-subcard family-relation-card${role === recipientRoleInput.value ? ' active' : ''}" data-role="${role}"><div class="theme-name">${FAMILY_BOTH_ROLES.includes(role) ? t('nunta_both') : t('relation_' + role)}</div></div>`)
         .join('');
       familyRelationGrid.querySelectorAll('.family-relation-card').forEach(c => {
         c.addEventListener('click', () => {
           recipientRoleInput.value = c.dataset.role;
           senderRoleInput.value = '';
+          recipientModeInput.value = FAMILY_BOTH_ROLES.includes(c.dataset.role) ? 'both' : 'single';
+          if (recipientModeInput.value === 'single') { name1Input.value = ''; name2Input.value = ''; }
           setFieldError('recipientRoleFamily', '');
           refreshRelationUI();
           saveDraft();
         });
       });
       familyRelationPanel.style.display = 'block';
+      if (FAMILY_BOTH_ROLES.includes(recipientRoleInput.value)) {
+        renderBothNamesField(FAMILY_BOTH_NAME_LABEL_KEYS[recipientRoleInput.value], familyNamesSlot);
+      } else {
+        bothNamesField.style.display = 'none';
+      }
       if (recipientRoleInput.value) renderSenderRoleGrid(recipientRoleInput.value, familySenderRoleSlot);
       else senderRoleSubfield.style.display = 'none';
     } else {
@@ -2053,34 +2173,47 @@
 
     if (occasion === 'nunta') {
       nuntaPanel.style.display = 'block';
-      document.querySelectorAll('.nunta-group-card').forEach(c => c.classList.toggle('active', c.dataset.group === nuntaGroup));
-      if (nuntaGroup) {
+      document.querySelectorAll('.nunta-type-card').forEach(c => c.classList.toggle('active', c.dataset.type === nuntaType));
+      if (nuntaType) {
+        const allowedGroups = WEDDING_TYPE_GROUPS[nuntaType];
+        document.querySelectorAll('.nunta-group-card').forEach(c => {
+          const allowed = allowedGroups.includes(c.dataset.group);
+          c.style.display = allowed ? '' : 'none';
+          c.classList.toggle('active', c.dataset.group === nuntaGroup);
+        });
+        nuntaGroupField.style.display = 'block';
+      } else {
+        nuntaGroupField.style.display = 'none';
+      }
+      if (nuntaType && nuntaGroup) {
         renderNuntaSubroles();
         nuntaSubroleField.style.display = 'block';
         if (NUNTA_BOTH_ROLES.includes(recipientRoleInput.value)) {
-          const labels = NUNTA_NAME_LABEL_KEYS[nuntaGroup];
-          nuntaName1Label.textContent = t(labels.female);
-          nuntaName2Label.textContent = t(labels.male);
-          nuntaNamesField.style.display = 'block';
+          renderBothNamesField(NUNTA_NAME_LABEL_KEYS[nuntaGroup], nuntaNamesSlot);
         } else {
-          nuntaNamesField.style.display = 'none';
+          bothNamesField.style.display = 'none';
         }
       } else {
         nuntaSubroleField.style.display = 'none';
-        nuntaNamesField.style.display = 'none';
+        bothNamesField.style.display = 'none';
       }
     } else {
       nuntaPanel.style.display = 'none';
     }
   }
 
-  document.querySelectorAll('.nunta-group-card').forEach(c => {
+  document.querySelectorAll('.nunta-type-card').forEach(c => {
     c.addEventListener('click', () => {
-      nuntaGroup = c.dataset.group;
+      nuntaType = c.dataset.type;
+      weddingTypeInput.value = nuntaType;
+      // Schimbarea nuntă/botez reseteaza grupul si rolul — un grup valabil pentru tipul vechi
+      // (ex. "Miri" la nunta) poate fi incompatibil cu noul tip (botez).
+      nuntaGroup = '';
       recipientRoleInput.value = '';
       recipientModeInput.value = '';
-      nuntaName1Input.value = '';
-      nuntaName2Input.value = '';
+      name1Input.value = '';
+      name2Input.value = '';
+      setFieldError('nuntaType', '');
       setFieldError('nuntaGroup', '');
       setFieldError('recipientRole', '');
       refreshRelationUI();
@@ -2088,8 +2221,22 @@
     });
   });
 
-  nuntaName1Input.addEventListener('input', () => { setFieldError('nuntaName1', ''); saveDraft(); });
-  nuntaName2Input.addEventListener('input', () => { setFieldError('nuntaName2', ''); saveDraft(); });
+  document.querySelectorAll('.nunta-group-card').forEach(c => {
+    c.addEventListener('click', () => {
+      nuntaGroup = c.dataset.group;
+      recipientRoleInput.value = '';
+      recipientModeInput.value = '';
+      name1Input.value = '';
+      name2Input.value = '';
+      setFieldError('nuntaGroup', '');
+      setFieldError('recipientRole', '');
+      refreshRelationUI();
+      saveDraft();
+    });
+  });
+
+  name1Input.addEventListener('input', () => { setFieldError('name1', ''); saveDraft(); });
+  name2Input.addEventListener('input', () => { setFieldError('name2', ''); saveDraft(); });
 
   refreshRelationUI();
 
@@ -2218,14 +2365,15 @@
   const DRAFT_KEY = 'nds_form_draft';
 
   function collectPayload() {
-    // "Amândoi" (Nuntă/Botez): combina cele doua nume distincte intr-un string afisabil pentru
-    // campul EXISTENT `recipient` (niciodata combinate intr-un singur camp de introducere —
-    // clientul tot completeaza doua campuri separate; doar payload-ul le combina pentru
-    // restul fluxului, care asteapa un singur `recipient`). Pentru orice alt caz, `recipient`
-    // ramane exact campul completat de client in pasul 2, neschimbat.
-    const isNuntaBoth = occasionInput.value === 'nunta' && recipientModeInput.value === 'both';
-    const recipientVal = isNuntaBoth
-      ? `${nuntaName1Input.value.trim()} ${t('and_conjunction')} ${nuntaName2Input.value.trim()}`
+    // "Amândoi" (Nuntă/Botez SI cele 3 ocazii de familie cu Amândoi): combina cele doua nume
+    // distincte intr-un string afisabil pentru campul EXISTENT `recipient` (niciodata combinate
+    // intr-un singur camp de introducere — clientul tot completeaza doua campuri separate; doar
+    // payload-ul le combina pentru restul fluxului, care asteapa un singur `recipient`, PASTRAND
+    // ambele nume complete, fara nicio prescurtare). Pentru orice alt caz, `recipient` ramane
+    // exact campul completat de client in pasul 2, neschimbat.
+    const isBothMode = recipientModeInput.value === 'both';
+    const recipientVal = isBothMode
+      ? `${name1Input.value.trim()} ${t('and_conjunction')} ${name2Input.value.trim()}`
       : document.getElementById('recipient').value;
     return {
       occasion: document.getElementById('occasion').value,
@@ -2251,9 +2399,13 @@
       recipientRole: recipientRoleInput.value,
       senderRole: senderRoleInput.value,
       recipientMode: recipientModeInput.value,
-      recipientNames: isNuntaBoth
-        ? { name1: nuntaName1Input.value.trim(), name2: nuntaName2Input.value.trim() }
-        : null
+      recipientNames: isBothMode
+        ? { name1: name1Input.value.trim(), name2: name2Input.value.trim() }
+        : null,
+      // weddingType (Nuntă/Botez, hotfix 2026-08-08) — relevant DOAR pentru occasion='nunta'
+      // (server-side il cere si il valideaza doar in acel caz); pentru orice alta ocazie,
+      // campul e gol si serverul il ignora complet (salvat null).
+      weddingType: weddingTypeInput.value
     };
   }
 
@@ -2274,9 +2426,11 @@
         recipientRole: recipientRoleInput.value,
         senderRole: senderRoleInput.value,
         recipientMode: recipientModeInput.value,
+        weddingType: weddingTypeInput.value,
+        nuntaType: nuntaType,
         nuntaGroup: nuntaGroup,
-        nuntaName1: nuntaName1Input.value,
-        nuntaName2: nuntaName2Input.value
+        name1: name1Input.value,
+        name2: name2Input.value
       };
       localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
     } catch (err) {
@@ -2306,9 +2460,11 @@
     if (draft.recipientRole) recipientRoleInput.value = draft.recipientRole;
     if (draft.senderRole) senderRoleInput.value = draft.senderRole;
     if (draft.recipientMode) recipientModeInput.value = draft.recipientMode;
+    if (draft.weddingType) weddingTypeInput.value = draft.weddingType;
+    if (draft.nuntaType) nuntaType = draft.nuntaType;
     if (draft.nuntaGroup) nuntaGroup = draft.nuntaGroup;
-    if (draft.nuntaName1) nuntaName1Input.value = draft.nuntaName1;
-    if (draft.nuntaName2) nuntaName2Input.value = draft.nuntaName2;
+    if (draft.name1) name1Input.value = draft.name1;
+    if (draft.name2) name2Input.value = draft.name2;
     refreshRelationUI();
     if (draft.recipient) document.getElementById('recipient').value = draft.recipient;
     if (draft.sender) document.getElementById('sender').value = draft.sender;

@@ -23,12 +23,14 @@ test('comanda.html: panoul de relatie de familie e REPOZITIONAT dinamic imediat 
   assert.ok(html.includes('grid-column:1/-1'));
 });
 
-test('comanda.html: RECIPIENT_ROLE_OPTIONS acopera toate cele 4 ocazii de familie cu perechile corecte', () => {
+// NOTA (CONTINUARE — personalizarea reala a versurilor, hotfix 2026-08-08): parinti/matusa-unchi/
+// socri au acum 3 optiuni (a treia fiind "Amândoi") — vezi test/occasion-real-personalization.test.js.
+test('comanda.html: RECIPIENT_ROLE_OPTIONS acopera toate cele 4 ocazii de familie (bunici: 2, celelalte 3 cu Amândoi)', () => {
   const html = read('public/comanda.html');
   assert.ok(html.includes("bunici: ['grandmother', 'grandfather'],"));
-  assert.ok(html.includes("parinti: ['mother', 'father'],"));
-  assert.ok(html.includes("'matusa-unchi': ['aunt', 'uncle'],"));
-  assert.ok(html.includes("socri: ['mother_in_law', 'father_in_law']"));
+  assert.ok(html.includes("parinti: ['mother', 'father', 'parents'],"));
+  assert.ok(html.includes("'matusa-unchi': ['aunt', 'uncle', 'aunt_uncle'],"));
+  assert.ok(html.includes("socri: ['mother_in_law', 'father_in_law', 'parents_in_law']"));
 });
 
 test('comanda.html: cardurile noi "Pentru mama sau tata"/"mătușă sau unchi"/"soacră sau socru" exista, in acelasi stil ca bunici', () => {
@@ -65,8 +67,8 @@ test('comanda.html: click pe orice card de ocazie principala reseteaza TOATE cam
   assert.ok(slice.includes("senderRoleInput.value = '';"));
   assert.ok(slice.includes("recipientModeInput.value = '';"));
   assert.ok(slice.includes("nuntaGroup = '';"));
-  assert.ok(slice.includes("nuntaName1Input.value = '';"));
-  assert.ok(slice.includes("nuntaName2Input.value = '';"));
+  assert.ok(slice.includes("name1Input.value = '';"));
+  assert.ok(slice.includes("name2Input.value = '';"));
 });
 
 // -------------------------------------------------------------------------------------------
@@ -76,19 +78,19 @@ test('comanda.html: restoreDraft() reface recipientRole/senderRole/recipientMode
   const html = read('public/comanda.html');
   const idx = html.indexOf('if (draft.recipientRole) recipientRoleInput.value = draft.recipientRole;');
   assert.ok(idx !== -1);
-  const slice = html.slice(idx, idx + 500);
+  const slice = html.slice(idx, idx + 750);
   assert.ok(slice.includes('if (draft.senderRole) senderRoleInput.value = draft.senderRole;'));
   assert.ok(slice.includes('if (draft.recipientMode) recipientModeInput.value = draft.recipientMode;'));
   assert.ok(slice.includes('if (draft.nuntaGroup) nuntaGroup = draft.nuntaGroup;'));
-  assert.ok(slice.includes('if (draft.nuntaName1) nuntaName1Input.value = draft.nuntaName1;'));
-  assert.ok(slice.includes('if (draft.nuntaName2) nuntaName2Input.value = draft.nuntaName2;'));
+  assert.ok(slice.includes('if (draft.name1) name1Input.value = draft.name1;'));
+  assert.ok(slice.includes('if (draft.name2) name2Input.value = draft.name2;'));
   assert.ok(slice.includes('refreshRelationUI();'));
 });
 
 test('comanda.html: saveDraft() persista recipientRole/senderRole/recipientMode/nuntaGroup/nume', () => {
   const html = read('public/comanda.html');
   const idx = html.indexOf('function saveDraft()');
-  const slice = html.slice(idx, idx + 900);
+  const slice = html.slice(idx, idx + 1200);
   assert.ok(slice.includes('recipientRole: recipientRoleInput.value,'));
   assert.ok(slice.includes('senderRole: senderRoleInput.value,'));
   assert.ok(slice.includes('recipientMode: recipientModeInput.value,'));
@@ -123,25 +125,30 @@ test('comanda.html: eticheta "Nuntă/Botez" a inlocuit cardul "Nunta" in toate c
 // -------------------------------------------------------------------------------------------
 // 10: "Amândoi" solicita si salveaza doua nume distincte.
 // -------------------------------------------------------------------------------------------
+// NOTA (CONTINUARE — personalizarea reala a versurilor, hotfix 2026-08-08): campurile de nume
+// (#nunta-name1/#nunta-name2) au fost GENERALIZATE intr-un element unic reutilizabil
+// (#name1/#name2, id="both-names-field") reparentat intre Nuntă/Botez si cele 3 ocazii de
+// familie cu "Amândoi" — "reutilizeaza, nu paralel", cerinta explicita a corectiei.
 test('comanda.html: alegerea "Amândoi" arata doua campuri de nume distincte si seteaza recipientMode="both"', () => {
   const html = read('public/comanda.html');
   assert.ok(html.includes("recipientModeInput.value = NUNTA_BOTH_ROLES.includes(c.dataset.role) ? 'both' : 'single';"));
-  assert.ok(html.includes('id="nunta-name1"') && html.includes('id="nunta-name2"'));
-  assert.ok(html.includes('nuntaNamesField.style.display = \'block\';'));
+  assert.ok(html.includes('id="name1"') && html.includes('id="name2"'));
+  assert.ok(html.includes('id="both-names-field"'));
+  assert.ok(html.includes("bothNamesField.style.display = 'block';"));
 });
 
 test('comanda.html: validateStep(1) blocheaza continuarea daca lipseste oricare din cele doua nume la "Amândoi"', () => {
   const html = read('public/comanda.html');
   assert.ok(html.includes("if (recipientModeInput.value === 'both') {"));
-  assert.ok(html.includes('const nuntaName1 = nuntaName1Input.value.trim();'));
-  assert.ok(html.includes('const nuntaName2 = nuntaName2Input.value.trim();'));
+  assert.ok(html.includes('const nuntaName1 = name1Input.value.trim();'));
+  assert.ok(html.includes('const nuntaName2 = name2Input.value.trim();'));
   assert.ok(html.includes("if (!nuntaName1 || !nuntaName2) ok = false;"));
 });
 
 test('comanda.html: numele NU sunt combinate intr-un singur camp de INTRODUCERE — doua input-uri separate, cu etichete distincte per grup', () => {
   const html = read('public/comanda.html');
-  assert.ok(html.includes('<input type="text" id="nunta-name1" maxlength="60">'));
-  assert.ok(html.includes('<input type="text" id="nunta-name2" maxlength="60">'));
+  assert.ok(html.includes('<input type="text" id="name1" maxlength="60">'));
+  assert.ok(html.includes('<input type="text" id="name2" maxlength="60">'));
   assert.ok(html.includes("nunta_name_bride_label: 'Numele miresei', nunta_name_groom_label: 'Numele mirelui',"));
 });
 
@@ -222,7 +229,7 @@ test('comanda.html: collectPayload() trimite recipientRole/senderRole/recipientM
   assert.ok(slice.includes('recipientRole: recipientRoleInput.value,'));
   assert.ok(slice.includes('senderRole: senderRoleInput.value,'));
   assert.ok(slice.includes('recipientMode: recipientModeInput.value,'));
-  assert.ok(slice.includes('? { name1: nuntaName1Input.value.trim(), name2: nuntaName2Input.value.trim() }'));
+  assert.ok(slice.includes('? { name1: name1Input.value.trim(), name2: name2Input.value.trim() }'));
 });
 
 test('server.js: GET /api/orders/:orderId expune occasion/recipientRole/senderRole (altfel antetul personalizat nu primeste niciodata datele)', () => {
@@ -262,10 +269,15 @@ test('server.js: relatia se mentioneaza O SINGURA DATA, fara repetitie fortata, 
   assert.ok(server.includes('Mention naturally, once, that this song is dedicated to the recipient as their'));
 });
 
-test('server.js: "E ziua lui/ei" cu relatie aleasa adauga urarea explicita de "La mulți ani" in limba versurilor', () => {
+// NOTA (CONTINUARE — personalizarea reala a versurilor, hotfix 2026-08-08): urarea de "La mulți
+// ani" nu mai depinde de o relatie aleasa (submeniul de relatie de la aniversare a fost eliminat
+// intre timp) — e acum parte NECONDITIONATA din OCCASION_INSTRUCTIONS.aniversare, aplicata la
+// ORICE comanda aniversare, cu sau fara relatie de familie. Vezi test/occasion-real-personalization.test.js.
+test('server.js: "E ziua lui/ei" include urarea de "La mulți ani" neconditionat, in orice comanda aniversare', () => {
   const server = read('server.js');
-  assert.ok(server.includes("if (order.occasion === 'aniversare') {"));
-  assert.ok(server.includes('Include a natural birthday wish in the lyrics language.'));
+  const idx = server.indexOf('aniversare: {');
+  const slice = server.slice(idx, idx + 500);
+  assert.ok(slice.includes('birthday wish'));
 });
 
 // -------------------------------------------------------------------------------------------

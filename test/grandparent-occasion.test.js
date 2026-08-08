@@ -61,10 +61,10 @@ test('db.js: migrarea grandparent_type e aditiva (ADD COLUMN IF NOT EXISTS)', ()
   assert.ok(dbjs.includes('ALTER TABLE orders ADD COLUMN IF NOT EXISTS grandparent_type TEXT;'));
 });
 
-test('db.js: createOrder salveaza grandparent_type (acum urmat de recipient_role/sender_role/recipient_mode/recipient_names), rowToOrder il expune ca grandparentType', () => {
+test('db.js: createOrder salveaza grandparent_type (acum urmat de recipient_role/sender_role/recipient_mode/recipient_names/wedding_type), rowToOrder il expune ca grandparentType', () => {
   const dbjs = read('db.js');
-  assert.ok(dbjs.includes('grandparent_type, recipient_role, sender_role, recipient_mode, recipient_names)'), 'INSERT-ul trebuie sa includa toate cele 5 coloane, in aceasta ordine');
-  assert.ok(dbjs.includes('$21,$22,$23,$24)'), 'coloanele noi trebuie sa fie ultimii 4 parametri ($21-$24)');
+  assert.ok(dbjs.includes('grandparent_type, recipient_role, sender_role, recipient_mode, recipient_names, wedding_type)'), 'INSERT-ul trebuie sa includa toate cele 6 coloane, in aceasta ordine');
+  assert.ok(dbjs.includes('$21,$22,$23,$24,$25)'), 'coloanele noi trebuie sa fie ultimii 5 parametri ($21-$25)');
   assert.ok(dbjs.includes('order.grandparentType || null'), 'valoarea trebuie sa vina din order.grandparentType, cu fallback null');
   assert.ok(dbjs.includes('grandparentType: row.grandparent_type,'), 'rowToOrder trebuie sa expuna coloana catre restul aplicatiei');
 });

@@ -647,10 +647,72 @@
     bg: (sn, name) => `От ${sn} ${name}`,
     tr: (sn, name) => `${sn} ${name} tarafından`
   };
+  // CONTINUARE — personalizarea reala a versurilor (hotfix 2026-08-08): "Amândoi" pentru
+  // parinti/matusa-unchi/socri foloseste DOUA substantive de relatie, cate unul pentru fiecare
+  // nume ("Melodia pentru mama Maria și tata Ion") — spre deosebire de Nuntă/Botez, care are un
+  // substantiv colectiv unic (mirii/finii/nasii) pentru ambele nume.
+  const HEADING_PERSONALIZED_DUAL_TEMPLATE = {
+    ro: (n1, name1, n2, name2) => `Melodia pentru ${n1} ${name1} și ${n2} ${name2}`,
+    en: (n1, name1, n2, name2) => `The song for ${n1} ${name1} and ${n2} ${name2}`,
+    de: (n1, name1, n2, name2) => `Das Lied für ${n1} ${name1} und ${n2} ${name2}`,
+    es: (n1, name1, n2, name2) => `La canción para ${n1} ${name1} y ${n2} ${name2}`,
+    it: (n1, name1, n2, name2) => `La canzone per ${n1} ${name1} e ${n2} ${name2}`,
+    fr: (n1, name1, n2, name2) => `La chanson pour ${n1} ${name1} et ${n2} ${name2}`,
+    bg: (n1, name1, n2, name2) => `Песента за ${n1} ${name1} и ${n2} ${name2}`,
+    tr: (n1, name1, n2, name2) => `${n1} ${name1} ve ${n2} ${name2} için şarkı`
+  };
+  const FAMILY_BOTH_PAIR_KEYS = {
+    parents: ['mother', 'father'],
+    aunt_uncle: ['aunt', 'uncle'],
+    parents_in_law: ['mother_in_law', 'father_in_law']
+  };
+  // CONTINUARE — personalizarea reala a versurilor (hotfix 2026-08-08): antetul "Nuntă/Botez"
+  // foloseste weddingType (nunta/botez), NU rolul specific (mire/fina/nas etc.) — rolul e prea
+  // granular pentru un antet clar, mai ales pentru "Nași" (comun ambelor teme). Substantivele
+  // RELATION_DISPLAY_NOUNS.groom/bride/... raman folosite doar pentru comenzile VECHI, create
+  // inainte ca weddingType sa devina obligatoriu (vezi fallback-ul la finalul functiei).
+  const WEDDING_TYPE_HEADING_TEMPLATE = {
+    ro: { wedding: name => `Melodia de nuntă pentru ${name}`, baptism: name => `Melodia de botez pentru ${name}` },
+    en: { wedding: name => `Wedding song for ${name}`, baptism: name => `Christening song for ${name}` },
+    de: { wedding: name => `Hochzeitslied für ${name}`, baptism: name => `Tauflied für ${name}` },
+    es: { wedding: name => `Canción de boda para ${name}`, baptism: name => `Canción de bautizo para ${name}` },
+    it: { wedding: name => `Canzone di matrimonio per ${name}`, baptism: name => `Canzone di battesimo per ${name}` },
+    fr: { wedding: name => `Chanson de mariage pour ${name}`, baptism: name => `Chanson de baptême pour ${name}` },
+    bg: { wedding: name => `Сватбена песен за ${name}`, baptism: name => `Кръщелна песен за ${name}` },
+    tr: { wedding: name => `${name} için düğün şarkısı`, baptism: name => `${name} için vaftiz şarkısı` }
+  };
   // Comenzile fara recipientRole (vechi, sau ocazie fara relatie structurata) intorc null —
   // apelantul (renderContent) foloseste atunci EXACT antetul generic actual, neschimbat.
   function composePersonalizedHeading(order, activeLang) {
     const nouns = RELATION_DISPLAY_NOUNS[activeLang] || RELATION_DISPLAY_NOUNS.en;
+
+    // "Nuntă/Botez" — antet simplu, bazat pe weddingType. senderRole nu mai exista pentru
+    // comenzile NOI (eliminat la corectia anterioara), deci nicio dedicatie aici.
+    if (order.occasion === 'nunta' && (order.weddingType === 'wedding' || order.weddingType === 'baptism')) {
+      const templates = WEDDING_TYPE_HEADING_TEMPLATE[activeLang] || WEDDING_TYPE_HEADING_TEMPLATE.en;
+      return { heading: templates[order.weddingType](order.recipient || ''), dedication: null };
+    }
+
+    // "Amândoi" pentru parinti/matusa-unchi/socri — DOUA substantive, cate unul pentru fiecare
+    // nume (spre deosebire de substantivul colectiv unic de la Nuntă/Botez de mai sus).
+    const bothPairKeys = FAMILY_BOTH_PAIR_KEYS[order.recipientRole];
+    if (bothPairKeys && order.recipientMode === 'both' && order.recipientNames
+      && order.recipientNames.name1 && order.recipientNames.name2) {
+      const noun1 = nouns.recipient[bothPairKeys[0]];
+      const noun2 = nouns.recipient[bothPairKeys[1]];
+      if (noun1 && noun2) {
+        const headingFn = HEADING_PERSONALIZED_DUAL_TEMPLATE[activeLang] || HEADING_PERSONALIZED_DUAL_TEMPLATE.en;
+        const heading = headingFn(noun1, order.recipientNames.name1, noun2, order.recipientNames.name2);
+        const senderNoun = order.senderRole && nouns.sender[order.senderRole];
+        const dedicationFn = DEDICATION_PERSONALIZED_TEMPLATE[activeLang] || DEDICATION_PERSONALIZED_TEMPLATE.en;
+        const dedication = (senderNoun && order.senderName) ? dedicationFn(senderNoun, order.senderName) : null;
+        return { heading, dedication };
+      }
+    }
+
+    // Relatie de familie individuala (bunici/parinti/matusa-unchi/socri cu un singur rol, sau
+    // o comanda VECHE de nunta fara weddingType, cu rolul de grup vechi couple/godchildren/
+    // godparents) — logica existenta, neschimbata.
     const recipientNoun = order.recipientRole && nouns.recipient[order.recipientRole];
     if (!recipientNoun) return null;
     const headingFn = HEADING_PERSONALIZED_TEMPLATE[activeLang] || HEADING_PERSONALIZED_TEMPLATE.en;

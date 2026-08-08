@@ -133,6 +133,11 @@ async function initDb() {
   // existenta ramane sursa unica pentru orice alt caz (inclusiv un string combinat afisabil,
   // ex. "Maria si Andrei", generat de frontend cand recipient_mode='both').
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS recipient_names JSONB;`);
+  // wedding_type: 'wedding'|'baptism' — OBLIGATORIU pentru occasion='nunta' (validat strict la
+  // POST /api/orders), NULL pentru orice alta ocazie SI pentru comenzile de nunta create INAINTE
+  // de aceasta coloana (fereastra scurta cat "Nuntă/Botez" nu distingea explicit intre cele
+  // doua — vezi buildPrompt in server.js pentru fallback-ul defensiv pe acele comenzi vechi).
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS wedding_type TEXT;`);
 
   // Urmarire: din ce varianta (versuri editate de client) a pornit ultima regenerare —
   // pentru transparenta/audit. Versurile originale/editate/data ultimei editari per
@@ -389,6 +394,7 @@ function rowToOrder(row) {
     senderRole: row.sender_role || null,
     recipientMode: row.recipient_mode || null,
     recipientNames: row.recipient_names || null,
+    weddingType: row.wedding_type || null,
     regenerateSourceVariantId: row.regenerate_source_variant_id,
     regenerateKeepOriginal: !!row.regenerate_keep_original,
     editReserved: row.edit_reserved,
@@ -414,8 +420,8 @@ function rowToOrder(row) {
 async function createOrder(order) {
   const result = await pool.query(
     `INSERT INTO orders
-      (id, access_token, occasion, recipient, email, story, genre, genre2, plan, price, lang, status, edits_used, variants, selected_variant_id, sender_name, relationship, voice_preference, phone, grandparent_type, recipient_role, sender_role, recipient_mode, recipient_names)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
+      (id, access_token, occasion, recipient, email, story, genre, genre2, plan, price, lang, status, edits_used, variants, selected_variant_id, sender_name, relationship, voice_preference, phone, grandparent_type, recipient_role, sender_role, recipient_mode, recipient_names, wedding_type)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
      RETURNING *`,
     [
       order.id, order.accessToken, order.occasion, order.recipient, order.email,
@@ -424,7 +430,8 @@ async function createOrder(order) {
       order.senderName || null, order.relationship || null, order.voicePreference || 'auto',
       order.phone || null, order.grandparentType || null,
       order.recipientRole || null, order.senderRole || null, order.recipientMode || null,
-      order.recipientNames ? JSON.stringify(order.recipientNames) : null
+      order.recipientNames ? JSON.stringify(order.recipientNames) : null,
+      order.weddingType || null
     ]
   );
   return rowToOrder(result.rows[0]);

@@ -138,26 +138,37 @@ const ALLOWED_LANGS = ['ro', 'en', 'de', 'es', 'it', 'fr', 'bg', 'tr'];
 // (clientul poate alege in continuare "Altă persoană", pastrand comportamentul generic actual).
 const FAMILY_OCCASIONS = ['bunici', 'parinti', 'matusa-unchi', 'socri'];
 
-// recipientRole permise per ocazie de familie.
+// recipientRole permise per ocazie de familie. CONTINUARE — personalizarea reala a versurilor
+// (hotfix 2026-08-08): "Amândoi" adaugat pentru parinti/matusa-unchi/socri (NU si pentru bunici,
+// cerinta explicita) — reutilizeaza EXACT acelasi mecanism recipientMode='both'+recipientNames
+// deja construit pentru Nuntă/Botez, niciun sistem paralel.
 const FAMILY_OCCASION_RECIPIENT_ROLES = {
   bunici: ['grandmother', 'grandfather'],
-  parinti: ['mother', 'father'],
-  'matusa-unchi': ['aunt', 'uncle'],
-  socri: ['mother_in_law', 'father_in_law']
+  parinti: ['mother', 'father', 'parents'],
+  'matusa-unchi': ['aunt', 'uncle', 'aunt_uncle'],
+  socri: ['mother_in_law', 'father_in_law', 'parents_in_law']
 };
+// Valorile de recipientRole care reprezinta "Amândoi" pentru ocaziile de familie — analog cu
+// WEDDING_RECIPIENT_ROLES_BOTH de mai jos.
+const FAMILY_BOTH_ROLES = ['parents', 'aunt_uncle', 'parents_in_law'];
 // senderRole permise, in functie de recipientRole ales — acelasi selector "Tu ești: ..." e
 // reutilizat pentru bunici SI matusa-unchi (romana foloseste identic "Nepoată"/"Nepot" pentru
 // ambele relatii), dar valorile interne raman distincte, ca buildPrompt sa poata scrie
-// conceptul corect in engleza (Suno traduce apoi natural, la fel ca restul promptului).
+// conceptul corect in engleza (Suno traduce apoi natural, la fel ca restul promptului). Rolurile
+// "Amândoi" (parents/aunt_uncle/parents_in_law) folosesc ACELASI expeditor ca varianta lor
+// individuala — relatia expeditorului nu se schimba dupa cate persoane sunt destinatare.
 const FAMILY_RECIPIENT_TO_SENDER_ROLES = {
   grandmother: ['granddaughter', 'grandson'],
   grandfather: ['granddaughter', 'grandson'],
   mother: ['daughter', 'son'],
   father: ['daughter', 'son'],
+  parents: ['daughter', 'son'],
   aunt: ['niece', 'nephew'],
   uncle: ['niece', 'nephew'],
+  aunt_uncle: ['niece', 'nephew'],
   mother_in_law: ['daughter_in_law', 'son_in_law'],
-  father_in_law: ['daughter_in_law', 'son_in_law']
+  father_in_law: ['daughter_in_law', 'son_in_law'],
+  parents_in_law: ['daughter_in_law', 'son_in_law']
 };
 
 // "Nuntă/Botez" (occasion='nunta' — valoarea interna ramane neschimbata, doar eticheta
@@ -165,6 +176,15 @@ const FAMILY_RECIPIENT_TO_SENDER_ROLES = {
 // Trei niveluri (Miri/Fini/Nași), fiecare cu rol individual SAU "Amândoi" (grup).
 const WEDDING_RECIPIENT_ROLES_SINGLE = ['groom', 'bride', 'godson', 'goddaughter', 'godfather', 'godmother'];
 const WEDDING_RECIPIENT_ROLES_BOTH = ['couple', 'godchildren', 'godparents'];
+// CONTINUARE — personalizarea reala a versurilor (hotfix 2026-08-08): "Nuntă" si "Botez" erau
+// pana acum ambigue in cazul "Nași" (nasii pot fi de nunta SAU de botez, acelasi cuvant) —
+// weddingType e alegerea EXPLICITA, separata, care distinge cele doua teme complet diferite.
+// Rolurile permise sunt filtrate dupa tip: "Miri" apartine strict nuntii, "Fini" strict
+// botezului, "Nași" ambelor (motiv pentru care exista si in wedding SI in baptism mai jos).
+const WEDDING_TYPE_ALLOWED_ROLES = {
+  wedding: ['groom', 'bride', 'couple', 'godfather', 'godmother', 'godparents'],
+  baptism: ['godson', 'goddaughter', 'godchildren', 'godfather', 'godmother', 'godparents']
+};
 
 // Mesaje de validare traduse pentru campurile obligatorii legate de personalizare
 // (destinatar, expeditor, relatie, poveste) — afisate clientului in limba aleasa de el,
@@ -241,6 +261,17 @@ const MISSING_FIELD_MESSAGES = {
     fr: 'Renseignez les deux prénoms',
     bg: 'Попълни и двете имена',
     tr: 'Her iki ismi de girin'
+  },
+  // CONTINUARE — personalizarea reala a versurilor (hotfix 2026-08-08).
+  weddingType: {
+    ro: 'Alege dacă este vorba despre o nuntă sau un botez',
+    en: 'Choose whether this is a wedding or a christening',
+    de: 'Wähle, ob es sich um eine Hochzeit oder eine Taufe handelt',
+    es: 'Elige si se trata de una boda o un bautizo',
+    it: 'Scegli se si tratta di un matrimonio o di un battesimo',
+    fr: 'Choisissez s\'il s\'agit d\'un mariage ou d\'un baptême',
+    bg: 'Избери дали е сватба или кръщене',
+    tr: 'Düğün mü yoksa vaftiz mi olduğunu seçin'
   }
 };
 function missingFieldMessage(field, lang) {
@@ -1305,7 +1336,7 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
   try {
     const {
       occasion, recipient, senderName, relationship, email, phone, story, genre, genre2, plan, lang, voicePreference,
-      grandparentType, recipientRole, senderRole, recipientMode, recipientNames
+      grandparentType, recipientRole, senderRole, recipientMode, recipientNames, weddingType
     } = req.body || {};
     const safeLang = ALLOWED_LANGS.includes(lang) ? lang : 'ro';
 
@@ -1323,6 +1354,7 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
     let safeSenderRole = null;
     let safeRecipientMode = null;
     let safeRecipientNames = null;
+    let safeWeddingType = null;
 
     if (FAMILY_OCCASIONS.includes(occasion)) {
       const allowedRecipientRoles = FAMILY_OCCASION_RECIPIENT_ROLES[occasion];
@@ -1333,6 +1365,24 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
       if (!allowedSenderRoles.includes(senderRole)) {
         return res.status(400).json({ error: missingFieldMessage('senderRole', safeLang) });
       }
+      // CONTINUARE — personalizarea reala a versurilor (hotfix 2026-08-08): "Amândoi" pentru
+      // parinti/matusa-unchi/socri — ACELASI mecanism ca "Amândoi" de la Nuntă/Botez mai jos
+      // (recipientMode='both' + doua nume complete, distincte, validate identic).
+      const isFamilyBothRole = FAMILY_BOTH_ROLES.includes(recipientRole);
+      if (isFamilyBothRole) {
+        if (recipientMode !== 'both') {
+          return res.status(400).json({ error: missingFieldMessage('recipientRole', safeLang) });
+        }
+        const name1 = recipientNames && typeof recipientNames.name1 === 'string' ? recipientNames.name1.trim() : '';
+        const name2 = recipientNames && typeof recipientNames.name2 === 'string' ? recipientNames.name2.trim() : '';
+        if (!isValidString(name1, 1, 60) || !isValidString(name2, 1, 60)) {
+          return res.status(400).json({ error: missingFieldMessage('recipientNames', safeLang) });
+        }
+        safeRecipientNames = { name1, name2 };
+        safeRecipientMode = 'both';
+      } else {
+        safeRecipientMode = 'single';
+      }
       safeRecipientRole = recipientRole;
       safeSenderRole = senderRole;
       if (occasion === 'bunici') safeGrandparentType = recipientRole;
@@ -1342,10 +1392,16 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
       // recipientRole/senderRole raman null, indiferent ce ar trimite un client vechi din
       // devtools sau dintr-un draft localStorage neactualizat.
     } else if (occasion === 'nunta') {
-      // "Nuntă/Botez" — Miri/Fini/Nași, fiecare cu rol individual sau "Amândoi". Valoarea
-      // interna a ocaziei ramane 'nunta' (neschimbata) — doar eticheta afisata s-a schimbat.
-      const isSingleRole = WEDDING_RECIPIENT_ROLES_SINGLE.includes(recipientRole);
-      const isBothRole = WEDDING_RECIPIENT_ROLES_BOTH.includes(recipientRole);
+      // CONTINUARE — personalizarea reala a versurilor (hotfix 2026-08-08): weddingType
+      // (wedding/baptism) e acum OBLIGATORIU si distinge explicit cele doua teme, care nu mai
+      // sunt amestecate — "Nași" (godparents) e singurul rol permis in AMBELE tipuri, pentru ca
+      // in traditia romaneasca nasii pot fi de nunta SAU de botez.
+      if (weddingType !== 'wedding' && weddingType !== 'baptism') {
+        return res.status(400).json({ error: missingFieldMessage('weddingType', safeLang) });
+      }
+      const allowedRolesForType = WEDDING_TYPE_ALLOWED_ROLES[weddingType];
+      const isSingleRole = WEDDING_RECIPIENT_ROLES_SINGLE.includes(recipientRole) && allowedRolesForType.includes(recipientRole);
+      const isBothRole = WEDDING_RECIPIENT_ROLES_BOTH.includes(recipientRole) && allowedRolesForType.includes(recipientRole);
       if (!isSingleRole && !isBothRole) {
         return res.status(400).json({ error: missingFieldMessage('recipientRole', safeLang) });
       }
@@ -1368,6 +1424,7 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
       // valoarea si comportamentul (vezi melodia-mea.html, composePersonalizedHeading).
       safeRecipientRole = recipientRole;
       safeRecipientMode = expectedMode;
+      safeWeddingType = weddingType;
     }
 
     if (!isValidString(recipient, 1, 60)) {
@@ -1441,7 +1498,8 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
       recipientRole: safeRecipientRole,
       senderRole: safeSenderRole,
       recipientMode: safeRecipientMode,
-      recipientNames: safeRecipientNames
+      recipientNames: safeRecipientNames,
+      weddingType: safeWeddingType
     });
 
     res.json({ orderId: order.id, accessToken: order.accessToken });
@@ -1902,6 +1960,14 @@ app.get('/api/orders/:orderId', async (req, res, next) => {
       occasion: order.occasion || null,
       recipientRole: order.recipientRole || null,
       senderRole: order.senderRole || null,
+      // CONTINUARE — personalizarea reala a versurilor (hotfix 2026-08-08): recipientMode/
+      // recipientNames sunt necesare in melodia-mea.html pentru antetul cu DOUA nume distincte
+      // ("Melodia pentru mama Maria și tata Ion") — fara ele aici, composePersonalizedHeading()
+      // ar primi mereu undefined, la fel cum s-a intamplat cu occasion/recipientRole/senderRole
+      // inainte de corectia anterioara. weddingType distinge Nuntă de Botez in antet.
+      recipientMode: order.recipientMode || null,
+      recipientNames: order.recipientNames || null,
+      weddingType: order.weddingType || null,
       voicePreference: order.voicePreference,
       plan: order.plan,
       lang: order.lang,
@@ -3234,6 +3300,34 @@ async function resumeDualTaskPolling(orderId) {
 // cealalta ramane complet neatinsa ("o revizie pastreaza genul variantei editate", "retry-ul
 // unei variante nu regenereaza inutil cealalta"). Absent -> generare COMPLETA, variants[]
 // inlocuit in intregime (generare initiala, sau regenerare Standard).
+// CONTINUARE — personalizarea reala a versurilor (hotfix 2026-08-08): verificare NEBLOCANTA
+// (doar avertisment in log, pentru monitorizare) ca versurile intoarse de Suno chiar contin
+// numele complete asteptate. LIMITARE ARHITECTURALA de raportat explicit: SunoAPI genereaza
+// versurile SI audio-ul in ACELASI apel — nu exista niciun pas separat "doar versuri" pe care
+// aplicatia sa-l poata intercepta INAINTE de generarea audio, deci nu putem bloca/regenera
+// automat inainte ca audio-ul sa existe deja, fara o schimbare arhitecturala majora (in afara
+// scopului "modificare minima" al acestei cereri). Garantia REALA impotriva numelor
+// omise/prescurtate ramane la nivelul promptului (vezi effectiveRecipientRole/relationClause/
+// recipientIsProtectedCombo mai sus) — aceasta verificare ofera in plus vizibilitate directa
+// in loguri daca, in ciuda promptului corect, Suno tot a omis un nume, pentru urmarire manuala.
+function checkLyricsContainExpectedNames(order, variant) {
+  if (!variant || !variant.originalLyrics) return;
+  const namesToCheck = [];
+  if (order.recipientMode === 'both' && order.recipientNames) {
+    if (order.recipientNames.name1) namesToCheck.push(order.recipientNames.name1);
+    if (order.recipientNames.name2) namesToCheck.push(order.recipientNames.name2);
+  } else if (order.recipient) {
+    namesToCheck.push(order.recipient);
+  }
+  const lyricsLower = variant.originalLyrics.toLowerCase();
+  namesToCheck.forEach(name => {
+    const nameLower = String(name).trim().toLowerCase();
+    if (nameLower && !lyricsLower.includes(nameLower)) {
+      console.warn(`Comanda ${order.id}: numele "${name}" nu a fost gasit in versurile generate (varianta ${variant.id}) — verifica manual.`);
+    }
+  });
+}
+
 async function finalizeVariantsIfNeeded(orderId, requestsInfo, options = {}) {
   const claimed = await db.claimOrderForProviderFinalization(orderId);
   if (!claimed) {
@@ -3290,6 +3384,7 @@ async function finalizeVariantsIfNeeded(orderId, requestsInfo, options = {}) {
     if (requestFailures.length > 0) {
       console.warn(`Comanda ${orderId}: ${requestFailures.length} cerere(i) esuata(e), continui cu ${builtVariants.length} varianta(e). Motiv: ${requestFailures.join(' | ')}`);
     }
+    builtVariants.forEach(v => checkLyricsContainExpectedNames(claimed, v));
 
     let variants;
     let newSelectedVariantId;
@@ -4482,9 +4577,9 @@ const OCCASION_LABELS = {
 // familie SI de nunta/botez (inlocuieste ramura ingusta anterioara, specifica doar lui 'bunici').
 const RELATION_NOUNS = {
   grandmother: 'grandmother', grandfather: 'grandfather',
-  mother: 'mother', father: 'father',
-  aunt: 'aunt', uncle: 'uncle',
-  mother_in_law: 'mother-in-law', father_in_law: 'father-in-law',
+  mother: 'mother', father: 'father', parents: 'both parents, mother and father',
+  aunt: 'aunt', uncle: 'uncle', aunt_uncle: 'both aunt and uncle',
+  mother_in_law: 'mother-in-law', father_in_law: 'father-in-law', parents_in_law: 'both parents-in-law',
   groom: 'groom', bride: 'bride', couple: 'the couple (bride and groom)',
   godson: 'godson', goddaughter: 'goddaughter', godchildren: 'the godchildren',
   godfather: 'godfather', godmother: 'godmother', godparents: 'the godparents'
@@ -4507,42 +4602,51 @@ const SENDER_RELATION_NOUNS = {
 // schimbat nimic in ce trimite clientul, doar cum foloseste server-ul aceasta valoare.
 // Fiecare ocazie are o forma FULL (calitate mai buna) si una SHORT (folosita doar daca
 // bugetul de 500 caractere e foarte stramtorat — vezi cascada de scurtare din buildPrompt).
+// CONTINUARE — personalizarea reala a versurilor (hotfix 2026-08-08): instructiunile de mai jos
+// au fost intarite explicit sa previna CONFUZII SEMANTICE frecvente intre ocazii inrudite
+// (dor vs pierdere, onomastica vs aniversare, nunta vs botez) — fiecare cere acum EXPLICIT ce
+// idee centrala trebuie sa transmita SI ce anume nu are voie sa presupuna/inventeze, verificat
+// direct impotriva cerintei clientului pentru fiecare ocazie in parte.
 const OCCASION_INSTRUCTIONS = {
   dor: {
-    full: 'Convey deep longing for someone missed — evoke shared memories and quiet nostalgia throughout.',
-    short: 'Deep longing and nostalgia.'
+    full: 'The idea, mood and chorus must center on missing someone who is alive but far away or absent — shared memories, distance, and longing to reunite. Never imply the person has died; that meaning belongs strictly to a different occasion (in loving memory) and must never be used here.',
+    short: 'Missing someone alive but far away; never implies death.'
   },
   onomastica: {
-    full: 'Warm, celebratory mood — express appreciation, wishes and joy for their special name day.',
-    short: 'Warm, celebratory, joyful wishes.'
+    full: 'The idea, mood and chorus must center on their name day / saint\'s day — celebration and warm wishes tied to their name, not their birth date. Never treat this as a birthday, never say things like "another year older", and never invent or imply their age.',
+    short: 'Name day celebration, not a birthday; never mention age.'
   },
   aniversare: {
-    full: 'Personal, warm birthday mood — heartfelt wishes and real memories, not a generic birthday song.',
-    short: 'Personal birthday warmth, heartfelt.'
+    full: 'The idea, mood and chorus must clearly center on their BIRTHDAY — include a natural, heartfelt birthday wish (the natural equivalent of "Happy Birthday" in the lyrics language) and real memories, not a generic birthday song. Never invent or state their age unless an age is explicitly given in the story below.',
+    short: 'Clearly a birthday song with a natural birthday wish; never invents age.'
   },
   declaratie: {
-    full: 'Sincere romantic declaration — express love and gratitude, personal and direct, like a real confession.',
-    short: 'Sincere romantic declaration.'
+    full: 'The idea, mood and chorus must be a sincere, direct romantic declaration — express love, closeness, gratitude and genuine feelings for this specific person, personal and direct, like a real confession, not a generic love song.',
+    short: 'Sincere, direct romantic declaration for this specific person.'
   },
+  // 'nunta' ramane fallback-ul pentru comenzi VECHI create inainte de weddingType (nu ar trebui
+  // sa mai existe comenzi noi in aceasta stare, weddingType e acum obligatoriu — vezi
+  // WEDDING_TYPE_INSTRUCTIONS mai jos, folosit in loc de aceasta intrare ori de cate ori
+  // order.weddingType exista).
   nunta: {
     full: 'Loving, joyful atmosphere of promise and togetherness for a wedding — solemn and moving, never sad.',
     short: 'Loving, joyful wedding mood.'
   },
   pierdere: {
-    full: 'Gentle, respectful, deeply emotional remembrance — comfort and lasting love, never cheerful or upbeat.',
-    short: 'Gentle, respectful remembrance.'
+    full: 'The idea, mood and chorus must respectfully convey that this person is no longer present — longing, cherished memories, and the lasting bond that remains. Gentle, respectful, deeply emotional remembrance; never cheerful, festive, celebratory, or upbeat language anywhere in the song.',
+    short: 'Respectful remembrance of someone who has passed; never festive.'
   },
   'pentru-mine': {
-    full: 'Reflective, healing, personal tone — a message to oneself; let the story below guide the mood.',
-    short: 'Reflective, healing, personal tone.'
+    full: 'The idea, mood and chorus must be about the client themselves — a personal, introspective or encouraging message addressed to themselves. Never invent a recipient, a family member, or any relationship; let the story below guide the specific message.',
+    short: 'Personal message to oneself; never invents a recipient or relationship.'
   },
   altceva: {
-    full: 'Infer the mood and atmosphere from the story below rather than assuming any specific occasion.',
-    short: 'Infer the mood from the story.'
+    full: 'The story below must become the central context and idea of the song — infer the mood and atmosphere strictly from it, never replace it with a generic occasion theme.',
+    short: 'Story below is the central context; never a generic theme.'
   },
   // MODIFICARE STRICTĂ — pagina de ocazie (hotfix 2026-08-08): toate cele 4 ocazii de familie
   // impartasesc aceeasi atmosfera de baza — relatia EXACTA (bunica/mama/matusa/soacra etc.) e
-  // adaugata separat, natural, de buildRelationInstruction() mai jos, nu aici.
+  // adaugata separat, natural, de relationClause() mai jos, nu aici.
   bunici: {
     full: 'Warm, loving family tribute — full of gratitude and cherished memories, never generic.',
     short: 'Warm family tribute, gratitude and memories.'
@@ -4558,6 +4662,21 @@ const OCCASION_INSTRUCTIONS = {
   socri: {
     full: 'Warm, respectful family tribute — full of gratitude and appreciation, never generic.',
     short: 'Warm family tribute, gratitude and appreciation.'
+  }
+};
+// CONTINUARE — personalizarea reala a versurilor (hotfix 2026-08-08): "Nuntă" si "Botez" sunt
+// acum teme COMPLET DISTINCTE (weddingType obligatoriu la creare) — niciodata amestecate.
+// Fiecare cere explicit o formulare naturala de tipul "astazi este nunta ta/voastra" respectiv
+// "astazi este botezul tau" (conceptul in engleza, tradus natural de Suno in limba versurilor,
+// la fel ca restul promptului).
+const WEDDING_TYPE_INSTRUCTIONS = {
+  wedding: {
+    full: 'The idea, mood and chorus must clearly center on a WEDDING — love, marriage, union, and the beginning of a life together. Naturally include a phrase like "today is your wedding day" (translated naturally into the lyrics language, addressing one or both partners as fits the recipient). Never mention a baptism, a christening, or a child joining the family.',
+    short: 'Clearly a wedding song — marriage and union; "today is your wedding day"; never baptism.'
+  },
+  baptism: {
+    full: 'The idea, mood and chorus must clearly center on a BAPTISM/CHRISTENING — the child joining the family, blessing, joy, and a new beginning. Naturally include a phrase like "today is your baptism day" (translated naturally into the lyrics language). Never mention a wedding or a marriage.',
+    short: 'Clearly a baptism song — blessing and new beginning; "today is your baptism day"; never wedding.'
   }
 };
 // Fallback pentru comenzi vechi/valoare necunoscuta de ocazie (Partea 2, punctul 11) —
@@ -4639,35 +4758,43 @@ function buildPrompt(order, feedback, genreOverride) {
   // fallback-ul general de mai jos).
   const effectiveRecipientRole = order.recipientRole
     || (order.occasion === 'bunici' ? (order.grandparentType === 'grandfather' ? 'grandfather' : 'grandmother') : null);
-  const occasionLabel = OCCASION_LABELS[order.occasion] || order.occasion;
+  // CONTINUARE — personalizarea reala a versurilor (hotfix 2026-08-08): eticheta ocaziei devine
+  // si ea weddingType-aware ("wedding" SAU "christening", niciodata ambigua ca eticheta veche
+  // "wedding or christening") — evita un "Occasion:" contradictoriu langa instructiunea
+  // dedicata, care deja spune explicit "never baptism"/"never wedding".
+  const occasionLabel = (order.occasion === 'nunta' && (order.weddingType === 'wedding' || order.weddingType === 'baptism'))
+    ? (order.weddingType === 'wedding' ? 'wedding' : 'christening/baptism')
+    : (OCCASION_LABELS[order.occasion] || order.occasion);
 
   // Instructiunea de atmosfera/ton pentru ocazia aleasa — comenzi vechi sau o valoare
   // necunoscuta de ocazie NU blocheaza generarea (Partea 2, punctul 11): folosim fallback-ul
-  // neutru, bazat pe poveste.
-  const occasionInstructionSet = OCCASION_INSTRUCTIONS[order.occasion] || OCCASION_INSTRUCTION_FALLBACK;
+  // neutru, bazat pe poveste. CONTINUARE (hotfix 2026-08-08): pentru occasion='nunta' CU
+  // weddingType cunoscut, folosim instructiunea DEDICATA (nunta SAU botez, niciodata amestecate)
+  // in loc de instructiunea generica 'nunta' de mai sus — care ramane doar fallback pentru
+  // comenzile vechi, create inainte ca weddingType sa devina obligatoriu.
+  const occasionInstructionSet = (order.occasion === 'nunta' && WEDDING_TYPE_INSTRUCTIONS[order.weddingType])
+    ? WEDDING_TYPE_INSTRUCTIONS[order.weddingType]
+    : (OCCASION_INSTRUCTIONS[order.occasion] || OCCASION_INSTRUCTION_FALLBACK);
   let useShortOccasionInstruction = false;
   let includeOccasionInstruction = true;
   // Clauza de relatie — mentioneaza NATURAL, o singura data, relatia exacta a destinatarului
   // si (daca e cunoscuta) a expeditorului. NICIODATA eliminata complet de cascada de scurtare
   // (acelasi tratament ca vocea aleasa explicit) — doar comprimata la forma scurta, pentru ca
-  // e cerinta explicita ("relatia trebuie mentionata natural cel putin o data").
+  // e cerinta explicita ("relatia trebuie mentionata natural cel putin o data"). Urarea de
+  // "La mulți ani" pentru 'aniversare' NU mai depinde de relatie — e acum parte din
+  // OCCASION_INSTRUCTIONS.aniversare de mai sus, asa ca se aplica INTOTDEAUNA, nu doar cand
+  // exista o relatie de familie aleasa (submeniul de relatie de la aniversare a fost eliminat).
   function relationClause() {
     const recipientNoun = RELATION_NOUNS[effectiveRecipientRole];
     if (!recipientNoun) return '';
     const senderNoun = SENDER_RELATION_NOUNS[order.senderRole];
-    let clause = useShortOccasionInstruction
+    return useShortOccasionInstruction
       ? (senderNoun
           ? ` Mention once: recipient's ${recipientNoun}, song from their ${senderNoun}.`
           : ` Mention once: dedicated to recipient as their ${recipientNoun}.`)
       : (senderNoun
           ? ` Mention naturally, once, that the recipient is their ${recipientNoun} and the song is from their ${senderNoun}.`
           : ` Mention naturally, once, that this song is dedicated to the recipient as their ${recipientNoun}.`);
-    // "E ziua lui/ei" cu relatie aleasa (Partea 2): urarea de "La mulți ani" trebuie sa apara
-    // natural, in limba versurilor — nu doar mood-ul general "birthday" din OCCASION_INSTRUCTIONS.
-    if (order.occasion === 'aniversare') {
-      clause += useShortOccasionInstruction ? ' Natural birthday wish included.' : ' Include a natural birthday wish in the lyrics language.';
-    }
-    return clause;
   }
   function currentOccasionInstruction() {
     if (!includeOccasionInstruction) return '';

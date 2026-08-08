@@ -21,12 +21,15 @@ test('comanda.html: NU mai exista niciun panou/submeniu de relatie pentru "E ziu
   assert.ok(!html.includes('label_aniversare_relation') === false || !html.includes('data-i18n="label_aniversare_relation"'), 'eticheta submeniului nu mai trebuie sa apara in HTML');
 });
 
-test('comanda.html: optiunile separate Bunică/Bunic, Mamă/Tată, Mătușă/Unchi, Soacră/Socru raman EXACT neschimbate', () => {
+// NOTA (CONTINUARE — personalizarea reala a versurilor, hotfix 2026-08-08): parinti/matusa-unchi/
+// socri au primit a treia optiune "Amândoi" (cerinta explicita a rundei curente) — DOAR bunici
+// ramane la exact 2 optiuni, neschimbat. Vezi test/occasion-real-personalization.test.js.
+test('comanda.html: cardurile Bunică/Bunic, Mamă/Tată, Mătușă/Unchi, Soacră/Socru exista, cu optiunile corecte (bunici: 2, celelalte 3)', () => {
   const html = read('public/comanda.html');
   assert.ok(html.includes("bunici: ['grandmother', 'grandfather'],"));
-  assert.ok(html.includes("parinti: ['mother', 'father'],"));
-  assert.ok(html.includes("'matusa-unchi': ['aunt', 'uncle'],"));
-  assert.ok(html.includes("socri: ['mother_in_law', 'father_in_law']"));
+  assert.ok(html.includes("parinti: ['mother', 'father', 'parents'],"));
+  assert.ok(html.includes("'matusa-unchi': ['aunt', 'uncle', 'aunt_uncle'],"));
+  assert.ok(html.includes("socri: ['mother_in_law', 'father_in_law', 'parents_in_law']"));
   assert.ok(html.includes('<div class="theme-card" data-theme="bunici">'));
   assert.ok(html.includes('<div class="theme-card" data-theme="parinti">'));
   assert.ok(html.includes('<div class="theme-card" data-theme="matusa-unchi">'));
@@ -73,13 +76,16 @@ test('comanda.html: "Nuntă/Botez" pastreaza NESCHIMBAT Miri/Fini/Nași, roluril
   assert.ok(html.includes("miri: ['bride', 'groom', 'couple'],"));
   assert.ok(html.includes("fini: ['goddaughter', 'godson', 'godchildren'],"));
   assert.ok(html.includes("nasi: ['godmother', 'godfather', 'godparents']"));
-  assert.ok(html.includes('id="nunta-name1"') && html.includes('id="nunta-name2"'), 'campurile pentru nume raman neschimbate');
+  assert.ok(html.includes('id="name1"') && html.includes('id="name2"'), 'campurile pentru nume raman functional neschimbate (generalizate/reutilizate, nu duplicate)');
 });
 
-test('server.js: validarea Miri/Fini/Nași si "Amândoi" pentru nunta ramane NESCHIMBATA', () => {
+// NOTA: isSingleRole/isBothRole au primit in plus filtrarea dupa weddingType (Nuntă/Botez,
+// cerinta noua a acestei runde) — logica de baza (Amândoi -> recipientMode='both' + doua nume)
+// ramane neschimbata.
+test('server.js: validarea Miri/Fini/Nași si "Amândoi" pentru nunta ramane functional neschimbata (acum filtrata si dupa weddingType)', () => {
   const server = read('server.js');
-  assert.ok(server.includes("const isSingleRole = WEDDING_RECIPIENT_ROLES_SINGLE.includes(recipientRole);"));
-  assert.ok(server.includes("const isBothRole = WEDDING_RECIPIENT_ROLES_BOTH.includes(recipientRole);"));
+  assert.ok(server.includes("const isSingleRole = WEDDING_RECIPIENT_ROLES_SINGLE.includes(recipientRole) && allowedRolesForType.includes(recipientRole);"));
+  assert.ok(server.includes("const isBothRole = WEDDING_RECIPIENT_ROLES_BOTH.includes(recipientRole) && allowedRolesForType.includes(recipientRole);"));
   assert.ok(server.includes("if (expectedMode === 'both') {"));
   assert.ok(server.includes('safeRecipientNames = { name1, name2 };'));
 });
@@ -109,8 +115,8 @@ test('server.js: "Din partea cui este melodia?" nu mai e cerut/salvat pentru com
 test('comanda.html: "Amândoi" solicita exact doua nume, validate ca obligatorii', () => {
   const html = read('public/comanda.html');
   assert.ok(html.includes("if (recipientModeInput.value === 'both') {"));
-  assert.ok(html.includes('const nuntaName1 = nuntaName1Input.value.trim();'));
-  assert.ok(html.includes('const nuntaName2 = nuntaName2Input.value.trim();'));
+  assert.ok(html.includes('const nuntaName1 = name1Input.value.trim();'));
+  assert.ok(html.includes('const nuntaName2 = name2Input.value.trim();'));
   assert.ok(html.includes('if (!nuntaName1 || !nuntaName2) ok = false;'));
 });
 
@@ -125,8 +131,8 @@ test('server.js si db.js: ambele nume sunt salvate INTEGRAL, structurat, in reci
 // 8-9. Titlul si versurile contin ambele nume complete (vezi si test/nunta-both-names-no-truncation.test.js).
 test('comanda.html: collectPayload combina numele fara sa le prescurteze ("Alina și Andrei", nu "Alina și A.")', () => {
   const html = read('public/comanda.html');
-  assert.ok(html.includes("`${nuntaName1Input.value.trim()} ${t('and_conjunction')} ${nuntaName2Input.value.trim()}`"), 'ambele nume trebuie folosite intregi, fara .slice/.charAt/.substring');
-  assert.ok(!/nuntaName[12]Input\.value\.(slice|charAt|substring)/.test(html), 'nu trebuie sa existe nicio prescurtare a numelor in frontend');
+  assert.ok(html.includes("`${name1Input.value.trim()} ${t('and_conjunction')} ${name2Input.value.trim()}`"), 'ambele nume trebuie folosite intregi, fara .slice/.charAt/.substring');
+  assert.ok(!/name[12]Input\.value\.(slice|charAt|substring)/.test(html), 'nu trebuie sa existe nicio prescurtare a numelor in frontend');
 });
 
 test('melodia-mea.html: antetul foloseste order.recipient COMPLET, fara nicio trunchiere client-side', () => {
