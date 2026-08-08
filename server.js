@@ -1537,9 +1537,13 @@ app.post('/api/orders/:orderId/regenerate', generationLimiter, requireOrderToken
     // CURENT al variantei editate, ca sa nu facem o scriere inutila cand genul de fapt nu s-a
     // schimbat.
     const currentGenreOfEditedVariant = (sourceVariant && sourceVariant.genre) || order.genre;
+    console.error(`DIAGNOSTIC genre-change comanda ${order.id.slice(0,8)}: requestedGenre=${requestedGenre}, currentGenreOfEditedVariant=${currentGenreOfEditedVariant}, sourceVariant.genre=${sourceVariant && sourceVariant.genre}, order.genre=${order.genre}, order.genre2=${order.genre2}, isDualGenrePlanForRegen=${isDualGenrePlanForRegen}`);
     if (requestedGenre !== null && requestedGenre !== currentGenreOfEditedVariant) {
       const editingGenre2Slot = isDualGenrePlanForRegen && sourceVariant.genre && sourceVariant.genre === order.genre2;
+      console.error(`DIAGNOSTIC genre-change comanda ${order.id.slice(0,8)}: SCRIU editingGenre2Slot=${editingGenre2Slot}`);
       await db.updateOrder(order.id, editingGenre2Slot ? { genre2: requestedGenre } : { genre: requestedGenre });
+    } else {
+      console.error(`DIAGNOSTIC genre-change comanda ${order.id.slice(0,8)}: NU scriu (conditie falsa)`);
     }
 
     await db.updateOrder(order.id, { regenerateSourceVariantId: requestedVariantId });
