@@ -39,3 +39,24 @@ test('getGiftVariant — null cand selectedVariantId lipseste', () => {
 test('getGiftVariant — nu se sparge pe un order fara camp variants deloc', () => {
   assert.equal(getGiftVariant({ selectedVariantId: 'a' }), null);
 });
+
+test('getGiftVariant — Standard NU livreaza niciodata "melodia cadou", chiar daca exista 2 variante (original+editat)', () => {
+  const order = {
+    plan: 'standard',
+    selectedVariantId: 'a',
+    variants: [{ id: 'a', fullKey: 'k1' }, { id: 'b', fullKey: 'k2', isEditedAlternative: true }]
+  };
+  // Standard ramane o singura melodie finala — cele 2 variante sunt alternative ALE ACELEIASI
+  // melodii (originala/editata), nu doua melodii diferite; livrarea celeilalte ca "bonus"
+  // ar incalca cerinta explicita "Standard ramane o singura melodie finala".
+  assert.equal(getGiftVariant(order), null);
+});
+
+test('getGiftVariant — Premium/Video tot livreaza "melodia cadou" (doua melodii reale, distincte)', () => {
+  const order = {
+    plan: 'premium',
+    selectedVariantId: 'a',
+    variants: [{ id: 'a', fullKey: 'k1' }, { id: 'b', fullKey: 'k2' }]
+  };
+  assert.equal(getGiftVariant(order).id, 'b');
+});

@@ -238,6 +238,16 @@ async function initDb() {
   // esueaza constant. Vezi credits.js, MAX_GENERATION_ATTEMPTS.
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS generation_attempts INTEGER NOT NULL DEFAULT 0;`);
 
+  // regenerate_keep_original: HOTFIX 2026-08-08 — fluxul de editare Standard cu alegere.
+  // Setat de POST /regenerate DOAR pentru Standard (o singura melodie, o singura varianta
+  // inainte de editare): semnaleaza ca regenerarea in curs trebuie sa PASTREZE varianta
+  // initiala ca alternativa (nu sa inlocuiasca intreg array-ul, cum se intampla implicit).
+  // Persistat in DB (nu doar in memorie) pentru ca reluarile asincrone ale polling-ului
+  // (resumeExistingTaskPolling, callback-ul SunoAPI) pot rula independent de cererea HTTP
+  // originala — chiar si dupa un restart de server — si au nevoie sa afle aceasta intentie
+  // din starea persistenta a comenzii, nu dintr-o variabila locala disparuta odata cu procesul.
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS regenerate_keep_original BOOLEAN NOT NULL DEFAULT false;`);
+
   // credit_events: jurnal complet al fiecarui apel real catre providerul de muzica (Suno),
   // plus fiecare blocare de generare/checkout facuta de sistemul de protectie a creditelor —
   // baza pentru statistici zilnice, estimarea comenzilor ramase si detectarea consumului
@@ -326,6 +336,7 @@ function rowToOrder(row) {
     senderName: row.sender_name,
     relationship: row.relationship,
     regenerateSourceVariantId: row.regenerate_source_variant_id,
+    regenerateKeepOriginal: !!row.regenerate_keep_original,
     editReserved: row.edit_reserved,
     // NULL (comenzi vechi, dinainte de aceasta coloana) devine 'auto' aici, o singura
     // data, central — restul aplicatiei (buildPrompt, API, comanda.html, melodia-mea.html)
@@ -855,6 +866,7 @@ const COLUMN_MAP = {
   stripeSessionId: 'stripe_session_id',
   stripePaymentIntentId: 'stripe_payment_intent_id',
   regenerateSourceVariantId: 'regenerate_source_variant_id',
+  regenerateKeepOriginal: 'regenerate_keep_original',
   editReserved: 'edit_reserved',
   voicePreference: 'voice_preference',
   generationAttempts: 'generation_attempts',

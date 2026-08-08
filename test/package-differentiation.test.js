@@ -46,7 +46,11 @@ test('finalizeVariantsIfNeeded: suporta inlocuire PARTIALA (o singura varianta),
 test('POST /api/orders/:orderId/regenerate: Premium/Video regenereaza DOAR varianta ceruta, niciodata ambele genuri deodata', () => {
   const server = read('server.js');
   assert.ok(
-    server.includes("PLAN_VARIANT_COUNT[order.plan] === 2) ? { replaceVariantId: requestedVariantId } : {}"),
+    server.includes('const regenOptions = (PLAN_VARIANT_COUNT[order.plan] === 2)'),
+    'regenerarea trebuie sa decida optiunile dupa numarul de variante al pachetului'
+  );
+  assert.ok(
+    server.includes('{ replaceVariantId: requestedVariantId }'),
     'regenerarea Premium/Video trebuie sa treaca replaceVariantId catre runGeneration'
   );
 });

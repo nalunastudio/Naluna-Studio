@@ -1400,7 +1400,7 @@ app.post('/api/orders/:orderId/generate', generationLimiter, requireOrderToken, 
         // niciodata edit_reserved=true (doar regenerarea o face) — dar il apelam oricum,
         // ca plasa de siguranta consistenta pe toate caile de esec ale generarii.
         await db.refundEditIfReserved(order.id);
-        await db.updateOrder(order.id, { status: 'generation_failed', error: String(err.message || err).slice(0, 500) });
+        await markGenerationFailed(order.id, err.message || err);
       } catch (dbErr) {
         console.error('Eroare suplimentara la salvarea starii de esec:', dbErr.message);
       }
@@ -1542,13 +1542,24 @@ app.post('/api/orders/:orderId/regenerate', generationLimiter, requireOrderToken
       await db.updateOrder(order.id, editingGenre2Slot ? { genre2: requestedGenre } : { genre: requestedGenre });
     }
 
-    await db.updateOrder(order.id, { regenerateSourceVariantId: requestedVariantId });
+    // Standard (Partea 2, hotfix 2026-08-08): editarea NU mai inlocuieste varianta initiala —
+    // clientul trebuie sa poata asculta AMBELE (initiala + editata) si sa aleaga explicit
+    // inainte de plata. Persistat in DB (nu doar in memorie) — vezi comentariul de la
+    // regenerate_keep_original in db.js pentru motivul (reluarile asincrone de polling au
+    // nevoie de aceasta intentie chiar daca ruleaza independent de aceasta cerere HTTP).
+    const keepOriginalForStandardEdit = PLAN_VARIANT_COUNT[order.plan] === 1;
+    await db.updateOrder(order.id, {
+      regenerateSourceVariantId: requestedVariantId,
+      regenerateKeepOriginal: keepOriginalForStandardEdit
+    });
     res.json({ started: true });
 
     // Premium/Video: variantId cerut mai sus e OBLIGATORIU si identifica exact varianta de
-    // reeditat -> regenerare PARTIALA (doar acel gen). Standard: comportament neschimbat
-    // (intreg array-ul se inlocuieste, ca inainte de aceasta modificare).
-    const regenOptions = (PLAN_VARIANT_COUNT[order.plan] === 2) ? { replaceVariantId: requestedVariantId } : {};
+    // reeditat -> regenerare PARTIALA (doar acel gen). Standard: PASTREAZA varianta initiala
+    // ca alternativa (nu mai inlocuieste intreg array-ul).
+    const regenOptions = (PLAN_VARIANT_COUNT[order.plan] === 2)
+      ? { replaceVariantId: requestedVariantId }
+      : { keepOriginalAsAlternative: true };
     runGeneration(order.id, combinedFeedback, regenOptions).catch(async (err) => {
       console.error('Eroare la regenerare pentru comanda', order.id, err.message);
       try {
@@ -1556,7 +1567,7 @@ app.post('/api/orders/:orderId/regenerate', generationLimiter, requireOrderToken
         // daca inca era marcata ca rezervata (vezi comentariul din db.refundEditIfReserved
         // despre de ce e sigur sa fie apelata din mai multe locuri, chiar aproape simultan).
         await db.refundEditIfReserved(order.id);
-        await db.updateOrder(order.id, { status: 'generation_failed', error: String(err.message || err).slice(0, 500) });
+        await markGenerationFailed(order.id, err.message || err);
       } catch (dbErr) {
         console.error('Eroare suplimentara la salvarea starii de esec:', dbErr.message);
       }
@@ -2632,7 +2643,11 @@ app.post('/api/music/callback', async (req, res) => {
       const genreToUse = sourceVariant
         ? ((siblingGenre && siblingGenre === order.genre) ? order.genre2 : order.genre)
         : order.genre;
-      const replaceOptions = sourceVariant ? { replaceVariantId: sourceVariant.id } : {};
+      // Standard, editare in curs (regenerateKeepOriginal, persistat in DB de POST
+      // /regenerate — vezi comentariul de acolo): pastreaza originalul, nu inlocui array-ul.
+      const replaceOptions = sourceVariant
+        ? { replaceVariantId: sourceVariant.id }
+        : (order.regenerateKeepOriginal ? { keepOriginalAsAlternative: true } : {});
       await finalizeVariantsIfNeeded(order.id, [{ tracks, genre: genreToUse, taskId }], replaceOptions).catch(err => {
         console.error(`Callback SunoAPI: eroare la finalizarea comenzii ${order.id}:`, err.message);
       });
@@ -2645,7 +2660,7 @@ app.post('/api/music/callback', async (req, res) => {
         await db.refundEditIfReserved(order.id).catch(refundErr => {
           console.error(`Eroare la restituirea editarii pentru comanda ${order.id}:`, refundErr.message);
         });
-        await db.updateOrder(order.id, { status: 'generation_failed', error: `Suno callback: ${body.msg || callbackType || 'eroare necunoscuta'}` });
+        await markGenerationFailed(order.id, `Suno callback: ${body.msg || callbackType || 'eroare necunoscuta'}`, current.variants);
       }
     }
     // callbackType 'text' / 'first' (etape intermediare) -> nu facem nimic aici,
@@ -2734,7 +2749,7 @@ async function resumeExistingTaskPolling(orderId, taskId) {
         if (SUNO_ERROR_STATUSES.includes(r1.status) || SUNO_ERROR_STATUSES.includes(r2.status)) {
           console.error(`Reluare polling dual: comanda ${orderId} a esuat (gen1="${order.genre}": ${r1.status}, gen2="${order.genre2}": ${r2.status}).`);
           await db.refundEditIfReserved(orderId);
-          await db.updateOrder(orderId, { status: 'generation_failed', error: `Suno: gen1=${r1.status}, gen2=${r2.status}` });
+          await markGenerationFailed(orderId, `Suno: gen1=${r1.status}, gen2=${r2.status}`, fresh.variants);
         }
         return;
       }
@@ -2755,9 +2770,10 @@ async function resumeExistingTaskPolling(orderId, taskId) {
     if (finalStatus === SUNO_SUCCESS_STATUS) {
       // Regenerare partiala (Premium/Video, o singura varianta reeditata): foloseste genul
       // deja asociat variantei sursa si inlocuieste DOAR acea varianta — niciodata sora ei.
-      // Pentru generare initiala sau Standard, regenerateSourceVariantId e null/nu se aplica,
-      // deci acesta ramane implicit un inlocuitor COMPLET (comportamentul dinainte). Genul se
-      // afla PRIN ELIMINARE (vezi comentariul din runGeneration) — NICIODATA din
+      // Standard, editare in curs: regenerateKeepOriginal (persistat in DB) pastreaza
+      // originalul in loc sa inlocuiasca array-ul intreg. Pentru o generare INITIALA,
+      // niciuna din cele doua nu se aplica — inlocuitor COMPLET (array-ul e oricum gol).
+      // Genul se afla PRIN ELIMINARE (vezi comentariul din runGeneration) — NICIODATA din
       // sourceVariant.genre (VECHI, dinainte de o eventuala schimbare de gen la editare).
       const isDualGenrePlan = PLAN_VARIANT_COUNT[order.plan] === 2;
       const sourceVariant = (isDualGenrePlan && order.regenerateSourceVariantId)
@@ -2768,19 +2784,52 @@ async function resumeExistingTaskPolling(orderId, taskId) {
       const genreToUse = sourceVariant
         ? ((siblingGenre && siblingGenre === order.genre) ? order.genre2 : order.genre)
         : order.genre;
-      const replaceOptions = sourceVariant ? { replaceVariantId: sourceVariant.id } : {};
+      const replaceOptions = sourceVariant
+        ? { replaceVariantId: sourceVariant.id }
+        : (order.regenerateKeepOriginal ? { keepOriginalAsAlternative: true } : {});
       await finalizeVariantsIfNeeded(orderId, [{ tracks, genre: genreToUse, taskId }], replaceOptions);
       return;
     }
     if (SUNO_ERROR_STATUSES.includes(finalStatus)) {
       console.error(`Reluare polling: task ${taskId} (comanda ${orderId}) a esuat cu status "${finalStatus}".`);
       await db.refundEditIfReserved(orderId);
-      await db.updateOrder(orderId, { status: 'generation_failed', error: `Suno: ${finalStatus}` });
+      await markGenerationFailed(orderId, `Suno: ${finalStatus}`, order.variants);
     }
   } catch (err) {
     console.error(`Eroare la reluarea polling-ului pentru comanda ${orderId}, taskId ${taskId}:`, err.message);
   } finally {
     activePollResumptions.delete(orderId);
+  }
+}
+
+// Marcheaza o generare/regenerare esuata — dar NICIODATA aruncand la gunoi o varianta deja
+// existenta si vandabila. Cerinta explicita a fluxului de editare cu alegere (Partea 2,
+// hotfix 2026-08-08): "daca regenerarea esueaza, versiunea initiala ramane disponibila/
+// selectabila". O comanda care avea deja variante gata inainte de aceasta incercare (adica
+// aceasta era o REGENERARE, nu prima generare) revine la 'preview_ready' — variants/
+// selectedVariantId raman neatinse (editarea gratuita e restituita SEPARAT de apelant, vezi
+// db.refundEditIfReserved) — cu mesajul de eroare atasat doar informativ, pentru un eventual
+// banner in interfata. O comanda FARA nicio varianta inca (prima generare a esuat, nimic de
+// aratat/vandut) ramane 'generation_failed', ca pana acum — pagina dedicata de eroare
+// (se-compune.html/melodia-mea.html) e singura optiune corecta in acel caz.
+//
+// knownVariants (optional): daca apelantul are deja starea DINAINTE de aceasta incercare
+// (ex. finalizeVariantsIfNeeded, care a preluat atomic comanda si stie exact ce continea
+// inainte sa inceapa procesarea curenta), o poate trece direct — evita un SELECT suplimentar
+// si evita orice ambiguitate daca starea din DB s-ar fi schimbat intre timp.
+async function markGenerationFailed(orderId, errMessage, knownVariants) {
+  const safeError = String(errMessage || 'Eroare necunoscuta').slice(0, 500);
+  let hasSellableVariants;
+  if (Array.isArray(knownVariants)) {
+    hasSellableVariants = knownVariants.length > 0;
+  } else {
+    const fresh = await db.getOrderById(orderId);
+    hasSellableVariants = !!(fresh && fresh.variants && fresh.variants.length > 0);
+  }
+  if (hasSellableVariants) {
+    await db.updateOrder(orderId, { status: 'preview_ready', error: safeError });
+  } else {
+    await db.updateOrder(orderId, { status: 'generation_failed', error: safeError });
   }
 }
 
@@ -2796,9 +2845,9 @@ async function runGeneration(orderId, feedback, options = {}) {
   // Regenerare PARTIALA (doar Premium/Video): clientul a ales explicit sa reediteze O SINGURA
   // varianta existenta (POST .../regenerate cere variantId obligatoriu) — regeneram DOAR genul
   // acelei variante, cealalta ramane complet neatinsa (nu risipim un al doilea apel Suno pentru
-  // un gen pe care clientul nu l-a cerut sa fie schimbat). Pentru comenzi Standard vechi cu
-  // doua variante (pastrate pentru compatibilitate) aceasta cale nu se foloseste niciodata —
-  // vezi ramura Standard de mai jos, care inlocuieste intotdeauna intreg array-ul, ca inainte.
+  // un gen pe care clientul nu l-a cerut sa fie schimbat). Standard foloseste ramura de mai
+  // jos, care PASTREAZA originalul si adauga varianta editata alaturi (options.keepOriginalAsAlternative,
+  // vezi finalizeVariantsIfNeeded) — niciodata inlocuire completa la o editare.
   //
   // Genul de folosit: NICIODATA citit direct din sourceVariant.genre (VECHI — e valoarea
   // dinainte de editare, ramane neschimbata pana variantele sunt inlocuite la finalul acestei
@@ -2828,7 +2877,10 @@ async function runGeneration(orderId, feedback, options = {}) {
     return;
   }
 
-  // Standard: un singur gen, o singura cerere Suno — comportament neschimbat.
+  // Standard: un singur gen, o singura cerere Suno. La o GENERARE INITIALA (fara variante
+  // inca), inlocuieste normal (array-ul e oricum gol). La o EDITARE (options.keepOriginalAsAlternative,
+  // setat de POST /regenerate), PASTREAZA originalul si adauga varianta editata alaturi —
+  // clientul alege explicit intre ele (Partea 2, hotfix 2026-08-08).
   if (!isDualGenrePlan) {
     const prompt = buildPrompt(order, feedback);
     const taskId = await callMusicProvider(orderId, prompt);
@@ -2843,7 +2895,8 @@ async function runGeneration(orderId, feedback, options = {}) {
     if (finalStatus !== SUNO_SUCCESS_STATUS) {
       throw new Error(`Suno a raportat un status de eroare: ${finalStatus}`);
     }
-    await finalizeVariantsIfNeeded(orderId, [{ tracks, genre: order.genre, taskId }]);
+    const standardOptions = options.keepOriginalAsAlternative ? { keepOriginalAsAlternative: true } : {};
+    await finalizeVariantsIfNeeded(orderId, [{ tracks, genre: order.genre, taskId }], standardOptions);
     return;
   }
 
@@ -2915,8 +2968,10 @@ async function waitForDualTaskAndFinalize(orderId, taskId1, genre1, taskId2, gen
 async function resumeDualTaskPolling(orderId) {
   if (activePollResumptions.has(orderId)) return; // deja se verifica in alta parte
   activePollResumptions.add(orderId);
+  let orderBeforeAttempt = null;
   try {
     const order = await db.getOrderById(orderId);
+    orderBeforeAttempt = order;
     if (!order || !order.musicTaskId || !order.musicTaskId2) return;
     await waitForDualTaskAndFinalize(orderId, order.musicTaskId, order.genre, order.musicTaskId2, order.genre2);
   } catch (err) {
@@ -2924,7 +2979,7 @@ async function resumeDualTaskPolling(orderId) {
     await db.refundEditIfReserved(orderId).catch(refundErr => {
       console.error(`Eroare la restituirea editarii pentru comanda ${orderId}:`, refundErr.message);
     });
-    await db.updateOrder(orderId, { status: 'generation_failed', error: String(err.message || err).slice(0, 500) }).catch(dbErr => {
+    await markGenerationFailed(orderId, err.message || err, orderBeforeAttempt ? orderBeforeAttempt.variants : undefined).catch(dbErr => {
       console.error('Eroare suplimentara la salvarea starii de esec:', dbErr.message);
     });
   } finally {
@@ -3014,6 +3069,21 @@ async function finalizeVariantsIfNeeded(orderId, requestsInfo, options = {}) {
       variants = existing.map(v => v.id === options.replaceVariantId ? replaced : v);
       newSelectedVariantId = options.keepSelectedVariantId || claimed.selectedVariantId;
       replacedOldVariants = existing.filter(v => v.id === options.replaceVariantId);
+    } else if (options.keepOriginalAsAlternative) {
+      // Standard, fluxul de editare cu alegere (Partea 2, hotfix 2026-08-08): editarea NU
+      // inlocuieste originalul — il PASTREAZA, si adauga varianta noua alaturi, ca alegere
+      // alternativa. Clientul TREBUIE sa aleaga explicit intre cele doua (POST /select)
+      // inainte ca plata sa devina posibila — de aceea newSelectedVariantId ramane null aici
+      // (POST /checkout respinge deja orice cerere fara selectedVariantId). Nu stergem NIMIC
+      // din storage (replacedOldVariants ramane gol) — originalul trebuie sa ramana complet
+      // functional/livrabil daca editarea esueaza sau daca clientul alege pana la urma sa
+      // pastreze originalul.
+      const existing = claimed.variants || [];
+      const edited = builtVariants[0];
+      edited.isEditedAlternative = true;
+      variants = [...existing, edited];
+      newSelectedVariantId = null;
+      replacedOldVariants = [];
     } else {
       variants = builtVariants;
       newSelectedVariantId = variants[0]?.id || null;
@@ -3028,7 +3098,10 @@ async function finalizeVariantsIfNeeded(orderId, requestsInfo, options = {}) {
       // succes: eliberam marcajul de rezervare a editarii (daca exista) FARA sa atingem
       // edits_used — editarea a fost folosita legitim, ramane consumata definitiv. Pentru
       // o generare INITIALA, editReserved era deja false — actualizarea e un no-op sigur.
-      editReserved: false
+      editReserved: false,
+      // Stergem orice mesaj de eroare ramas de la o incercare anterioara esuata — altfel ar
+      // ramane afisat/expus indefinit dupa un succes ulterior (vezi markGenerationFailed).
+      error: null
     });
     // 'ready' aici = ambele melodii (sau singura, pentru Standard) gata si redabile — NU
     // 100% pentru pachetul Video, care mai are o a doua faza (videoclipul) dupa aceasta; vezi
@@ -3101,10 +3174,7 @@ async function finalizeVariantsIfNeeded(orderId, requestsInfo, options = {}) {
     } catch (refundErr) {
       console.error(`Eroare suplimentara la restituirea editarii pentru comanda ${orderId}:`, refundErr.message);
     }
-    await db.updateOrder(orderId, {
-      status: 'generation_failed',
-      error: String(err.message || err).slice(0, 500)
-    }).catch(dbErr => {
+    await markGenerationFailed(orderId, err.message || err, claimed.variants).catch(dbErr => {
       console.error(`Eroare suplimentara la marcarea esecului pentru comanda ${orderId}:`, dbErr.message);
     });
     throw err;
