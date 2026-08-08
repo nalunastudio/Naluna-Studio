@@ -181,3 +181,138 @@ test('traduceri: cheile noi ale fluxului de alegere Standard exista in toate cel
     assert.equal(count, 8, `cheia "${key}" trebuie sa apara exact 8 ori (cate una per limba), gasita de ${count} ori`);
   });
 });
+
+// ==========================================================================================
+// ÎMBUNĂTĂȚIRE UI (hotfix 2026-08-08): butonul de confirmare a regenerarii, mare/portocaliu/
+// centrat; dupa editare, meniul de editare Standard dispare complet si e inlocuit de un
+// ecran dedicat de alegere cu buton clar pe fiecare card + un singur buton de plata.
+// ==========================================================================================
+
+test('melodia-mea.html: butonul de confirmare a regenerarii foloseste noua clasa CSS mare/portocalie, nu mai e mic si intunecat', () => {
+  const html = read('public/melodia-mea.html');
+  assert.ok(html.includes('.btn-cta-orange{'), 'clasa CSS pentru butonul mare portocaliu trebuie sa existe');
+  assert.ok(html.includes('min-height:56px'), 'butonul trebuie sa aiba minimum 56px inaltime');
+  assert.ok(
+    html.includes('<button type="button" class="btn-cta-orange" id="confirm-yes">'),
+    'confirm-yes trebuie sa foloseasca noua clasa, nu mai vechea .btn.btn-primary.btn-small'
+  );
+  assert.ok(!html.includes('class="btn btn-primary btn-small" id="confirm-yes"'), 'stilul vechi (mic, inchis la culoare) nu mai trebuie folosit pentru acest buton');
+});
+
+test('melodia-mea.html: textul butonului de confirmare e "Creează noua versiune", nu "Da, regenerează"', () => {
+  const html = read('public/melodia-mea.html');
+  assert.ok(html.includes("confirm_yes: 'Creează noua versiune'"), 'textul RO trebuie schimbat exact la cel cerut');
+  assert.ok(!html.includes("confirm_yes: 'Da, regenerează'"), 'textul vechi nu mai trebuie sa existe');
+});
+
+test('melodia-mea.html: mesajul de regenerare pentru Standard e corect ("o singura versiune"), nu mesajul generic "2 variante noi"', () => {
+  const html = read('public/melodia-mea.html');
+  assert.ok(
+    html.includes("statusMsgEl.textContent = currentOrder.plan === 'standard' ? t.msg_regenerating_standard : t.msg_regenerating;"),
+    'mesajul trebuie ales in functie de pachet — Standard produce o singura varianta editata, Premium/Video doua'
+  );
+});
+
+test('melodia-mea.html: butonul de confirmare arata un text clar de incarcare la apasare', () => {
+  const html = read('public/melodia-mea.html');
+  assert.ok(html.includes("confirmYesBtn.textContent = t.confirm_yes_loading;"), 'trebuie sa existe o stare vizuala clara de incarcare, nu doar opacitate redusa');
+});
+
+test('melodia-mea.html: meniul de editare (voce/gen/feedback/regenerare) e complet ascuns cand exista alegere Standard', () => {
+  const html = read('public/melodia-mea.html');
+  assert.ok(html.includes('id="edit-menu-fields"'), 'meniul de editare trebuie infasurat intr-un singur container, usor de ascuns complet');
+  assert.ok(
+    html.includes('editMenuFields.style.display = \'none\';'),
+    'containerul intreg trebuie ascuns (voce, gen, feedback, butoane) cand exista deja o alegere Standard de facut'
+  );
+});
+
+test('melodia-mea.html: dupa editare, checkoutBtn e mutat in ecranul dedicat de alegere Standard, cu textul exact cerut', () => {
+  const html = read('public/melodia-mea.html');
+  assert.ok(html.includes('standardChoiceCheckoutSlot.appendChild(checkoutBtn);'), 'butonul de plata trebuie mutat fizic in noul container, nu duplicat');
+  assert.ok(
+    html.includes('checkoutBtn.innerHTML = `${t.checkout_btn_standard} — £${order.price}`;'),
+    'textul trebuie sa fie exact "Continuă la plată — £15" (fara "varianta N", fara sageata) in ecranul de alegere Standard'
+  );
+});
+
+test('melodia-mea.html: fiecare card Standard cu alegere are un buton clar de selectie sau bifa "Versiune selectata"', () => {
+  const html = read('public/melodia-mea.html');
+  assert.ok(html.includes('variant-choose-btn'), 'trebuie sa existe un buton dedicat de selectie pe fiecare card');
+  assert.ok(html.includes('t.choose_edited_btn'), 'butonul cardului editat trebuie etichetat corect');
+  assert.ok(html.includes('t.choose_original_btn'), 'butonul cardului initial trebuie etichetat corect');
+  assert.ok(html.includes('variant-selected-badge'), 'cardul deja selectat trebuie sa arate bifa "Versiune selectata"');
+});
+
+test('melodia-mea.html: cardul selectat Standard primeste chenar portocaliu distinct', () => {
+  const html = read('public/melodia-mea.html');
+  assert.ok(html.includes('.variant-card.standard-selected{'), 'trebuie sa existe un stil de chenar portocaliu specific ecranului de alegere Standard');
+  assert.ok(html.includes("isStandardChoiceForClass && isSelectedForClass ? ' standard-selected' : ''"), 'clasa trebuie aplicata doar cand cardul e cu adevarat selectat in fluxul Standard');
+});
+
+test('melodia-mea.html: "Editează versurile" si celelalte controale de editare nu mai apar pe cardurile Standard cu alegere', () => {
+  const html = read('public/melodia-mea.html');
+  assert.ok(
+    html.includes("isStandardEditChoice ? '' : `<button type=\"button\" class=\"btn btn-ghost btn-small edit-lyrics-btn\""),
+    'butonul de editare a versurilor trebuie omis complet pe cardurile din ecranul de alegere Standard'
+  );
+});
+
+test('traduceri: cheile noi ale imbunatatirii UI exista in toate cele 8 limbi', () => {
+  const html = read('public/melodia-mea.html');
+  ['confirm_yes_loading', 'checkout_btn_standard', 'msg_regenerating_standard', 'choose_original_btn', 'choose_edited_btn', 'variant_selected_badge'].forEach(key => {
+    const count = (html.match(new RegExp(key + ':', 'g')) || []).length;
+    assert.equal(count, 8, `cheia "${key}" trebuie sa apara exact 8 ori (cate una per limba), gasita de ${count} ori`);
+  });
+});
+
+// ==========================================================================================
+// Verificari backend explicite, cerute punctual (imbunatatire UI, hotfix 2026-08-08):
+// checkout foloseste exact selectedVariantId; un ID trimis manual nu poate selecta melodia
+// altei comenzi; alegerea nu se pierde la refresh; dublul click nu creeaza checkouturi
+// duplicate; emailul/descarcarea livreaza exclusiv versiunea selectata.
+// ==========================================================================================
+
+test('POST /checkout foloseste exact order.selectedVariantId (amprenta sesiunii Stripe + metadata)', () => {
+  const server = read('server.js');
+  assert.ok(server.includes('const versionFingerprint = `${order.selectedVariantId}-${order.mediaRevision}`;'), 'amprenta versiunii aprobate trebuie legata direct de selectedVariantId');
+  assert.ok(server.includes('selectedVariantId: order.selectedVariantId,'), 'metadata sesiunii Stripe trebuie sa contina selectedVariantId, verificabil la webhook');
+  assert.ok(server.includes('checkoutVariantId: order.selectedVariantId,'), 'checkoutVariantId salvat in DB trebuie sa fie exact varianta selectata, folosit pentru validare la webhook');
+});
+
+test('POST /select cauta variantId STRICT in variantele PROPRIEI comenzi — un ID din alta comanda nu poate fi selectat', () => {
+  const server = read('server.js');
+  assert.ok(
+    server.includes("const newVariant = (order.variants || []).find(v => v.id === variantId);"),
+    'cautarea trebuie sa fie scopata la order.variants (comanda autentificata prin token), niciodata globala'
+  );
+  assert.ok(
+    server.includes("if (!newVariant) return res.status(400).json({ error: 'Varianta nu există.' });"),
+    'un variantId care nu apartine comenzii curente trebuie respins cu 400, nu acceptat tacit'
+  );
+});
+
+test('selectedVariantId persista la refresh — GET /api/orders/:orderId il returneaza direct din DB', () => {
+  const server = read('server.js');
+  assert.ok(server.includes('selectedVariantId: order.selectedVariantId || null,'), 'raspunsul GET trebuie sa reflecte exact valoarea persistata, nu o stare doar in memoria clientului');
+});
+
+test('dublul click pe plata nu creeaza checkouturi Stripe duplicate (idempotencyKey legata de versiune)', () => {
+  const server = read('server.js');
+  assert.ok(
+    server.includes('idempotencyKey: `checkout-${order.id}-${versionFingerprint}`'),
+    'aceeasi comanda + aceeasi varianta selectata trebuie sa returneze mereu ACEEASI sesiune Stripe, niciodata una noua la un al doilea click rapid'
+  );
+});
+
+test('emailul si descarcarea dupa plata livreaza EXCLUSIV versiunea selectata pentru Standard (fara "melodie cadou")', () => {
+  const server = read('server.js');
+  const entitlements = read('lib/entitlements.js');
+  // deja verificat separat (getGiftVariant), reconfirmat aici in contextul explicit al cerintei:
+  // Standard NU mai livreaza niciodata a doua varianta, indiferent de ce alta varianta exista.
+  assert.ok(entitlements.includes("if (!order || order.plan === 'standard') return null;"), 'getGiftVariant trebuie sa refuze explicit Standard');
+  assert.ok(
+    server.includes("const variant = (order.variants || []).find(v => v.id === order.selectedVariantId);"),
+    'livrarea principala (email/descarcare) trebuie sa foloseasca exact selectedVariantId, niciodata prima varianta din array sau alta presupunere'
+  );
+});
