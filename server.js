@@ -1826,7 +1826,16 @@ async function handlePremiumSelectiveRegenerate(req, res, next) {
       if (requestedGenre !== null && !ALLOWED_GENRES.includes(requestedGenre)) {
         return res.status(400).json({ error: invalidGenreMessage(order.lang) });
       }
-      parsedSongs.push({ variantId, sourceVariant, feedback, requestedGenre });
+      // MODIFICARE STRICTĂ — editare secventiala, pe rand, pentru ambele melodii (hotfix, runda
+      // 4): versurile editate manual (camp precompletat cu versurile curente, editabil direct)
+      // si vocea aleasa, ACUM per melodie — nu mai exista un camp global de feedback in noul
+      // flux Premium. Cate un obiect per melodie, independent, exact ca genul.
+      const lyricsInput = typeof entry?.lyrics === 'string' ? entry.lyrics.trim().slice(0, 4000) : null;
+      const songVoice = typeof entry?.voicePreference === 'string' ? entry.voicePreference : null;
+      if (songVoice !== null && !VOICE_PREFERENCES.includes(songVoice)) {
+        return res.status(400).json({ error: invalidVoiceMessage(order.lang) });
+      }
+      parsedSongs.push({ variantId, sourceVariant, feedback, requestedGenre, lyricsInput, songVoice });
     }
 
     // Genurile finale (dupa orice schimbare ceruta) trebuie sa ramana diferite intre ele —
@@ -1890,6 +1899,29 @@ async function handlePremiumSelectiveRegenerate(req, res, next) {
       await db.updateOrder(order.id, genrePatch);
     }
 
+    // MODIFICARE STRICTĂ — editare secventiala (hotfix, runda 4): daca versurile trimise difera
+    // de versurile efective CURENTE ale variantei sursa (editedLyrics existent, sau originalLyrics
+    // daca inca nu a fost editata), le salvam ACUM pe varianta sursa — inainte de a porni
+    // regenerarea, ca modificarea manuala sa nu se piarda niciodata, nici daca regenerarea
+    // esueaza (acelasi comportament ca POST /variants/:variantId/lyrics, aplicat aici inline).
+    const lyricsPatches = [];
+    for (const song of parsedSongs) {
+      if (!song.lyricsInput) continue;
+      const currentEffective = (typeof song.sourceVariant.editedLyrics === 'string' && song.sourceVariant.editedLyrics.trim())
+        ? song.sourceVariant.editedLyrics.trim()
+        : (song.sourceVariant.originalLyrics || '').trim();
+      if (song.lyricsInput !== currentEffective) {
+        lyricsPatches.push({ variantId: song.variantId, lyrics: song.lyricsInput });
+      }
+    }
+    if (lyricsPatches.length > 0) {
+      const updatedVariants = existingVariants.map(v => {
+        const patch = lyricsPatches.find(p => p.variantId === v.id);
+        return patch ? { ...v, editedLyrics: patch.lyrics, lyricsUpdatedAt: new Date().toISOString() } : v;
+      });
+      await db.updateOrder(order.id, { variants: updatedVariants });
+    }
+
     const editVariantIds = parsedSongs.map(s => s.variantId);
     const regenerationJobId = randomUUID();
     await db.updateOrder(order.id, {
@@ -1902,16 +1934,19 @@ async function handlePremiumSelectiveRegenerate(req, res, next) {
     await db.startRegenerationJob(order.id, regenerationJobId);
     res.json({ started: true, regenerationJobId });
 
-    // feedback/versuri editate manual, per melodie — acelasi ghidaj ca la ramura veche, aplicat
-    // insa per-melodie, nu global.
+    // Versuri editate + feedback liber, per melodie — versurile trimise ACUM au prioritate
+    // (clientul tocmai le-a rescris direct), cu fallback la orice versuri salvate anterior.
+    // MODIFICARE STRICTĂ (runda 4): vocea e acum SI ea per melodie (songVoice), aplicata direct
+    // la construirea prompt-ului (vezi runPremiumEditGeneration) — niciodata doar la nivel de
+    // comanda intreaga, ca inainte.
     const editSongsForGeneration = parsedSongs.map(song => {
-      const editedLyrics = typeof song.sourceVariant.editedLyrics === 'string' ? song.sourceVariant.editedLyrics.trim() : '';
+      const editedLyrics = song.lyricsInput || (typeof song.sourceVariant.editedLyrics === 'string' ? song.sourceVariant.editedLyrics.trim() : '');
       let combinedFeedback = song.feedback;
       if (editedLyrics) {
         const lyricsInstruction = `Try to follow lyrics close to this rewritten version: ${editedLyrics}`;
         combinedFeedback = song.feedback ? `${lyricsInstruction}. Also: ${song.feedback}` : lyricsInstruction;
       }
-      return { variantId: song.variantId, feedback: combinedFeedback };
+      return { variantId: song.variantId, feedback: combinedFeedback, voicePreference: song.songVoice };
     });
 
     runPremiumEditGeneration(order.id, editSongsForGeneration, regenerationJobId).catch(async (err) => {
@@ -3599,7 +3634,13 @@ async function runPremiumEditGeneration(orderId, editSongs, regenerationJobId) {
     .map(song => {
       const { isSong2Slot, genreToUse } = premiumEditSlotForVariant(order, song.variantId);
       const recipientSnapshot = isSong2Slot ? getSong2EffectiveData(order) : getSong1EffectiveData(order);
-      const prompt = buildPrompt({ ...order, ...recipientSnapshot }, song.feedback, genreToUse);
+      // MODIFICARE STRICTĂ — editare secventiala, ambele melodii (hotfix, runda 4): vocea aleasa
+      // pentru ACEASTA melodie (song.voicePreference) suprascrie voicePreference-ul comenzii
+      // DOAR pentru acest prompt — acelasi tipar deja folosit pentru recipientSnapshot (obiect
+      // nou construit prin spread, order.voicePreference original ramane neatins in DB decat
+      // daca vreo alta cale il actualizeaza explicit).
+      const effectiveVoice = VOICE_PREFERENCES.includes(song.voicePreference) ? song.voicePreference : order.voicePreference;
+      const prompt = buildPrompt({ ...order, ...recipientSnapshot, voicePreference: effectiveVoice }, song.feedback, genreToUse);
       return { variantId: song.variantId, isSong2Slot, genreToUse, recipientSnapshot, prompt };
     })
     .sort((a, b) => Number(a.isSong2Slot) - Number(b.isSong2Slot));

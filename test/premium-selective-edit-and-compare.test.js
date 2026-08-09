@@ -105,14 +105,16 @@ test('server.js: editarea unei SINGURE melodii (1 element in editVariantIds) pro
   // o SINGURA cerere (ramura dispatches.length===1), deci finalizeVariantsIfNeeded primeste un
   // singur requestInfo -> un singur element nou adaugat la cele 2 existente = 3 total.
   const idx = server.indexOf('async function runPremiumEditGeneration');
-  const body = server.slice(idx, idx + 3000);
+  const end = server.indexOf('async function runGeneration(orderId, feedback, options = {}) {');
+  const body = server.slice(idx, end);
   assert.match(body, /if \(dispatches\.length === 1\) \{/);
   assert.match(body, /editVariantIds: \[d\.variantId\]/);
 });
 
 test('server.js: editarea AMBELOR melodii (2 elemente in editVariantIds) produce un array cu 4 variante (2 initiale + 2 editate)', () => {
   const idx = server.indexOf('async function runPremiumEditGeneration');
-  const body = server.slice(idx, idx + 3300);
+  const end = server.indexOf('async function runGeneration(orderId, feedback, options = {}) {');
+  const body = server.slice(idx, end);
   assert.match(body, /editVariantIds: \[dispatches\[0\]\.variantId, dispatches\[1\]\.variantId\]/);
 });
 
@@ -123,12 +125,47 @@ test('server.js: editarea nu regenereaza melodia neselectata — runPremiumEditG
   assert.ok(body.includes('const dispatches = editSongs'), 'dispatch-urile provin STRICT din editSongs (ce a trimis clientul), niciodata din order.variants intreg');
 });
 
-test('melodia-mea.html: pagina de editare cere selectarea a cel putin unei melodii (checkbox), altfel arata eroare si NU trimite cererea', () => {
+// MODIFICARE STRICTĂ — editare secventiala, pe rand, pentru AMBELE melodii (hotfix, runda 4):
+// nu mai exista bife optionale ("editez 1 sau 2 melodii") — clientul editeaza mereu ambele, in
+// doi pasi succesivi. Versurile goale (client a sters tot) sunt respinse la fiecare pas, iar
+// genurile finale identice sunt respinse la trimiterea finala.
+test('melodia-mea.html: pasul 1 respinge versuri goale inainte de a trece la pasul 2; trimiterea finala respinge versuri goale sau genuri identice', () => {
   const idx = melodia.indexOf('function renderPremiumEditView(order) {');
   const endIdx = melodia.indexOf('function renderPremiumCompareView(order) {');
   const body = melodia.slice(idx, endIdx);
-  assert.ok(body.includes("if (songs.length === 0) {"));
-  assert.ok(body.includes('t.premium_edit_select_at_least_one'));
+  assert.ok(body.includes('if (!song1Lyrics.value.trim()) {'), 'pasul 1 trebuie sa verifice ca versurile nu sunt goale');
+  assert.ok(body.includes('if (!song2Lyrics.value.trim()) {'), 'trimiterea finala trebuie sa verifice versurile melodiei 2');
+  assert.ok(body.includes('if (song1GenreSelect.value === song2GenreSelect.value) {'), 'genurile finale identice trebuie respinse in frontend, oglindind validarea backend');
+  assert.ok(body.includes('t.lyrics_empty_error'));
+  assert.ok(body.includes('t.edit_genre_same_error'));
+});
+
+test('melodia-mea.html: editarea trimite mereu EXACT ambele melodii (niciodata mai putin) — {songs:[song1,song2]}, fiecare cu versuri, gen si voce independente', () => {
+  const idx = melodia.indexOf('function renderPremiumEditView(order) {');
+  const endIdx = melodia.indexOf('function renderPremiumCompareView(order) {');
+  const body = melodia.slice(idx, endIdx);
+  assert.ok(body.includes('variantId: v1.id,'));
+  assert.ok(body.includes('variantId: v2.id,'));
+  assert.ok(body.includes('voicePreference: song1Voice'));
+  assert.ok(body.includes('voicePreference: song2Voice'));
+  assert.ok(body.includes('normalizeSectionLabelsForSaving(song1Lyrics.value.trim(), order.lang)'));
+  assert.ok(body.includes('normalizeSectionLabelsForSaving(song2Lyrics.value.trim(), order.lang)'));
+});
+
+test('melodia-mea.html: "Înapoi" (pasul 2 -> pasul 1) doar comuta vizibilitatea — NU reseteaza campurile deja completate ale primei melodii', () => {
+  const idx = melodia.indexOf('function goToPremiumEditStep(step) {');
+  const end = melodia.indexOf('function renderPremiumEditView(order) {');
+  const body = melodia.slice(idx, end);
+  assert.ok(body.includes("document.getElementById('premium-edit-step1').style.display = step === 1 ? 'block' : 'none';"));
+  assert.ok(!body.includes('.value = '), '"Înapoi" nu trebuie sa reseteze NICIUN camp (nicio atribuire .value in goToPremiumEditStep)');
+});
+
+test('melodia-mea.html: vocea foloseste carduri DEDICATE (.premium-voice-card, nu .voice-card) — evita activarea simultana a cardului corespunzator din ambele grile (bug posibil prin handler-ul global .voice-card)', () => {
+  const idx = melodia.indexOf('function renderPremiumEditView(order) {');
+  const endIdx = melodia.indexOf('function renderPremiumCompareView(order) {');
+  const body = melodia.slice(idx, endIdx);
+  assert.ok(body.includes(".querySelectorAll('.premium-voice-card')"));
+  assert.ok(!body.includes("querySelectorAll('.voice-card')"), 'editarea Premium nu trebuie sa foloseasca selectorul global .voice-card, partajat cu Standard/Video');
 });
 
 test('melodia-mea.html: dupa apasarea butonului de editare, se navigheaza la se-compune.html cu mode=regenerate — nu se ramane pe melodia-mea.html asteptand', () => {
@@ -304,16 +341,18 @@ test('melodia-mea.html: toate cele 10 chei noi de traducere Premium exista exact
   });
 });
 
-test('melodia-mea.html: textele Premium reutilizeaza cheile existente (edit_lyrics_btn, checkout_btn_standard, confirm_no, edit_genre_label, feedback_label) — deja traduse in 8 limbi, nicio duplicare', () => {
+test('melodia-mea.html: textele Premium reutilizeaza cheile existente (edit_lyrics_btn, checkout_btn_standard pe rezultat; edit_genre_label/explain, editor_title/hint pe editare) — deja traduse in 8 limbi, nicio duplicare', () => {
   const idx = melodia.indexOf('function renderPremiumResultView(order) {');
   const resultBody = melodia.slice(idx, idx + 2500);
   assert.ok(resultBody.includes('t.edit_lyrics_btn'));
   assert.ok(resultBody.includes('t.checkout_btn_standard'));
   const editIdx = melodia.indexOf('function renderPremiumEditView(order) {');
-  const editBody = melodia.slice(editIdx, editIdx + 2000);
-  assert.ok(editBody.includes('t.confirm_no'));
+  const endIdx = melodia.indexOf('function renderPremiumCompareView(order) {');
+  const editBody = melodia.slice(editIdx, endIdx);
   assert.ok(editBody.includes('t.edit_genre_label'));
-  assert.ok(editBody.includes('t.feedback_label'));
+  assert.ok(editBody.includes('t.edit_genre_explain'));
+  assert.ok(editBody.includes('t.editor_title'), 'eticheta campului de versuri trebuie sa reutilizeze editor_title ("Editează versurile")');
+  assert.ok(editBody.includes('t.editor_hint'), 'explicatia campului de versuri trebuie sa reutilizeze editor_hint');
 });
 
 // ---------------------------------------------------------------------------------------------

@@ -199,12 +199,25 @@
     background:rgba(168,131,75,.07); border:1px solid var(--gold); border-radius:14px;
     padding:20px 18px; margin-bottom:22px;
   }
-  .mandatory-section h2{ font-size:16px; font-weight:700; margin-bottom:4px; }
+  /* MODIFICARE STRICTĂ — evidentierea textelor de configurare a melodiei 2 (hotfix, runda 4):
+     titlul sectiunii, genul primei melodii si eticheta genului al doilea devin mai vizibile,
+     folosind STRICT accentul teracota deja existent (var(--gold-deep), aceeasi nuanta folosita
+     de .required-badge/.plan-subtitle in tot site-ul) — nicio culoare noua, niciun rosu aprins. */
+  .mandatory-section h2{ font-size:19px; font-weight:700; margin-bottom:6px; color:var(--gold-deep); line-height:1.3; }
   .required-badge{
     display:inline-block; background:rgba(168,131,75,.12); color:var(--gold-deep); font-size:11px; font-weight:700;
     text-transform:uppercase; letter-spacing:.04em; padding:3px 10px; border-radius:999px; margin-bottom:10px;
   }
-  .song1-genre-hint{ font-size:13px; color:var(--text-secondary); margin-bottom:14px; }
+  .song1-genre-hint{ font-size:14px; color:var(--text); margin-bottom:14px; }
+  .song1-genre-hint strong{
+    color:var(--gold-deep); font-weight:700; background:rgba(168,131,75,.12);
+    padding:2px 9px; border-radius:999px; display:inline-block;
+  }
+  /* Eticheta genului al doilea — DOAR in contextul Premium (genre2-field reparentat aici, vezi
+     placeGenre2Field()); pasul 4 (Video, locatia originala a campului) ramane complet neatins,
+     acest selector nu se aplica acolo niciodata. */
+  #song2-genre-slot label{ font-size:16px; font-weight:700; color:var(--gold-deep); margin-bottom:10px; }
+  #song2-genre-slot label::before{ content:'🎵 '; }
 
   /* MODIFICARE STRICTĂ — fluxul Premium, pasul "Pentru cine este a doua melodie?" (hotfix
      2026-08-10, runda 2): ambele carduri (Aceeași persoană / Altă persoană) folosesc mereu
@@ -3043,7 +3056,11 @@
   function updateSong1GenreDisplay() {
     const card = document.querySelector(`.genre-card[data-genre="${genreInput.value}"]:not(.genre2-card)`);
     const label = card ? card.textContent.trim() : '';
-    song1GenreDisplay.textContent = t('song2_first_genre_label') + ' ' + label;
+    // MODIFICARE STRICTĂ — evidentierea textelor de configurare a melodiei 2 (hotfix, runda 4):
+    // genul primei melodii afisat ca "chip" evidentiat (vezi .song1-genre-hint strong) — label
+    // provine STRICT din textul unui .genre-card existent (set fix, tradus, niciodata introdus
+    // de client), deci innerHTML e sigur aici, fara nicio scapare suplimentara necesara.
+    song1GenreDisplay.innerHTML = t('song2_first_genre_label') + ' <strong>' + label + '</strong>';
   }
 
   // Butonul final ramane dezactivat pana cand TOATE alegerile obligatorii sunt complete — genul
