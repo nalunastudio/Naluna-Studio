@@ -31,6 +31,7 @@ function loadBuildPrompt() {
   const sandboxSrc = `
     const VOICE_PREFERENCES = ['female', 'male', 'duet', 'auto'];
     const FAMILY_OCCASIONS = ['bunici', 'parinti', 'matusa-unchi', 'socri', 'frati'];
+    const FAMILY_RECIPIENT_ROLE_VALUES = ['grandmother', 'grandfather', 'grandparents', 'mother', 'father', 'parents', 'aunt', 'uncle', 'aunt_uncle', 'mother_in_law', 'father_in_law', 'parents_in_law', 'sister', 'brother'];
     ${snippet}
     return buildPrompt;
   `;

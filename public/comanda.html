@@ -181,6 +181,26 @@
 
   .price-note{ font-size:13px; color:var(--text-secondary); }
 
+  /* MODIFICARE STRICTĂ — fluxul pachetului Premium £25 (hotfix 2026-08-09): ecranul dedicat
+     de sumar Premium (step 5) si ecranul de configurare a celei de-a doua melodii (step 6).
+     Reutilizeaza clasele existente (.theme-card, .theme-grid, .field-error, .btn etc.) — noile
+     clase de mai jos acopera DOAR nevoile specifice acestor doua ecrane: pretul mare de pe
+     sumar si sectiunile "obligatorii" cu contrast puternic de pe ecranul de configurare. */
+  .premium-price-hero{
+    font-family:'Fraunces', serif; font-size:40px; color:var(--gold-deep);
+    text-align:center; margin:18px 0 6px;
+  }
+  .mandatory-section{
+    background:var(--bg-secondary); border:2px solid var(--gold); border-radius:14px;
+    padding:20px 18px; margin-bottom:22px;
+  }
+  .mandatory-section h2{ font-size:16px; font-weight:700; margin-bottom:4px; }
+  .required-badge{
+    display:inline-block; background:var(--gold-deep); color:#fff; font-size:11px; font-weight:700;
+    text-transform:uppercase; letter-spacing:.04em; padding:3px 10px; border-radius:999px; margin-bottom:10px;
+  }
+  .song1-genre-hint{ font-size:13px; color:var(--text-secondary); margin-bottom:14px; }
+
   .btn{
     display:inline-flex; align-items:center; justify-content:center; gap:10px;
     padding:15px 26px; border-radius:999px; font-size:14px; font-weight:500;
@@ -559,6 +579,111 @@
       </div>
     </div>
 
+    <!-- MODIFICARE STRICTĂ — fluxul pachetului Premium £25 (hotfix 2026-08-09): ecran dedicat,
+         afisat DOAR cand clientul selecteaza cardul Premium (vezi selectPlan() -> showStep(5)).
+         Standard si Video NU trec niciodata prin acest ecran — raman EXACT pe fluxul vechi,
+         pasul 4 (plan + genre2 inline pentru Video + buton de trimitere). Contine NUMAI titlul,
+         pretul, lista de beneficii, totalul si cele doua butoane — nimic altceva (nicio carte
+         Standard/Video, niciun selector de gen, nicio configurare). -->
+    <div class="step-card" data-step="5" style="display:none;">
+      <h1 data-i18n="premium_summary_title">Pachet Premium</h1>
+      <div class="premium-price-hero">£25</div>
+
+      <div class="benefits-card">
+        <div class="benefits-list" id="premium-summary-benefits"></div>
+      </div>
+
+      <div class="order-summary">
+        <div class="row total"><span data-i18n="sum_total">Total</span><span>£25</span></div>
+      </div>
+
+      <button type="button" class="btn btn-primary" data-next="6" style="width:100%; justify-content:center; margin-top:20px;">
+        <span data-i18n="btn_generate">Generează previzualizarea gratuit →</span>
+      </button>
+
+      <div class="wizard-nav">
+        <button type="button" class="btn btn-ghost btn-back" data-prev="4" data-i18n="btn_back">Înapoi</button>
+        <span></span>
+      </div>
+    </div>
+
+    <!-- MODIFICARE STRICTĂ — fluxul pachetului Premium £25 (hotfix 2026-08-09): configurarea
+         celei de-a doua melodii — genul (obligatoriu, diferit de primul) si destinatarul
+         (obligatoriu: aceeași persoană sau altcineva). Butonul final ramane dezactivat pana
+         cand toate alegerile obligatorii sunt complete si valide — vezi updateSong2ContinueState(). -->
+    <div class="step-card" data-step="6" style="display:none;">
+      <h1 data-i18n="song2_config_title">Configurează a doua melodie</h1>
+
+      <div class="mandatory-section">
+        <span class="required-badge" data-i18n="badge_required">Obligatoriu</span>
+        <h2 data-i18n="song2_genre_section_title">1. Alege genul celei de-a doua melodii</h2>
+        <div class="song1-genre-hint" id="song1-genre-display"></div>
+        <!-- #genre2-field (definit mai sus, in pasul 4) e REPARENTAT aici DOAR pentru Premium
+             (vezi placeGenre2Field()) — pentru Video ramane exact unde e definit, in pasul 4,
+             comportament complet neschimbat. Acelasi element unic, niciodata duplicat. -->
+        <div id="song2-genre-slot"></div>
+      </div>
+
+      <div class="mandatory-section">
+        <span class="required-badge" data-i18n="badge_required">Obligatoriu</span>
+        <h2 data-i18n="song2_target_section_title">2. Pentru cine este a doua melodie?</h2>
+        <div class="theme-grid" style="grid-template-columns:1fr 1fr;">
+          <!-- theme-subcard: EXCLUDE din selectorul generic al cardurilor de ocazie de pe pasul 1
+               (.theme-card:not(.theme-subcard)) — fara aceasta clasa, click aici ar declansa din
+               greseala handler-ul de ocazie principala (occasionInput.value = undefined,
+               recipientRole/senderRole resetate), exact bug-ul deja documentat si evitat pentru
+               toate celelalte sub-carduri din acest fisier. -->
+          <div class="theme-card theme-subcard" id="song2-same-card" data-song2-target="same">
+            <div class="theme-name" data-i18n="song2_same_person">Pentru aceeași persoană</div>
+          </div>
+          <div class="theme-card theme-subcard" id="song2-other-card" data-song2-target="other">
+            <div class="theme-name" data-i18n="song2_other_person">Pentru altă persoană</div>
+          </div>
+        </div>
+        <div class="field-error" id="err-song2Target"></div>
+        <input type="hidden" id="song2Target" value="">
+        <input type="hidden" id="song2RecipientRole" value="">
+        <input type="hidden" id="song2RecipientMode" value="">
+
+        <div id="song2-other-panel" style="display:none; margin-top:16px;">
+          <div class="theme-grid" id="song2-category-grid" style="grid-template-columns:1fr 1fr;"></div>
+          <div class="field-error" id="err-song2Category"></div>
+
+          <div class="theme-subpanel" id="song2-relation-panel" style="display:none; margin-top:16px;">
+            <label data-i18n="label_recipient_role">Pentru cine e cântecul?</label>
+            <div class="theme-grid" id="song2-relation-grid" style="grid-template-columns:1fr 1fr;"></div>
+            <div class="field-error" id="err-song2RecipientRole"></div>
+
+            <div class="field" id="song2-single-name-field" style="display:none; margin-top:16px;">
+              <label data-i18n="song2_recipient_name_label">Numele destinatarului</label>
+              <input type="text" id="song2-recipient-name" maxlength="60">
+              <div class="field-error" id="err-song2RecipientName"></div>
+            </div>
+
+            <div class="field" id="song2-both-names-field" style="display:none; margin-top:16px;">
+              <label id="song2-name1-label"></label>
+              <input type="text" id="song2-name1" maxlength="60">
+              <div class="field-error" id="err-song2Name1"></div>
+              <label id="song2-name2-label" style="margin-top:12px;"></label>
+              <input type="text" id="song2-name2" maxlength="60">
+              <div class="field-error" id="err-song2Name2"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <button type="submit" class="btn btn-primary" id="song2-continue-btn" disabled style="width:100%; justify-content:center; margin-top:20px;">
+        <span data-i18n="song2_continue_btn" id="song2-continue-btn-label">Continuă și creează cele două previzualizări</span>
+      </button>
+      <div class="price-note" style="margin-top:10px; text-align:center;" data-i18n="note_free">Nu plătești acum. Plătești doar dacă îți place rezultatul</div>
+      <div id="status-msg-song2"></div>
+
+      <div class="wizard-nav">
+        <button type="button" class="btn btn-ghost btn-back" data-prev="5" data-i18n="btn_back">Înapoi</button>
+        <span></span>
+      </div>
+    </div>
+
   </form>
 </div>
 
@@ -657,8 +782,8 @@
       plan_standard_subtitle: 'O melodie personalizată',
       plan_standard_desc: 'Melodie personalizată, livrare pe email',
       plan_premium_name: 'Premium',
-      plan_premium_subtitle: 'Două variante ale melodiei',
-      plan_premium_desc: '2 versiuni complete + versiune audio la calitate înaltă',
+      plan_premium_subtitle: 'Două melodii complete, două genuri diferite',
+      plan_premium_desc: 'Alegi 2 genuri diferite; a doua poate fi pentru altă persoană; primești ambele complete după plată',
       plan_video_name: 'Cadou video',
       plan_video_subtitle: 'Melodie personalizată cu videoclip',
       plan_video_desc: 'Melodie + videoclip sincronizat, cu pozele și filmările tale',
@@ -669,8 +794,9 @@
         'Ai dreptul la o editare gratuită, dacă nu e exact cum vrei'
       ],
       benefits_premium: [
-        'Alegi două genuri muzicale diferite — aceeași poveste, două interpretări muzicale diferite',
-        'Asculți gratuit un preview de 40 de secunde din fiecare melodie și alegi varianta principală',
+        'Primești două melodii complete, în două genuri muzicale diferite',
+        'A doua melodie poate fi pentru aceeași persoană sau pentru altcineva',
+        'Asculți gratuit câte 40 de secunde din fiecare melodie și alegi varianta principală',
         'Ai inclusă o modificare gratuită',
         'Varianta principală vine și ca versiune audio la calitate înaltă — păstrează mai bine claritatea sunetului, potrivită pentru păstrare sau editare; nu ai nevoie de cunoștințe tehnice ca să o folosești',
         'Descarci ambele melodii complete după plată'
@@ -714,7 +840,20 @@
       val_sender_role: 'Alege ce relație ai tu cu destinatarul',
       val_nunta_names: 'Completează ambele nume',
       val_nunta_type: 'Alege dacă este vorba despre o nuntă sau un botez',
-      step_progress_label: (n) => 'Pasul ' + n + ' din 4',
+      step_progress_label: (n, total) => 'Pasul ' + n + ' din ' + total,
+      // MODIFICARE STRICTĂ — fluxul pachetului Premium £25 (hotfix 2026-08-09).
+      premium_summary_title: 'Pachet Premium',
+      song2_config_title: 'Configurează a doua melodie',
+      badge_required: 'Obligatoriu',
+      song2_genre_section_title: '1. Alege genul celei de-a doua melodii',
+      song2_first_genre_label: 'Prima melodie:',
+      song2_target_section_title: '2. Pentru cine este a doua melodie?',
+      song2_same_person: 'Pentru aceeași persoană',
+      song2_other_person: 'Pentru altă persoană',
+      song2_recipient_name_label: 'Numele destinatarului',
+      val_song2_target: 'Alege pentru cine este a doua melodie',
+      val_song2_recipient_name: 'Completează numele destinatarului',
+      song2_continue_btn: 'Continuă și creează cele două previzualizări',
     },
     en: {
       back_link: 'Back to homepage',
@@ -808,8 +947,8 @@
       plan_standard_subtitle: 'A personalised song',
       plan_standard_desc: 'A personalised song, delivered by email',
       plan_premium_name: 'Premium',
-      plan_premium_subtitle: 'Two versions of the song',
-      plan_premium_desc: '2 complete versions + high-quality audio version',
+      plan_premium_subtitle: 'Two complete songs, two different genres',
+      plan_premium_desc: 'Choose 2 different genres; the second can be for someone else; get both complete after payment',
       plan_video_name: 'Video gift',
       plan_video_subtitle: 'Personalised song with video',
       plan_video_desc: 'Song + synced video with your own photos and clips',
@@ -820,7 +959,8 @@
         "You get one free edit if it's not quite right"
       ],
       benefits_premium: [
-        'You choose two different musical genres — the same story, two different musical interpretations',
+        'You get two complete songs, in two different musical genres',
+        'The second song can be for the same person or for someone else',
         'You listen to a free 40-second preview of each song and choose the main version',
         'One free edit is included',
         "The main version also comes as a high-quality audio version — it keeps the sound clearer and is better for keeping or editing; you don't need any technical knowledge to use it",
@@ -865,7 +1005,19 @@
       val_sender_role: 'Choose your relationship to the recipient',
       val_nunta_names: 'Fill in both names',
       val_nunta_type: 'Choose whether this is a wedding or a christening',
-      step_progress_label: (n) => 'Step ' + n + ' of 4',
+      step_progress_label: (n, total) => 'Step ' + n + ' of ' + total,
+      premium_summary_title: 'Premium package',
+      song2_config_title: 'Configure the second song',
+      badge_required: 'Required',
+      song2_genre_section_title: "1. Choose the second song's genre",
+      song2_first_genre_label: 'First song:',
+      song2_target_section_title: '2. Who is the second song for?',
+      song2_same_person: 'For the same person',
+      song2_other_person: 'For someone else',
+      song2_recipient_name_label: "Recipient's name",
+      val_song2_target: 'Choose who the second song is for',
+      val_song2_recipient_name: "Fill in the recipient's name",
+      song2_continue_btn: 'Continue and create both previews',
     },
     de: {
       back_link: 'Zurück zur Startseite',
@@ -959,8 +1111,8 @@
       plan_standard_subtitle: 'Ein persönliches Lied',
       plan_standard_desc: 'Persönliches Lied, per E-Mail geliefert',
       plan_premium_name: 'Premium',
-      plan_premium_subtitle: 'Zwei Versionen des Liedes',
-      plan_premium_desc: '2 vollständige Versionen + hochwertige Audioversion',
+      plan_premium_subtitle: 'Zwei vollständige Lieder, zwei verschiedene Genres',
+      plan_premium_desc: 'Wähle 2 verschiedene Genres; das zweite kann für eine andere Person sein; du erhältst beide vollständig nach der Zahlung',
       plan_video_name: 'Video-Geschenk',
       plan_video_subtitle: 'Persönliches Lied mit Video',
       plan_video_desc: 'Lied + synchronisiertes Video mit deinen eigenen Fotos und Clips',
@@ -971,7 +1123,8 @@
         'Du hast eine kostenlose Änderung, falls es nicht ganz passt'
       ],
       benefits_premium: [
-        'Du wählst zwei verschiedene Musikrichtungen — dieselbe Geschichte, zwei unterschiedliche musikalische Interpretationen',
+        'Du erhältst zwei vollständige Lieder, in zwei verschiedenen Musikrichtungen',
+        'Das zweite Lied kann für dieselbe Person oder für jemand anderen sein',
         'Du hörst kostenlos eine 40-sekündige Vorschau jedes Liedes und wählst die Hauptversion',
         'Eine kostenlose Änderung ist inbegriffen',
         'Die Hauptversion gibt es außerdem als hochwertige Audioversion — klingt klarer und eignet sich besser zum Aufbewahren oder Bearbeiten; du brauchst kein technisches Wissen dafür',
@@ -1016,7 +1169,19 @@
       val_sender_role: 'Wähle deine Beziehung zur empfangenden Person',
       val_nunta_names: 'Gib beide Namen ein',
       val_nunta_type: 'Wähle, ob es sich um eine Hochzeit oder eine Taufe handelt',
-      step_progress_label: (n) => 'Schritt ' + n + ' von 4',
+      step_progress_label: (n, total) => 'Schritt ' + n + ' von ' + total,
+      premium_summary_title: 'Premium-Paket',
+      song2_config_title: 'Konfiguriere das zweite Lied',
+      badge_required: 'Erforderlich',
+      song2_genre_section_title: '1. Wähle das Genre des zweiten Liedes',
+      song2_first_genre_label: 'Erstes Lied:',
+      song2_target_section_title: '2. Für wen ist das zweite Lied?',
+      song2_same_person: 'Für dieselbe Person',
+      song2_other_person: 'Für eine andere Person',
+      song2_recipient_name_label: 'Name der empfangenden Person',
+      val_song2_target: 'Wähle, für wen das zweite Lied ist',
+      val_song2_recipient_name: 'Gib den Namen der empfangenden Person ein',
+      song2_continue_btn: 'Weiter und beide Vorschauen erstellen',
     },
     es: {
       back_link: 'Volver a la página principal',
@@ -1110,8 +1275,8 @@
       plan_standard_subtitle: 'Una canción personalizada',
       plan_standard_desc: 'Canción personalizada, entrega por email',
       plan_premium_name: 'Premium',
-      plan_premium_subtitle: 'Dos versiones de la canción',
-      plan_premium_desc: '2 versiones completas + versión de audio de alta calidad',
+      plan_premium_subtitle: 'Dos canciones completas, dos géneros diferentes',
+      plan_premium_desc: 'Eliges 2 géneros diferentes; la segunda puede ser para otra persona; recibes ambas completas después del pago',
       plan_video_name: 'Regalo en video',
       plan_video_subtitle: 'Canción personalizada con video',
       plan_video_desc: 'Canción + video sincronizado con tus propias fotos y videos',
@@ -1122,7 +1287,8 @@
         'Tienes derecho a una edición gratuita si no queda exactamente como quieres'
       ],
       benefits_premium: [
-        'Eliges dos géneros musicales diferentes — la misma historia, dos interpretaciones musicales distintas',
+        'Recibes dos canciones completas, en dos géneros musicales diferentes',
+        'La segunda canción puede ser para la misma persona o para otra',
         'Escuchas gratis un adelanto de 40 segundos de cada canción y eliges la versión principal',
         'Incluye una modificación gratuita',
         'La versión principal también viene como versión de audio de alta calidad — conserva mejor la claridad del sonido, adecuada para guardar o editar; no necesitas conocimientos técnicos para usarla',
@@ -1167,7 +1333,19 @@
       val_sender_role: 'Elige tu relación con el destinatario',
       val_nunta_names: 'Completa ambos nombres',
       val_nunta_type: 'Elige si se trata de una boda o un bautizo',
-      step_progress_label: (n) => 'Paso ' + n + ' de 4',
+      step_progress_label: (n, total) => 'Paso ' + n + ' de ' + total,
+      premium_summary_title: 'Paquete Premium',
+      song2_config_title: 'Configura la segunda canción',
+      badge_required: 'Obligatorio',
+      song2_genre_section_title: '1. Elige el género de la segunda canción',
+      song2_first_genre_label: 'Primera canción:',
+      song2_target_section_title: '2. ¿Para quién es la segunda canción?',
+      song2_same_person: 'Para la misma persona',
+      song2_other_person: 'Para otra persona',
+      song2_recipient_name_label: 'Nombre del destinatario',
+      val_song2_target: 'Elige para quién es la segunda canción',
+      val_song2_recipient_name: 'Completa el nombre del destinatario',
+      song2_continue_btn: 'Continuar y crear las dos previsualizaciones',
     },
     it: {
       back_link: 'Torna alla pagina principale',
@@ -1261,8 +1439,8 @@
       plan_standard_subtitle: 'Una canzone personalizzata',
       plan_standard_desc: 'Canzone personalizzata, consegna via email',
       plan_premium_name: 'Premium',
-      plan_premium_subtitle: 'Due versioni della canzone',
-      plan_premium_desc: '2 versioni complete + versione audio ad alta qualità',
+      plan_premium_subtitle: 'Due canzoni complete, due generi diversi',
+      plan_premium_desc: 'Scegli 2 generi diversi; la seconda può essere per un\'altra persona; ricevi entrambe complete dopo il pagamento',
       plan_video_name: 'Regalo video',
       plan_video_subtitle: 'Canzone personalizzata con video',
       plan_video_desc: 'Canzone + video sincronizzato con le tue foto e i tuoi video',
@@ -1273,7 +1451,8 @@
         'Hai diritto a una modifica gratuita se non è esattamente come desideri'
       ],
       benefits_premium: [
-        'Scegli due generi musicali diversi — la stessa storia, due interpretazioni musicali diverse',
+        'Ricevi due canzoni complete, in due generi musicali diversi',
+        "La seconda canzone può essere per la stessa persona o per qualcun altro",
         "Ascolti gratis un'anteprima di 40 secondi di ogni canzone e scegli la versione principale",
         'È inclusa una modifica gratuita',
         'La versione principale arriva anche come versione audio ad alta qualità — mantiene il suono più chiaro, adatta per conservare o modificare; non servono competenze tecniche per usarla',
@@ -1318,7 +1497,19 @@
       val_sender_role: 'Scegli il tuo rapporto con il destinatario',
       val_nunta_names: 'Inserisci entrambi i nomi',
       val_nunta_type: 'Scegli se si tratta di un matrimonio o di un battesimo',
-      step_progress_label: (n) => 'Passo ' + n + ' di 4',
+      step_progress_label: (n, total) => 'Passo ' + n + ' di ' + total,
+      premium_summary_title: 'Pacchetto Premium',
+      song2_config_title: 'Configura la seconda canzone',
+      badge_required: 'Obbligatorio',
+      song2_genre_section_title: '1. Scegli il genere della seconda canzone',
+      song2_first_genre_label: 'Prima canzone:',
+      song2_target_section_title: '2. Per chi è la seconda canzone?',
+      song2_same_person: 'Per la stessa persona',
+      song2_other_person: 'Per un\'altra persona',
+      song2_recipient_name_label: 'Nome del destinatario',
+      val_song2_target: 'Scegli per chi è la seconda canzone',
+      val_song2_recipient_name: 'Inserisci il nome del destinatario',
+      song2_continue_btn: 'Continua e crea entrambe le anteprime',
     },
     fr: {
       back_link: 'Retour à la page d\'accueil',
@@ -1412,8 +1603,8 @@
       plan_standard_subtitle: 'Une chanson personnalisée',
       plan_standard_desc: 'Chanson personnalisée, livrée par email',
       plan_premium_name: 'Premium',
-      plan_premium_subtitle: 'Deux versions de la chanson',
-      plan_premium_desc: '2 versions complètes + version audio haute qualité',
+      plan_premium_subtitle: 'Deux chansons complètes, deux genres différents',
+      plan_premium_desc: 'Vous choisissez 2 genres différents ; la deuxième peut être pour une autre personne ; vous recevez les deux complètes après paiement',
       plan_video_name: 'Cadeau vidéo',
       plan_video_subtitle: 'Chanson personnalisée avec vidéo',
       plan_video_desc: 'Chanson + vidéo synchronisée avec vos propres photos et vidéos',
@@ -1424,7 +1615,8 @@
         "Vous avez droit à une modification gratuite si ce n'est pas tout à fait ce que vous souhaitez"
       ],
       benefits_premium: [
-        'Vous choisissez deux genres musicaux différents — la même histoire, deux interprétations musicales différentes',
+        'Vous recevez deux chansons complètes, dans deux genres musicaux différents',
+        'La deuxième chanson peut être pour la même personne ou pour quelqu\'un d\'autre',
         'Vous écoutez gratuitement un extrait de 40 secondes de chaque chanson et choisissez la version principale',
         'Une modification gratuite est incluse',
         "La version principale existe aussi en version audio haute qualité — un son plus clair, adapté pour la conservation ou le montage; aucune connaissance technique n'est nécessaire pour l'utiliser",
@@ -1469,7 +1661,19 @@
       val_sender_role: 'Choisissez votre relation avec le destinataire',
       val_nunta_names: 'Renseignez les deux prénoms',
       val_nunta_type: "Choisissez s'il s'agit d'un mariage ou d'un baptême",
-      step_progress_label: (n) => 'Étape ' + n + ' sur 4',
+      step_progress_label: (n, total) => 'Étape ' + n + ' sur ' + total,
+      premium_summary_title: 'Pack Premium',
+      song2_config_title: 'Configurez la deuxième chanson',
+      badge_required: 'Obligatoire',
+      song2_genre_section_title: '1. Choisissez le genre de la deuxième chanson',
+      song2_first_genre_label: 'Première chanson :',
+      song2_target_section_title: '2. Pour qui est la deuxième chanson ?',
+      song2_same_person: 'Pour la même personne',
+      song2_other_person: 'Pour une autre personne',
+      song2_recipient_name_label: 'Prénom du destinataire',
+      val_song2_target: 'Choisissez pour qui est la deuxième chanson',
+      val_song2_recipient_name: 'Renseignez le prénom du destinataire',
+      song2_continue_btn: 'Continuer et créer les deux aperçus',
     },
     bg: {
       back_link: 'Обратно към началната страница',
@@ -1563,8 +1767,8 @@
       plan_standard_subtitle: 'Персонализирана песен',
       plan_standard_desc: 'Персонализирана песен, доставка по имейл',
       plan_premium_name: 'Премиум',
-      plan_premium_subtitle: 'Две версии на песента',
-      plan_premium_desc: '2 пълни версии + аудио версия с високо качество',
+      plan_premium_subtitle: 'Две пълни песни, два различни жанра',
+      plan_premium_desc: 'Избираш 2 различни жанра; втората може да е за друг човек; получаваш и двете пълни след плащане',
       plan_video_name: 'Видео подарък',
       plan_video_subtitle: 'Персонализирана песен с видео',
       plan_video_desc: 'Песен + синхронизирано видео с твоите снимки и видеоклипове',
@@ -1575,7 +1779,8 @@
         'Имаш право на една безплатна редакция, ако не е точно както искаш'
       ],
       benefits_premium: [
-        'Избираш два различни музикални жанра — една и съща история, две различни музикални интерпретации',
+        'Получаваш две пълни песни, в два различни музикални жанра',
+        'Втората песен може да е за същия човек или за някой друг',
         'Слушаш безплатно 40-секунден откъс от всяка песен и избираш основната версия',
         'Включена е една безплатна промяна',
         'Основната версия идва и като аудио версия с високо качество — запазва по-добре яснотата на звука, подходяща за съхранение или редактиране; не са нужни технически познания, за да я използваш',
@@ -1620,7 +1825,19 @@
       val_sender_role: 'Избери каква е твоята връзка с получателя',
       val_nunta_names: 'Попълни и двете имена',
       val_nunta_type: 'Избери дали е сватба или кръщене',
-      step_progress_label: (n) => 'Стъпка ' + n + ' от 4',
+      step_progress_label: (n, total) => 'Стъпка ' + n + ' от ' + total,
+      premium_summary_title: 'Пакет Premium',
+      song2_config_title: 'Настрой втората песен',
+      badge_required: 'Задължително',
+      song2_genre_section_title: '1. Избери жанра на втората песен',
+      song2_first_genre_label: 'Първа песен:',
+      song2_target_section_title: '2. За кого е втората песен?',
+      song2_same_person: 'За същия човек',
+      song2_other_person: 'За друг човек',
+      song2_recipient_name_label: 'Име на получателя',
+      val_song2_target: 'Избери за кого е втората песен',
+      val_song2_recipient_name: 'Попълни името на получателя',
+      song2_continue_btn: 'Продължи и създай двата прегледа',
     },
     tr: {
       back_link: 'Ana sayfaya dön',
@@ -1714,8 +1931,8 @@
       plan_standard_subtitle: 'Kişiye özel bir şarkı',
       plan_standard_desc: 'Kişiye özel şarkı, e-posta ile teslim',
       plan_premium_name: 'Premium',
-      plan_premium_subtitle: 'Şarkının iki versiyonu',
-      plan_premium_desc: '2 tam versiyon + yüksek kaliteli ses versiyonu',
+      plan_premium_subtitle: 'İki tam şarkı, iki farklı tür',
+      plan_premium_desc: '2 farklı tür seçersiniz; ikincisi başka biri için olabilir; ödemeden sonra ikisini de tam olarak alırsınız',
       plan_video_name: 'Video hediye',
       plan_video_subtitle: 'Videolu kişiye özel şarkı',
       plan_video_desc: 'Şarkı + kendi fotoğraf ve videolarınızla senkronize video',
@@ -1726,7 +1943,8 @@
         'Tam istediğiniz gibi değilse bir ücretsiz düzenleme hakkınız var'
       ],
       benefits_premium: [
-        'İki farklı müzik türü seçersiniz — aynı hikaye, iki farklı müzikal yorum',
+        'İki farklı müzik türünde, iki tam şarkı alırsınız',
+        'İkinci şarkı aynı kişi için ya da başka biri için olabilir',
         'Her şarkının 40 saniyelik ücretsiz önizlemesini dinler, ana versiyonu seçersiniz',
         'Bir ücretsiz düzenleme dahildir',
         'Ana versiyon ayrıca yüksek kaliteli ses versiyonu olarak da gelir — sesi daha net tutar, saklamak veya düzenlemek için uygundur; kullanmak için teknik bilgiye ihtiyacınız yoktur',
@@ -1771,7 +1989,19 @@
       val_sender_role: 'Alıcıyla olan ilişkinizi seçin',
       val_nunta_names: 'Her iki ismi de girin',
       val_nunta_type: 'Düğün mü yoksa vaftiz mi olduğunu seçin',
-      step_progress_label: (n) => 'Adım ' + n + '/4',
+      step_progress_label: (n, total) => 'Adım ' + n + '/' + total,
+      premium_summary_title: 'Premium Paketi',
+      song2_config_title: 'İkinci şarkıyı yapılandırın',
+      badge_required: 'Zorunlu',
+      song2_genre_section_title: '1. İkinci şarkının türünü seçin',
+      song2_first_genre_label: 'İlk şarkı:',
+      song2_target_section_title: '2. İkinci şarkı kimin için?',
+      song2_same_person: 'Aynı kişi için',
+      song2_other_person: 'Başka biri için',
+      song2_recipient_name_label: 'Alıcının adı',
+      val_song2_target: 'İkinci şarkının kimin için olduğunu seçin',
+      val_song2_recipient_name: 'Alıcının adını girin',
+      song2_continue_btn: 'Devam et ve iki önizlemeyi de oluştur',
     },
   };
 
@@ -1799,17 +2029,25 @@
     updateProgressLabel();
   }
 
-  const TOTAL_STEPS = 4;
   const STEP_KEY = 'currentStep';
   let currentStep = 1;
+
+  // MODIFICARE STRICTĂ — fluxul pachetului Premium £25 (hotfix 2026-08-09): Standard si Video
+  // raman la EXACT 4 pasi, neschimbat — DOAR Premium capata inca 2 pasi dedicati (sumar +
+  // configurarea celei de-a doua melodii). `selectedPlan` e declarat mai jos in acest script,
+  // dar functia insasi ruleaza abia dupa initializare completa, deci referinta e sigura.
+  function getTotalSteps() {
+    return selectedPlan.id === 'premium' ? 6 : 4;
+  }
 
   const stepCards = document.querySelectorAll('.step-card');
   const progressFill = document.getElementById('progress-fill');
   const progressLabel = document.getElementById('progress-label');
 
   function updateProgressLabel() {
-    progressLabel.textContent = translations[currentLang].step_progress_label(currentStep);
-    progressFill.style.width = (currentStep / TOTAL_STEPS * 100) + '%';
+    const total = getTotalSteps();
+    progressLabel.textContent = translations[currentLang].step_progress_label(currentStep, total);
+    progressFill.style.width = (currentStep / total * 100) + '%';
   }
 
   function showStep(n) {
@@ -1817,6 +2055,11 @@
     stepCards.forEach(card => {
       card.style.display = Number(card.dataset.step) === n ? 'block' : 'none';
     });
+    // MODIFICARE STRICTĂ — fluxul pachetului Premium £25 (hotfix 2026-08-09): eticheta "Prima
+    // melodie: [gen]" trebuie sa ramana corecta indiferent CUM a ajuns clientul pe acest pas
+    // (click direct, revenire din pasul 5, restaurare din draft) — actualizata aici, o singura
+    // data, in loc de la fiecare punct posibil care ar putea schimba genul primei melodii.
+    if (n === 6 && typeof updateSong1GenreDisplay === 'function') updateSong1GenreDisplay();
     updateProgressLabel();
     try { localStorage.setItem(STEP_KEY, String(n)); } catch (err) { /* ignoram */ }
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -2291,6 +2534,11 @@
   const genreCards = document.querySelectorAll('.genre-card:not(.genre2-card)');
   const genreInput = document.getElementById('genre');
   const genre2Field = document.getElementById('genre2-field');
+  // MODIFICARE STRICTĂ — fluxul pachetului Premium £25 (hotfix 2026-08-09): parintele DEFAULT
+  // (in interiorul pasului 4) al lui genre2Field, retinut ACUM, inainte de orice reparentare —
+  // Video foloseste mereu acest loc, neschimbat; Premium il muta temporar pe pasul 6 (vezi
+  // updateGenre2Visibility mai jos) si il aduce inapoi aici daca planul se schimba.
+  const genre2FieldOriginalParent = genre2Field.parentElement;
   const genre2Cards = document.querySelectorAll('.genre2-card');
   const genre2Input = document.getElementById('genre2');
   const step3ContinueBtn = document.getElementById('step3-continue-btn');
@@ -2319,21 +2567,49 @@
   // Genul celei de-a doua melodii — vizibil DOAR pentru Premium/Video (vezi
   // updateGenre2Visibility, apelata la fiecare schimbare de pachet pe pasul 4).
   // Standard nu are a doua melodie, deci acest camp nu se afiseaza si nu se trimite.
+  // CONTINUARE (hotfix 2026-08-09): pentru Premium, un gen identic cu primul e blocat CHIAR LA
+  // CLICK (nu doar la trimitere) — cerinta explicita de validare frontend pentru fluxul nou.
+  // Video (neschimbat, "Nu modifica pachetul Cadou video") PASTREAZA EXACT comportamentul
+  // vechi: clickul e mereu acceptat, un gen identic e prins DOAR la trimiterea finala (vezi
+  // blocul de validare din submit handler, mai jos) — server.js respinge oricum orice request
+  // manipulat direct (devtools) care ar trimite acelasi gen de doua ori, pentru ambele pachete.
   genre2Cards.forEach(c => {
     c.addEventListener('click', () => {
+      if (selectedPlan.id === 'premium' && c.dataset.genre === genreInput.value) {
+        setFieldError('genre2', t('val_genre_same'));
+        return;
+      }
       genre2Cards.forEach(x => x.classList.remove('active'));
       c.classList.add('active');
       genre2Input.value = c.dataset.genre;
       setFieldError('genre2', '');
+      updateSong2ContinueState();
       saveDraft();
     });
   });
 
+  // Folosita la validarea FINALA de trimitere (submit handler, mai jos) — Premium SI Video
+  // au amandoua nevoie de un al doilea gen, diferit de primul, indiferent UNDE il colecteaza
+  // (Video: inline pe pasul 4, neschimbat; Premium: pe ecranul dedicat, pasul 6).
   function planNeedsGenre2(planId) {
     return planId === 'premium' || planId === 'video';
   }
 
+  // MODIFICARE STRICTĂ — fluxul pachetului Premium £25 (hotfix 2026-08-09): genre2Field e un
+  // element UNIC, reparentat (nu duplicat) intre locul lui default (pasul 4, folosit DOAR de
+  // Video, exact ca inainte) si sectiunea dedicata de pe pasul 6 (folosita DOAR de Premium) —
+  // acelasi tipar deja stabilit pentru familyRelationPanel/bothNamesField mai sus in acest
+  // fisier. Standard/Video parcurg STRICT ramura finala (originala, neschimbata) — Premium se
+  // opreste la primul `return`, inainte sa atinga acel cod.
   function updateGenre2Visibility() {
+    if (selectedPlan.id === 'premium') {
+      song2GenreSlot.appendChild(genre2Field);
+      genre2Field.style.display = '';
+      return;
+    }
+    if (genre2Field.parentElement !== genre2FieldOriginalParent) {
+      genre2FieldOriginalParent.appendChild(genre2Field);
+    }
     const needsGenre2 = planNeedsGenre2(selectedPlan.id);
     genre2Field.style.display = needsGenre2 ? '' : 'none';
     if (!needsGenre2) {
@@ -2341,6 +2617,168 @@
       genre2Cards.forEach(c => c.classList.remove('active'));
       setFieldError('genre2', '');
     }
+  }
+
+  // ==========================================================================================
+  // MODIFICARE STRICTĂ — fluxul pachetului Premium £25 (hotfix 2026-08-09): "Pentru cine este
+  // a doua melodie?" — "Aceeași persoană" (foloseste direct campurile principale ale comenzii,
+  // neschimbate) sau "Pentru altă persoană" (reutilizeaza EXACT aceleasi optiuni/comportament
+  // ca panoul de relatie de familie de mai sus — RECIPIENT_ROLE_OPTIONS, FAMILY_BOTH_ROLES,
+  // FAMILY_BOTH_NAME_LABEL_KEYS — dar cu elemente DOM proprii, INDEPENDENTE, niciodata
+  // reparentate din/spre panoul principal: cele doua melodii pot avea selectii "Amândoi"
+  // simultan active, ceva ce elementele singleton existente nu ar putea reprezenta corect).
+  // ==========================================================================================
+  const song2GenreSlot = document.getElementById('song2-genre-slot');
+  const song1GenreDisplay = document.getElementById('song1-genre-display');
+  const song2TargetInput = document.getElementById('song2Target');
+  const song2RecipientRoleInput = document.getElementById('song2RecipientRole');
+  const song2RecipientModeInput = document.getElementById('song2RecipientMode');
+  const song2SameCard = document.getElementById('song2-same-card');
+  const song2OtherCard = document.getElementById('song2-other-card');
+  const song2OtherPanel = document.getElementById('song2-other-panel');
+  const song2CategoryGrid = document.getElementById('song2-category-grid');
+  const song2RelationPanel = document.getElementById('song2-relation-panel');
+  const song2RelationGrid = document.getElementById('song2-relation-grid');
+  const song2SingleNameField = document.getElementById('song2-single-name-field');
+  const song2RecipientNameInput = document.getElementById('song2-recipient-name');
+  const song2BothNamesField = document.getElementById('song2-both-names-field');
+  const song2Name1Input = document.getElementById('song2-name1');
+  const song2Name2Input = document.getElementById('song2-name2');
+  const song2Name1Label = document.getElementById('song2-name1-label');
+  const song2Name2Label = document.getElementById('song2-name2-label');
+  const song2ContinueBtn = document.getElementById('song2-continue-btn');
+
+  // Categoriile de relatie disponibile pentru a doua melodie — EXACT cele 5 ocazii de familie
+  // deja existente, independent de occasion-ul comenzii (clientul poate alege orice categorie
+  // pentru a doua persoana, ex. "bunici", chiar daca prima melodie e pentru occasion='parinti').
+  const SONG2_CATEGORIES = ['bunici', 'parinti', 'matusa-unchi', 'socri', 'frati'];
+  let song2Category = '';
+
+  function song2CategoryLabelKey(cat) {
+    return 'theme_' + cat.replace('-', '') + '_name';
+  }
+
+  function renderSong2CategoryGrid() {
+    song2CategoryGrid.innerHTML = SONG2_CATEGORIES.map(cat =>
+      `<div class="theme-card theme-subcard song2-category-card${cat === song2Category ? ' active' : ''}" data-category="${cat}"><div class="theme-name">${t(song2CategoryLabelKey(cat))}</div></div>`
+    ).join('');
+    song2CategoryGrid.querySelectorAll('.song2-category-card').forEach(c => {
+      c.addEventListener('click', () => {
+        song2Category = c.dataset.category;
+        song2RecipientRoleInput.value = '';
+        song2RecipientModeInput.value = '';
+        song2RecipientNameInput.value = '';
+        song2Name1Input.value = '';
+        song2Name2Input.value = '';
+        setFieldError('song2RecipientRole', '');
+        refreshSong2UI();
+        saveDraft();
+      });
+    });
+  }
+
+  // Functie IDEMPOTENTA — reface intreaga stare vizuala a sectiunii "Pentru cine este a doua
+  // melodie?" DOAR din valorile curente ale campurilor ascunse/starii locale (song2Category),
+  // acelasi principiu ca refreshRelationUI() de mai sus.
+  function refreshSong2UI() {
+    song2SameCard.classList.toggle('active', song2TargetInput.value === 'same');
+    song2OtherCard.classList.toggle('active', song2TargetInput.value === 'other');
+    song2OtherPanel.style.display = song2TargetInput.value === 'other' ? 'block' : 'none';
+
+    renderSong2CategoryGrid();
+
+    if (song2Category) {
+      const roleOptions = RECIPIENT_ROLE_OPTIONS[song2Category];
+      song2RelationGrid.style.gridTemplateColumns = roleOptions.length === 3 ? '1fr 1fr 1fr' : '1fr 1fr';
+      song2RelationGrid.innerHTML = roleOptions
+        .map(role => `<div class="theme-card theme-subcard song2-relation-card${role === song2RecipientRoleInput.value ? ' active' : ''}" data-role="${role}"><div class="theme-name">${FAMILY_BOTH_ROLES.includes(role) ? t('nunta_both') : t('relation_' + role)}</div></div>`)
+        .join('');
+      song2RelationGrid.querySelectorAll('.song2-relation-card').forEach(c => {
+        c.addEventListener('click', () => {
+          song2RecipientRoleInput.value = c.dataset.role;
+          song2RecipientModeInput.value = FAMILY_BOTH_ROLES.includes(c.dataset.role) ? 'both' : 'single';
+          if (song2RecipientModeInput.value === 'single') { song2Name1Input.value = ''; song2Name2Input.value = ''; }
+          else { song2RecipientNameInput.value = ''; }
+          setFieldError('song2RecipientRole', '');
+          refreshSong2UI();
+          saveDraft();
+        });
+      });
+      song2RelationPanel.style.display = 'block';
+    } else {
+      song2RelationPanel.style.display = 'none';
+    }
+
+    if (song2RecipientRoleInput.value && FAMILY_BOTH_ROLES.includes(song2RecipientRoleInput.value)) {
+      const labelKeys = FAMILY_BOTH_NAME_LABEL_KEYS[song2RecipientRoleInput.value];
+      song2Name1Label.textContent = t(labelKeys.female);
+      song2Name2Label.textContent = t(labelKeys.male);
+      song2BothNamesField.style.display = 'block';
+      song2SingleNameField.style.display = 'none';
+    } else if (song2RecipientRoleInput.value) {
+      song2SingleNameField.style.display = 'block';
+      song2BothNamesField.style.display = 'none';
+    } else {
+      song2SingleNameField.style.display = 'none';
+      song2BothNamesField.style.display = 'none';
+    }
+
+    updateSong2ContinueState();
+  }
+
+  [song2SameCard, song2OtherCard].forEach(card => {
+    card.addEventListener('click', () => {
+      song2TargetInput.value = card.dataset.song2Target;
+      if (card === song2SameCard) {
+        // "Aceeași persoană": nicio informatie din "altă persoană" nu trebuie sa ramana ascunsa
+        // undeva si trimisa accidental — golim explicit tot ce ar apartine celeilalte alegeri.
+        song2Category = '';
+        song2RecipientRoleInput.value = '';
+        song2RecipientModeInput.value = '';
+        song2RecipientNameInput.value = '';
+        song2Name1Input.value = '';
+        song2Name2Input.value = '';
+      }
+      setFieldError('song2Target', '');
+      refreshSong2UI();
+      saveDraft();
+    });
+  });
+
+  song2RecipientNameInput.addEventListener('input', () => { setFieldError('song2RecipientName', ''); updateSong2ContinueState(); saveDraft(); });
+  song2Name1Input.addEventListener('input', () => { setFieldError('song2Name1', ''); updateSong2ContinueState(); saveDraft(); });
+  song2Name2Input.addEventListener('input', () => { setFieldError('song2Name2', ''); updateSong2ContinueState(); saveDraft(); });
+
+  // CITEȘTE eticheta genului direct din cardul corespunzator de pe pasul 3 (deja randat corect
+  // in limba curenta de applyLang() — inclusiv "Pop", care NU are o cheie data-i18n proprie,
+  // fiind identic in toate cele 8 limbi) — mai robust decat sa presupunem ca exista o cheie
+  // `genre_<val>` pentru fiecare gen posibil.
+  function updateSong1GenreDisplay() {
+    const card = document.querySelector(`.genre-card[data-genre="${genreInput.value}"]:not(.genre2-card)`);
+    const label = card ? card.textContent.trim() : '';
+    song1GenreDisplay.textContent = t('song2_first_genre_label') + ' ' + label;
+  }
+
+  // Butonul final ramane dezactivat pana cand TOATE alegerile obligatorii sunt complete —
+  // genul (diferit de primul), SI alegerea aceeasi/altă persoană, SI (daca "altă persoană")
+  // relatia si numele complete. Verificare redundanta fata de backend (plasa de siguranta UI),
+  // sursa de adevar reala ramane POST /api/orders (vezi server.js).
+  function song2AllValid() {
+    if (!genre2Input.value || genre2Input.value === genreInput.value) return false;
+    const target = song2TargetInput.value;
+    if (target !== 'same' && target !== 'other') return false;
+    if (target === 'other') {
+      if (!song2RecipientRoleInput.value) return false;
+      if (song2RecipientModeInput.value === 'both') {
+        if (!song2Name1Input.value.trim() || !song2Name2Input.value.trim()) return false;
+      } else if (!song2RecipientNameInput.value.trim()) {
+        return false;
+      }
+    }
+    return true;
+  }
+  function updateSong2ContinueState() {
+    if (song2ContinueBtn) song2ContinueBtn.disabled = !song2AllValid();
   }
 
   voiceCards.forEach(c => {
@@ -2366,6 +2804,19 @@
     const key = `benefits_${planId}`;
     const items = (translations[currentLang] && translations[currentLang][key]) || translations.ro[key] || [];
     benefitsListEl.innerHTML = items.map(text => `
+      <div class="benefit-item"><span class="benefit-check">✓</span><span class="benefit-text">${text}</span></div>
+    `).join('');
+  }
+
+  // MODIFICARE STRICTĂ — fluxul pachetului Premium £25 (hotfix 2026-08-09): lista de beneficii
+  // de pe ecranul dedicat Premium (pasul 5) — ACEEAȘI sursa de date (benefits_premium) ca lista
+  // de pe cardul de pachet (pasul 4), doar randata intr-un element separat, DEDICAT — cardul de
+  // pe pasul 4 ramane complet neatins (ramane sa afiseze acelasi continut, nefolosit vizual
+  // pentru Premium, care navigheaza departe de pasul 4 imediat ce e selectat).
+  const premiumSummaryBenefitsEl = document.getElementById('premium-summary-benefits');
+  function renderPremiumSummaryBenefits() {
+    const items = (translations[currentLang] && translations[currentLang].benefits_premium) || translations.ro.benefits_premium || [];
+    premiumSummaryBenefitsEl.innerHTML = items.map(text => `
       <div class="benefit-item"><span class="benefit-check">✓</span><span class="benefit-text">${text}</span></div>
     `).join('');
   }
@@ -2398,7 +2849,19 @@
     renderBenefits(selectedPlan.id);
     updateGenerateButtonLabel();
     updateGenre2Visibility();
+    // MODIFICARE STRICTĂ — fluxul pachetului Premium £25 (hotfix 2026-08-09): totalul de pasi
+    // (getTotalSteps()) depinde de planul ales — daca clientul comuta INTRE Premium si
+    // Standard/Video FARA sa schimbe pasul (ex. de pe pasul 4 direct), eticheta si bara de
+    // progres trebuie sa reflecte imediat noul total, nu doar la urmatoarea navigare de pas.
+    updateProgressLabel();
     saveDraft();
+    // Selectarea cardului Premium deschide IMEDIAT ecranul dedicat de sumar (pasul 5) —
+    // Standard si Video raman EXACT pe pasul 4, comportament complet neschimbat (doar
+    // highlight + genre2 inline pentru Video, ca inainte).
+    if (selectedPlan.id === 'premium') {
+      renderPremiumSummaryBenefits();
+      showStep(5);
+    }
   }
 
   plans.forEach(p => {
@@ -2451,7 +2914,26 @@
       // weddingType (Nuntă/Botez, hotfix 2026-08-08) — relevant DOAR pentru occasion='nunta'
       // (server-side il cere si il valideaza doar in acel caz); pentru orice alta ocazie,
       // campul e gol si serverul il ignora complet (salvat null).
-      weddingType: weddingTypeInput.value
+      weddingType: weddingTypeInput.value,
+      // MODIFICARE STRICTĂ — fluxul pachetului Premium £25 (hotfix 2026-08-09): configurarea
+      // celei de-a doua melodii — relevanta STRICT pentru plan='premium' (server-side, POST
+      // /api/orders le cere si le valideaza doar in acel caz); pentru orice alt pachet
+      // (Standard, Video), campurile raman null si serverul le ignora complet.
+      song2Target: selectedPlan.id === 'premium' ? song2TargetInput.value : null,
+      recipientRole2: (selectedPlan.id === 'premium' && song2TargetInput.value === 'other')
+        ? song2RecipientRoleInput.value
+        : null,
+      recipientMode2: (selectedPlan.id === 'premium' && song2TargetInput.value === 'other')
+        ? song2RecipientModeInput.value
+        : null,
+      recipientNames2: (selectedPlan.id === 'premium' && song2TargetInput.value === 'other' && song2RecipientModeInput.value === 'both')
+        ? { name1: song2Name1Input.value.trim(), name2: song2Name2Input.value.trim() }
+        : null,
+      recipient2: (selectedPlan.id === 'premium' && song2TargetInput.value === 'other')
+        ? (song2RecipientModeInput.value === 'both'
+            ? `${song2Name1Input.value.trim()} ${t('and_conjunction')} ${song2Name2Input.value.trim()}`
+            : song2RecipientNameInput.value.trim())
+        : null
     };
   }
 
@@ -2476,7 +2958,17 @@
         nuntaType: nuntaType,
         nuntaGroup: nuntaGroup,
         name1: name1Input.value,
-        name2: name2Input.value
+        name2: name2Input.value,
+        // MODIFICARE STRICTĂ — fluxul pachetului Premium £25 (hotfix 2026-08-09): configurarea
+        // celei de-a doua melodii — persista intre refresh-uri si intre navigarea inainte/inapoi
+        // dintre pasii 4-6, exact ca restul selectiilor formularului.
+        song2Target: song2TargetInput.value,
+        song2Category: song2Category,
+        recipientRole2: song2RecipientRoleInput.value,
+        recipientMode2: song2RecipientModeInput.value,
+        song2RecipientName: song2RecipientNameInput.value,
+        song2Name1: song2Name1Input.value,
+        song2Name2: song2Name2Input.value
       };
       localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
     } catch (err) {
@@ -2526,6 +3018,16 @@
       genre2Input.value = draft.genre2;
       genre2Cards.forEach(c => c.classList.toggle('active', c.dataset.genre === draft.genre2));
     }
+    // MODIFICARE STRICTĂ — fluxul pachetului Premium £25 (hotfix 2026-08-09): restaurate
+    // INAINTE de refreshSong2UI() (apelata mai jos, dupa ce planul e restaurat), acelasi
+    // principiu ca la relatia de familie principala mai sus.
+    if (draft.song2Target) song2TargetInput.value = draft.song2Target;
+    if (draft.song2Category) song2Category = draft.song2Category;
+    if (draft.recipientRole2) song2RecipientRoleInput.value = draft.recipientRole2;
+    if (draft.recipientMode2) song2RecipientModeInput.value = draft.recipientMode2;
+    if (draft.song2RecipientName) song2RecipientNameInput.value = draft.song2RecipientName;
+    if (draft.song2Name1) song2Name1Input.value = draft.song2Name1;
+    if (draft.song2Name2) song2Name2Input.value = draft.song2Name2;
     if (draft.voicePreference) {
       voiceInput.value = draft.voicePreference;
       voiceCards.forEach(c => c.classList.toggle('active', c.dataset.voice === draft.voicePreference));
@@ -2550,6 +3052,10 @@
     // ruleaza aici) — altfel campul ar ramane ascuns/vizibil dupa starea implicita, nu dupa
     // planul efectiv restaurat din draft.
     updateGenre2Visibility();
+    // refreshSong2UI() dupa restaurarea planului si a tuturor campurilor song2 de mai sus —
+    // functie idempotenta, reface intreaga stare vizuala a ecranului 6 dintr-o singura trecere.
+    refreshSong2UI();
+    if (selectedPlan.id === 'premium') renderPremiumSummaryBenefits();
   }
   restoreDraft();
   updateStep3ContinueState();
@@ -2557,7 +3063,7 @@
   let restoredStep = 1;
   try {
     const savedStep = Number(localStorage.getItem(STEP_KEY));
-    if (savedStep >= 1 && savedStep <= TOTAL_STEPS) restoredStep = savedStep;
+    if (savedStep >= 1 && savedStep <= getTotalSteps()) restoredStep = savedStep;
   } catch (err) { /* ignoram */ }
 
   const form = document.getElementById('order-form');
@@ -2570,6 +3076,15 @@
   showStep(restoredStep);
 
   const statusMsg = document.getElementById('status-msg');
+  const statusMsgSong2 = document.getElementById('status-msg-song2');
+  function setStatusMsg(text, cls) {
+    statusMsg.textContent = text;
+    statusMsg.className = cls;
+    if (statusMsgSong2) {
+      statusMsgSong2.textContent = text;
+      statusMsgSong2.className = cls;
+    }
+  }
   const generateBtn = document.getElementById('generate-btn');
 
   // Daca /generate esueaza dupa ce comanda a fost deja creata (rate limit, eroare
@@ -2582,7 +3097,17 @@
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
 
-    if (currentStep !== TOTAL_STEPS) {
+    // MODIFICARE STRICTĂ — fluxul pachetului Premium £25 (hotfix 2026-08-09): daca butonul
+    // "Generează previzualizarea gratuită" de pe pasul 4 e apasat direct (posibil doar daca
+    // clientul revine pe pasul 4 dupa ce a ales deja Premium, fara sa re-selecteze cardul —
+    // vezi selectPlan(), care in mod normal navigheaza deja direct catre pasul 5), redirectam
+    // catre ecranul dedicat in loc sa incercam o trimitere invalida.
+    if (selectedPlan.id === 'premium' && currentStep === 4) {
+      showStep(5);
+      return;
+    }
+
+    if (currentStep !== getTotalSteps()) {
       const nextBtn = document.querySelector(`.step-card[data-step="${currentStep}"] [data-next]`);
       if (nextBtn) nextBtn.click();
       return;
@@ -2607,12 +3132,51 @@
       }
     }
 
-    generateBtn.disabled = true;
-    const generateBtnLabel = document.getElementById('generate-btn-label');
-    const originalBtnText = generateBtnLabel.textContent;
-    generateBtnLabel.textContent = t('btn_generate_starting');
-    statusMsg.textContent = '';
-    statusMsg.className = '';
+    // MODIFICARE STRICTĂ — fluxul pachetului Premium £25 (hotfix 2026-08-09): plasa de
+    // siguranta redundanta fata de gating-ul butonului (updateSong2ContinueState) — sursa REALA
+    // de adevar ramane POST /api/orders (server.js), care respinge orice request incomplet sau
+    // manipulat direct, indiferent ce trimite acest cod.
+    if (selectedPlan.id === 'premium') {
+      if (song2TargetInput.value !== 'same' && song2TargetInput.value !== 'other') {
+        setFieldError('song2Target', t('val_song2_target'));
+        song2SameCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+      }
+      if (song2TargetInput.value === 'other') {
+        if (!song2RecipientRoleInput.value) {
+          setFieldError('song2RecipientRole', t('val_recipient_role'));
+          song2OtherPanel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          return;
+        }
+        if (song2RecipientModeInput.value === 'both') {
+          if (!song2Name1Input.value.trim() || !song2Name2Input.value.trim()) {
+            setFieldError('song2Name1', t('val_nunta_names'));
+            setFieldError('song2Name2', t('val_nunta_names'));
+            song2BothNamesField.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            return;
+          }
+        } else if (!song2RecipientNameInput.value.trim()) {
+          setFieldError('song2RecipientName', t('val_song2_recipient_name'));
+          song2SingleNameField.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          return;
+        }
+      }
+    }
+
+    // MODIFICARE STRICTĂ — fluxul pachetului Premium £25 (hotfix 2026-08-09): butonul REAL de
+    // trimitere difera dupa pachet — Standard/Video folosesc butonul "Generează..." de pe
+    // pasul 4 (neschimbat), Premium foloseste butonul "Continuă..." de pe pasul 6 (ecranul
+    // dedicat celei de-a doua melodii). Restul logicii de mai jos (creare comanda + /generate)
+    // e complet comuna, reutilizata identic pentru toate cele trei pachete.
+    const activeBtn = selectedPlan.id === 'premium' ? song2ContinueBtn : generateBtn;
+    const activeBtnLabel = selectedPlan.id === 'premium'
+      ? document.getElementById('song2-continue-btn-label')
+      : document.getElementById('generate-btn-label');
+
+    activeBtn.disabled = true;
+    const originalBtnText = activeBtnLabel.textContent;
+    activeBtnLabel.textContent = t('btn_generate_starting');
+    setStatusMsg('', '');
 
     try {
       let currentOrderId = pendingOrderId;
@@ -2627,10 +3191,9 @@
         const createData = await createRes.json();
 
         if (!createData.orderId) {
-          statusMsg.textContent = t('msg_error_prefix') + (createData.error || t('msg_try_again'));
-          statusMsg.className = 'status-err';
-          generateBtn.disabled = false;
-          generateBtnLabel.textContent = originalBtnText;
+          setStatusMsg(t('msg_error_prefix') + (createData.error || t('msg_try_again')), 'status-err');
+          activeBtn.disabled = false;
+          activeBtnLabel.textContent = originalBtnText;
           return;
         }
 
@@ -2671,10 +3234,9 @@
       if (!generateRes.ok && generateRes.status !== 409) {
         let serverMsg = '';
         try { const data = await generateRes.json(); serverMsg = data && data.error; } catch (err) { /* ignoram */ }
-        statusMsg.textContent = t('msg_error_prefix') + (serverMsg || t('msg_try_again'));
-        statusMsg.className = 'status-err';
-        generateBtn.disabled = false;
-        generateBtnLabel.textContent = originalBtnText;
+        setStatusMsg(t('msg_error_prefix') + (serverMsg || t('msg_try_again')), 'status-err');
+        activeBtn.disabled = false;
+        activeBtnLabel.textContent = originalBtnText;
         // pendingOrderId ramane setat — urmatorul submit reincearca /generate pe aceeasi
         // comanda, nu mai creeaza una noua.
         return;
@@ -2686,10 +3248,9 @@
       const tokenParam = encodeURIComponent(currentAccessToken);
       window.location.href = `/se-compune.html?id=${currentOrderId}&token=${tokenParam}`;
     } catch (err) {
-      statusMsg.textContent = t('msg_conn_error');
-      statusMsg.className = 'status-err';
-      generateBtn.disabled = false;
-      generateBtnLabel.textContent = originalBtnText;
+      setStatusMsg(t('msg_conn_error'), 'status-err');
+      activeBtn.disabled = false;
+      activeBtnLabel.textContent = originalBtnText;
     }
   });
 </script>

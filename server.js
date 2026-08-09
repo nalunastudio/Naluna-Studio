@@ -156,6 +156,14 @@ const FAMILY_OCCASION_RECIPIENT_ROLES = {
   socri: ['mother_in_law', 'father_in_law', 'parents_in_law'],
   frati: ['sister', 'brother']
 };
+// CONTINUARE — fluxul pachetului Premium £25 (hotfix 2026-08-09): toate valorile posibile de
+// recipientRole pentru orice categorie de familie, indiferent de occasion — necesar pentru a
+// doua melodie Premium, unde clientul poate alege ORICE categorie de relatie de familie pentru
+// noul destinatar, independent de occasion-ul comenzii (ex. prima melodie occasion='parinti',
+// a doua melodie recipientRole2='grandmother', o categorie complet diferita). Folosita si de
+// relationClause() (mai jos) — gateway-ul "adreseaza ca relatie+nume" trebuie sa se activeze
+// dupa ROLUL ales, nu dupa occasion, ca sa functioneze corect si pentru recipientRole2.
+const FAMILY_RECIPIENT_ROLE_VALUES = Object.values(FAMILY_OCCASION_RECIPIENT_ROLES).flat();
 // Valorile de recipientRole care reprezinta "Amândoi" pentru ocaziile de familie — analog cu
 // WEDDING_RECIPIENT_ROLES_BOTH de mai jos.
 const FAMILY_BOTH_ROLES = ['grandparents', 'parents', 'aunt_uncle', 'parents_in_law'];
@@ -282,6 +290,18 @@ const MISSING_FIELD_MESSAGES = {
     fr: 'Choisissez s\'il s\'agit d\'un mariage ou d\'un baptême',
     bg: 'Избери дали е сватба или кръщене',
     tr: 'Düğün mü yoksa vaftiz mi olduğunu seçin'
+  },
+  // CONTINUARE — fluxul pachetului Premium £25 (hotfix 2026-08-09): alegerea obligatorie
+  // "Pentru aceeași persoană" / "Pentru altă persoană" pentru a doua melodie.
+  song2Target: {
+    ro: 'Alege pentru cine este a doua melodie',
+    en: 'Choose who the second song is for',
+    de: 'Wähle, für wen das zweite Lied ist',
+    es: 'Elige para quién es la segunda canción',
+    it: 'Scegli per chi è la seconda canzone',
+    fr: 'Choisissez pour qui est la deuxième chanson',
+    bg: 'Избери за кого е втората песен',
+    tr: 'İkinci şarkının kimin için olduğunu seçin'
   }
 };
 function missingFieldMessage(field, lang) {
@@ -1346,7 +1366,8 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
   try {
     const {
       occasion, recipient, senderName, relationship, email, phone, story, genre, genre2, plan, lang, voicePreference,
-      grandparentType, recipientRole, senderRole, recipientMode, recipientNames, weddingType
+      grandparentType, recipientRole, senderRole, recipientMode, recipientNames, weddingType,
+      song2Target, recipientRole2, recipientMode2, recipientNames2, recipient2
     } = req.body || {};
     const safeLang = ALLOWED_LANGS.includes(lang) ? lang : 'ro';
 
@@ -1493,6 +1514,55 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
       }
       safeGenre2 = genre2;
     }
+
+    // MODIFICARE STRICTĂ — fluxul pachetului Premium £25 (hotfix 2026-08-09): a doua melodie
+    // poate fi acum pentru un destinatar DIFERIT de primul — alegere STRICT obligatorie pentru
+    // plan='premium' ("Aceeași persoană" / "Pentru altă persoană", niciodata implicita), validata
+    // server-side, niciodata doar in UI. Video ramane COMPLET neschimbat: nu trimite niciodata
+    // aceste campuri, deci ramane pe ramura implicita — a doua melodie foloseste automat exact
+    // recipient/recipientRole/senderRole/recipientMode/recipientNames de mai sus, ca inainte.
+    let safeSong2Target = null;
+    let safeRecipientRole2 = null;
+    let safeRecipientMode2 = null;
+    let safeRecipientNames2 = null;
+    let safeRecipient2 = null;
+    if (plan === 'premium') {
+      if (song2Target !== 'same' && song2Target !== 'other') {
+        return res.status(400).json({ error: missingFieldMessage('song2Target', safeLang) });
+      }
+      safeSong2Target = song2Target;
+      if (song2Target === 'other') {
+        // recipientRole2 poate fi ORICE valoare de familie (bunici/parinti/matusa-unchi/socri/
+        // frati), independent de occasion-ul comenzii — clientul alege categoria pe ecranul
+        // dedicat celei de-a doua melodii, reutilizand EXACT aceleasi optiuni ca la ocazie
+        // (vezi FAMILY_RECIPIENT_ROLE_VALUES). Nu exista niciun concept de senderRole2 — nicio
+        // sub-alegere "Tu ești: ..." pentru a doua persoana (cerinta explicita).
+        if (!FAMILY_RECIPIENT_ROLE_VALUES.includes(recipientRole2)) {
+          return res.status(400).json({ error: missingFieldMessage('recipientRole', safeLang) });
+        }
+        safeRecipientRole2 = recipientRole2;
+        const isBothRole2 = FAMILY_BOTH_ROLES.includes(recipientRole2);
+        if (isBothRole2) {
+          if (recipientMode2 !== 'both') {
+            return res.status(400).json({ error: missingFieldMessage('recipientRole', safeLang) });
+          }
+          const name1_2 = recipientNames2 && typeof recipientNames2.name1 === 'string' ? recipientNames2.name1.trim() : '';
+          const name2_2 = recipientNames2 && typeof recipientNames2.name2 === 'string' ? recipientNames2.name2.trim() : '';
+          if (!isValidString(name1_2, 1, 60) || !isValidString(name2_2, 1, 60)) {
+            return res.status(400).json({ error: missingFieldMessage('recipientNames', safeLang) });
+          }
+          safeRecipientNames2 = { name1: name1_2, name2: name2_2 };
+          safeRecipientMode2 = 'both';
+        } else {
+          safeRecipientMode2 = 'single';
+        }
+        if (!isValidString(recipient2, 1, 60)) {
+          return res.status(400).json({ error: missingFieldMessage('recipient', safeLang) });
+        }
+        safeRecipient2 = recipient2.trim();
+      }
+    }
+
     // Preferinta de voce e optionala la creare (implicit 'auto' daca lipseste), dar daca
     // e trimisa, TREBUIE sa fie una din cele 4 valori acceptate — nu acceptam orice text.
     const safeVoicePreference = (voicePreference === undefined || voicePreference === null || voicePreference === '')
@@ -1520,7 +1590,12 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
       senderRole: safeSenderRole,
       recipientMode: safeRecipientMode,
       recipientNames: safeRecipientNames,
-      weddingType: safeWeddingType
+      weddingType: safeWeddingType,
+      song2Target: safeSong2Target,
+      recipientRole2: safeRecipientRole2,
+      recipientMode2: safeRecipientMode2,
+      recipientNames2: safeRecipientNames2,
+      recipient2: safeRecipient2
     });
 
     res.json({ orderId: order.id, accessToken: order.accessToken });
@@ -3139,6 +3214,39 @@ async function markGenerationFailed(orderId, errMessage, knownVariants, regenera
   }
 }
 
+// MODIFICARE STRICTĂ — fluxul pachetului Premium £25 (hotfix 2026-08-09): datele de destinatar
+// EFECTIVE pentru fiecare din cele doua melodii (genre/genre2). Prima melodie foloseste
+// INTOTDEAUNA campurile principale ale comenzii, neschimbate. A doua melodie foloseste ACELEASI
+// campuri principale DECAT daca order.song2Target === 'other' (ales explicit doar pentru
+// plan='premium') — caz in care foloseste in schimb recipientRole2/recipientMode2/
+// recipientNames2/recipient2, validate separat la POST /api/orders. senderRole ramane
+// intotdeauna null pentru a doua persoana (niciun concept de "Tu ești: ..." pentru ea, cerinta
+// explicita) — buildPrompt() trateaza deja gratios un senderRole lipsa (vezi relationClause()).
+// Pentru Video (si Premium cu "Aceeași persoană"), getSong2EffectiveData() returneaza EXACT
+// aceleasi valori ca getSong1EffectiveData() — comportament identic cu cel dinaintea acestei
+// modificari, niciun risc pentru fluxul Video existent.
+function getSong1EffectiveData(order) {
+  return {
+    recipient: order.recipient,
+    recipientRole: order.recipientRole,
+    senderRole: order.senderRole,
+    recipientMode: order.recipientMode,
+    recipientNames: order.recipientNames
+  };
+}
+function getSong2EffectiveData(order) {
+  if (order.plan === 'premium' && order.song2Target === 'other' && order.recipientRole2) {
+    return {
+      recipient: order.recipient2,
+      recipientRole: order.recipientRole2,
+      senderRole: null,
+      recipientMode: order.recipientMode2,
+      recipientNames: order.recipientNames2
+    };
+  }
+  return getSong1EffectiveData(order);
+}
+
 async function runGeneration(orderId, feedback, options = {}) {
   const order = await db.getOrderById(orderId);
   if (!order) throw new Error('Comanda a dispărut în timpul generării');
@@ -3166,8 +3274,16 @@ async function runGeneration(orderId, feedback, options = {}) {
     const siblingVariant = (order.variants || []).find(v => v.id !== options.replaceVariantId);
     const siblingGenre = siblingVariant ? siblingVariant.genre : null;
     const genreToUse = (siblingGenre && siblingGenre === order.genre) ? order.genre2 : order.genre;
+    // CONTINUARE — fluxul pachetului Premium £25 (hotfix 2026-08-09): editarea/regenerarea
+    // trebuie sa foloseasca datele de destinatar ale SLOTULUI editat (genre vs genre2), nu
+    // intotdeauna datele principale ale comenzii — altfel, editarea celei de-a doua melodii ar
+    // reveni tacit la destinatarul primei, pierzand "Pentru altă persoană" ales initial. Pentru
+    // Video (si Premium cu "Aceeași persoană"), getSong2EffectiveData() returneaza EXACT
+    // aceleasi date ca getSong1EffectiveData() — comportament identic cu inainte.
+    const isSong2Slot = genreToUse === order.genre2 && order.genre2 !== order.genre;
+    const recipientSnapshot = isSong2Slot ? getSong2EffectiveData(order) : getSong1EffectiveData(order);
     recordRegenerationProgress(orderId, options.regenerationJobId, 'prepared').catch(() => {});
-    const prompt = buildPrompt(order, feedback, genreToUse);
+    const prompt = buildPrompt({ ...order, ...recipientSnapshot }, feedback, genreToUse);
     const taskId = await callMusicProvider(orderId, prompt);
     recordRegenerationProgress(orderId, options.regenerationJobId, 'dispatched').catch(() => {});
     await db.updateOrder(orderId, { musicTaskId: taskId, musicTaskId2: null });
@@ -3183,7 +3299,7 @@ async function runGeneration(orderId, feedback, options = {}) {
       throw new Error(`Suno a raportat un status de eroare: ${finalStatus}`);
     }
     recordRegenerationProgress(orderId, options.regenerationJobId, 'audio_ready').catch(() => {});
-    await finalizeVariantsIfNeeded(orderId, [{ tracks, genre: genreToUse, taskId }], { replaceVariantId: options.replaceVariantId, regenerationJobId: options.regenerationJobId });
+    await finalizeVariantsIfNeeded(orderId, [{ tracks, genre: genreToUse, taskId, recipientSnapshot }], { replaceVariantId: options.replaceVariantId, regenerationJobId: options.regenerationJobId });
     return;
   }
 
@@ -3216,8 +3332,12 @@ async function runGeneration(orderId, feedback, options = {}) {
 
   // Premium/Video: DOUA genuri diferite alese de client -> DOUA cereri Suno INDEPENDENTE,
   // pornite in PARALEL (nu secvential — reduce la jumatate timpul de asteptare fata de doua
-  // cereri secventiale). Fiecare foloseste EXACT aceeasi poveste/destinatar/ocazie/voce —
-  // doar stilul muzical difera intre ele (vezi buildPrompt, genreOverride).
+  // cereri secventiale). Fiecare foloseste EXACT aceeasi poveste/ocazie/voce — doar stilul
+  // muzical difera intre ele (vezi buildPrompt, genreOverride). CONTINUARE — fluxul pachetului
+  // Premium £25 (hotfix 2026-08-09): destinatarul poate acum diferi intre cele doua melodii
+  // (getSong2EffectiveData), DOAR pentru plan='premium' cu "Pentru altă persoană" ales explicit
+  // — pentru Video (si Premium cu "Aceeași persoană"), getSong2EffectiveData() returneaza EXACT
+  // aceleasi date ca prima melodie, deci promptGenre2 ramane byte-identic cu inainte.
   //
   // IMPORTANT — de ce NU folosim callback-ul ca sa finalizam aici: Suno trimite un callback
   // PER SARCINA (task), nu per comanda. Daca am lasa callback-ul sa apeleze
@@ -3227,7 +3347,7 @@ async function runGeneration(orderId, feedback, options = {}) {
   // comenzi cu musicTaskId2 setat, callback-ul NU declanseaza finalizarea — doar polling-ul
   // (de mai jos, care asteapta explicit AMBELE sarcini) o face.
   const promptGenre1 = buildPrompt(order, feedback, order.genre);
-  const promptGenre2 = buildPrompt(order, feedback, order.genre2);
+  const promptGenre2 = buildPrompt({ ...order, ...getSong2EffectiveData(order) }, feedback, order.genre2);
   const [taskId1, taskId2] = await Promise.all([
     callMusicProvider(orderId, promptGenre1),
     callMusicProvider(orderId, promptGenre2)
@@ -3269,9 +3389,14 @@ async function waitForDualTaskAndFinalize(orderId, taskId1, genre1, taskId2, gen
     throw new Error(`Generare esuata pentru unul din cele doua genuri (gen1="${genre1}": ${r1.status}, gen2="${genre2}": ${r2.status}).`);
   }
 
+  // CONTINUARE — fluxul pachetului Premium £25 (hotfix 2026-08-09): recalculam snapshot-urile
+  // de destinatar din comanda proaspat citita (`fresh`), nu dintr-un parametru transmis prin
+  // lantul de apeluri (mai robust la reluari — vezi resumeDualTaskPolling, care apeleaza direct
+  // aceasta functie fara sa mai treaca prin runGeneration). Pentru Video/Premium-"Aceeași
+  // persoană", cele doua snapshot-uri sunt identice — niciun comportament nou pentru ele.
   await finalizeVariantsIfNeeded(orderId, [
-    { tracks: r1.tracks, genre: genre1, taskId: taskId1 },
-    { tracks: r2.tracks, genre: genre2, taskId: taskId2 }
+    { tracks: r1.tracks, genre: genre1, taskId: taskId1, recipientSnapshot: getSong1EffectiveData(fresh) },
+    { tracks: r2.tracks, genre: genre2, taskId: taskId2, recipientSnapshot: getSong2EffectiveData(fresh) }
   ]);
 }
 
@@ -3331,14 +3456,24 @@ async function resumeDualTaskPolling(orderId) {
 // omise/prescurtate ramane la nivelul promptului (vezi effectiveRecipientRole/relationClause/
 // recipientIsProtectedCombo mai sus) — aceasta verificare ofera in plus vizibilitate directa
 // in loguri daca, in ciuda promptului corect, Suno tot a omis un nume, pentru urmarire manuala.
+// CONTINUARE — fluxul pachetului Premium £25 (hotfix 2026-08-09): daca varianta are propriul
+// snapshot de destinatar (recipient/recipientMode/recipientNames, salvate separat pentru a doua
+// melodie — vezi finalizeVariantsIfNeeded), verificam impotriva ACELUIA, nu a datelor principale
+// ale comenzii — altfel, o a doua melodie "Pentru altă persoană" ar fi verificata gresit
+// impotriva numelui PRIMEI persoane. Variantele fara snapshot propriu (Standard, Video, Premium
+// cu "Aceeași persoană", si orice varianta veche creata inainte de aceasta functionalitate)
+// folosesc automat datele principale ale comenzii, exact ca inainte.
 function checkLyricsContainExpectedNames(order, variant) {
   if (!variant || !variant.originalLyrics) return;
   const namesToCheck = [];
-  if (order.recipientMode === 'both' && order.recipientNames) {
-    if (order.recipientNames.name1) namesToCheck.push(order.recipientNames.name1);
-    if (order.recipientNames.name2) namesToCheck.push(order.recipientNames.name2);
-  } else if (order.recipient) {
-    namesToCheck.push(order.recipient);
+  const mode = variant.recipientMode !== undefined && variant.recipientMode !== null ? variant.recipientMode : order.recipientMode;
+  const names = variant.recipientNames || order.recipientNames;
+  const recipient = variant.recipient || order.recipient;
+  if (mode === 'both' && names) {
+    if (names.name1) namesToCheck.push(names.name1);
+    if (names.name2) namesToCheck.push(names.name2);
+  } else if (recipient) {
+    namesToCheck.push(recipient);
   }
   const lyricsLower = variant.originalLyrics.toLowerCase();
   namesToCheck.forEach(name => {
@@ -3363,7 +3498,7 @@ async function finalizeVariantsIfNeeded(orderId, requestsInfo, options = {}) {
   try {
     const builtVariants = [];
     const requestFailures = [];
-    for (const { tracks, genre, taskId } of requestsInfo) {
+    for (const { tracks, genre, taskId, recipientSnapshot } of requestsInfo) {
       if (!tracks || tracks.length === 0) {
         requestFailures.push(`genul "${genre}": Suno nu a intors nicio piesa cu audioUrl`);
         continue;
@@ -3382,6 +3517,14 @@ async function finalizeVariantsIfNeeded(orderId, requestsInfo, options = {}) {
       }
       if (built) {
         built.genre = genre;
+        // CONTINUARE — fluxul pachetului Premium £25 (hotfix 2026-08-09): salveaza SEPARAT, pe
+        // fiecare varianta, destinatarul/relatia/numele folosite pentru EA — necesar pentru ca
+        // o a doua melodie "Pentru altă persoană" sa nu piarda aceasta informatie la o editare
+        // ulterioara (vezi checkLyricsContainExpectedNames si runGeneration, ramura
+        // options.replaceVariantId). Pentru Standard/Video/Premium-"Aceeași persoană",
+        // recipientSnapshot e identic cu datele principale ale comenzii — nicio schimbare
+        // practica fata de inainte.
+        if (recipientSnapshot) Object.assign(built, recipientSnapshot);
         builtVariants.push(built);
       } else {
         requestFailures.push(`genul "${genre}": ${lastErr ? lastErr.message : 'motiv necunoscut'}`);
@@ -4861,7 +5004,17 @@ function buildPrompt(order, feedback, genreOverride) {
     const recipientNoun = RELATION_NOUNS[effectiveRecipientRole];
     if (!recipientNoun) return '';
     const senderNoun = SENDER_RELATION_NOUNS[order.senderRole];
-    if (!FAMILY_OCCASIONS.includes(order.occasion)) {
+    // CONTINUARE — fluxul pachetului Premium £25 (hotfix 2026-08-09): gateway-ul foloseste acum
+    // ROLUL ales (effectiveRecipientRole), NU order.occasion — pentru comenzile obisnuite cele
+    // doua erau mereu echivalente (recipientRole e validat strict impotriva
+    // FAMILY_OCCASION_RECIPIENT_ROLES[occasion] la creare, deci un rol de familie implica
+    // intotdeauna un occasion de familie si invers), deci acest refactor NU schimba
+    // comportamentul pentru nicio comanda existenta. Diferenta conteaza DOAR pentru a doua
+    // melodie Premium, unde recipientRole2 poate fi o categorie de familie complet diferita
+    // de occasion-ul comenzii (ex. occasion='parinti', recipientRole2='grandmother') — acolo
+    // adresarea "relatie+nume" trebuie sa se activeze dupa rolul ALES pentru acea melodie, nu
+    // dupa occasion-ul comun al comenzii.
+    if (!FAMILY_RECIPIENT_ROLE_VALUES.includes(effectiveRecipientRole)) {
       // Comportament ORIGINAL, neschimbat, pentru Nuntă/Botez.
       return useShortOccasionInstruction
         ? (senderNoun
