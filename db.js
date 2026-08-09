@@ -139,30 +139,39 @@ async function initDb() {
   // doua — vezi buildPrompt in server.js pentru fallback-ul defensiv pe acele comenzi vechi).
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS wedding_type TEXT;`);
 
-  // MODIFICARE STRICTĂ — fluxul pachetului Premium £25 (hotfix 2026-08-09): a doua melodie
-  // (genre2) poate fi acum pentru un destinatar DIFERIT de primul, ales pe un ecran dedicat
-  // ("Configurează a doua melodie"), separat de ecranul de ocazie/destinatar al primei melodii.
-  // Toate coloanele sunt NULLABLE, populate STRICT server-side DOAR pentru plan='premium' cu
-  // alegerea explicita "Pentru altă persoană" (validat la POST /api/orders) — NULL pentru
-  // Standard, pentru Video (flux neschimbat, ambele melodii raman pentru acelasi destinatar
-  // ca inainte) si pentru Premium cu "Aceeași persoană" (a doua melodie foloseste direct
-  // recipient/recipientRole/senderRole/recipientMode/recipientNames de mai sus, neschimbate).
+  // MODIFICARE STRICTĂ — fluxul pachetului Premium £25 (hotfix 2026-08-09, CORECȚIE STRICTĂ
+  // 2026-08-10): a doua melodie (genre2) poate fi acum pentru o OCAZIE si un destinatar DIFERITE
+  // de primele, alese pe un ecran dedicat ("Configurează a doua melodie"), care reutilizeaza
+  // ÎNTREAGA pagina de ocazie (toate cele 13 optiuni, exact aceleasi reguli). Toate coloanele
+  // sunt NULLABLE, populate STRICT server-side DOAR pentru plan='premium' cu alegerea explicita
+  // "Pentru altă persoană" (validat la POST /api/orders) — NULL pentru Standard, pentru Video
+  // (flux neschimbat, ambele melodii raman pentru aceeasi ocazie/destinatar ca inainte) si
+  // pentru Premium cu "Aceeași persoană" (a doua melodie foloseste direct occasion/recipient/
+  // recipientRole/senderRole/recipientMode/recipientNames/weddingType de mai sus, neschimbate).
   // song2_target: 'same'|'other' — alegerea explicita a clientului, OBLIGATORIE pentru
   // plan='premium', niciodata implicita.
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS song2_target TEXT;`);
+  // occasion_2: ocazia celei de-a doua melodii — oricare din ALLOWED_OCCASIONS (server.js),
+  // aleasa independent de occasion-ul comenzii (clientul poate alege orice ocazie pentru a doua
+  // melodie, ex. "bunici", chiar daca prima melodie e pentru occasion='parinti').
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS occasion_2 TEXT;`);
   // recipient_role_2: relatia celei de-a doua persoane — orice valoare din
-  // FAMILY_OCCASION_RECIPIENT_ROLES (server.js), aleasa independent de occasion-ul comenzii
-  // (clientul poate alege ORICE categorie de relatie pentru a doua melodie, ex. "bunici", chiar
-  // daca prima melodie e pentru occasion='parinti'). NU exista un concept de senderRole pentru
-  // a doua persoana (nicio sub-alegere "Tu ești: ..." in UI, cerinta explicita).
+  // FAMILY_OCCASION_RECIPIENT_ROLES[occasion_2] sau, pentru occasion_2='nunta', una din cele 9
+  // valori de nunta/botez — NULL pentru ocaziile generice (fara relatie structurata).
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS recipient_role_2 TEXT;`);
-  // recipient_mode_2: 'single'|'both' — 'both' DOAR daca recipient_role_2 e in FAMILY_BOTH_ROLES.
+  // sender_role_2: relatia expeditorului fata de a doua persoana — "Tu ești: ..." — populat DOAR
+  // cand occasion_2 e o ocazie de familie CARE are acest concept (nu si pentru 'frati').
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS sender_role_2 TEXT;`);
+  // recipient_mode_2: 'single'|'both' — 'both' DOAR daca recipient_role_2 e in FAMILY_BOTH_ROLES
+  // sau in WEDDING_RECIPIENT_ROLES_BOTH (dupa caz).
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS recipient_mode_2 TEXT;`);
   // recipient_names_2: {name1, name2} — populat DOAR cand recipient_mode_2='both'.
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS recipient_names_2 JSONB;`);
   // recipient_2: numele complet (sau numele combinate afisabile, la "Amândoi") ale celei de-a
   // doua persoane — analog coloanei `recipient` existente, dar STRICT pentru a doua melodie.
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS recipient_2 TEXT;`);
+  // wedding_type_2: 'wedding'|'baptism' — OBLIGATORIU DOAR cand occasion_2='nunta'.
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS wedding_type_2 TEXT;`);
 
   // Urmarire: din ce varianta (versuri editate de client) a pornit ultima regenerare —
   // pentru transparenta/audit. Versurile originale/editate/data ultimei editari per
@@ -420,13 +429,17 @@ function rowToOrder(row) {
     recipientMode: row.recipient_mode || null,
     recipientNames: row.recipient_names || null,
     weddingType: row.wedding_type || null,
-    // CONTINUARE — fluxul pachetului Premium £25 (hotfix 2026-08-09): configurarea celei de-a
-    // doua melodii, populata DOAR pentru plan='premium' cu "Pentru altă persoană".
+    // CONTINUARE — fluxul pachetului Premium £25 (hotfix 2026-08-09, CORECȚIE 2026-08-10):
+    // configurarea celei de-a doua melodii, populata DOAR pentru plan='premium' cu "Pentru
+    // altă persoană" — ocazie completa, nu doar destinatar.
     song2Target: row.song2_target || null,
+    occasion2: row.occasion_2 || null,
     recipientRole2: row.recipient_role_2 || null,
+    senderRole2: row.sender_role_2 || null,
     recipientMode2: row.recipient_mode_2 || null,
     recipientNames2: row.recipient_names_2 || null,
     recipient2: row.recipient_2 || null,
+    weddingType2: row.wedding_type_2 || null,
     regenerateSourceVariantId: row.regenerate_source_variant_id,
     regenerateKeepOriginal: !!row.regenerate_keep_original,
     editReserved: row.edit_reserved,
@@ -452,8 +465,8 @@ function rowToOrder(row) {
 async function createOrder(order) {
   const result = await pool.query(
     `INSERT INTO orders
-      (id, access_token, occasion, recipient, email, story, genre, genre2, plan, price, lang, status, edits_used, variants, selected_variant_id, sender_name, relationship, voice_preference, phone, grandparent_type, recipient_role, sender_role, recipient_mode, recipient_names, wedding_type, song2_target, recipient_role_2, recipient_mode_2, recipient_names_2, recipient_2)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
+      (id, access_token, occasion, recipient, email, story, genre, genre2, plan, price, lang, status, edits_used, variants, selected_variant_id, sender_name, relationship, voice_preference, phone, grandparent_type, recipient_role, sender_role, recipient_mode, recipient_names, wedding_type, song2_target, occasion_2, recipient_role_2, sender_role_2, recipient_mode_2, recipient_names_2, recipient_2, wedding_type_2)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33)
      RETURNING *`,
     [
       order.id, order.accessToken, order.occasion, order.recipient, order.email,
@@ -464,9 +477,9 @@ async function createOrder(order) {
       order.recipientRole || null, order.senderRole || null, order.recipientMode || null,
       order.recipientNames ? JSON.stringify(order.recipientNames) : null,
       order.weddingType || null,
-      order.song2Target || null, order.recipientRole2 || null, order.recipientMode2 || null,
+      order.song2Target || null, order.occasion2 || null, order.recipientRole2 || null, order.senderRole2 || null, order.recipientMode2 || null,
       order.recipientNames2 ? JSON.stringify(order.recipientNames2) : null,
-      order.recipient2 || null
+      order.recipient2 || null, order.weddingType2 || null
     ]
   );
   return rowToOrder(result.rows[0]);

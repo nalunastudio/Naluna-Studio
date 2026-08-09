@@ -185,40 +185,58 @@ test('server.js: getSong2EffectiveData returneaza datele principale ale comenzii
 // ---------------------------------------------------------------------------------------------
 // TEST 8: "Altă persoană" salveaza relatia si numele separat.
 // ---------------------------------------------------------------------------------------------
-test('buildPrompt: song2Target="other" foloseste recipientRole2/recipient2, NICIODATA datele primei melodii', () => {
+test('buildPrompt: song2Target="other" foloseste occasion2/recipientRole2/senderRole2/recipient2, NICIODATA datele primei melodii', () => {
   const order = premiumOrder({
-    song2Target: 'other', recipientRole2: 'grandmother', recipient2: 'Elena',
-    recipientMode2: 'single', recipientNames2: null
+    song2Target: 'other', occasion2: 'bunici', recipientRole2: 'grandmother', senderRole2: 'granddaughter',
+    recipient2: 'Elena', recipientMode2: 'single', recipientNames2: null
   });
   const song2Data = getSong2EffectiveData(order);
   assert.equal(song2Data.recipient, 'Elena');
   assert.equal(song2Data.recipientRole, 'grandmother');
-  assert.equal(song2Data.senderRole, null, 'a doua persoana nu are niciodata un concept de senderRole');
+  assert.equal(song2Data.occasion, 'bunici');
+  assert.equal(song2Data.senderRole, 'granddaughter', 'senderRole2 e reutilizat pentru a doua melodie, exact ca la ocazia principala');
   const prompt2 = buildPrompt({ ...order, ...song2Data }, '', order.genre2);
   assert.ok(prompt2.includes('Recipient: Elena.'), `a produs: ${prompt2}`);
   assert.ok(prompt2.includes('"grandmother"'));
 });
 
-test('server.js: POST /api/orders valideaza recipientRole2 impotriva FAMILY_RECIPIENT_ROLE_VALUES (orice categorie de familie, independent de occasion)', () => {
-  const idx = server.indexOf("if (song2Target === 'other') {");
-  const snippet = server.slice(idx, idx + 900);
-  assert.match(snippet, /if \(!FAMILY_RECIPIENT_ROLE_VALUES\.includes\(recipientRole2\)\) \{/);
+test('buildPrompt: song2Target="other" cu ocazie fara concept de senderRole (frati) — senderRole ramane undefined/fals, niciun senderRole2 cerut', () => {
+  const order = premiumOrder({
+    song2Target: 'other', occasion2: 'frati', recipientRole2: 'sister', recipient2: 'Ioana',
+    recipientMode2: 'single', recipientNames2: null
+  });
+  const song2Data = getSong2EffectiveData(order);
+  assert.ok(!song2Data.senderRole, 'frati nu are concept de senderRole (Tu ești: ...)');
+  const prompt2 = buildPrompt({ ...order, ...song2Data }, '', order.genre2);
+  assert.ok(prompt2.includes('Recipient: Ioana.'), `a produs: ${prompt2}`);
 });
 
-test('server.js: FAMILY_RECIPIENT_ROLE_VALUES include toate rolurile din toate cele 5 categorii de familie (bunici/parinti/matusa-unchi/socri/frati)', () => {
+// CORECȚIE STRICTĂ — configurarea pachetului Premium (hotfix 2026-08-10): a doua melodie
+// foloseste acum ÎNTREAGA pagina de ocazie (13 optiuni), deci recipientRole2 e validat
+// SCOPED la occasion2 (FAMILY_OCCASION_RECIPIENT_ROLES[occasion2]), exact ca ocazia
+// principala — nu mai e validat impotriva listei generice, nescoped, FAMILY_RECIPIENT_ROLE_VALUES.
+test('server.js: POST /api/orders valideaza recipientRole2 impotriva FAMILY_OCCASION_RECIPIENT_ROLES[occasion2] (scoped la ocazia aleasa pentru a doua melodie)', () => {
+  const idx = server.indexOf("if (song2Target === 'other') {");
+  const snippet = server.slice(idx, idx + 900);
+  assert.match(snippet, /const allowedRecipientRoles2 = FAMILY_OCCASION_RECIPIENT_ROLES\[occasion2\];/);
+  assert.match(snippet, /if \(!allowedRecipientRoles2\.includes\(recipientRole2\)\) \{/);
+});
+
+test('server.js: FAMILY_RECIPIENT_ROLE_VALUES include toate rolurile din toate cele 5 categorii de familie (bunici/parinti/matusa-unchi/socri/frati) — ramane definita pentru relationClause(), desi nu mai e folosita pentru validarea recipientRole2', () => {
   assert.match(server, /const FAMILY_RECIPIENT_ROLE_VALUES = Object\.values\(FAMILY_OCCASION_RECIPIENT_ROLES\)\.flat\(\);/);
 });
 
-test('comanda.html: al doilea ecran ofera exact cele 5 categorii de familie deja existente pentru "altă persoană", fara relatii noi', () => {
-  assert.match(comanda, /const SONG2_CATEGORIES = \['bunici', 'parinti', 'matusa-unchi', 'socri', 'frati'\];/);
+test('comanda.html: al doilea ecran ofera TOATE cele 13 optiuni de ocazie (identice cu pagina "Pentru ce moment vrei cântecul?") pentru "altă persoană"', () => {
+  assert.match(comanda, /const ALL_OCCASIONS_ORDERED = \['dor', 'onomastica', 'aniversare', 'declaratie', 'nunta', 'pierdere', 'pentru-mine', 'bunici', 'parinti', 'matusa-unchi', 'socri', 'frati', 'altceva'\];/);
+  assert.match(comanda, /function renderSong2OccasionGrid\(\) \{/);
 });
 
 // ---------------------------------------------------------------------------------------------
 // TEST 9: numele si relatiile celor doua melodii nu se amesteca niciodata.
 // ---------------------------------------------------------------------------------------------
-test('buildPrompt: melodia 1 (mama Maria) si melodia 2 (bunica Elena) nu se amesteca — fiecare foloseste STRICT propriile date', () => {
+test('buildPrompt: melodia 1 (mama Maria, ocazia "parinti") si melodia 2 (bunica Elena, ocazia proprie "bunici") nu se amesteca — fiecare foloseste STRICT propriile date, INCLUSIV propria ocazie', () => {
   const order = premiumOrder({
-    song2Target: 'other', recipientRole2: 'grandmother', recipient2: 'Elena',
+    song2Target: 'other', occasion2: 'bunici', recipientRole2: 'grandmother', recipient2: 'Elena',
     recipientMode2: 'single', recipientNames2: null
   });
   const prompt1 = buildPrompt(order, '', order.genre);
@@ -234,9 +252,12 @@ test('buildPrompt: melodia 1 (mama Maria) si melodia 2 (bunica Elena) nu se ames
   assert.ok(!prompt2.includes('Recipient: Maria'), 'melodia 2 nu trebuie sa contina numele primei persoane');
   assert.ok(!prompt2.includes('"mother"'), 'melodia 2 nu trebuie sa contina relatia primei persoane');
 
-  // Ocazia/povestea raman COMUNE (cerinta explicita) — niciun "al doilea chestionar".
+  // CORECȚIE STRICTĂ (hotfix 2026-08-10): fiecare melodie poate avea acum PROPRIA ocazie —
+  // melodia 1 ramane pe ocazia comenzii ("parinti"), melodia 2 foloseste STRICT occasion2 ("bunici").
   assert.ok(prompt1.includes('Occasion: a tribute to a parent.'));
-  assert.ok(prompt2.includes('Occasion: a tribute to a parent.'));
+  assert.ok(!prompt1.includes('Occasion: a tribute to a grandparent.'));
+  assert.ok(prompt2.includes('Occasion: a tribute to a grandparent.'));
+  assert.ok(!prompt2.includes('Occasion: a tribute to a parent.'));
 });
 
 test('server.js: finalizeVariantsIfNeeded salveaza recipientSnapshot SEPARAT pe fiecare varianta, niciodata amestecat', () => {
@@ -267,7 +288,7 @@ test('buildPrompt: song2 "Amândoi" (grandparents) pastreaza AMBELE nume complet
   const order = premiumOrder({
     genre: 'manele', senderName: 'I'.repeat(100), relationship: 'R'.repeat(60), voicePreference: 'duet',
     story: 'S'.repeat(2000),
-    song2Target: 'other', recipientRole2: 'grandparents', recipient2: `${name1} și ${name2}`,
+    song2Target: 'other', occasion2: 'bunici', recipientRole2: 'grandparents', recipient2: `${name1} și ${name2}`,
     recipientMode2: 'both', recipientNames2: { name1, name2 }
   });
   const prompt2 = buildPrompt({ ...order, ...getSong2EffectiveData(order) }, '', order.genre2);
@@ -279,7 +300,7 @@ test('buildPrompt: song2 "Amândoi" (grandparents) pastreaza AMBELE nume complet
 test('server.js: POST /api/orders cere recipientMode2="both" si ambele nume cand recipientRole2 e in FAMILY_BOTH_ROLES', () => {
   const idx = server.indexOf("if (song2Target === 'other') {");
   const snippet = server.slice(idx, idx + 1600);
-  assert.match(snippet, /const isBothRole2 = FAMILY_BOTH_ROLES\.includes\(recipientRole2\);/);
+  assert.match(snippet, /const isFamilyBothRole2 = FAMILY_BOTH_ROLES\.includes\(recipientRole2\);/);
   assert.match(snippet, /if \(recipientMode2 !== 'both'\) \{/);
   assert.match(snippet, /if \(!isValidString\(name1_2, 1, 60\) \|\| !isValidString\(name2_2, 1, 60\)\) \{/);
 });
@@ -296,40 +317,49 @@ test('comanda.html: butonul "Continuă..." incepe disabled si e controlat DOAR d
   assert.match(comanda, /function song2AllValid\(\) \{/);
 });
 
-test('comanda.html: song2AllValid() verifica genul (diferit de primul), alegerea same\\/other, SI (daca "other") relatia si numele complete', () => {
-  const idx = server.indexOf('placeholder-never-matches'); // no-op guard, real check below
+test('comanda.html: song2AllValid() verifica genul (diferit de primul), alegerea same\\/other, SI (daca "other") ocazia, relatia/nunta si numele complete', () => {
   const start = comanda.indexOf('function song2AllValid() {');
-  const snippet = comanda.slice(start, start + 900);
+  const snippet = comanda.slice(start, start + 1400);
   assert.ok(snippet.includes("if (!genre2Input.value || genre2Input.value === genreInput.value) return false;"));
   assert.ok(snippet.includes("if (target !== 'same' && target !== 'other') return false;"));
+  assert.ok(snippet.includes("if (!occasion) return false;"));
+  assert.ok(snippet.includes("if (!song2WeddingTypeInput.value) return false;"));
+  assert.ok(snippet.includes("if (!song2NuntaGroup) return false;"));
   assert.ok(snippet.includes("if (!song2RecipientRoleInput.value) return false;"));
+  assert.ok(snippet.includes("const needsSenderRole = !!SENDER_ROLE_OPTIONS[song2RecipientRoleInput.value];"));
   assert.ok(snippet.includes("if (!song2Name1Input.value.trim() || !song2Name2Input.value.trim()) return false;"));
-  assert.ok(snippet.includes("if (!song2RecipientNameInput.value.trim())"));
+  assert.ok(snippet.includes("} else if (!song2RecipientNameInput.value.trim()) {"));
 });
 
 // ---------------------------------------------------------------------------------------------
 // TEST 12: refresh-ul pastreaza datele.
 // ---------------------------------------------------------------------------------------------
-test('comanda.html: saveDraft() persista toate campurile song2 (target, categorie, rol, mod, nume)', () => {
+test('comanda.html: saveDraft() persista toate campurile song2 (target, ocazie, rol, sender, mod, nunta, nume)', () => {
   const start = comanda.indexOf('function saveDraft() {');
   const snippet = comanda.slice(start, start + 1800);
   assert.ok(snippet.includes('song2Target: song2TargetInput.value,'));
-  assert.ok(snippet.includes('song2Category: song2Category,'));
+  assert.ok(snippet.includes('occasion2: song2OccasionInput.value,'));
   assert.ok(snippet.includes('recipientRole2: song2RecipientRoleInput.value,'));
+  assert.ok(snippet.includes('senderRole2: song2SenderRoleInput.value,'));
   assert.ok(snippet.includes('recipientMode2: song2RecipientModeInput.value,'));
+  assert.ok(snippet.includes('weddingType2: song2WeddingTypeInput.value,'));
+  assert.ok(snippet.includes('song2NuntaType: song2NuntaType,'));
+  assert.ok(snippet.includes('song2NuntaGroup: song2NuntaGroup,'));
   assert.ok(snippet.includes('song2RecipientName: song2RecipientNameInput.value,'));
   assert.ok(snippet.includes('song2Name1: song2Name1Input.value,'));
   assert.ok(snippet.includes('song2Name2: song2Name2Input.value'));
 });
 
-test('comanda.html: restoreDraft() reface toate campurile song2 INAINTE de refreshSong2UI()', () => {
+test('comanda.html: restoreDraft() reface toate campurile song2 INAINTE de refreshSong2OtherUI()', () => {
   const start = comanda.indexOf('function restoreDraft() {');
-  const end = comanda.indexOf('refreshSong2UI();', start);
+  const end = comanda.indexOf('refreshSong2OtherUI();', start);
   assert.ok(start !== -1 && end !== -1);
   const snippet = comanda.slice(start, end);
   assert.ok(snippet.includes("if (draft.song2Target) song2TargetInput.value = draft.song2Target;"));
-  assert.ok(snippet.includes('if (draft.song2Category) song2Category = draft.song2Category;'));
+  assert.ok(snippet.includes('if (draft.occasion2) song2OccasionInput.value = draft.occasion2;'));
   assert.ok(snippet.includes('if (draft.recipientRole2) song2RecipientRoleInput.value = draft.recipientRole2;'));
+  assert.ok(snippet.includes('if (draft.senderRole2) song2SenderRoleInput.value = draft.senderRole2;'));
+  assert.ok(snippet.includes('if (draft.weddingType2) song2WeddingTypeInput.value = draft.weddingType2;'));
 });
 
 test('comanda.html: numarul pasului salvat (STEP_KEY) foloseste getTotalSteps() ca limita, deci pasul 5/6 poate fi restaurat corect pentru Premium', () => {
@@ -438,6 +468,70 @@ test('server.js: FAMILY_OCCASION_RECIPIENT_ROLES / FAMILY_BOTH_ROLES / relatiile
   assert.match(server, /socri: \['mother_in_law', 'father_in_law', 'parents_in_law'\]/);
   assert.match(server, /frati: \['sister', 'brother'\]/);
   assert.match(server, /const FAMILY_BOTH_ROLES = \['grandparents', 'parents', 'aunt_uncle', 'parents_in_law'\];/);
+});
+
+// ---------------------------------------------------------------------------------------------
+// TESTE NOI — CORECȚIE STRICTĂ, configurarea pachetului Premium (hotfix 2026-08-10).
+// ---------------------------------------------------------------------------------------------
+
+test('comanda.html: culorile celor doua sectiuni obligatorii (.mandatory-section/.required-badge) folosesc EXACT valorile deja existente in Standard (rgba(168,131,75,.07)/.12 + var(--gold)/var(--gold-deep)), nicio culoare noua', () => {
+  assert.match(comanda, /\.mandatory-section\{\s*background:rgba\(168,131,75,\.07\); border:1px solid var\(--gold\); border-radius:14px;/);
+  assert.match(comanda, /\.required-badge\{\s*display:inline-block; background:rgba\(168,131,75,\.12\); color:var\(--gold-deep\);/);
+  // Aceleasi valori exacte deja folosite de starea "activ" a cardurilor Standard.
+  assert.match(comanda, /\.theme-card\.active\{ border-color:var\(--gold\); background:rgba\(168,131,75,\.07\); \}/);
+});
+
+test('comanda.html: refreshSong2OtherUI() comuta explicit cardurile same\\/other SI vizibilitatea panoului (regresie: fara aceste linii, "Pentru altă persoană" nu afiseaza niciodata panoul)', () => {
+  const start = comanda.indexOf('function refreshSong2OtherUI() {');
+  const snippet = comanda.slice(start, start + 300);
+  assert.ok(snippet.includes("song2SameCard.classList.toggle('active', song2TargetInput.value === 'same');"));
+  assert.ok(snippet.includes("song2OtherCard.classList.toggle('active', song2TargetInput.value === 'other');"));
+  assert.ok(snippet.includes("song2OtherPanel.style.display = song2TargetInput.value === 'other' ? 'block' : 'none';"));
+});
+
+test('comanda.html/server.js: nicio referinta ramasa la variabila/functia vechi song2Category / refreshSong2UI (inlocuite complet de sistemul cu 13 ocazii)', () => {
+  assert.ok(!comanda.includes('song2Category'), 'song2Category nu mai trebuie sa existe nicaieri — ar produce ReferenceError la saveDraft()');
+  assert.ok(!comanda.includes('refreshSong2UI()'), 'functia veche a fost redenumita refreshSong2OtherUI()');
+  assert.ok(!comanda.includes('SONG2_CATEGORIES'), 'lista veche de 5 categorii a fost inlocuita de ALL_OCCASIONS_ORDERED');
+});
+
+test('buildPrompt + getSong2EffectiveData: occasion2="nunta" foloseste weddingType2/recipientRole2 proprii pentru a doua melodie, independent de ocazia principala', () => {
+  const order = premiumOrder({
+    song2Target: 'other', occasion2: 'nunta', weddingType2: 'wedding', recipientRole2: 'bride',
+    recipient2: 'Elena', recipientMode2: 'single', recipientNames2: null
+  });
+  const song2Data = getSong2EffectiveData(order);
+  assert.equal(song2Data.occasion, 'nunta');
+  assert.equal(song2Data.weddingType, 'wedding');
+  const prompt2 = buildPrompt({ ...order, ...song2Data }, '', order.genre2);
+  assert.ok(prompt2.includes('Recipient: Elena.'), `a produs: ${prompt2}`);
+});
+
+test('server.js: POST /api/orders valideaza weddingType2/recipientRole2 pentru occasion2="nunta" cu EXACT aceleasi reguli ca ocazia principala (WEDDING_TYPE_ALLOWED_ROLES)', () => {
+  const idx = server.indexOf("} else if (occasion2 === 'nunta') {");
+  assert.ok(idx !== -1, 'ramura nunta pentru occasion2 trebuie sa existe');
+  const snippet = server.slice(idx, idx + 700);
+  assert.match(snippet, /if \(weddingType2 !== 'wedding' && weddingType2 !== 'baptism'\) \{/);
+  assert.match(snippet, /const allowedRolesForType2 = WEDDING_TYPE_ALLOWED_ROLES\[weddingType2\];/);
+});
+
+test('buildPrompt + getSong2EffectiveData: occasion2 generic (ex. "dor") nu cere recipientRole2/senderRole2 — doar numele destinatarului', () => {
+  const order = premiumOrder({
+    song2Target: 'other', occasion2: 'dor', recipientRole2: null, senderRole2: null,
+    recipient2: 'Vasile', recipientMode2: null, recipientNames2: null
+  });
+  const song2Data = getSong2EffectiveData(order);
+  assert.equal(song2Data.occasion, 'dor');
+  assert.equal(song2Data.recipient, 'Vasile');
+  const prompt2 = buildPrompt({ ...order, ...song2Data }, '', order.genre2);
+  assert.ok(prompt2.includes('Recipient: Vasile.'), `a produs: ${prompt2}`);
+  assert.ok(prompt2.includes('Occasion: missing someone.'));
+});
+
+test('server.js: getSong2EffectiveData() se activeaza pe baza lui order.occasion2 (nu order.recipientRole2) — ocaziile generice, fara recipientRole2, tot trebuie sa isi foloseasca propriile date', () => {
+  const idx = server.indexOf('function getSong2EffectiveData(order) {');
+  const snippet = server.slice(idx, idx + 200);
+  assert.match(snippet, /if \(order\.plan === 'premium' && order\.song2Target === 'other' && order\.occasion2\) \{/);
 });
 
 test('server.js: node --check server.js trece (nicio eroare de sintaxa introdusa)', () => {

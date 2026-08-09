@@ -65,14 +65,15 @@ test('db.js: migrarea grandparent_type e aditiva (ADD COLUMN IF NOT EXISTS)', ()
   assert.ok(dbjs.includes('ALTER TABLE orders ADD COLUMN IF NOT EXISTS grandparent_type TEXT;'));
 });
 
-// NOTA (CONTINUARE, hotfix 2026-08-09, fluxul Premium £25): INSERT-ul a fost extins cu inca 5
-// coloane pentru configurarea celei de-a doua melodii (song2_target, recipient_role_2,
-// recipient_mode_2, recipient_names_2, recipient_2) — grandparent_type ramane la aceeasi pozitie
+// NOTA (CONTINUARE, hotfix 2026-08-09, fluxul Premium £25; CORECȚIE STRICTĂ hotfix 2026-08-10):
+// INSERT-ul a fost extins cu inca 8 coloane pentru configurarea celei de-a doua melodii
+// (song2_target, occasion_2, recipient_role_2, sender_role_2, recipient_mode_2,
+// recipient_names_2, recipient_2, wedding_type_2) — grandparent_type ramane la aceeasi pozitie
 // relativa (imediat dupa wedding_type), doar numerotarea parametrilor de dupa el s-a extins.
 test('db.js: createOrder salveaza grandparent_type (acum urmat de recipient_role/sender_role/recipient_mode/recipient_names/wedding_type/song2_*), rowToOrder il expune ca grandparentType', () => {
   const dbjs = read('db.js');
-  assert.ok(dbjs.includes('grandparent_type, recipient_role, sender_role, recipient_mode, recipient_names, wedding_type, song2_target, recipient_role_2, recipient_mode_2, recipient_names_2, recipient_2)'), 'INSERT-ul trebuie sa includa toate coloanele, in aceasta ordine');
-  assert.ok(dbjs.includes('$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)'), 'coloanele noi trebuie sa fie ultimii 10 parametri ($21-$30)');
+  assert.ok(dbjs.includes('grandparent_type, recipient_role, sender_role, recipient_mode, recipient_names, wedding_type, song2_target, occasion_2, recipient_role_2, sender_role_2, recipient_mode_2, recipient_names_2, recipient_2, wedding_type_2)'), 'INSERT-ul trebuie sa includa toate coloanele, in aceasta ordine');
+  assert.ok(dbjs.includes('$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33)'), 'coloanele noi trebuie sa fie ultimii 13 parametri ($21-$33)');
   assert.ok(dbjs.includes('order.grandparentType || null'), 'valoarea trebuie sa vina din order.grandparentType, cu fallback null');
   assert.ok(dbjs.includes('grandparentType: row.grandparent_type,'), 'rowToOrder trebuie sa expuna coloana catre restul aplicatiei');
 });

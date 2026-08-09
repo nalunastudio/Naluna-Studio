@@ -190,13 +190,18 @@
     font-family:'Fraunces', serif; font-size:40px; color:var(--gold-deep);
     text-align:center; margin:18px 0 6px;
   }
+  /* CORECȚIE STRICTĂ — configurarea pachetului Premium (hotfix 2026-08-10): culorile de mai jos
+     NU sunt inventate — sunt EXACT aceleasi valori deja folosite pentru starea "activ" a
+     cardurilor din Standard (.theme-card.active, .genre-card.active, .voice-card.active
+     folosesc toate border-color:var(--gold) + background:rgba(168,131,75,.07); vezi mai sus) si
+     pentru insigna .benefit-check (background:rgba(168,131,75,.12) + color:var(--gold-deep)). */
   .mandatory-section{
-    background:var(--bg-secondary); border:2px solid var(--gold); border-radius:14px;
+    background:rgba(168,131,75,.07); border:1px solid var(--gold); border-radius:14px;
     padding:20px 18px; margin-bottom:22px;
   }
   .mandatory-section h2{ font-size:16px; font-weight:700; margin-bottom:4px; }
   .required-badge{
-    display:inline-block; background:var(--gold-deep); color:#fff; font-size:11px; font-weight:700;
+    display:inline-block; background:rgba(168,131,75,.12); color:var(--gold-deep); font-size:11px; font-weight:700;
     text-transform:uppercase; letter-spacing:.04em; padding:3px 10px; border-radius:999px; margin-bottom:10px;
   }
   .song1-genre-hint{ font-size:13px; color:var(--text-secondary); margin-bottom:14px; }
@@ -645,29 +650,87 @@
         <input type="hidden" id="song2RecipientRole" value="">
         <input type="hidden" id="song2RecipientMode" value="">
 
+        <!-- CORECȚIE STRICTĂ — configurarea pachetului Premium (hotfix 2026-08-10): "Pentru altă
+             persoană" reutilizeaza ÎNTREAGA pagina de ocazie (toate cele 13 optiuni, exact
+             aceleasi reguli/componente ca pasul 1 — RECIPIENT_ROLE_OPTIONS, FAMILY_BOTH_ROLES,
+             WEDDING_TYPE_GROUPS, NUNTA_SUBROLE_OPTIONS etc., NICIUN tabel nou), doar cu elemente
+             DOM proprii, independente de cele de pe pasul 1 — cele doua melodii pot avea ocazii/
+             relatii complet diferite, simultan active, fara sa se suprascrie una pe alta. -->
         <div id="song2-other-panel" style="display:none; margin-top:16px;">
-          <div class="theme-grid" id="song2-category-grid" style="grid-template-columns:1fr 1fr;"></div>
-          <div class="field-error" id="err-song2Category"></div>
+          <div class="theme-grid" id="song2-occasion-grid" style="grid-template-columns:1fr 1fr;"></div>
+          <div class="field-error" id="err-song2Occasion"></div>
+          <input type="hidden" id="song2Occasion" value="">
+          <input type="hidden" id="song2SenderRole" value="">
+          <input type="hidden" id="song2WeddingType" value="">
 
+          <!-- Nuntă/Botez pentru a doua melodie — mirrors #nunta-panel de pe pasul 1. -->
+          <div class="theme-subpanel" id="song2-nunta-panel" style="display:none; margin-top:16px;">
+            <label data-i18n="label_nunta_type">Ce sărbătorești?</label>
+            <div class="theme-grid" id="song2-nunta-type-grid" style="grid-template-columns:1fr 1fr;">
+              <div class="theme-card theme-subcard song2-nunta-type-card" data-type="wedding"><div class="theme-name" data-i18n="nunta_type_wedding">Nuntă</div></div>
+              <div class="theme-card theme-subcard song2-nunta-type-card" data-type="baptism"><div class="theme-name" data-i18n="nunta_type_baptism">Botez</div></div>
+            </div>
+            <div class="field-error" id="err-song2NuntaType"></div>
+
+            <div id="song2-nunta-group-field" style="display:none; margin-top:16px;">
+              <label data-i18n="label_nunta_group">Pentru cine e melodia?</label>
+              <div class="theme-grid" id="song2-nunta-group-grid" style="grid-template-columns:1fr 1fr 1fr;">
+                <div class="theme-card theme-subcard song2-nunta-group-card" data-group="miri"><div class="theme-name" data-i18n="nunta_group_miri">Miri</div></div>
+                <div class="theme-card theme-subcard song2-nunta-group-card" data-group="fini"><div class="theme-name" data-i18n="nunta_group_fini">Fini</div></div>
+                <div class="theme-card theme-subcard song2-nunta-group-card" data-group="nasi"><div class="theme-name" data-i18n="nunta_group_nasi">Nași</div></div>
+              </div>
+              <div class="field-error" id="err-song2NuntaGroup"></div>
+            </div>
+
+            <div id="song2-nunta-subrole-field" style="display:none; margin-top:16px;">
+              <label data-i18n="label_nunta_subrole">Cine anume?</label>
+              <div class="theme-grid" id="song2-nunta-subrole-grid" style="grid-template-columns:1fr 1fr 1fr;"></div>
+              <div class="field-error" id="err-song2RecipientRole"></div>
+            </div>
+
+            <div id="song2-nunta-names-slot"></div>
+          </div>
+
+          <!-- Ocazii de familie pentru a doua melodie — mirrors #family-relation-panel de pe
+               pasul 1, INCLUSIV sub-alegerea expeditorului ("Tu ești: ..."). -->
           <div class="theme-subpanel" id="song2-relation-panel" style="display:none; margin-top:16px;">
             <label data-i18n="label_recipient_role">Pentru cine e cântecul?</label>
             <div class="theme-grid" id="song2-relation-grid" style="grid-template-columns:1fr 1fr;"></div>
-            <div class="field-error" id="err-song2RecipientRole"></div>
+            <div class="field-error" id="err-song2RecipientRoleFamily"></div>
+            <div id="song2-family-names-slot"></div>
+            <div id="song2-family-sender-role-slot"></div>
+          </div>
 
-            <div class="field" id="song2-single-name-field" style="display:none; margin-top:16px;">
-              <label data-i18n="song2_recipient_name_label">Numele destinatarului</label>
-              <input type="text" id="song2-recipient-name" maxlength="60">
-              <div class="field-error" id="err-song2RecipientName"></div>
-            </div>
+          <!-- "Tu ești: ..." — element UNIC, reparentat (nu duplicat) intre pozitia lui in
+               panoul de familie, mirrors #sender-role-subfield de pe pasul 1. -->
+          <div id="song2-sender-role-subfield" style="display:none; margin-top:16px;">
+            <label data-i18n="label_sender_role">Tu ești:</label>
+            <div class="theme-grid" id="song2-sender-role-grid" style="grid-template-columns:1fr 1fr;"></div>
+            <div class="field-error" id="err-song2SenderRole"></div>
+          </div>
 
-            <div class="field" id="song2-both-names-field" style="display:none; margin-top:16px;">
+          <!-- "Amândoi" — element UNIC, reparentat intre panoul de familie si cel de nunta,
+               mirrors #both-names-field de pe pasul 1. -->
+          <div id="song2-both-names-field" style="display:none; margin-top:16px;">
+            <div class="field">
               <label id="song2-name1-label"></label>
               <input type="text" id="song2-name1" maxlength="60">
               <div class="field-error" id="err-song2Name1"></div>
-              <label id="song2-name2-label" style="margin-top:12px;"></label>
+            </div>
+            <div class="field">
+              <label id="song2-name2-label"></label>
               <input type="text" id="song2-name2" maxlength="60">
               <div class="field-error" id="err-song2Name2"></div>
             </div>
+          </div>
+
+          <!-- Numele destinatarului cand NU e "Amândoi" — pentru orice ocazie (generica SAU rol
+               individual de familie/nunta), mirrors #recipient de pe pasul 2 (acelasi camp
+               universal, indiferent de ocazie). -->
+          <div class="field" id="song2-single-name-field" style="display:none; margin-top:16px;">
+            <label data-i18n="song2_recipient_name_label">Numele destinatarului</label>
+            <input type="text" id="song2-recipient-name" maxlength="60">
+            <div class="field-error" id="err-song2RecipientName"></div>
           </div>
         </div>
       </div>
@@ -2620,13 +2683,15 @@
   }
 
   // ==========================================================================================
-  // MODIFICARE STRICTĂ — fluxul pachetului Premium £25 (hotfix 2026-08-09): "Pentru cine este
+  // CORECȚIE STRICTĂ — configurarea pachetului Premium (hotfix 2026-08-10): "Pentru cine este
   // a doua melodie?" — "Aceeași persoană" (foloseste direct campurile principale ale comenzii,
-  // neschimbate) sau "Pentru altă persoană" (reutilizeaza EXACT aceleasi optiuni/comportament
-  // ca panoul de relatie de familie de mai sus — RECIPIENT_ROLE_OPTIONS, FAMILY_BOTH_ROLES,
-  // FAMILY_BOTH_NAME_LABEL_KEYS — dar cu elemente DOM proprii, INDEPENDENTE, niciodata
-  // reparentate din/spre panoul principal: cele doua melodii pot avea selectii "Amândoi"
-  // simultan active, ceva ce elementele singleton existente nu ar putea reprezenta corect).
+  // neschimbate) sau "Pentru altă persoană" (reutilizeaza ÎNTREAGA pagina de ocazie — toate cele
+  // 13 optiuni, EXACT aceleasi date/reguli ca pasul 1: FAMILY_OCCASIONS, RECIPIENT_ROLE_OPTIONS,
+  // FAMILY_BOTH_ROLES, FAMILY_BOTH_NAME_LABEL_KEYS, SENDER_ROLE_OPTIONS, WEDDING_TYPE_GROUPS,
+  // NUNTA_SUBROLE_OPTIONS, NUNTA_BOTH_ROLES, NUNTA_NAME_LABEL_KEYS — NICIUN tabel de relatii
+  // nou) — dar cu elemente DOM proprii, INDEPENDENTE de cele de pe pasul 1: cele doua melodii
+  // pot avea ocazii/relatii/selectii "Amândoi" complet diferite, simultan active, fara sa se
+  // suprascrie una pe alta (imposibil daca s-ar fi reparentat elementele pasului 1 aici).
   // ==========================================================================================
   const song2GenreSlot = document.getElementById('song2-genre-slot');
   const song1GenreDisplay = document.getElementById('song1-genre-display');
@@ -2636,9 +2701,26 @@
   const song2SameCard = document.getElementById('song2-same-card');
   const song2OtherCard = document.getElementById('song2-other-card');
   const song2OtherPanel = document.getElementById('song2-other-panel');
-  const song2CategoryGrid = document.getElementById('song2-category-grid');
+
+  const song2OccasionGrid = document.getElementById('song2-occasion-grid');
+  const song2OccasionInput = document.getElementById('song2Occasion');
+  const song2SenderRoleInput = document.getElementById('song2SenderRole');
+  const song2WeddingTypeInput = document.getElementById('song2WeddingType');
+
+  const song2NuntaPanel = document.getElementById('song2-nunta-panel');
+  const song2NuntaGroupField = document.getElementById('song2-nunta-group-field');
+  const song2NuntaSubroleField = document.getElementById('song2-nunta-subrole-field');
+  const song2NuntaSubroleGrid = document.getElementById('song2-nunta-subrole-grid');
+  const song2NuntaNamesSlot = document.getElementById('song2-nunta-names-slot');
+
   const song2RelationPanel = document.getElementById('song2-relation-panel');
   const song2RelationGrid = document.getElementById('song2-relation-grid');
+  const song2FamilyNamesSlot = document.getElementById('song2-family-names-slot');
+  const song2FamilySenderRoleSlot = document.getElementById('song2-family-sender-role-slot');
+
+  const song2SenderRoleSubfield = document.getElementById('song2-sender-role-subfield');
+  const song2SenderRoleGrid = document.getElementById('song2-sender-role-grid');
+
   const song2SingleNameField = document.getElementById('song2-single-name-field');
   const song2RecipientNameInput = document.getElementById('song2-recipient-name');
   const song2BothNamesField = document.getElementById('song2-both-names-field');
@@ -2648,47 +2730,113 @@
   const song2Name2Label = document.getElementById('song2-name2-label');
   const song2ContinueBtn = document.getElementById('song2-continue-btn');
 
-  // Categoriile de relatie disponibile pentru a doua melodie — EXACT cele 5 ocazii de familie
-  // deja existente, independent de occasion-ul comenzii (clientul poate alege orice categorie
-  // pentru a doua persoana, ex. "bunici", chiar daca prima melodie e pentru occasion='parinti').
-  const SONG2_CATEGORIES = ['bunici', 'parinti', 'matusa-unchi', 'socri', 'frati'];
-  let song2Category = '';
+  // Cele 13 ocazii, in ACEEASI ordine ca pe pasul 1 (vezi #theme-grid) — sursa unica pentru
+  // etichetele lor ramane translations[lang].theme_<occ>_name/desc, acelasi tipar deja folosit
+  // pentru cardurile de pe pasul 1, niciun text nou.
+  const ALL_OCCASIONS_ORDERED = ['dor', 'onomastica', 'aniversare', 'declaratie', 'nunta', 'pierdere', 'pentru-mine', 'bunici', 'parinti', 'matusa-unchi', 'socri', 'frati', 'altceva'];
+  let song2NuntaType = ''; // 'wedding' | 'baptism' — stare locala UI, oglindita in song2WeddingType
+  let song2NuntaGroup = ''; // 'miri' | 'fini' | 'nasi' — stare locala UI, oglindita in song2RecipientRole
 
-  function song2CategoryLabelKey(cat) {
-    return 'theme_' + cat.replace('-', '') + '_name';
+  function song2OccasionKey(occ, suffix) {
+    return 'theme_' + occ.replace('-', '') + '_' + suffix;
   }
 
-  function renderSong2CategoryGrid() {
-    song2CategoryGrid.innerHTML = SONG2_CATEGORIES.map(cat =>
-      `<div class="theme-card theme-subcard song2-category-card${cat === song2Category ? ' active' : ''}" data-category="${cat}"><div class="theme-name">${t(song2CategoryLabelKey(cat))}</div></div>`
+  function renderSong2OccasionGrid() {
+    song2OccasionGrid.innerHTML = ALL_OCCASIONS_ORDERED.map(occ =>
+      `<div class="theme-card theme-subcard song2-occasion-card${occ === song2OccasionInput.value ? ' active' : ''}" data-occasion="${occ}"><div class="theme-name">${t(song2OccasionKey(occ, 'name'))}</div><div class="theme-desc">${t(song2OccasionKey(occ, 'desc'))}</div></div>`
     ).join('');
-    song2CategoryGrid.querySelectorAll('.song2-category-card').forEach(c => {
+    song2OccasionGrid.querySelectorAll('.song2-occasion-card').forEach(c => {
       c.addEventListener('click', () => {
-        song2Category = c.dataset.category;
+        song2OccasionInput.value = c.dataset.occasion;
+        // Schimbarea ocaziei celei de-a doua melodii reseteaza TOATE campurile ei de relatie —
+        // acelasi principiu ca la schimbarea ocaziei principale de pe pasul 1.
         song2RecipientRoleInput.value = '';
+        song2SenderRoleInput.value = '';
         song2RecipientModeInput.value = '';
-        song2RecipientNameInput.value = '';
+        song2WeddingTypeInput.value = '';
+        song2NuntaType = '';
+        song2NuntaGroup = '';
         song2Name1Input.value = '';
         song2Name2Input.value = '';
+        song2RecipientNameInput.value = '';
+        setFieldError('song2Occasion', '');
+        setFieldError('song2RecipientRoleFamily', '');
         setFieldError('song2RecipientRole', '');
-        refreshSong2UI();
+        setFieldError('song2SenderRole', '');
+        setFieldError('song2NuntaType', '');
+        setFieldError('song2NuntaGroup', '');
+        setFieldError('song2RecipientName', '');
+        setFieldError('song2Name1', '');
+        setFieldError('song2Name2', '');
+        refreshSong2OtherUI();
         saveDraft();
       });
     });
   }
 
-  // Functie IDEMPOTENTA — reface intreaga stare vizuala a sectiunii "Pentru cine este a doua
-  // melodie?" DOAR din valorile curente ale campurilor ascunse/starii locale (song2Category),
-  // acelasi principiu ca refreshRelationUI() de mai sus.
-  function refreshSong2UI() {
+  // "Tu ești: ..." pentru a doua melodie — mirrors renderSenderRoleGrid() de pe pasul 1.
+  function renderSong2SenderRoleGrid(recipientRole, targetSlot) {
+    const options = SENDER_ROLE_OPTIONS[recipientRole];
+    if (!options) { song2SenderRoleSubfield.style.display = 'none'; return; }
+    targetSlot.appendChild(song2SenderRoleSubfield);
+    song2SenderRoleGrid.innerHTML = options
+      .map(role => `<div class="theme-card theme-subcard song2-sender-role-card${role === song2SenderRoleInput.value ? ' active' : ''}" data-role="${role}"><div class="theme-name">${t('sender_relation_' + role)}</div></div>`)
+      .join('');
+    song2SenderRoleGrid.querySelectorAll('.song2-sender-role-card').forEach(c => {
+      c.addEventListener('click', () => {
+        song2SenderRoleInput.value = c.dataset.role;
+        setFieldError('song2SenderRole', '');
+        refreshSong2OtherUI();
+        saveDraft();
+      });
+    });
+    song2SenderRoleSubfield.style.display = 'block';
+  }
+
+  // "Amândoi" pentru a doua melodie — mirrors renderBothNamesField() de pe pasul 1.
+  function renderSong2BothNamesField(labelKeys, targetSlot) {
+    targetSlot.appendChild(song2BothNamesField);
+    song2Name1Label.textContent = t(labelKeys.female);
+    song2Name2Label.textContent = t(labelKeys.male);
+    song2BothNamesField.style.display = 'block';
+  }
+
+  // Nuntă/Botez pentru a doua melodie — mirrors renderNuntaSubroles() de pe pasul 1.
+  function renderSong2NuntaSubroles() {
+    const roles = NUNTA_SUBROLE_OPTIONS[song2NuntaGroup] || [];
+    song2NuntaSubroleGrid.innerHTML = roles
+      .map(role => `<div class="theme-card theme-subcard song2-nunta-subrole-card${role === song2RecipientRoleInput.value ? ' active' : ''}" data-role="${role}"><div class="theme-name">${NUNTA_BOTH_ROLES.includes(role) ? t('nunta_both') : t('relation_' + role)}</div></div>`)
+      .join('');
+    song2NuntaSubroleGrid.querySelectorAll('.song2-nunta-subrole-card').forEach(c => {
+      c.addEventListener('click', () => {
+        song2RecipientRoleInput.value = c.dataset.role;
+        song2RecipientModeInput.value = NUNTA_BOTH_ROLES.includes(c.dataset.role) ? 'both' : 'single';
+        if (song2RecipientModeInput.value === 'single') { song2Name1Input.value = ''; song2Name2Input.value = ''; }
+        else { song2RecipientNameInput.value = ''; }
+        setFieldError('song2RecipientRole', '');
+        refreshSong2OtherUI();
+        saveDraft();
+      });
+    });
+  }
+
+  // Functie IDEMPOTENTA — reface intreaga stare vizuala a sectiunii "Pentru altă persoană" DOAR
+  // din valorile curente ale campurilor ascunse/starii locale, acelasi principiu si ACEEASI
+  // structura ca refreshRelationUI() de pe pasul 1 (bloc familie, apoi bloc nunta, apoi numele).
+  function refreshSong2OtherUI() {
     song2SameCard.classList.toggle('active', song2TargetInput.value === 'same');
     song2OtherCard.classList.toggle('active', song2TargetInput.value === 'other');
     song2OtherPanel.style.display = song2TargetInput.value === 'other' ? 'block' : 'none';
 
-    renderSong2CategoryGrid();
+    const occasion = song2OccasionInput.value;
+    renderSong2OccasionGrid();
 
-    if (song2Category) {
-      const roleOptions = RECIPIENT_ROLE_OPTIONS[song2Category];
+    if (FAMILY_OCCASIONS.includes(occasion)) {
+      const activeCard = song2OccasionGrid.querySelector(`.song2-occasion-card[data-occasion="${occasion}"]`);
+      if (activeCard && song2RelationPanel.previousElementSibling !== activeCard) {
+        activeCard.insertAdjacentElement('afterend', song2RelationPanel);
+      }
+      const roleOptions = RECIPIENT_ROLE_OPTIONS[occasion];
       song2RelationGrid.style.gridTemplateColumns = roleOptions.length === 3 ? '1fr 1fr 1fr' : '1fr 1fr';
       song2RelationGrid.innerHTML = roleOptions
         .map(role => `<div class="theme-card theme-subcard song2-relation-card${role === song2RecipientRoleInput.value ? ' active' : ''}" data-role="${role}"><div class="theme-name">${FAMILY_BOTH_ROLES.includes(role) ? t('nunta_both') : t('relation_' + role)}</div></div>`)
@@ -2696,31 +2844,68 @@
       song2RelationGrid.querySelectorAll('.song2-relation-card').forEach(c => {
         c.addEventListener('click', () => {
           song2RecipientRoleInput.value = c.dataset.role;
+          song2SenderRoleInput.value = '';
           song2RecipientModeInput.value = FAMILY_BOTH_ROLES.includes(c.dataset.role) ? 'both' : 'single';
           if (song2RecipientModeInput.value === 'single') { song2Name1Input.value = ''; song2Name2Input.value = ''; }
           else { song2RecipientNameInput.value = ''; }
-          setFieldError('song2RecipientRole', '');
-          refreshSong2UI();
+          setFieldError('song2RecipientRoleFamily', '');
+          refreshSong2OtherUI();
           saveDraft();
         });
       });
       song2RelationPanel.style.display = 'block';
+      if (FAMILY_BOTH_ROLES.includes(song2RecipientRoleInput.value)) {
+        renderSong2BothNamesField(FAMILY_BOTH_NAME_LABEL_KEYS[song2RecipientRoleInput.value], song2FamilyNamesSlot);
+      } else {
+        song2BothNamesField.style.display = 'none';
+      }
+      if (song2RecipientRoleInput.value) renderSong2SenderRoleGrid(song2RecipientRoleInput.value, song2FamilySenderRoleSlot);
+      else song2SenderRoleSubfield.style.display = 'none';
     } else {
       song2RelationPanel.style.display = 'none';
     }
 
-    if (song2RecipientRoleInput.value && FAMILY_BOTH_ROLES.includes(song2RecipientRoleInput.value)) {
-      const labelKeys = FAMILY_BOTH_NAME_LABEL_KEYS[song2RecipientRoleInput.value];
-      song2Name1Label.textContent = t(labelKeys.female);
-      song2Name2Label.textContent = t(labelKeys.male);
-      song2BothNamesField.style.display = 'block';
-      song2SingleNameField.style.display = 'none';
-    } else if (song2RecipientRoleInput.value) {
-      song2SingleNameField.style.display = 'block';
-      song2BothNamesField.style.display = 'none';
+    if (occasion === 'nunta') {
+      song2NuntaPanel.style.display = 'block';
+      song2NuntaPanel.querySelectorAll('.song2-nunta-type-card').forEach(c => c.classList.toggle('active', c.dataset.type === song2NuntaType));
+      if (song2NuntaType) {
+        const allowedGroups = WEDDING_TYPE_GROUPS[song2NuntaType];
+        song2NuntaPanel.querySelectorAll('.song2-nunta-group-card').forEach(c => {
+          const allowed = allowedGroups.includes(c.dataset.group);
+          c.style.display = allowed ? '' : 'none';
+          c.classList.toggle('active', c.dataset.group === song2NuntaGroup);
+        });
+        song2NuntaGroupField.style.display = 'block';
+      } else {
+        song2NuntaGroupField.style.display = 'none';
+      }
+      if (song2NuntaType && song2NuntaGroup) {
+        renderSong2NuntaSubroles();
+        song2NuntaSubroleField.style.display = 'block';
+        if (NUNTA_BOTH_ROLES.includes(song2RecipientRoleInput.value)) {
+          renderSong2BothNamesField(NUNTA_NAME_LABEL_KEYS[song2NuntaGroup], song2NuntaNamesSlot);
+        } else {
+          song2BothNamesField.style.display = 'none';
+        }
+      } else {
+        song2NuntaSubroleField.style.display = 'none';
+        song2BothNamesField.style.display = 'none';
+      }
     } else {
+      song2NuntaPanel.style.display = 'none';
+    }
+
+    // Numele destinatarului, cand NU e "Amândoi" — camp UNIVERSAL, mirrors #recipient de pe
+    // pasul 2: vizibil imediat pentru o ocazie generica (fara relatie structurata), sau abia
+    // dupa alegerea unui rol individual pentru o ocazie de familie/nunta.
+    const isFamilyOrWedding = FAMILY_OCCASIONS.includes(occasion) || occasion === 'nunta';
+    const isBothActive = FAMILY_BOTH_ROLES.includes(song2RecipientRoleInput.value) || NUNTA_BOTH_ROLES.includes(song2RecipientRoleInput.value);
+    if (!occasion || isBothActive) {
       song2SingleNameField.style.display = 'none';
-      song2BothNamesField.style.display = 'none';
+    } else if (isFamilyOrWedding) {
+      song2SingleNameField.style.display = song2RecipientRoleInput.value ? 'block' : 'none';
+    } else {
+      song2SingleNameField.style.display = 'block';
     }
 
     updateSong2ContinueState();
@@ -2732,15 +2917,52 @@
       if (card === song2SameCard) {
         // "Aceeași persoană": nicio informatie din "altă persoană" nu trebuie sa ramana ascunsa
         // undeva si trimisa accidental — golim explicit tot ce ar apartine celeilalte alegeri.
-        song2Category = '';
+        song2OccasionInput.value = '';
         song2RecipientRoleInput.value = '';
+        song2SenderRoleInput.value = '';
         song2RecipientModeInput.value = '';
+        song2WeddingTypeInput.value = '';
+        song2NuntaType = '';
+        song2NuntaGroup = '';
         song2RecipientNameInput.value = '';
         song2Name1Input.value = '';
         song2Name2Input.value = '';
       }
       setFieldError('song2Target', '');
-      refreshSong2UI();
+      refreshSong2OtherUI();
+      saveDraft();
+    });
+  });
+
+  document.querySelectorAll('.song2-nunta-type-card').forEach(c => {
+    c.addEventListener('click', () => {
+      song2NuntaType = c.dataset.type;
+      song2WeddingTypeInput.value = song2NuntaType;
+      song2NuntaGroup = '';
+      song2RecipientRoleInput.value = '';
+      song2RecipientModeInput.value = '';
+      song2Name1Input.value = '';
+      song2Name2Input.value = '';
+      song2RecipientNameInput.value = '';
+      setFieldError('song2NuntaType', '');
+      setFieldError('song2NuntaGroup', '');
+      setFieldError('song2RecipientRole', '');
+      refreshSong2OtherUI();
+      saveDraft();
+    });
+  });
+
+  document.querySelectorAll('.song2-nunta-group-card').forEach(c => {
+    c.addEventListener('click', () => {
+      song2NuntaGroup = c.dataset.group;
+      song2RecipientRoleInput.value = '';
+      song2RecipientModeInput.value = '';
+      song2Name1Input.value = '';
+      song2Name2Input.value = '';
+      song2RecipientNameInput.value = '';
+      setFieldError('song2NuntaGroup', '');
+      setFieldError('song2RecipientRole', '');
+      refreshSong2OtherUI();
       saveDraft();
     });
   });
@@ -2759,17 +2981,29 @@
     song1GenreDisplay.textContent = t('song2_first_genre_label') + ' ' + label;
   }
 
-  // Butonul final ramane dezactivat pana cand TOATE alegerile obligatorii sunt complete —
-  // genul (diferit de primul), SI alegerea aceeasi/altă persoană, SI (daca "altă persoană")
-  // relatia si numele complete. Verificare redundanta fata de backend (plasa de siguranta UI),
-  // sursa de adevar reala ramane POST /api/orders (vezi server.js).
+  // Butonul final ramane dezactivat pana cand TOATE alegerile obligatorii sunt complete — genul
+  // (diferit de primul), SI alegerea aceeasi/altă persoană, SI (daca "altă persoană") ocazia,
+  // relatia (daca ocazia o cere), expeditorul (daca relatia il cere) si numele complete.
+  // Verificare redundanta fata de backend (plasa de siguranta UI), sursa de adevar reala ramane
+  // POST /api/orders (vezi server.js) — acelasi tipar ca la validateStep(1) de pe pasul 1.
   function song2AllValid() {
     if (!genre2Input.value || genre2Input.value === genreInput.value) return false;
     const target = song2TargetInput.value;
     if (target !== 'same' && target !== 'other') return false;
     if (target === 'other') {
-      if (!song2RecipientRoleInput.value) return false;
-      if (song2RecipientModeInput.value === 'both') {
+      const occasion = song2OccasionInput.value;
+      if (!occasion) return false;
+      if (occasion === 'nunta') {
+        if (!song2WeddingTypeInput.value) return false;
+        if (!song2NuntaGroup) return false;
+        if (!song2RecipientRoleInput.value) return false;
+      } else if (FAMILY_OCCASIONS.includes(occasion)) {
+        if (!song2RecipientRoleInput.value) return false;
+        const needsSenderRole = !!SENDER_ROLE_OPTIONS[song2RecipientRoleInput.value];
+        if (needsSenderRole && !song2SenderRoleInput.value) return false;
+      }
+      const isBoth = FAMILY_BOTH_ROLES.includes(song2RecipientRoleInput.value) || NUNTA_BOTH_ROLES.includes(song2RecipientRoleInput.value);
+      if (isBoth) {
         if (!song2Name1Input.value.trim() || !song2Name2Input.value.trim()) return false;
       } else if (!song2RecipientNameInput.value.trim()) {
         return false;
@@ -2915,13 +3149,21 @@
       // (server-side il cere si il valideaza doar in acel caz); pentru orice alta ocazie,
       // campul e gol si serverul il ignora complet (salvat null).
       weddingType: weddingTypeInput.value,
-      // MODIFICARE STRICTĂ — fluxul pachetului Premium £25 (hotfix 2026-08-09): configurarea
-      // celei de-a doua melodii — relevanta STRICT pentru plan='premium' (server-side, POST
-      // /api/orders le cere si le valideaza doar in acel caz); pentru orice alt pachet
-      // (Standard, Video), campurile raman null si serverul le ignora complet.
+      // CORECȚIE STRICTĂ — configurarea pachetului Premium (hotfix 2026-08-09, 2026-08-10):
+      // configurarea celei de-a doua melodii — relevanta STRICT pentru plan='premium' (server-
+      // side, POST /api/orders le cere si le valideaza doar in acel caz); pentru orice alt
+      // pachet (Standard, Video), campurile raman null si serverul le ignora complet. "Pentru
+      // altă persoană" trimite acum ocazia completa (occasion2/weddingType2), la fel ca ocazia
+      // principala.
       song2Target: selectedPlan.id === 'premium' ? song2TargetInput.value : null,
+      occasion2: (selectedPlan.id === 'premium' && song2TargetInput.value === 'other')
+        ? song2OccasionInput.value
+        : null,
       recipientRole2: (selectedPlan.id === 'premium' && song2TargetInput.value === 'other')
         ? song2RecipientRoleInput.value
+        : null,
+      senderRole2: (selectedPlan.id === 'premium' && song2TargetInput.value === 'other')
+        ? song2SenderRoleInput.value
         : null,
       recipientMode2: (selectedPlan.id === 'premium' && song2TargetInput.value === 'other')
         ? song2RecipientModeInput.value
@@ -2933,6 +3175,9 @@
         ? (song2RecipientModeInput.value === 'both'
             ? `${song2Name1Input.value.trim()} ${t('and_conjunction')} ${song2Name2Input.value.trim()}`
             : song2RecipientNameInput.value.trim())
+        : null,
+      weddingType2: (selectedPlan.id === 'premium' && song2TargetInput.value === 'other')
+        ? song2WeddingTypeInput.value
         : null
     };
   }
@@ -2959,13 +3204,17 @@
         nuntaGroup: nuntaGroup,
         name1: name1Input.value,
         name2: name2Input.value,
-        // MODIFICARE STRICTĂ — fluxul pachetului Premium £25 (hotfix 2026-08-09): configurarea
-        // celei de-a doua melodii — persista intre refresh-uri si intre navigarea inainte/inapoi
-        // dintre pasii 4-6, exact ca restul selectiilor formularului.
+        // CORECȚIE STRICTĂ — configurarea pachetului Premium (hotfix 2026-08-09, 2026-08-10):
+        // configurarea celei de-a doua melodii — persista intre refresh-uri si intre navigarea
+        // inainte/inapoi dintre pasii 4-6, exact ca restul selectiilor formularului.
         song2Target: song2TargetInput.value,
-        song2Category: song2Category,
+        occasion2: song2OccasionInput.value,
         recipientRole2: song2RecipientRoleInput.value,
+        senderRole2: song2SenderRoleInput.value,
         recipientMode2: song2RecipientModeInput.value,
+        weddingType2: song2WeddingTypeInput.value,
+        song2NuntaType: song2NuntaType,
+        song2NuntaGroup: song2NuntaGroup,
         song2RecipientName: song2RecipientNameInput.value,
         song2Name1: song2Name1Input.value,
         song2Name2: song2Name2Input.value
@@ -3018,13 +3267,17 @@
       genre2Input.value = draft.genre2;
       genre2Cards.forEach(c => c.classList.toggle('active', c.dataset.genre === draft.genre2));
     }
-    // MODIFICARE STRICTĂ — fluxul pachetului Premium £25 (hotfix 2026-08-09): restaurate
-    // INAINTE de refreshSong2UI() (apelata mai jos, dupa ce planul e restaurat), acelasi
-    // principiu ca la relatia de familie principala mai sus.
+    // CORECȚIE STRICTĂ — configurarea pachetului Premium (hotfix 2026-08-09, 2026-08-10):
+    // restaurate INAINTE de refreshSong2OtherUI() (apelata mai jos, dupa ce planul e restaurat),
+    // acelasi principiu ca la relatia de familie principala mai sus.
     if (draft.song2Target) song2TargetInput.value = draft.song2Target;
-    if (draft.song2Category) song2Category = draft.song2Category;
+    if (draft.occasion2) song2OccasionInput.value = draft.occasion2;
     if (draft.recipientRole2) song2RecipientRoleInput.value = draft.recipientRole2;
+    if (draft.senderRole2) song2SenderRoleInput.value = draft.senderRole2;
     if (draft.recipientMode2) song2RecipientModeInput.value = draft.recipientMode2;
+    if (draft.weddingType2) song2WeddingTypeInput.value = draft.weddingType2;
+    if (draft.song2NuntaType) song2NuntaType = draft.song2NuntaType;
+    if (draft.song2NuntaGroup) song2NuntaGroup = draft.song2NuntaGroup;
     if (draft.song2RecipientName) song2RecipientNameInput.value = draft.song2RecipientName;
     if (draft.song2Name1) song2Name1Input.value = draft.song2Name1;
     if (draft.song2Name2) song2Name2Input.value = draft.song2Name2;
@@ -3052,9 +3305,9 @@
     // ruleaza aici) — altfel campul ar ramane ascuns/vizibil dupa starea implicita, nu dupa
     // planul efectiv restaurat din draft.
     updateGenre2Visibility();
-    // refreshSong2UI() dupa restaurarea planului si a tuturor campurilor song2 de mai sus —
+    // refreshSong2OtherUI() dupa restaurarea planului si a tuturor campurilor song2 de mai sus —
     // functie idempotenta, reface intreaga stare vizuala a ecranului 6 dintr-o singura trecere.
-    refreshSong2UI();
+    refreshSong2OtherUI();
     if (selectedPlan.id === 'premium') renderPremiumSummaryBenefits();
   }
   restoreDraft();
@@ -3143,12 +3396,41 @@
         return;
       }
       if (song2TargetInput.value === 'other') {
-        if (!song2RecipientRoleInput.value) {
-          setFieldError('song2RecipientRole', t('val_recipient_role'));
+        if (!song2OccasionInput.value) {
+          setFieldError('song2Occasion', t('val_song2_target'));
           song2OtherPanel.scrollIntoView({ behavior: 'smooth', block: 'center' });
           return;
         }
-        if (song2RecipientModeInput.value === 'both') {
+        if (song2OccasionInput.value === 'nunta') {
+          if (!song2WeddingTypeInput.value) {
+            setFieldError('song2NuntaType', t('val_nunta_type'));
+            song2NuntaPanel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            return;
+          }
+          if (!song2NuntaGroup) {
+            setFieldError('song2NuntaGroup', t('val_recipient_role'));
+            song2NuntaGroupField.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            return;
+          }
+          if (!song2RecipientRoleInput.value) {
+            setFieldError('song2RecipientRole', t('val_recipient_role'));
+            song2NuntaSubroleField.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            return;
+          }
+        } else if (FAMILY_OCCASIONS.includes(song2OccasionInput.value)) {
+          if (!song2RecipientRoleInput.value) {
+            setFieldError('song2RecipientRoleFamily', t('val_recipient_role'));
+            song2RelationPanel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            return;
+          }
+          if (!!SENDER_ROLE_OPTIONS[song2RecipientRoleInput.value] && !song2SenderRoleInput.value) {
+            setFieldError('song2SenderRole', t('val_sender_role'));
+            song2SenderRoleSubfield.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            return;
+          }
+        }
+        const isBothSong2 = FAMILY_BOTH_ROLES.includes(song2RecipientRoleInput.value) || NUNTA_BOTH_ROLES.includes(song2RecipientRoleInput.value);
+        if (isBothSong2) {
           if (!song2Name1Input.value.trim() || !song2Name2Input.value.trim()) {
             setFieldError('song2Name1', t('val_nunta_names'));
             setFieldError('song2Name2', t('val_nunta_names'));

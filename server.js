@@ -1367,7 +1367,7 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
     const {
       occasion, recipient, senderName, relationship, email, phone, story, genre, genre2, plan, lang, voicePreference,
       grandparentType, recipientRole, senderRole, recipientMode, recipientNames, weddingType,
-      song2Target, recipientRole2, recipientMode2, recipientNames2, recipient2
+      song2Target, occasion2, recipientRole2, senderRole2, recipientMode2, recipientNames2, recipient2, weddingType2
     } = req.body || {};
     const safeLang = ALLOWED_LANGS.includes(lang) ? lang : 'ro';
 
@@ -1521,41 +1521,91 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
     // server-side, niciodata doar in UI. Video ramane COMPLET neschimbat: nu trimite niciodata
     // aceste campuri, deci ramane pe ramura implicita — a doua melodie foloseste automat exact
     // recipient/recipientRole/senderRole/recipientMode/recipientNames de mai sus, ca inainte.
+    // CORECȚIE STRICTĂ — configurarea pachetului Premium (hotfix 2026-08-10): a doua melodie
+    // foloseste acum ÎNTREAGA pagina de ocazie ("Pentru ce moment vrei cântecul?") — toate cele
+    // 13 optiuni, cu EXACT aceleasi reguli ca ocazia principala (mai sus), aplicate aici pentru
+    // campurile *2. Niciun tabel de relatii nou — reutilizeaza STRICT FAMILY_OCCASIONS,
+    // FAMILY_OCCASION_RECIPIENT_ROLES, FAMILY_RECIPIENT_TO_SENDER_ROLES, FAMILY_BOTH_ROLES,
+    // WEDDING_TYPE_ALLOWED_ROLES, WEDDING_RECIPIENT_ROLES_SINGLE/BOTH — aceleasi constante
+    // folosite mai sus pentru ocazia principala, sursa unica de adevar pentru ambele melodii.
     let safeSong2Target = null;
+    let safeOccasion2 = null;
     let safeRecipientRole2 = null;
+    let safeSenderRole2 = null;
     let safeRecipientMode2 = null;
     let safeRecipientNames2 = null;
     let safeRecipient2 = null;
+    let safeWeddingType2 = null;
     if (plan === 'premium') {
       if (song2Target !== 'same' && song2Target !== 'other') {
         return res.status(400).json({ error: missingFieldMessage('song2Target', safeLang) });
       }
       safeSong2Target = song2Target;
       if (song2Target === 'other') {
-        // recipientRole2 poate fi ORICE valoare de familie (bunici/parinti/matusa-unchi/socri/
-        // frati), independent de occasion-ul comenzii — clientul alege categoria pe ecranul
-        // dedicat celei de-a doua melodii, reutilizand EXACT aceleasi optiuni ca la ocazie
-        // (vezi FAMILY_RECIPIENT_ROLE_VALUES). Nu exista niciun concept de senderRole2 — nicio
-        // sub-alegere "Tu ești: ..." pentru a doua persoana (cerinta explicita).
-        if (!FAMILY_RECIPIENT_ROLE_VALUES.includes(recipientRole2)) {
-          return res.status(400).json({ error: missingFieldMessage('recipientRole', safeLang) });
+        if (!ALLOWED_OCCASIONS.includes(occasion2)) {
+          return res.status(400).json({ error: 'Ocazie invalidă pentru a doua melodie.' });
         }
-        safeRecipientRole2 = recipientRole2;
-        const isBothRole2 = FAMILY_BOTH_ROLES.includes(recipientRole2);
-        if (isBothRole2) {
-          if (recipientMode2 !== 'both') {
+        safeOccasion2 = occasion2;
+
+        if (FAMILY_OCCASIONS.includes(occasion2)) {
+          const allowedRecipientRoles2 = FAMILY_OCCASION_RECIPIENT_ROLES[occasion2];
+          if (!allowedRecipientRoles2.includes(recipientRole2)) {
             return res.status(400).json({ error: missingFieldMessage('recipientRole', safeLang) });
           }
-          const name1_2 = recipientNames2 && typeof recipientNames2.name1 === 'string' ? recipientNames2.name1.trim() : '';
-          const name2_2 = recipientNames2 && typeof recipientNames2.name2 === 'string' ? recipientNames2.name2.trim() : '';
-          if (!isValidString(name1_2, 1, 60) || !isValidString(name2_2, 1, 60)) {
-            return res.status(400).json({ error: missingFieldMessage('recipientNames', safeLang) });
+          const allowedSenderRoles2 = FAMILY_RECIPIENT_TO_SENDER_ROLES[recipientRole2];
+          if (allowedSenderRoles2) {
+            if (!allowedSenderRoles2.includes(senderRole2)) {
+              return res.status(400).json({ error: missingFieldMessage('senderRole', safeLang) });
+            }
+            safeSenderRole2 = senderRole2;
           }
-          safeRecipientNames2 = { name1: name1_2, name2: name2_2 };
-          safeRecipientMode2 = 'both';
-        } else {
-          safeRecipientMode2 = 'single';
+          const isFamilyBothRole2 = FAMILY_BOTH_ROLES.includes(recipientRole2);
+          if (isFamilyBothRole2) {
+            if (recipientMode2 !== 'both') {
+              return res.status(400).json({ error: missingFieldMessage('recipientRole', safeLang) });
+            }
+            const name1_2 = recipientNames2 && typeof recipientNames2.name1 === 'string' ? recipientNames2.name1.trim() : '';
+            const name2_2 = recipientNames2 && typeof recipientNames2.name2 === 'string' ? recipientNames2.name2.trim() : '';
+            if (!isValidString(name1_2, 1, 60) || !isValidString(name2_2, 1, 60)) {
+              return res.status(400).json({ error: missingFieldMessage('recipientNames', safeLang) });
+            }
+            safeRecipientNames2 = { name1: name1_2, name2: name2_2 };
+            safeRecipientMode2 = 'both';
+          } else {
+            safeRecipientMode2 = 'single';
+          }
+          safeRecipientRole2 = recipientRole2;
+        } else if (occasion2 === 'nunta') {
+          if (weddingType2 !== 'wedding' && weddingType2 !== 'baptism') {
+            return res.status(400).json({ error: missingFieldMessage('weddingType', safeLang) });
+          }
+          const allowedRolesForType2 = WEDDING_TYPE_ALLOWED_ROLES[weddingType2];
+          const isSingleRole2 = WEDDING_RECIPIENT_ROLES_SINGLE.includes(recipientRole2) && allowedRolesForType2.includes(recipientRole2);
+          const isBothRole2 = WEDDING_RECIPIENT_ROLES_BOTH.includes(recipientRole2) && allowedRolesForType2.includes(recipientRole2);
+          if (!isSingleRole2 && !isBothRole2) {
+            return res.status(400).json({ error: missingFieldMessage('recipientRole', safeLang) });
+          }
+          const expectedMode2 = isBothRole2 ? 'both' : 'single';
+          if (recipientMode2 !== expectedMode2) {
+            return res.status(400).json({ error: missingFieldMessage('recipientRole', safeLang) });
+          }
+          if (expectedMode2 === 'both') {
+            const name1_2 = recipientNames2 && typeof recipientNames2.name1 === 'string' ? recipientNames2.name1.trim() : '';
+            const name2_2 = recipientNames2 && typeof recipientNames2.name2 === 'string' ? recipientNames2.name2.trim() : '';
+            if (!isValidString(name1_2, 1, 60) || !isValidString(name2_2, 1, 60)) {
+              return res.status(400).json({ error: missingFieldMessage('recipientNames', safeLang) });
+            }
+            safeRecipientNames2 = { name1: name1_2, name2: name2_2 };
+          }
+          safeRecipientRole2 = recipientRole2;
+          safeRecipientMode2 = expectedMode2;
+          safeWeddingType2 = weddingType2;
         }
+        // Pentru orice alta ocazie (generica: dor/onomastica/aniversare/declaratie/pierdere/
+        // pentru-mine/altceva), recipientRole2/senderRole2/recipientMode2/recipientNames2/
+        // weddingType2 raman null — DOAR numele destinatarului (recipient2) e necesar, exact ca
+        // la ocazia principala pentru aceleasi 7 ocazii generice.
+
         if (!isValidString(recipient2, 1, 60)) {
           return res.status(400).json({ error: missingFieldMessage('recipient', safeLang) });
         }
@@ -1592,10 +1642,13 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
       recipientNames: safeRecipientNames,
       weddingType: safeWeddingType,
       song2Target: safeSong2Target,
+      occasion2: safeOccasion2,
       recipientRole2: safeRecipientRole2,
+      senderRole2: safeSenderRole2,
       recipientMode2: safeRecipientMode2,
       recipientNames2: safeRecipientNames2,
-      recipient2: safeRecipient2
+      recipient2: safeRecipient2,
+      weddingType2: safeWeddingType2
     });
 
     res.json({ orderId: order.id, accessToken: order.accessToken });
@@ -3214,19 +3267,21 @@ async function markGenerationFailed(orderId, errMessage, knownVariants, regenera
   }
 }
 
-// MODIFICARE STRICTĂ — fluxul pachetului Premium £25 (hotfix 2026-08-09): datele de destinatar
-// EFECTIVE pentru fiecare din cele doua melodii (genre/genre2). Prima melodie foloseste
-// INTOTDEAUNA campurile principale ale comenzii, neschimbate. A doua melodie foloseste ACELEASI
-// campuri principale DECAT daca order.song2Target === 'other' (ales explicit doar pentru
-// plan='premium') — caz in care foloseste in schimb recipientRole2/recipientMode2/
-// recipientNames2/recipient2, validate separat la POST /api/orders. senderRole ramane
-// intotdeauna null pentru a doua persoana (niciun concept de "Tu ești: ..." pentru ea, cerinta
-// explicita) — buildPrompt() trateaza deja gratios un senderRole lipsa (vezi relationClause()).
-// Pentru Video (si Premium cu "Aceeași persoană"), getSong2EffectiveData() returneaza EXACT
-// aceleasi valori ca getSong1EffectiveData() — comportament identic cu cel dinaintea acestei
-// modificari, niciun risc pentru fluxul Video existent.
+// MODIFICARE STRICTĂ — fluxul pachetului Premium £25 (hotfix 2026-08-09, CORECȚIE 2026-08-10):
+// datele EFECTIVE pentru fiecare din cele doua melodii (genre/genre2) — ocazie, relatie
+// (destinatar SI expeditor), mod, nume. Prima melodie foloseste INTOTDEAUNA campurile
+// principale ale comenzii, neschimbate. A doua melodie foloseste ACELEASI campuri principale
+// DECAT daca order.song2Target === 'other' (ales explicit doar pentru plan='premium') — caz in
+// care foloseste in schimb occasion2/recipientRole2/senderRole2/recipientMode2/recipientNames2/
+// recipient2/weddingType2, validate separat la POST /api/orders, cu EXACT aceleasi reguli ca
+// ocazia principala (inclusiv "Tu ești: ..." pentru ocaziile de familie care il au, si
+// Nuntă/Botez cu propriul weddingType). Pentru Video (si Premium cu "Aceeași persoană"),
+// getSong2EffectiveData() returneaza EXACT aceleasi valori ca getSong1EffectiveData() —
+// comportament identic cu cel dinaintea acestei modificari, niciun risc pentru fluxul Video.
 function getSong1EffectiveData(order) {
   return {
+    occasion: order.occasion,
+    weddingType: order.weddingType,
     recipient: order.recipient,
     recipientRole: order.recipientRole,
     senderRole: order.senderRole,
@@ -3235,11 +3290,13 @@ function getSong1EffectiveData(order) {
   };
 }
 function getSong2EffectiveData(order) {
-  if (order.plan === 'premium' && order.song2Target === 'other' && order.recipientRole2) {
+  if (order.plan === 'premium' && order.song2Target === 'other' && order.occasion2) {
     return {
+      occasion: order.occasion2,
+      weddingType: order.weddingType2,
       recipient: order.recipient2,
       recipientRole: order.recipientRole2,
-      senderRole: null,
+      senderRole: order.senderRole2,
       recipientMode: order.recipientMode2,
       recipientNames: order.recipientNames2
     };
