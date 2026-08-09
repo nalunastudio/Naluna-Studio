@@ -1068,7 +1068,7 @@ async function updateOrder(id, patch) {
   if (keys.length === 0) return getOrderById(id);
 
   const setClauses = keys.map((k, i) => `${COLUMN_MAP[k]} = $${i + 2}`);
-  const values = keys.map(k => ((k === 'variants' || k === 'uploadedMedia') ? JSON.stringify(patch[k]) : patch[k]));
+  const values = keys.map(k => ((k === 'variants' || k === 'uploadedMedia' || k === 'regenerateEditVariantIds') ? JSON.stringify(patch[k]) : patch[k]));
 
   const result = await pool.query(
     `UPDATE orders SET ${setClauses.join(', ')} WHERE id = $1 RETURNING *`,

@@ -205,6 +205,18 @@ test('db.js: regenerate_edit_variant_ids si selected_variant_id_2 sunt coloane a
   assert.ok(dbjs.includes('ALTER TABLE orders ADD COLUMN IF NOT EXISTS selected_variant_id_2 TEXT;'));
 });
 
+// REGRESIE CONFIRMATA LA TESTAREA LIVE PE STAGING (hotfix 2026-08-10 runda 3): db.updateOrder()
+// (functia REALA folosita de handlePremiumSelectiveRegenerate, NU cea din
+// recordPaidOrderAtomically) nu avea 'regenerateEditVariantIds' in lista de campuri
+// JSON.stringify-uite inainte de INSERT — array-ul JS era trimis ca literal catre coloana
+// JSONB, Postgres respingea cu "invalid input syntax for type json", iar POST /regenerate
+// pentru Premium (editarea unei singure melodii) esua mereu cu 500. Verificam AMBELE functii
+// care scriu pe orders (nu doar una), ca sa nu se repete exact acest bug.
+test('db.js: TOATE functiile care scriu pe orders (updateOrder SI recordPaidOrderAtomically) JSON.stringify-uiesc regenerateEditVariantIds inainte de UPDATE — nu doar una din ele', () => {
+  const matches = dbjs.match(/const values = keys\.map\(k => \(\(k === 'variants' \|\| k === 'uploadedMedia' \|\| k === 'regenerateEditVariantIds'\) \? JSON\.stringify\(patch\[k\]\) : patch\[k\]\)\);/g) || [];
+  assert.equal(matches.length, 2, `trebuie sa existe exact 2 functii cu acest fix (recordPaidOrderAtomically + updateOrder), gasite ${matches.length}`);
+});
+
 // ---------------------------------------------------------------------------------------------
 // TEST 15: livrarea simulata post-plata contine EXCLUSIV cele doua melodii alese.
 // ---------------------------------------------------------------------------------------------
