@@ -248,6 +248,20 @@ test('server.js: handleLegacyRegenerate (variantId singular) ramane STRICT ramur
   assert.ok(body.includes("? { replaceVariantId: requestedVariantId, regenerationJobId }"));
 });
 
+// REGRESIE CONFIRMATA LA TESTAREA LIVE PE STAGING (hotfix 2026-08-10 runda 3): fara ascundere
+// explicita, #edit-menu-fields (selectorul de voce, campul vechi de gen/feedback — nu au
+// display:none implicit in HTML, vizibilitatea lor era controlata STRICT de
+// updateStandardEditMenuVisibility(), niciodata apelata pentru Premium) ramanea vizibil SUB
+// butoanele noi "Edit the lyrics"/"Continue to payment" pe pagina de rezultat.
+test('melodia-mea.html: renderPremiumFlow ascunde explicit TOATE containerele originale Standard/Video (edit-menu-fields, confirm-row, standard-choice-section, memories-section etc.) — fara ele nu au display:none implicit in HTML', () => {
+  const start = melodia.indexOf('function renderPremiumFlow(order, isResumeFlag) {');
+  const end = melodia.indexOf('function renderPremiumResultView(order) {');
+  const body = melodia.slice(start, end);
+  ['edit-menu-fields', 'confirm-row', 'standard-choice-section', 'standard-preedit-toggle-wrap', 'standard-preedit-checkout-slot-collapsed', 'memories-section', 'gift-video-section'].forEach(id => {
+    assert.ok(body.includes(`getElementById('${id}').style.display = 'none';`), `${id} trebuie ascuns explicit in renderPremiumFlow`);
+  });
+});
+
 test('melodia-mea.html: renderContent() branch-uieste catre renderPremiumFlow DOAR pentru plan="premium" — Standard/Video continua neschimbate dupa acel punct', () => {
   const idx = melodia.indexOf("if (order.plan === 'premium') {");
   assert.ok(idx !== -1);

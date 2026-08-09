@@ -2854,6 +2854,21 @@
     const compareView = document.getElementById('premium-compare-view');
     const variants = order.variants || [];
 
+    // MODIFICARE STRICTĂ — fluxul Premium (hotfix 2026-08-10 runda 3, corectie live): containerele
+    // originale (Standard/Video) nu au niciodata display:none implicit in HTML — vizibilitatea lor
+    // e controlata STRICT de updateStandardEditMenuVisibility(), care nu mai ruleaza pentru Premium
+    // (bypass complet, vezi renderContent). Fara aceasta ascundere explicita, #edit-menu-fields
+    // (selectorul de voce, campul de gen/feedback vechi) ramanea vizibil SUB noile ecrane Premium —
+    // gasit direct la testarea live pe staging.
+    document.getElementById('edit-menu-fields').style.display = 'none';
+    document.getElementById('confirm-row').style.display = 'none';
+    document.getElementById('standard-choice-section').style.display = 'none';
+    document.getElementById('standard-preedit-toggle-wrap').style.display = 'none';
+    document.getElementById('standard-preedit-checkout-slot-collapsed').style.display = 'none';
+    document.getElementById('memories-section').style.display = 'none';
+    document.getElementById('gift-video-section').style.display = 'none';
+    document.getElementById('variants-wrap').innerHTML = '';
+
     if (variants.length > 2) {
       premiumEditViewOpen = false;
       resultView.style.display = 'none';
