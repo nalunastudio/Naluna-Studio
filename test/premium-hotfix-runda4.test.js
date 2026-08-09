@@ -226,6 +226,21 @@ test('melodia-mea.html: valorile actualizate (premium_edit_start_btn, premium_co
   });
 });
 
+// REGRESIE CONFIRMATA LA TESTAREA LIVE PE STAGING (hotfix, runda 4): renderPremiumEditView()
+// folosea VOICE_PREFERENCES fara ca acea constanta sa existe vreodata in acest fisier
+// (server.js NU expune constante catre client) — ReferenceError la fiecare deschidere a
+// ecranului de editare, care oprea executia functiei LA MIJLOC, inainte ca handler-ul
+// butonului "Continuă la a doua melodie" sa mai apuce sa fie atasat (`.onclick = ...` era pe
+// urmatoarele linii, niciodata executate) — butonul parea complet mort la click.
+// node --check nu prinde asta (e o eroare de RUNTIME, nu de sintaxa) — motiv in plus pentru
+// care testarea live pe staging ramane obligatorie, nu doar verificarile automate.
+test('melodia-mea.html: VOICE_PREFERENCES e definita LOCAL (client-side), inainte de renderPremiumEditView — server.js nu expune constante catre client', () => {
+  const constIdx = melodia.indexOf("const VOICE_PREFERENCES = ['female', 'male', 'duet', 'auto'];");
+  assert.ok(constIdx !== -1, 'VOICE_PREFERENCES trebuie definita explicit in melodia-mea.html');
+  const usageIdx = melodia.indexOf('function renderPremiumEditView(order) {');
+  assert.ok(constIdx < usageIdx, 'VOICE_PREFERENCES trebuie definita INAINTE de renderPremiumEditView (ordinea conteaza pentru un const de top-level, chiar daca functiile sunt hoisted)');
+});
+
 // ---------------------------------------------------------------------------------------------
 // Verificari finale de sintaxa.
 // ---------------------------------------------------------------------------------------------

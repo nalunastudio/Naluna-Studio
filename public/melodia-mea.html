@@ -1541,6 +1541,12 @@
   // Aceeasi lista de genuri reale ca in formularul de comanda (comanda.html) — folosita de
   // selectorul "Schimbă genul muzical" din zona de editare (hotfix 2026-08-08).
   const EDIT_GENRE_KEYS = ['emotional', 'suflet', 'pop', 'acustic', 'petrecere', 'balada', 'manele', 'copii', 'populara', 'rock', 'colind', 'modern', 'hiphop', 'manele_suflet', 'motivational'];
+  // MODIFICARE STRICTĂ — editare secventiala, ambele melodii (hotfix, runda 4): oglindeste EXACT
+  // lista din server.js (VOICE_PREFERENCES) — server.js e Node, nu expune constante catre client,
+  // deci lista se repeta aici, la fel cum EDIT_GENRE_KEYS de mai sus oglindeste deja lista de
+  // genuri din comanda.html. Folosita DOAR pentru a alege vocea implicita per melodie in
+  // renderPremiumEditView() — validarea reala/autoritara ramane STRICT server-side.
+  const VOICE_PREFERENCES = ['female', 'male', 'duet', 'auto'];
   const editGenreSelect = document.getElementById('edit-genre-select');
   const editGenreError = document.getElementById('edit-genre-error');
 
