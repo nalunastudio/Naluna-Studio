@@ -323,10 +323,18 @@
           <div class="theme-name" data-i18n="theme_socri_name">Pentru soacră sau socru</div>
           <div class="theme-desc" data-i18n="theme_socri_desc">Un cântec plin de iubire, recunoștință și amintiri</div>
         </div>
+        <!-- CONTINUARE (hotfix 2026-08-09, "Soră/Frate"): al 5-lea card care reutilizeaza acelasi
+             panou comun de mai jos — spre deosebire de celelalte 4, sub-panoul lui NU va afisa
+             niciodata "Tu ești: ..." (nicio intrare in SENDER_ROLE_OPTIONS pentru sister/brother)
+             si nu ofera niciodata "Amândoi" (nicio intrare in FAMILY_BOTH_ROLES). -->
+        <div class="theme-card" data-theme="frati">
+          <div class="theme-name" data-i18n="theme_frati_name">Pentru soră sau frate</div>
+          <div class="theme-desc" data-i18n="theme_frati_desc">Un cântec despre apropiere, sprijin și amintiri comune</div>
+        </div>
 
-        <!-- Panou COMUN celor 4 ocazii de familie de mai sus — REPOZITIONAT dinamic (JS,
+        <!-- Panou COMUN celor 5 ocazii de familie de mai sus — REPOZITIONAT dinamic (JS,
              card.insertAdjacentElement('afterend', panel)) imediat dupa cardul activ dintre
-             ele, in loc de 4 blocuri de markup aproape identice. Alegerea e OBLIGATORIE si
+             ele, in loc de blocuri de markup aproape identice. Alegerea e OBLIGATORIE si
              validata STRICT server-side — NICIODATA dedusa din nume/voce. -->
         <div class="theme-subpanel" id="family-relation-panel" style="display:none;">
           <label id="family-relation-label" data-i18n="label_recipient_role">Pentru cine e cântecul?</label>
@@ -590,7 +598,9 @@
       theme_matusaunchi_desc: 'Un cântec plin de iubire, recunoștință și amintiri',
       theme_socri_name: 'Pentru soacră sau socru',
       theme_socri_desc: 'Un cântec plin de iubire, recunoștință și amintiri',
-      relation_grandmother: 'Bunică', relation_grandfather: 'Bunic', relation_mother: 'Mamă', relation_father: 'Tată', relation_aunt: 'Mătușă', relation_uncle: 'Unchi', relation_mother_in_law: 'Soacră', relation_father_in_law: 'Socru',
+      theme_frati_name: 'Pentru soră sau frate',
+      theme_frati_desc: 'Un cântec despre apropiere, sprijin și amintiri comune',
+      relation_grandmother: 'Bunică', relation_grandfather: 'Bunic', relation_mother: 'Mamă', relation_father: 'Tată', relation_aunt: 'Mătușă', relation_uncle: 'Unchi', relation_mother_in_law: 'Soacră', relation_father_in_law: 'Socru', relation_sister: 'Soră', relation_brother: 'Frate',
       relation_groom: 'Mire', relation_bride: 'Mireasă', relation_godson: 'Fin', relation_goddaughter: 'Fină', relation_godfather: 'Naș', relation_godmother: 'Nașă',
       relation_other: 'Altă persoană',
       nunta_both: 'Amândoi',
@@ -739,7 +749,9 @@
       theme_matusaunchi_desc: 'A song full of love, gratitude and memories',
       theme_socri_name: 'For a mother-in-law or father-in-law',
       theme_socri_desc: 'A song full of love, gratitude and memories',
-      relation_grandmother: 'Grandmother', relation_grandfather: 'Grandfather', relation_mother: 'Mother', relation_father: 'Father', relation_aunt: 'Aunt', relation_uncle: 'Uncle', relation_mother_in_law: 'Mother-in-law', relation_father_in_law: 'Father-in-law',
+      theme_frati_name: 'For a sister or brother',
+      theme_frati_desc: 'A song about closeness, support and shared memories',
+      relation_grandmother: 'Grandmother', relation_grandfather: 'Grandfather', relation_mother: 'Mother', relation_father: 'Father', relation_aunt: 'Aunt', relation_uncle: 'Uncle', relation_mother_in_law: 'Mother-in-law', relation_father_in_law: 'Father-in-law', relation_sister: 'Sister', relation_brother: 'Brother',
       relation_groom: 'Groom', relation_bride: 'Bride', relation_godson: 'Godson', relation_goddaughter: 'Goddaughter', relation_godfather: 'Godfather', relation_godmother: 'Godmother',
       relation_other: 'Someone else',
       nunta_both: 'Both',
@@ -888,7 +900,9 @@
       theme_matusaunchi_desc: 'Ein Lied voller Liebe, Dankbarkeit und Erinnerungen',
       theme_socri_name: 'Für Schwiegermutter oder Schwiegervater',
       theme_socri_desc: 'Ein Lied voller Liebe, Dankbarkeit und Erinnerungen',
-      relation_grandmother: 'Oma', relation_grandfather: 'Opa', relation_mother: 'Mama', relation_father: 'Papa', relation_aunt: 'Tante', relation_uncle: 'Onkel', relation_mother_in_law: 'Schwiegermutter', relation_father_in_law: 'Schwiegervater',
+      theme_frati_name: 'Für eine Schwester oder einen Bruder',
+      theme_frati_desc: 'Ein Lied über Nähe, Unterstützung und gemeinsame Erinnerungen',
+      relation_grandmother: 'Oma', relation_grandfather: 'Opa', relation_mother: 'Mama', relation_father: 'Papa', relation_aunt: 'Tante', relation_uncle: 'Onkel', relation_mother_in_law: 'Schwiegermutter', relation_father_in_law: 'Schwiegervater', relation_sister: 'Schwester', relation_brother: 'Bruder',
       relation_groom: 'Bräutigam', relation_bride: 'Braut', relation_godson: 'Patensohn', relation_goddaughter: 'Patentochter', relation_godfather: 'Pate', relation_godmother: 'Patin',
       relation_other: 'Eine andere Person',
       nunta_both: 'Beide',
@@ -1037,7 +1051,9 @@
       theme_matusaunchi_desc: 'Una canción llena de amor, gratitud y recuerdos',
       theme_socri_name: 'Para la suegra o el suegro',
       theme_socri_desc: 'Una canción llena de amor, gratitud y recuerdos',
-      relation_grandmother: 'Abuela', relation_grandfather: 'Abuelo', relation_mother: 'Mamá', relation_father: 'Papá', relation_aunt: 'Tía', relation_uncle: 'Tío', relation_mother_in_law: 'Suegra', relation_father_in_law: 'Suegro',
+      theme_frati_name: 'Para una hermana o un hermano',
+      theme_frati_desc: 'Una canción sobre cercanía, apoyo y recuerdos compartidos',
+      relation_grandmother: 'Abuela', relation_grandfather: 'Abuelo', relation_mother: 'Mamá', relation_father: 'Papá', relation_aunt: 'Tía', relation_uncle: 'Tío', relation_mother_in_law: 'Suegra', relation_father_in_law: 'Suegro', relation_sister: 'Hermana', relation_brother: 'Hermano',
       relation_groom: 'Novio', relation_bride: 'Novia', relation_godson: 'Ahijado', relation_goddaughter: 'Ahijada', relation_godfather: 'Padrino', relation_godmother: 'Madrina',
       relation_other: 'Otra persona',
       nunta_both: 'Ambos',
@@ -1186,7 +1202,9 @@
       theme_matusaunchi_desc: 'Una canzone piena di amore, gratitudine e ricordi',
       theme_socri_name: 'Per la suocera o il suocero',
       theme_socri_desc: 'Una canzone piena di amore, gratitudine e ricordi',
-      relation_grandmother: 'Nonna', relation_grandfather: 'Nonno', relation_mother: 'Mamma', relation_father: 'Papà', relation_aunt: 'Zia', relation_uncle: 'Zio', relation_mother_in_law: 'Suocera', relation_father_in_law: 'Suocero',
+      theme_frati_name: 'Per una sorella o un fratello',
+      theme_frati_desc: 'Una canzone su vicinanza, sostegno e ricordi condivisi',
+      relation_grandmother: 'Nonna', relation_grandfather: 'Nonno', relation_mother: 'Mamma', relation_father: 'Papà', relation_aunt: 'Zia', relation_uncle: 'Zio', relation_mother_in_law: 'Suocera', relation_father_in_law: 'Suocero', relation_sister: 'Sorella', relation_brother: 'Fratello',
       relation_groom: 'Sposo', relation_bride: 'Sposa', relation_godson: 'Figlioccio', relation_goddaughter: 'Figlioccia', relation_godfather: 'Padrino', relation_godmother: 'Madrina',
       relation_other: 'Un\'altra persona',
       nunta_both: 'Entrambi',
@@ -1335,7 +1353,9 @@
       theme_matusaunchi_desc: 'Une chanson pleine d\'amour, de gratitude et de souvenirs',
       theme_socri_name: 'Pour la belle-mère ou le beau-père',
       theme_socri_desc: 'Une chanson pleine d\'amour, de gratitude et de souvenirs',
-      relation_grandmother: 'Grand-mère', relation_grandfather: 'Grand-père', relation_mother: 'Maman', relation_father: 'Papa', relation_aunt: 'Tante', relation_uncle: 'Oncle', relation_mother_in_law: 'Belle-mère', relation_father_in_law: 'Beau-père',
+      theme_frati_name: 'Pour une sœur ou un frère',
+      theme_frati_desc: 'Une chanson sur la proximité, le soutien et les souvenirs partagés',
+      relation_grandmother: 'Grand-mère', relation_grandfather: 'Grand-père', relation_mother: 'Maman', relation_father: 'Papa', relation_aunt: 'Tante', relation_uncle: 'Oncle', relation_mother_in_law: 'Belle-mère', relation_father_in_law: 'Beau-père', relation_sister: 'Sœur', relation_brother: 'Frère',
       relation_groom: 'Marié', relation_bride: 'Mariée', relation_godson: 'Filleul', relation_goddaughter: 'Filleule', relation_godfather: 'Parrain', relation_godmother: 'Marraine',
       relation_other: 'Une autre personne',
       nunta_both: 'Les deux',
@@ -1484,7 +1504,9 @@
       theme_matusaunchi_desc: 'Песен, изпълнена с любов, благодарност и спомени',
       theme_socri_name: 'За свекърва/тъща или свекър/тъст',
       theme_socri_desc: 'Песен, изпълнена с любов, благодарност и спомени',
-      relation_grandmother: 'Баба', relation_grandfather: 'Дядо', relation_mother: 'Мама', relation_father: 'Татко', relation_aunt: 'Леля', relation_uncle: 'Чичо', relation_mother_in_law: 'Свекърва', relation_father_in_law: 'Тъст',
+      theme_frati_name: 'За сестра или брат',
+      theme_frati_desc: 'Песен за близост, подкрепа и общи спомени',
+      relation_grandmother: 'Баба', relation_grandfather: 'Дядо', relation_mother: 'Мама', relation_father: 'Татко', relation_aunt: 'Леля', relation_uncle: 'Чичо', relation_mother_in_law: 'Свекърва', relation_father_in_law: 'Тъст', relation_sister: 'Сестра', relation_brother: 'Брат',
       relation_groom: 'Младоженец', relation_bride: 'Младоженка', relation_godson: 'Кръщелник', relation_goddaughter: 'Кръщелница', relation_godfather: 'Кум', relation_godmother: 'Кума',
       relation_other: 'Друг човек',
       nunta_both: 'И двамата',
@@ -1633,7 +1655,9 @@
       theme_matusaunchi_desc: 'Sevgi, minnettarlık ve anılarla dolu bir şarkı',
       theme_socri_name: 'Kayınvalide veya kayınpeder için',
       theme_socri_desc: 'Sevgi, minnettarlık ve anılarla dolu bir şarkı',
-      relation_grandmother: 'Büyükanne', relation_grandfather: 'Büyükbaba', relation_mother: 'Anne', relation_father: 'Baba', relation_aunt: 'Teyze', relation_uncle: 'Amca', relation_mother_in_law: 'Kayınvalide', relation_father_in_law: 'Kayınpeder',
+      theme_frati_name: 'Kız kardeş veya erkek kardeş için',
+      theme_frati_desc: 'Yakınlık, destek ve ortak anılar hakkında bir şarkı',
+      relation_grandmother: 'Büyükanne', relation_grandfather: 'Büyükbaba', relation_mother: 'Anne', relation_father: 'Baba', relation_aunt: 'Teyze', relation_uncle: 'Amca', relation_mother_in_law: 'Kayınvalide', relation_father_in_law: 'Kayınpeder', relation_sister: 'Kız kardeş', relation_brother: 'Erkek kardeş',
       relation_groom: 'Damat', relation_bride: 'Gelin', relation_godson: 'Vaftiz oğlu', relation_goddaughter: 'Vaftiz kızı', relation_godfather: 'Vaftiz babası', relation_godmother: 'Vaftiz annesi',
       relation_other: 'Başka biri',
       nunta_both: 'İkisi de',
@@ -1923,8 +1947,14 @@
       // ocazie generica (dor, declaratie etc.), fara nicio validare suplimentara aici.
       if (FAMILY_OCCASIONS.includes(occasionVal)) {
         setFieldError('recipientRoleFamily', recipientRoleInput.value ? '' : t('val_recipient_role'));
-        setFieldError('senderRole', senderRoleInput.value ? '' : t('val_sender_role'));
-        if (!recipientRoleInput.value || !senderRoleInput.value) ok = false;
+        // CONTINUARE (hotfix 2026-08-09, "Soră/Frate"): senderRole e obligatoriu DOAR pentru
+        // rolurile care chiar au un selector "Tu ești: ..." (SENDER_ROLE_OPTIONS[rol] exista) —
+        // 'sister'/'brother' nu au niciun control de acest fel (cerinta explicita), deci nu e
+        // cerut niciodata pentru ele. Pentru toate celelalte roluri (care AU o intrare acolo),
+        // comportamentul ramane STRICT neschimbat.
+        const needsSenderRole = !!SENDER_ROLE_OPTIONS[recipientRoleInput.value];
+        setFieldError('senderRole', (!needsSenderRole || senderRoleInput.value) ? '' : t('val_sender_role'));
+        if (!recipientRoleInput.value || (needsSenderRole && !senderRoleInput.value)) ok = false;
         // CONTINUARE — personalizarea reala a versurilor (hotfix 2026-08-08): "Amândoi" cere
         // exact doua nume complete, acelasi tipar ca la Nuntă/Botez mai jos.
         if (recipientModeInput.value === 'both') {
@@ -1981,16 +2011,22 @@
   // oglindesc EXACT enum-urile validate strict server-side (vezi POST /api/orders, server.js) —
   // niciodata deduse din nume/voce, niciodata trimise fara sa fi fost alese explicit de client.
   // ==========================================================================================
-  const FAMILY_OCCASIONS = ['bunici', 'parinti', 'matusa-unchi', 'socri'];
+  // CONTINUARE (hotfix 2026-08-09, "Soră/Frate"): 'frati' adaugat DOAR ca sa foloseasca acelasi
+  // panou generic family-relation-panel + validarea generica de mai jos — spre deosebire de
+  // celelalte 4, NU are niciun senderRole ("Tu ești: ...") si NU are niciodata "Amândoi" (vezi
+  // absenta lui din SENDER_ROLE_OPTIONS si FAMILY_BOTH_ROLES mai jos).
+  const FAMILY_OCCASIONS = ['bunici', 'parinti', 'matusa-unchi', 'socri', 'frati'];
   // CONTINUARE — personalizarea reala a versurilor (hotfix 2026-08-08): "Amândoi" adaugat pentru
   // parinti/matusa-unchi/socri. CONTINUARE (hotfix 2026-08-09): "Amândoi" adaugat acum si pentru
   // bunici — reutilizeaza EXACT acelasi mecanism recipientMode='both'+recipientNames ca la
-  // Nuntă/Botez.
+  // Nuntă/Botez. CONTINUARE (hotfix 2026-08-09, "Soră/Frate"): 'frati' are DOAR 2 optiuni, fara
+  // "Amândoi" — cerinta explicita.
   const RECIPIENT_ROLE_OPTIONS = {
     bunici: ['grandmother', 'grandfather', 'grandparents'],
     parinti: ['mother', 'father', 'parents'],
     'matusa-unchi': ['aunt', 'uncle', 'aunt_uncle'],
-    socri: ['mother_in_law', 'father_in_law', 'parents_in_law']
+    socri: ['mother_in_law', 'father_in_law', 'parents_in_law'],
+    frati: ['sister', 'brother']
   };
   const FAMILY_BOTH_ROLES = ['grandparents', 'parents', 'aunt_uncle', 'parents_in_law'];
   // Etichetele campurilor de nume pentru "Amândoi" — ordinea (feminin, masculin) e aceeasi

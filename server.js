@@ -126,7 +126,7 @@ const PLAN_PRICES = { standard: 15, premium: 25, video: 35 };
 // un singur gen. Premium/Video = doua melodii COMPLETE, in doua genuri DIFERITE, alese
 // explicit de client (nu "prima varianta + a doua varianta a ACELUIASI gen").
 const PLAN_VARIANT_COUNT = { standard: 1, premium: 2, video: 2 };
-const ALLOWED_OCCASIONS = ['dor', 'onomastica', 'aniversare', 'declaratie', 'nunta', 'pierdere', 'pentru-mine', 'altceva', 'bunici', 'parinti', 'matusa-unchi', 'socri'];
+const ALLOWED_OCCASIONS = ['dor', 'onomastica', 'aniversare', 'declaratie', 'nunta', 'pierdere', 'pentru-mine', 'altceva', 'bunici', 'parinti', 'matusa-unchi', 'socri', 'frati'];
 const ALLOWED_GENRES = ['emotional', 'suflet', 'pop', 'acustic', 'petrecere', 'balada', 'manele', 'copii', 'populara', 'rock', 'colind', 'modern', 'hiphop', 'manele_suflet', 'motivational'];
 const ALLOWED_LANGS = ['ro', 'en', 'de', 'es', 'it', 'fr', 'bg', 'tr'];
 
@@ -136,17 +136,25 @@ const ALLOWED_LANGS = ['ro', 'en', 'de', 'es', 'it', 'fr', 'bg', 'tr'];
 // persoanei care ofera melodia (senderRole), pentru formulari corecte precum "din partea
 // nepotului Andrei". 'aniversare' foloseste ACELASI set de relatii de familie, dar OPTIONAL
 // (clientul poate alege in continuare "Altă persoană", pastrand comportamentul generic actual).
-const FAMILY_OCCASIONS = ['bunici', 'parinti', 'matusa-unchi', 'socri'];
+// CONTINUARE (hotfix 2026-08-09, "Soră/Frate"): 'frati' adaugat aici DOAR ca sa foloseasca
+// aceeasi ramura de adresare relatie+nume din relationClause() (mai jos) — spre deosebire de
+// celelalte 4, NU are niciun concept de senderRole (vezi FAMILY_RECIPIENT_TO_SENDER_ROLES, care
+// NU are intrari pentru sister/brother — POST /api/orders trateaza absenta lor ca "acest rol nu
+// cere senderRole", fara sa modifice validarea pentru rolurile existente).
+const FAMILY_OCCASIONS = ['bunici', 'parinti', 'matusa-unchi', 'socri', 'frati'];
 
 // recipientRole permise per ocazie de familie. CONTINUARE — personalizarea reala a versurilor
 // (hotfix 2026-08-08): "Amândoi" adaugat pentru parinti/matusa-unchi/socri. CONTINUARE (hotfix
 // 2026-08-09): "Amândoi" adaugat acum si pentru bunici — reutilizeaza EXACT acelasi mecanism
 // recipientMode='both'+recipientNames deja construit pentru Nuntă/Botez, niciun sistem paralel.
+// CONTINUARE (hotfix 2026-08-09, "Soră/Frate"): 'frati' are DOAR 2 optiuni, niciodata "Amândoi"
+// (cerinta explicita) — de aceea 'sister'/'brother' NU apar in FAMILY_BOTH_ROLES mai jos.
 const FAMILY_OCCASION_RECIPIENT_ROLES = {
   bunici: ['grandmother', 'grandfather', 'grandparents'],
   parinti: ['mother', 'father', 'parents'],
   'matusa-unchi': ['aunt', 'uncle', 'aunt_uncle'],
-  socri: ['mother_in_law', 'father_in_law', 'parents_in_law']
+  socri: ['mother_in_law', 'father_in_law', 'parents_in_law'],
+  frati: ['sister', 'brother']
 };
 // Valorile de recipientRole care reprezinta "Amândoi" pentru ocaziile de familie — analog cu
 // WEDDING_RECIPIENT_ROLES_BOTH de mai jos.
@@ -1363,13 +1371,22 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
       if (!allowedRecipientRoles.includes(recipientRole)) {
         return res.status(400).json({ error: missingFieldMessage('recipientRole', safeLang) });
       }
+      // CONTINUARE (hotfix 2026-08-09, "Soră/Frate"): FAMILY_RECIPIENT_TO_SENDER_ROLES nu are
+      // nicio intrare pentru 'sister'/'brother' — acest rol nu cere niciun senderRole (nu exista
+      // niciun control "Tu ești: ..." in UI pentru el, cerinta explicita). Pentru toate celelalte
+      // roluri (care AU o intrare in acest tabel), comportamentul ramane STRICT neschimbat:
+      // senderRole ramane obligatoriu si validat exact ca inainte.
       const allowedSenderRoles = FAMILY_RECIPIENT_TO_SENDER_ROLES[recipientRole];
-      if (!allowedSenderRoles.includes(senderRole)) {
-        return res.status(400).json({ error: missingFieldMessage('senderRole', safeLang) });
+      if (allowedSenderRoles) {
+        if (!allowedSenderRoles.includes(senderRole)) {
+          return res.status(400).json({ error: missingFieldMessage('senderRole', safeLang) });
+        }
+        safeSenderRole = senderRole;
       }
       // CONTINUARE — personalizarea reala a versurilor (hotfix 2026-08-08): "Amândoi" pentru
       // parinti/matusa-unchi/socri — ACELASI mecanism ca "Amândoi" de la Nuntă/Botez mai jos
-      // (recipientMode='both' + doua nume complete, distincte, validate identic).
+      // (recipientMode='both' + doua nume complete, distincte, validate identic). 'frati' nu
+      // apare niciodata in FAMILY_BOTH_ROLES, deci isFamilyBothRole e mereu false pentru el.
       const isFamilyBothRole = FAMILY_BOTH_ROLES.includes(recipientRole);
       if (isFamilyBothRole) {
         if (recipientMode !== 'both') {
@@ -1386,7 +1403,6 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
         safeRecipientMode = 'single';
       }
       safeRecipientRole = recipientRole;
-      safeSenderRole = senderRole;
       // grandparent_type (campul original, ingust) reprezinta DOAR 'grandmother'/'grandfather' —
       // ramane null pentru 'grandparents' ("Amândoi", hotfix 2026-08-09), care nu are echivalent
       // in acel camp vechi; sursa de adevar completa ramane recipientRole/recipientNames.
@@ -4570,7 +4586,9 @@ const OCCASION_LABELS = {
   bunici: 'a tribute to a grandparent',
   parinti: 'a tribute to a parent',
   'matusa-unchi': 'a tribute to an aunt or uncle',
-  socri: 'a tribute to an in-law'
+  socri: 'a tribute to an in-law',
+  // CONTINUARE (hotfix 2026-08-09, "Soră/Frate").
+  frati: 'a tribute to a sibling'
 };
 
 // MODIFICARE STRICTĂ — pagina de ocazie (hotfix 2026-08-08): substantivele de relatie (concept
@@ -4587,7 +4605,13 @@ const RELATION_NOUNS = {
   mother_in_law: 'mother-in-law', father_in_law: 'father-in-law', parents_in_law: 'both parents-in-law',
   groom: 'groom', bride: 'bride', couple: 'the couple (bride and groom)',
   godson: 'godson', goddaughter: 'goddaughter', godchildren: 'the godchildren',
-  godfather: 'godfather', godmother: 'godmother', godparents: 'the godparents'
+  godfather: 'godfather', godmother: 'godmother', godparents: 'the godparents',
+  // CONTINUARE (hotfix 2026-08-09, "Soră/Frate"): posesivul "my" e inclus direct in conceptul
+  // englezesc (spre deosebire de bunica/mama/matusa/soacra, care nu il au) — cerinta explicita
+  // pentru aceasta relatie cere formulari precum "my sister Maria"/"my brother Vasile" in orice
+  // limba, nu doar "sister Maria". Suno traduce apoi natural "my sister"/"my brother" in limba
+  // versurilor (ex. "ma sœur" in franceza, "meine Schwester" in germana), la fel ca restul.
+  sister: 'my sister', brother: 'my brother'
 };
 // CONTINUARE — relatie + nume impreuna, nu doar prenume (hotfix 2026-08-09): perechile de
 // substantive pentru "Amândoi" la cele 4 categorii de familie — cate un substantiv distinct
@@ -4605,8 +4629,12 @@ const FAMILY_BOTH_PAIR_KEYS = {
 // mecanism folosit deja pentru toate celelalte ocazii/genuri) — DOAR forma compusa "mama-soacră"/
 // "tata-socru" nu ar rezulta previzibil doar din conceptul englezesc "mother-in-law", de aceea
 // e singura hintata explicit, ca sa ramana cat mai scurt bugetul suplimentar de prompt.
+// CONTINUARE (hotfix 2026-08-09, "Soră/Frate"): "sora mea"/"fratele meu" sunt forma EXACTA
+// ceruta explicit — hintate aici, la fel ca mama-soacră/tata-socru mai sus, ca sa nu depinda
+// de cat de fiabil traduce Suno posesivul "my" din RELATION_NOUNS direct in romana.
 const RO_RELATION_NAME_FORMS = {
-  mother_in_law: 'mama-soacră', father_in_law: 'tata-socru'
+  mother_in_law: 'mama-soacră', father_in_law: 'tata-socru',
+  sister: 'sora mea', brother: 'fratele meu'
 };
 const SENDER_RELATION_NOUNS = {
   daughter: 'daughter', son: 'son',
@@ -4686,6 +4714,14 @@ const OCCASION_INSTRUCTIONS = {
   socri: {
     full: 'Warm, respectful family tribute — full of gratitude and appreciation, never generic.',
     short: 'Warm family tribute, gratitude and appreciation.'
+  },
+  // CONTINUARE (hotfix 2026-08-09, "Soră/Frate"): o singura instructiune de atmosfera, comuna
+  // pentru Soră SI Frate — combina explicit apropierea/iubirea familiala (ceruta pentru Soră) cu
+  // increderea/sprijinul (cerute pentru Frate), ca sa acopere natural ambele formulari cerute.
+  // Adresarea EXACTA ("sora mea"/"fratele meu" + nume) e adaugata separat de relationClause().
+  frati: {
+    full: 'The idea, mood and chorus must center on the bond between siblings — closeness, family love, trust, mutual support, and cherished shared memories (childhood or otherwise). This must feel distinctly like a sibling relationship, never a romantic or a simple friendship song.',
+    short: 'Sibling bond — closeness, trust, support, shared memories; never romantic.'
   }
 };
 // CONTINUARE — personalizarea reala a versurilor (hotfix 2026-08-08): "Nuntă" si "Botez" sunt

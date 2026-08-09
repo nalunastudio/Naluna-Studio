@@ -102,11 +102,11 @@ test('comanda.html: cheile de traducere name_grandmother_label / name_grandfathe
 // TEST 3: ambele campuri sunt obligatorii la "Amândoi" pentru bunici.
 // ---------------------------------------------------------------------------------------------
 test('comanda.html: validateStep(1) cere ambele nume cand recipientMode==="both" pentru orice ocazie de familie (deci si bunici)', () => {
-  assert.match(comanda, /if \(FAMILY_OCCASIONS\.includes\(occasionVal\)\) \{[\s\S]{0,600}if \(recipientModeInput\.value === 'both'\) \{[\s\S]{0,400}if \(!familyName1 \|\| !familyName2\) ok = false;/);
+  assert.match(comanda, /if \(FAMILY_OCCASIONS\.includes\(occasionVal\)\) \{[\s\S]{0,1200}if \(recipientModeInput\.value === 'both'\) \{[\s\S]{0,400}if \(!familyName1 \|\| !familyName2\) ok = false;/);
 });
 
 test('server.js: POST /api/orders cere recipientNames.name1 SI name2 pentru orice ocazie de familie cu recipientMode==="both" (grandparents inclus)', () => {
-  assert.match(server, /if \(FAMILY_OCCASIONS\.includes\(occasion\)\) \{[\s\S]{0,1500}if \(recipientMode !== 'both'\) \{/);
+  assert.match(server, /if \(FAMILY_OCCASIONS\.includes\(occasion\)\) \{[\s\S]{0,2200}if \(recipientMode !== 'both'\) \{/);
   assert.match(server, /const isFamilyBothRole = FAMILY_BOTH_ROLES\.includes\(recipientRole\);/);
   assert.match(server, /if \(!isValidString\(name1, 1, 60\) \|\| !isValidString\(name2, 1, 60\)\) \{/);
 });

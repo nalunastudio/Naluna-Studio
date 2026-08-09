@@ -103,11 +103,16 @@ test('comanda.html: handler-ul generic de ocazii exclude .theme-subcard (evita b
   );
 });
 
+// NOTA (CONTINUARE, hotfix 2026-08-09, "Soră/Frate"): senderRole a devenit CONDITIONAL (necesar
+// doar cand SENDER_ROLE_OPTIONS[rol] exista) ca sa permita 'sister'/'brother' (fara niciun
+// control "Tu ești: ..."), dar comportamentul pentru bunici (care ARE acel control) e neschimbat
+// — recipientRole ramane mereu obligatoriu, senderRole ramane obligatoriu pentru bunici.
 test('comanda.html: validateStep(1) blocheaza continuarea pana la alegerea bunicii/bunicului (acum parte din validarea generalizata FAMILY_OCCASIONS)', () => {
   const html = read('public/comanda.html');
   assert.ok(html.includes('if (FAMILY_OCCASIONS.includes(occasionVal)) {'));
   assert.ok(html.includes("setFieldError('recipientRoleFamily', recipientRoleInput.value ? '' : t('val_recipient_role'));"));
-  assert.ok(html.includes("if (!recipientRoleInput.value || !senderRoleInput.value) ok = false;"));
+  assert.ok(html.includes('const needsSenderRole = !!SENDER_ROLE_OPTIONS[recipientRoleInput.value];'));
+  assert.ok(html.includes("if (!recipientRoleInput.value || (needsSenderRole && !senderRoleInput.value)) ok = false;"));
 });
 
 // NOTA (MODIFICARE STRICTĂ — pagina de ocazie, hotfix 2026-08-08): campul ingust

@@ -195,8 +195,10 @@ test('melodia-mea.html: mecanismele Standard (plata directa, meniu pliabil, aleg
   assert.ok(html.includes('function updateStandardEditMenuVisibility('));
 });
 
+// NOTA (CONTINUARE, hotfix 2026-08-09, "Soră/Frate"): 'frati' a fost adaugat ca ocazie noua —
+// nicio ocazie EXISTENTA nu a fost eliminata sau redenumita, doar extinsa lista cu una noua.
 test('server.js: PLAN_VARIANT_COUNT si ALLOWED_OCCASIONS raman neschimbate (nicio ocazie eliminata/redenumita la nivel de valoare interna)', () => {
   const server = read('server.js');
   assert.match(server, /PLAN_VARIANT_COUNT\s*=\s*\{\s*standard:\s*1,\s*premium:\s*2,\s*video:\s*2\s*\}/);
-  assert.ok(server.includes("const ALLOWED_OCCASIONS = ['dor', 'onomastica', 'aniversare', 'declaratie', 'nunta', 'pierdere', 'pentru-mine', 'altceva', 'bunici', 'parinti', 'matusa-unchi', 'socri'];"), 'occasion="nunta" ramane valoarea interna neschimbata, doar eticheta afisata s-a schimbat');
+  assert.ok(server.includes("const ALLOWED_OCCASIONS = ['dor', 'onomastica', 'aniversare', 'declaratie', 'nunta', 'pierdere', 'pentru-mine', 'altceva', 'bunici', 'parinti', 'matusa-unchi', 'socri', 'frati'];"), 'occasion="nunta" ramane valoarea interna neschimbata, doar eticheta afisata s-a schimbat; "frati" e o adaugare noua, nu o redenumire');
 });

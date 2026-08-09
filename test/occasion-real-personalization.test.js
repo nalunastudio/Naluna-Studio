@@ -201,7 +201,7 @@ test('server.js: FAMILY_BOTH_ROLES contine grandparents/parents/aunt_uncle/paren
 test('comanda.html: validateStep(1) cere ambele nume la "Amândoi" pentru ocaziile de familie', () => {
   const html = read('public/comanda.html');
   const idx = html.indexOf('if (FAMILY_OCCASIONS.includes(occasionVal)) {');
-  const slice = html.slice(idx, idx + 900);
+  const slice = html.slice(idx, idx + 1600);
   assert.ok(slice.includes("if (recipientModeInput.value === 'both') {"));
   assert.ok(slice.includes('const familyName1 = name1Input.value.trim();'));
   assert.ok(slice.includes('const familyName2 = name2Input.value.trim();'));
