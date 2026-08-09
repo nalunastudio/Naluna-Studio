@@ -170,8 +170,20 @@ test('melodia-mea.html: versurile sunt normalizate INAPOI la etichetele standard
 // ---------------------------------------------------------------------------------------------
 test('melodia-mea.html: pagina de comparare arata TOATE variantele reale ale comenzii (order.variants.forEach), fara limita fixa — pentru editarea secventiala noua, mereu exact 4', () => {
   const idx = melodia.indexOf('function renderPremiumCompareView(order) {');
-  const body = melodia.slice(idx, idx + 1000);
+  const body = melodia.slice(idx, idx + 2000);
   assert.ok(body.includes('variants.forEach(v => {'));
+});
+
+// REGRESIE CONFIRMATA LA TESTAREA LIVE PE STAGING (hotfix, runda 4): order.variants pastreaza
+// STRICT ordinea de creare (2 initiale, apoi cele editate ADAUGATE la final) — fara sortare
+// explicita, cardurile aparea intercalate (song1-init, song2-init, song1-editat, song2-editat)
+// in loc de ordinea EXACTA ceruta, grupata pe melodie.
+test('melodia-mea.html: cardurile de comparare sunt SORTATE explicit dupa songSlot, apoi initiala-inaintea-editatei — ordinea EXACTA ceruta (melodia 1 inițială, melodia 1 editată, melodia 2 inițială, melodia 2 editată)', () => {
+  const idx = melodia.indexOf('function renderPremiumCompareView(order) {');
+  const body = melodia.slice(idx, idx + 1000);
+  assert.ok(body.includes('.sort((a, b) => {'));
+  assert.ok(body.includes('if (slotA !== slotB) return slotA - slotB;'));
+  assert.ok(body.includes('return Number(!!a.isEditedAlternative) - Number(!!b.isEditedAlternative);'));
 });
 
 test('melodia-mea.html: fiecare card de comparare arata denumirea versiunii, genul, playerul real, versurile SI controlul de selectare — toate cinci, cerinta explicita', () => {

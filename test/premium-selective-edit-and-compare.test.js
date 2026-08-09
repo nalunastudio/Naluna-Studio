@@ -196,8 +196,8 @@ test('server.js: POST /select (premium, {variantId, variantId2}) valideaza ambel
 
 test('melodia-mea.html: pagina de comparare arata TOATE variantele reale ale comenzii (order.variants), niciodata un numar fabricat', () => {
   const idx = melodia.indexOf('function renderPremiumCompareView(order) {');
-  const body = melodia.slice(idx, idx + 1500);
-  assert.ok(body.includes('const variants = order.variants || [];'));
+  const body = melodia.slice(idx, idx + 2000);
+  assert.ok(body.includes('order.variants || []'));
   assert.ok(body.includes('variants.forEach(v => {'));
 });
 
@@ -217,7 +217,7 @@ test('melodia-mea.html: butonul de plata pe pagina de comparare ramane dezactiva
 
 test('melodia-mea.html: fiecare card de pe pagina de comparare arata clar melodia (1/2), versiunea (inițială/editată), genul si persoana destinatara', () => {
   const idx = melodia.indexOf('function renderPremiumCompareView(order) {');
-  const body = melodia.slice(idx, idx + 2000);
+  const body = melodia.slice(idx, idx + 2600);
   assert.ok(body.includes('v.songSlot === 2 ? t.premium_song2_label : t.premium_song1_label'));
   assert.ok(body.includes('v.isEditedAlternative ? t.variant_edited_label : t.variant_original_label'));
   assert.ok(body.includes('genreTag'));
@@ -233,7 +233,7 @@ test('server.js: GET /api/orders/:orderId expune selectedVariantId2 (necesar ca 
 
 test('melodia-mea.html: pagina de comparare initializeaza selectia din order.selectedVariantId\\/2 O SINGURA DATA per incarcare — nu suprascrie alegerile locale ale clientului la fiecare re-render', () => {
   const idx = melodia.indexOf('function renderPremiumCompareView(order) {');
-  const body = melodia.slice(idx, idx + 800);
+  const body = melodia.slice(idx, idx + 1300);
   assert.ok(body.includes('if (!premiumCompareInitialized) {'));
 });
 

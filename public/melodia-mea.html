@@ -3186,7 +3186,16 @@
   }
 
   function renderPremiumCompareView(order) {
-    const variants = order.variants || [];
+    // MODIFICARE STRICTĂ — pagina finala de comparare (hotfix, runda 4): ordinea EXACTA ceruta —
+    // "Prima melodie — inițială", "Prima melodie — editată", "A doua melodie — inițială", "A
+    // doua melodie — editată" — grupate pe melodie, NU in ordinea bruta din order.variants
+    // (unde variantele editate sunt mereu ADAUGATE la final, deci ar aparea intercalate:
+    // song1-orig, song2-orig, song1-editat, song2-editat, gasit direct la testarea live).
+    const variants = [...(order.variants || [])].sort((a, b) => {
+      const slotA = a.songSlot || 1, slotB = b.songSlot || 1;
+      if (slotA !== slotB) return slotA - slotB;
+      return Number(!!a.isEditedAlternative) - Number(!!b.isEditedAlternative);
+    });
     document.getElementById('premium-compare-title').textContent = t.premium_compare_title;
     document.getElementById('premium-compare-subtitle').textContent = t.premium_compare_subtitle;
 
