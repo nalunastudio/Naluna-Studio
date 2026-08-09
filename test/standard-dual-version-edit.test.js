@@ -319,9 +319,14 @@ test('traduceri: cheile noi ale imbunatatirii UI exista in toate cele 8 limbi', 
 // duplicate; emailul/descarcarea livreaza exclusiv versiunea selectata.
 // ==========================================================================================
 
+// MODIFICARE STRICTĂ — fluxul Premium: pagina finala de comparare (hotfix 2026-08-10 runda 3):
+// amprenta versiunii ramane legata direct de selectedVariantId pentru orice pachet — pentru
+// Premium, INCLUDE acum si a doua selectie (selectedVariantId2), fara sa schimbe formula
+// originala pentru Standard/Video (ramura else, byte-identica).
 test('POST /checkout foloseste exact order.selectedVariantId (amprenta sesiunii Stripe + metadata)', () => {
   const server = read('server.js');
-  assert.ok(server.includes('const versionFingerprint = `${order.selectedVariantId}-${order.mediaRevision}`;'), 'amprenta versiunii aprobate trebuie legata direct de selectedVariantId');
+  assert.ok(server.includes('? `${order.selectedVariantId}-${order.selectedVariantId2}-${order.mediaRevision}`'), 'amprenta Premium trebuie sa includa si a doua selectie');
+  assert.ok(server.includes(': `${order.selectedVariantId}-${order.mediaRevision}`;'), 'amprenta Standard/Video trebuie sa ramana legata direct de selectedVariantId, neschimbata');
   assert.ok(server.includes('selectedVariantId: order.selectedVariantId,'), 'metadata sesiunii Stripe trebuie sa contina selectedVariantId, verificabil la webhook');
   assert.ok(server.includes('checkoutVariantId: order.selectedVariantId,'), 'checkoutVariantId salvat in DB trebuie sa fie exact varianta selectata, folosit pentru validare la webhook');
 });

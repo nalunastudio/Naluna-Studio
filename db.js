@@ -266,6 +266,30 @@ async function initDb() {
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS checkout_variant_id TEXT;`);
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS checkout_media_revision INTEGER;`);
 
+  // MODIFICARE STRICTĂ — fluxul Premium: editare selectiva + comparare finala (hotfix
+  // 2026-08-10 runda 3). Premium poate acum edita o melodie, cealalta, sau ambele intr-o
+  // SINGURA runda gratuita de editare — versiunile editate se ADAUGA alaturi de cele
+  // initiale (niciodata nu le inlocuiesc), la fel ca la Standard (regenerate_keep_original),
+  // dar pentru 1 SAU 2 melodii simultan. Clientul alege apoi explicit EXACT doua variante
+  // (din cele 2-4 disponibile) inainte de plata — de aceea avem nevoie de un AL DOILEA slot
+  // de selectie/amprenta Stripe, in oglinda cu cele deja existente pentru primul.
+  //
+  // regenerate_edit_variant_ids: JSONB, array cu 1-2 ID-uri de variante aflate in curs de
+  // editare (setat DOAR pentru plan='premium', prin noul corp {songs:[...]} al POST
+  // /regenerate) — semnaleaza reluarilor asincrone (callback SunoAPI, reluare polling dupa
+  // restart) sa ADAUGE rezultatul ca alternativa noua, NICIODATA sa inlocuiasca varianta
+  // sursa (vezi finalizeVariantsIfNeeded, options.editVariantIds). Absent/null pentru orice
+  // alta regenerare (Standard/Video/Premium vechi) — comportamentul lor ramane neschimbat.
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS regenerate_edit_variant_ids JSONB;`);
+
+  // selected_variant_id_2 / checkout_variant_id_2: oglinda EXACTA a selected_variant_id /
+  // checkout_variant_id de mai sus, pentru A DOUA melodie aleasa la finalul comparatiei
+  // Premium — NULL pentru orice alt pachet (Standard/Video folosesc STRICT campurile
+  // singulare existente, neschimbate). Ambele trebuie completate (POST /select extins,
+  // doar pentru premium) inainte ca POST /checkout sa accepte plata — vezi validarea acolo.
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS selected_variant_id_2 TEXT;`);
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS checkout_variant_id_2 TEXT;`);
+
   // processed_stripe_events: dedup persistent, la nivel de eveniment Stripe individual
   // (event.id, ex. "evt_1Abc..."), NU doar la nivel de comanda. Garda existenta
   // (`status !== 'ready'` in handler-ul webhook-ului) ramane si ea — protejeaza corect
@@ -458,7 +482,12 @@ function rowToOrder(row) {
     videoRenderMediaRevision: row.video_render_media_revision !== null && row.video_render_media_revision !== undefined ? Number(row.video_render_media_revision) : null,
     checkoutSessionId: row.checkout_session_id || null,
     checkoutVariantId: row.checkout_variant_id || null,
-    checkoutMediaRevision: row.checkout_media_revision !== null && row.checkout_media_revision !== undefined ? Number(row.checkout_media_revision) : null
+    checkoutMediaRevision: row.checkout_media_revision !== null && row.checkout_media_revision !== undefined ? Number(row.checkout_media_revision) : null,
+    // MODIFICARE STRICTĂ — fluxul Premium: editare selectiva + comparare finala (hotfix
+    // 2026-08-10 runda 3).
+    regenerateEditVariantIds: row.regenerate_edit_variant_ids || null,
+    selectedVariantId2: row.selected_variant_id_2 || null,
+    checkoutVariantId2: row.checkout_variant_id_2 || null
   };
 }
 
@@ -856,7 +885,7 @@ async function recordPaidOrderAtomically(eventId, orderId, patch) {
 
     const keys = Object.keys(patch).filter(k => COLUMN_MAP[k]);
     const setClauses = keys.map((k, i) => `${COLUMN_MAP[k]} = $${i + 2}`);
-    const values = keys.map(k => ((k === 'variants' || k === 'uploadedMedia') ? JSON.stringify(patch[k]) : patch[k]));
+    const values = keys.map(k => ((k === 'variants' || k === 'uploadedMedia' || k === 'regenerateEditVariantIds') ? JSON.stringify(patch[k]) : patch[k]));
     const result = await client.query(
       `UPDATE orders SET ${setClauses.join(', ')} WHERE id = $1 RETURNING *`,
       [orderId, ...values]
@@ -1026,7 +1055,12 @@ const COLUMN_MAP = {
   videoStaleReason: 'video_stale_reason',
   checkoutSessionId: 'checkout_session_id',
   checkoutVariantId: 'checkout_variant_id',
-  checkoutMediaRevision: 'checkout_media_revision'
+  checkoutMediaRevision: 'checkout_media_revision',
+  // MODIFICARE STRICTĂ — fluxul Premium: editare selectiva + comparare finala (hotfix
+  // 2026-08-10 runda 3).
+  regenerateEditVariantIds: 'regenerate_edit_variant_ids',
+  selectedVariantId2: 'selected_variant_id_2',
+  checkoutVariantId2: 'checkout_variant_id_2'
 };
 
 async function updateOrder(id, patch) {

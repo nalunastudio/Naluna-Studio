@@ -189,6 +189,28 @@
   }
   .variant-audio-error{ font-size:13px; color:var(--gold-deep); text-decoration:underline; cursor:pointer; margin:4px 0; }
 
+  /* MODIFICARE STRICTĂ — fluxul Premium: editarea selectiva + pagina de comparare (hotfix
+     2026-08-10 runda 3). Reutilizeaza EXACT aceleasi valori rgba(168,131,75,...) ca restul
+     paginii (.variant-card.selected, .voice-card.active mai sus) — nicio culoare noua. */
+  .premium-song-edit-box{
+    border:1px solid var(--line); border-radius:16px; padding:18px 20px; margin-bottom:16px;
+    cursor:pointer; transition:border-color .2s ease, background-color .2s ease;
+  }
+  .premium-song-edit-box.checked{ border-color:var(--gold); background:rgba(168,131,75,.07); }
+  .premium-song-edit-check-row{ display:flex; align-items:center; gap:10px; font-weight:600; font-size:15px; }
+  .premium-song-edit-fields{ margin-top:14px; }
+  .premium-compare-card{
+    border:1px solid var(--line); border-radius:16px; padding:18px 20px; margin-bottom:16px;
+    cursor:pointer; transition:border-color .2s ease, background-color .2s ease; position:relative;
+  }
+  .premium-compare-card.selected{ border:2px solid var(--gold-deep); background:rgba(168,131,75,.1); }
+  .premium-compare-check{
+    display:none; position:absolute; top:14px; right:16px; width:22px; height:22px;
+    border-radius:50%; background:var(--gold-deep); color:#fff; font-size:13px; font-weight:700;
+    align-items:center; justify-content:center; line-height:1;
+  }
+  .premium-compare-card.selected .premium-compare-check{ display:flex; }
+
   .voice-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:4px; }
   .voice-card{
     border:1px solid var(--line); border-radius:12px; padding:15px 17px; cursor:pointer;
@@ -389,6 +411,84 @@
         </div>
 
         <div id="variants-wrap"></div>
+
+        <!-- MODIFICARE STRICTĂ — fluxul Premium: pagina rezultatului initial, editarea selectiva
+             si pagina finala de comparare (hotfix 2026-08-10 runda 3). Trei ecrane SEPARATE,
+             DOAR pentru plan='premium' — vezi renderPremiumFlow(). Standard/Video nu ating
+             NICIODATA aceste containere (raman goale/ascunse), continua sa foloseasca EXACT
+             fluxul original de mai jos (#variants-wrap, #edit-menu-fields, #confirm-row etc). -->
+        <div id="premium-result-view" style="display:none;">
+          <div id="premium-result-players"></div>
+          <div style="display:flex; flex-direction:column; gap:12px; margin-top:8px;">
+            <button type="button" class="btn-cta-orange" id="premium-edit-open-btn" style="max-width:none;"></button>
+            <div id="premium-result-checkout-slot"></div>
+          </div>
+          <div id="premium-result-status-msg" style="font-size:13px; margin-top:10px; text-align:center;"></div>
+        </div>
+
+        <div id="premium-edit-view" style="display:none;">
+          <h2 id="premium-edit-title" style="font-family:'Fraunces',serif; font-weight:400; font-size:19px; margin:0 0 6px;"></h2>
+          <p id="premium-edit-subtitle" style="color:var(--text-secondary); font-size:14px; margin:0 0 18px;"></p>
+
+          <div class="premium-song-edit-box" id="premium-edit-song1-box">
+            <label class="premium-song-edit-check-row">
+              <input type="checkbox" id="premium-edit-song1-check">
+              <span id="premium-edit-song1-check-label"></span>
+            </label>
+            <div class="premium-song-edit-fields" id="premium-edit-song1-fields" style="display:none;">
+              <div class="field edit-zone">
+                <label id="premium-edit-song1-genre-label" class="edit-zone-title"></label>
+                <p class="edit-zone-explain" id="premium-edit-song1-genre-explain"></p>
+                <select id="premium-edit-song1-genre"></select>
+              </div>
+              <div class="field edit-zone">
+                <div class="edit-zone-title-row">
+                  <label id="premium-edit-song1-feedback-label" class="edit-zone-title"></label>
+                  <span class="edit-zone-optional" id="premium-edit-song1-feedback-optional"></span>
+                </div>
+                <p class="edit-zone-explain" id="premium-edit-song1-feedback-explain"></p>
+                <textarea id="premium-edit-song1-feedback"></textarea>
+              </div>
+            </div>
+          </div>
+
+          <div class="premium-song-edit-box" id="premium-edit-song2-box">
+            <label class="premium-song-edit-check-row">
+              <input type="checkbox" id="premium-edit-song2-check">
+              <span id="premium-edit-song2-check-label"></span>
+            </label>
+            <div class="premium-song-edit-fields" id="premium-edit-song2-fields" style="display:none;">
+              <div class="field edit-zone">
+                <label id="premium-edit-song2-genre-label" class="edit-zone-title"></label>
+                <p class="edit-zone-explain" id="premium-edit-song2-genre-explain"></p>
+                <select id="premium-edit-song2-genre"></select>
+              </div>
+              <div class="field edit-zone">
+                <div class="edit-zone-title-row">
+                  <label id="premium-edit-song2-feedback-label" class="edit-zone-title"></label>
+                  <span class="edit-zone-optional" id="premium-edit-song2-feedback-optional"></span>
+                </div>
+                <p class="edit-zone-explain" id="premium-edit-song2-feedback-explain"></p>
+                <textarea id="premium-edit-song2-feedback"></textarea>
+              </div>
+            </div>
+          </div>
+
+          <div class="field-error" id="premium-edit-error" style="margin-bottom:10px;"></div>
+          <div style="display:flex; gap:12px; flex-wrap:wrap;">
+            <button type="button" class="btn btn-ghost" id="premium-edit-cancel-btn"></button>
+            <button type="button" class="btn btn-primary" id="premium-edit-start-btn" style="flex:1; justify-content:center;"></button>
+          </div>
+          <div id="premium-edit-status-msg" style="font-size:13px; margin-top:10px; text-align:center;"></div>
+        </div>
+
+        <div id="premium-compare-view" style="display:none;">
+          <h2 id="premium-compare-title" style="font-family:'Fraunces',serif; font-weight:400; font-size:19px; margin:0 0 18px;"></h2>
+          <div id="premium-compare-cards"></div>
+          <div class="field-error" id="premium-compare-error" style="margin-bottom:10px;"></div>
+          <div id="premium-compare-checkout-slot"></div>
+          <div id="premium-compare-status-msg" style="font-size:13px; margin-top:10px; text-align:center;"></div>
+        </div>
 
         <!-- Fluxul de editare Standard cu alegere (Partea 2, hotfix 2026-08-08 + imbunatatire UI):
              dupa ce editarea produce o a doua varianta, clientul TREBUIE sa aleaga explicit intre
@@ -739,6 +839,14 @@
       lyrics_empty: 'Versurile nu sunt încă disponibile pentru afișare.',
       lyrics_edited_tag: 'Versuri editate de tine',
       edit_lyrics_btn: 'Editează versurile',
+      premium_song1_label: 'Melodia 1', premium_song2_label: 'Melodia 2',
+      premium_edit_title: 'Ce vrei să editezi?',
+      premium_edit_subtitle: 'Alege una sau ambele melodii. Editarea gratuită rămâne una singură, indiferent câte melodii editezi acum.',
+      premium_edit_song1_check: 'Editez prima melodie', premium_edit_song2_check: 'Editez a doua melodie',
+      premium_edit_start_btn: 'Regenerează melodiile selectate',
+      premium_edit_select_at_least_one: 'Selectează cel puțin o melodie de editat.',
+      premium_compare_title: 'Alege cele două melodii pe care dorești să le primești după plată.',
+      premium_compare_need_two: 'Alege exact două melodii.',
       editor_title: 'Editează versurile', editor_hint: 'Modifică un cuvânt, un vers sau o strofă. Formatarea pe strofe rămâne neschimbată.',
       save_btn: 'Salvează modificările', cancel_btn: 'Renunță',
       lyrics_saved_msg: 'Versurile au fost salvate. Pentru a auzi modificările, regenerează melodia',
@@ -798,6 +906,14 @@
       lyrics_empty: 'Lyrics are not available to display yet.',
       lyrics_edited_tag: 'Lyrics edited by you',
       edit_lyrics_btn: 'Edit the lyrics',
+      premium_song1_label: 'Song 1', premium_song2_label: 'Song 2',
+      premium_edit_title: 'What do you want to edit?',
+      premium_edit_subtitle: 'Choose one or both songs. Your free edit stays a single round, no matter how many songs you edit now.',
+      premium_edit_song1_check: 'Edit the first song', premium_edit_song2_check: 'Edit the second song',
+      premium_edit_start_btn: 'Regenerate the selected songs',
+      premium_edit_select_at_least_one: 'Select at least one song to edit.',
+      premium_compare_title: 'Choose the two songs you want to receive after payment.',
+      premium_compare_need_two: 'Choose exactly two songs.',
       editor_title: 'Edit the lyrics', editor_hint: 'Change a word, a line, or a verse. The verse formatting stays the same.',
       save_btn: 'Save changes', cancel_btn: 'Cancel',
       lyrics_saved_msg: 'Lyrics saved. Regenerate the song to hear the changes',
@@ -857,6 +973,14 @@
       lyrics_empty: 'Der Text steht noch nicht zur Anzeige zur Verfügung.',
       lyrics_edited_tag: 'Von dir bearbeiteter Text',
       edit_lyrics_btn: 'Text bearbeiten',
+      premium_song1_label: 'Lied 1', premium_song2_label: 'Lied 2',
+      premium_edit_title: 'Was möchtest du bearbeiten?',
+      premium_edit_subtitle: 'Wähle eines oder beide Lieder. Deine kostenlose Bearbeitung bleibt eine einzige Runde, egal wie viele Lieder du jetzt bearbeitest.',
+      premium_edit_song1_check: 'Erstes Lied bearbeiten', premium_edit_song2_check: 'Zweites Lied bearbeiten',
+      premium_edit_start_btn: 'Ausgewählte Lieder neu erstellen',
+      premium_edit_select_at_least_one: 'Wähle mindestens ein Lied zum Bearbeiten aus.',
+      premium_compare_title: 'Wähle die zwei Lieder, die du nach der Zahlung erhalten möchtest.',
+      premium_compare_need_two: 'Wähle genau zwei Lieder aus.',
       editor_title: 'Text bearbeiten', editor_hint: 'Ändere ein Wort, eine Zeile oder eine Strophe. Die Strophenformatierung bleibt gleich.',
       save_btn: 'Änderungen speichern', cancel_btn: 'Abbrechen',
       lyrics_saved_msg: 'Text gespeichert. Regeneriere das Lied, um die Änderungen zu hören',
@@ -916,6 +1040,14 @@
       lyrics_empty: 'La letra todavía no está disponible para mostrar.',
       lyrics_edited_tag: 'Letra editada por ti',
       edit_lyrics_btn: 'Editar la letra',
+      premium_song1_label: 'Canción 1', premium_song2_label: 'Canción 2',
+      premium_edit_title: '¿Qué quieres editar?',
+      premium_edit_subtitle: 'Elige una o ambas canciones. Tu edición gratuita sigue siendo una sola ronda, sin importar cuántas canciones edites ahora.',
+      premium_edit_song1_check: 'Editar la primera canción', premium_edit_song2_check: 'Editar la segunda canción',
+      premium_edit_start_btn: 'Regenerar las canciones seleccionadas',
+      premium_edit_select_at_least_one: 'Selecciona al menos una canción para editar.',
+      premium_compare_title: 'Elige las dos canciones que quieres recibir después del pago.',
+      premium_compare_need_two: 'Elige exactamente dos canciones.',
       editor_title: 'Editar la letra', editor_hint: 'Cambia una palabra, un verso o una estrofa. El formato de las estrofas no cambia.',
       save_btn: 'Guardar cambios', cancel_btn: 'Cancelar',
       lyrics_saved_msg: 'Letra guardada. Regenera la canción para escuchar los cambios',
@@ -975,6 +1107,14 @@
       lyrics_empty: 'Il testo non è ancora disponibile per la visualizzazione.',
       lyrics_edited_tag: 'Testo modificato da te',
       edit_lyrics_btn: 'Modifica il testo',
+      premium_song1_label: 'Canzone 1', premium_song2_label: 'Canzone 2',
+      premium_edit_title: 'Cosa vuoi modificare?',
+      premium_edit_subtitle: 'Scegli una o entrambe le canzoni. La tua modifica gratuita resta un unico giro, indipendentemente da quante canzoni modifichi ora.',
+      premium_edit_song1_check: 'Modifica la prima canzone', premium_edit_song2_check: 'Modifica la seconda canzone',
+      premium_edit_start_btn: 'Rigenera le canzoni selezionate',
+      premium_edit_select_at_least_one: 'Seleziona almeno una canzone da modificare.',
+      premium_compare_title: 'Scegli le due canzoni che vuoi ricevere dopo il pagamento.',
+      premium_compare_need_two: 'Scegli esattamente due canzoni.',
       editor_title: 'Modifica il testo', editor_hint: 'Cambia una parola, un verso o una strofa. La formattazione delle strofe resta invariata.',
       save_btn: 'Salva le modifiche', cancel_btn: 'Annulla',
       lyrics_saved_msg: 'Testo salvato. Rigenera la canzone per ascoltare le modifiche',
@@ -1034,6 +1174,14 @@
       lyrics_empty: "Les paroles ne sont pas encore disponibles à l'affichage.",
       lyrics_edited_tag: 'Paroles modifiées par vous',
       edit_lyrics_btn: 'Modifier les paroles',
+      premium_song1_label: 'Chanson 1', premium_song2_label: 'Chanson 2',
+      premium_edit_title: 'Que veux-tu modifier ?',
+      premium_edit_subtitle: 'Choisis une ou les deux chansons. Ta modification gratuite reste unique, quel que soit le nombre de chansons modifiées maintenant.',
+      premium_edit_song1_check: 'Modifier la première chanson', premium_edit_song2_check: 'Modifier la deuxième chanson',
+      premium_edit_start_btn: 'Régénérer les chansons sélectionnées',
+      premium_edit_select_at_least_one: 'Sélectionne au moins une chanson à modifier.',
+      premium_compare_title: 'Choisis les deux chansons que tu veux recevoir après le paiement.',
+      premium_compare_need_two: 'Choisis exactement deux chansons.',
       editor_title: 'Modifier les paroles', editor_hint: 'Modifiez un mot, un vers ou un couplet. La mise en forme des couplets reste identique.',
       save_btn: 'Enregistrer les modifications', cancel_btn: 'Annuler',
       lyrics_saved_msg: 'Paroles enregistrées. Régénérez la chanson pour entendre les changements',
@@ -1093,6 +1241,14 @@
       lyrics_empty: 'Текстът все още не е наличен за показване.',
       lyrics_edited_tag: 'Текст, редактиран от теб',
       edit_lyrics_btn: 'Редактирай текста',
+      premium_song1_label: 'Песен 1', premium_song2_label: 'Песен 2',
+      premium_edit_title: 'Какво искаш да редактираш?',
+      premium_edit_subtitle: 'Избери една или и двете песни. Безплатната ти редакция остава само една, независимо колко песни редактираш сега.',
+      premium_edit_song1_check: 'Редактирай първата песен', premium_edit_song2_check: 'Редактирай втората песен',
+      premium_edit_start_btn: 'Регенерирай избраните песни',
+      premium_edit_select_at_least_one: 'Избери поне една песен за редактиране.',
+      premium_compare_title: 'Избери двете песни, които искаш да получиш след плащането.',
+      premium_compare_need_two: 'Избери точно две песни.',
       editor_title: 'Редактирай текста', editor_hint: 'Промени дума, стих или куплет. Форматирането на куплетите остава същото.',
       save_btn: 'Запази промените', cancel_btn: 'Откажи',
       lyrics_saved_msg: 'Текстът е запазен. Регенерирай песента, за да чуеш промените',
@@ -1152,6 +1308,14 @@
       lyrics_empty: 'Sözler henüz görüntülenmeye hazır değil.',
       lyrics_edited_tag: 'Sizin tarafınızdan düzenlenen sözler',
       edit_lyrics_btn: 'Sözleri düzenle',
+      premium_song1_label: 'Şarkı 1', premium_song2_label: 'Şarkı 2',
+      premium_edit_title: 'Neyi düzenlemek istiyorsun?',
+      premium_edit_subtitle: 'Bir veya her iki şarkıyı seç. Şimdi kaç şarkı düzenlersen düzenle, ücretsiz düzenlemen tek bir tur olarak kalır.',
+      premium_edit_song1_check: 'İlk şarkıyı düzenle', premium_edit_song2_check: 'İkinci şarkıyı düzenle',
+      premium_edit_start_btn: 'Seçilen şarkıları yeniden oluştur',
+      premium_edit_select_at_least_one: 'Düzenlemek için en az bir şarkı seç.',
+      premium_compare_title: 'Ödemeden sonra almak istediğin iki şarkıyı seç.',
+      premium_compare_need_two: 'Tam olarak iki şarkı seç.',
       editor_title: 'Sözleri düzenle', editor_hint: 'Bir kelimeyi, bir dizeyi veya bir kıtayı değiştirin. Kıta biçimlendirmesi aynı kalır.',
       save_btn: 'Değişiklikleri kaydet', cancel_btn: 'Vazgeç',
       lyrics_saved_msg: 'Sözler kaydedildi. Değişiklikleri duymak için şarkıyı yeniden oluşturun',
@@ -2593,6 +2757,403 @@
     }
   }
 
+  // ============================================================================================
+  // MODIFICARE STRICTĂ — fluxul Premium: rezultatul initial, editarea selectiva si pagina finala
+  // de comparare (hotfix 2026-08-10 runda 3). Complet SEPARAT de restul acestui fisier —
+  // Standard/Video raman STRICT pe fluxul original de mai jos, neatins. Trei ecrane distincte,
+  // DOAR pentru plan='premium':
+  //   1. #premium-result-view — cele doua melodii + buton portocaliu "Editează versurile" +
+  //      buton negru de plata, imediat sub el.
+  //   2. #premium-edit-view — "Editez prima melodie"/"a doua"/ambele + campurile de editare deja
+  //      existente (schimbarea genului, feedback), REUTILIZATE per melodie SELECTATA.
+  //   3. #premium-compare-view — dupa o editare, TOATE variantele reale (2-4), clientul alege
+  //      EXACT doua inainte de plata.
+  // ============================================================================================
+  let premiumEditViewOpen = false; // comutator LOCAL (nu persistat server-side, nu afecteaza DB)
+  let premiumCompareSelection = [];
+  let premiumCompareInitialized = false;
+
+  // Acelasi tipar robust de montare audio (timeout explicit + reincercare la click) folosit de
+  // renderVariants() mai jos (Standard/Video), extras aici ca functie reutilizabila — evita
+  // duplicarea unei logici deja subtile (Safari/iOS, vezi comentariile originale din renderVariants).
+  function createPremiumAudioPlayer(previewUrl, durationSeconds) {
+    const wrap = document.createElement('div');
+    const audioWrap = document.createElement('div');
+    const errorEl = document.createElement('p');
+    errorEl.className = 'variant-audio-error';
+    errorEl.style.display = 'none';
+    const progressEl = document.createElement('div');
+    progressEl.className = 'variant-progress';
+    progressEl.textContent = t.listened('0:00', formatTime(durationSeconds));
+    wrap.appendChild(audioWrap);
+    wrap.appendChild(errorEl);
+    wrap.appendChild(progressEl);
+
+    function mountAudio() {
+      audioWrap.innerHTML = '';
+      errorEl.style.display = 'none';
+      const audioEl = document.createElement('audio');
+      audioEl.className = 'variant-audio';
+      audioEl.controls = true;
+      audioEl.preload = 'metadata';
+      audioEl.style.width = '100%';
+
+      let settled = false;
+      const loadTimeout = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        showError();
+      }, 15000);
+
+      function showError() {
+        clearTimeout(loadTimeout);
+        audioWrap.innerHTML = '';
+        errorEl.textContent = t.preview_load_error;
+        errorEl.style.display = 'block';
+      }
+
+      audioEl.addEventListener('loadedmetadata', () => { settled = true; clearTimeout(loadTimeout); });
+      audioEl.addEventListener('error', () => { if (!settled) { settled = true; showError(); } });
+      audioEl.addEventListener('timeupdate', () => {
+        progressEl.textContent = t.listened(formatTime(audioEl.currentTime), formatTime(durationSeconds));
+      });
+
+      audioWrap.appendChild(audioEl);
+      audioEl.src = previewUrl + (previewUrl.includes('?') ? '&' : '?') + 't=' + Date.now();
+      audioEl.load();
+    }
+    mountAudio();
+    errorEl.addEventListener('click', (e) => { e.stopPropagation(); mountAudio(); });
+
+    return wrap;
+  }
+
+  // Cand exista exact 2 variante (fara nicio editare inca), plata trebuie sa ramana posibila
+  // direct, fara editare (cerinta explicita, test 9) — ambele melodii sunt livrate, ca inainte.
+  // Formalizam asta prin ACELASI mecanism folosit dupa o editare (POST /select cu ambele ID-uri),
+  // apelat automat, silentios, la afisarea ecranului de rezultat.
+  async function ensurePremiumInitialSelection(order) {
+    const variants = order.variants || [];
+    if (variants.length !== 2) return true;
+    if (order.selectedVariantId === variants[0].id && order.selectedVariantId2 === variants[1].id) return true;
+    try {
+      const res = await fetch(`/api/orders/${orderId}/select`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Access-Token': accessToken },
+        body: JSON.stringify({ variantId: variants[0].id, variantId2: variants[1].id })
+      });
+      return res.ok;
+    } catch (err) {
+      return false;
+    }
+  }
+
+  function renderPremiumFlow(order, isResumeFlag) {
+    const resultView = document.getElementById('premium-result-view');
+    const editView = document.getElementById('premium-edit-view');
+    const compareView = document.getElementById('premium-compare-view');
+    const variants = order.variants || [];
+
+    if (variants.length > 2) {
+      premiumEditViewOpen = false;
+      resultView.style.display = 'none';
+      editView.style.display = 'none';
+      compareView.style.display = 'block';
+      renderPremiumCompareView(order);
+    } else if (premiumEditViewOpen) {
+      resultView.style.display = 'none';
+      compareView.style.display = 'none';
+      editView.style.display = 'block';
+      renderPremiumEditView(order);
+    } else {
+      editView.style.display = 'none';
+      compareView.style.display = 'none';
+      resultView.style.display = 'block';
+      renderPremiumResultView(order);
+    }
+
+    if (isResumeFlag) {
+      document.getElementById('resume-banner').style.display = 'block';
+    }
+
+    showState('content-state');
+  }
+
+  function renderPremiumResultView(order) {
+    const variants = order.variants || [];
+    const playersWrap = document.getElementById('premium-result-players');
+    playersWrap.innerHTML = '';
+
+    variants.forEach((v, i) => {
+      const card = document.createElement('div');
+      card.className = 'variant-card';
+      const label = i === 0 ? t.premium_song1_label : t.premium_song2_label;
+      const genreTag = v.genre ? `<span class="variant-genre-tag">${escapeHtml(t['genre_' + v.genre] || v.genre)}</span>` : '';
+      const lyricsTextRaw = (v.editedLyrics && v.editedLyrics.trim()) ? v.editedLyrics : v.originalLyrics;
+      const lyricsText = translateSectionLabelsForDisplay(lyricsTextRaw, order.lang);
+      const lyricsHtml = (lyricsText && lyricsText.trim())
+        ? `<div class="lyrics-box">${escapeHtml(lyricsText)}</div>`
+        : `<div class="lyrics-box"><span class="lyrics-empty">${t.lyrics_empty}</span></div>`;
+      const head = document.createElement('div');
+      head.className = 'variant-head';
+      head.innerHTML = `<span class="variant-label">${escapeHtml(label)}</span>${genreTag}`;
+      card.appendChild(head);
+      card.appendChild(createPremiumAudioPlayer(v.previewUrl, v.durationSeconds));
+      const lyricsWrap = document.createElement('div');
+      lyricsWrap.innerHTML = lyricsHtml;
+      card.appendChild(lyricsWrap.firstElementChild);
+      playersWrap.appendChild(card);
+    });
+
+    const editBtn = document.getElementById('premium-edit-open-btn');
+    editBtn.textContent = t.edit_lyrics_btn;
+    editBtn.onclick = () => {
+      premiumEditViewOpen = true;
+      renderPremiumFlow(order, false);
+    };
+
+    const slot = document.getElementById('premium-result-checkout-slot');
+    slot.appendChild(checkoutBtn);
+    checkoutBtn.style.width = '100%';
+    checkoutBtn.style.flex = 'none';
+    checkoutBtn.style.justifyContent = 'center';
+    checkoutBtn.innerHTML = `${t.checkout_btn_standard} (<span id="checkout-price">£${order.price}</span>) →`;
+    checkoutBtn.disabled = true;
+
+    const statusEl = document.getElementById('premium-result-status-msg');
+    statusEl.textContent = '';
+    statusEl.className = '';
+    if (order.error) {
+      statusEl.textContent = t.regen_failed_recovered_msg;
+      statusEl.className = 'status-err';
+    }
+
+    ensurePremiumInitialSelection(order).then(ok => {
+      checkoutBtn.disabled = !ok;
+      if (!ok) {
+        statusEl.textContent = t.msg_conn_error;
+        statusEl.className = 'status-err';
+      }
+    });
+  }
+
+  function renderPremiumEditView(order) {
+    const variants = order.variants || [];
+    const v1 = variants[0], v2 = variants[1];
+
+    document.getElementById('premium-edit-title').textContent = t.premium_edit_title;
+    document.getElementById('premium-edit-subtitle').textContent = t.premium_edit_subtitle;
+    document.getElementById('premium-edit-song1-check-label').textContent = t.premium_edit_song1_check;
+    document.getElementById('premium-edit-song2-check-label').textContent = t.premium_edit_song2_check;
+    document.getElementById('premium-edit-song1-genre-label').textContent = t.edit_genre_label;
+    document.getElementById('premium-edit-song1-genre-explain').textContent = t.edit_genre_explain;
+    document.getElementById('premium-edit-song2-genre-label').textContent = t.edit_genre_label;
+    document.getElementById('premium-edit-song2-genre-explain').textContent = t.edit_genre_explain;
+    document.getElementById('premium-edit-song1-feedback-label').textContent = t.feedback_label;
+    document.getElementById('premium-edit-song1-feedback-explain').textContent = t.feedback_explain;
+    document.getElementById('premium-edit-song1-feedback-optional').textContent = t.feedback_optional_badge;
+    document.getElementById('premium-edit-song2-feedback-label').textContent = t.feedback_label;
+    document.getElementById('premium-edit-song2-feedback-explain').textContent = t.feedback_explain;
+    document.getElementById('premium-edit-song2-feedback-optional').textContent = t.feedback_optional_badge;
+    document.getElementById('premium-edit-song1-feedback').placeholder = t.feedback_ph;
+    document.getElementById('premium-edit-song2-feedback').placeholder = t.feedback_ph;
+    document.getElementById('premium-edit-cancel-btn').textContent = t.confirm_no;
+    document.getElementById('premium-edit-start-btn').textContent = t.premium_edit_start_btn;
+
+    function populateGenreOptions(selectEl, currentGenre) {
+      selectEl.innerHTML = EDIT_GENRE_KEYS
+        .map(key => `<option value="${key}" ${key === currentGenre ? 'selected' : ''}>${escapeHtml(t['genre_' + key] || key)}</option>`)
+        .join('');
+    }
+    const song1GenreSelect = document.getElementById('premium-edit-song1-genre');
+    const song2GenreSelect = document.getElementById('premium-edit-song2-genre');
+    populateGenreOptions(song1GenreSelect, v1.genre);
+    populateGenreOptions(song2GenreSelect, v2.genre);
+
+    const song1Check = document.getElementById('premium-edit-song1-check');
+    const song2Check = document.getElementById('premium-edit-song2-check');
+    const song1Box = document.getElementById('premium-edit-song1-box');
+    const song2Box = document.getElementById('premium-edit-song2-box');
+    const song1Fields = document.getElementById('premium-edit-song1-fields');
+    const song2Fields = document.getElementById('premium-edit-song2-fields');
+    const song1Feedback = document.getElementById('premium-edit-song1-feedback');
+    const song2Feedback = document.getElementById('premium-edit-song2-feedback');
+
+    song1Check.checked = false;
+    song2Check.checked = false;
+    song1Box.classList.remove('checked');
+    song2Box.classList.remove('checked');
+    song1Fields.style.display = 'none';
+    song2Fields.style.display = 'none';
+    song1Feedback.value = '';
+    song2Feedback.value = '';
+
+    function setPremiumEditError(msg) {
+      document.getElementById('premium-edit-error').textContent = msg || '';
+    }
+    setPremiumEditError('');
+    const statusEl = document.getElementById('premium-edit-status-msg');
+    statusEl.textContent = '';
+    statusEl.className = '';
+
+    song1Check.onchange = () => {
+      song1Box.classList.toggle('checked', song1Check.checked);
+      song1Fields.style.display = song1Check.checked ? 'block' : 'none';
+      setPremiumEditError('');
+    };
+    song2Check.onchange = () => {
+      song2Box.classList.toggle('checked', song2Check.checked);
+      song2Fields.style.display = song2Check.checked ? 'block' : 'none';
+      setPremiumEditError('');
+    };
+
+    document.getElementById('premium-edit-cancel-btn').onclick = () => {
+      premiumEditViewOpen = false;
+      renderPremiumFlow(order, false);
+    };
+
+    const startBtn = document.getElementById('premium-edit-start-btn');
+    startBtn.disabled = false;
+    startBtn.onclick = async () => {
+      setPremiumEditError('');
+      const songs = [];
+      if (song1Check.checked) {
+        songs.push({
+          variantId: v1.id,
+          feedback: song1Feedback.value.trim() || null,
+          genre: song1GenreSelect.value !== v1.genre ? song1GenreSelect.value : undefined
+        });
+      }
+      if (song2Check.checked) {
+        songs.push({
+          variantId: v2.id,
+          feedback: song2Feedback.value.trim() || null,
+          genre: song2GenreSelect.value !== v2.genre ? song2GenreSelect.value : undefined
+        });
+      }
+      if (songs.length === 0) {
+        setPremiumEditError(t.premium_edit_select_at_least_one);
+        return;
+      }
+      // dezactivat imediat la primul click — previne dublul-click/joburi duplicate (protectie
+      // aditionala fata de rezervarea atomica deja existenta server-side, db.claimOrderForRegeneration).
+      startBtn.disabled = true;
+      statusEl.textContent = t.msg_regenerating;
+      statusEl.className = '';
+      try {
+        const res = await fetch(`/api/orders/${orderId}/regenerate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Access-Token': accessToken },
+          body: JSON.stringify({ songs })
+        });
+        const data = await res.json();
+        if (res.ok && data.started) {
+          window.location.href = `/se-compune.html?id=${encodeURIComponent(orderId)}&token=${encodeURIComponent(accessToken)}&mode=regenerate`;
+          return;
+        }
+        statusEl.textContent = t.msg_error_prefix + (data.error || t.msg_try_again);
+        statusEl.className = 'status-err';
+        startBtn.disabled = false;
+      } catch (err) {
+        statusEl.textContent = t.msg_conn_error;
+        statusEl.className = 'status-err';
+        startBtn.disabled = false;
+      }
+    };
+  }
+
+  function renderPremiumCompareView(order) {
+    const variants = order.variants || [];
+    document.getElementById('premium-compare-title').textContent = t.premium_compare_title;
+
+    // Initializare O SINGURA DATA per incarcare de pagina, din starea persistata a comenzii —
+    // dupa aceea, selectia ramane STRICT locala (click-urile utilizatorului), niciodata
+    // suprascrisa de un re-render (fiecare toggle re-apeleaza aceasta functie).
+    if (!premiumCompareInitialized) {
+      premiumCompareSelection = [order.selectedVariantId, order.selectedVariantId2]
+        .filter(id => id && variants.some(v => v.id === id));
+      premiumCompareInitialized = true;
+    }
+
+    const cardsWrap = document.getElementById('premium-compare-cards');
+    cardsWrap.innerHTML = '';
+
+    variants.forEach(v => {
+      const card = document.createElement('div');
+      card.className = 'premium-compare-card' + (premiumCompareSelection.includes(v.id) ? ' selected' : '');
+      const songLabel = v.songSlot === 2 ? t.premium_song2_label : t.premium_song1_label;
+      const versionLabel = v.isEditedAlternative ? t.variant_edited_label : t.variant_original_label;
+      const genreTag = v.genre ? `<span class="variant-genre-tag">${escapeHtml(t['genre_' + v.genre] || v.genre)}</span>` : '';
+      const recipientLine = v.recipient
+        ? `<p style="font-size:13px; color:var(--text-secondary); margin:4px 0 0;">${escapeHtml(v.recipient)}</p>`
+        : '';
+      card.innerHTML = `
+        <span class="premium-compare-check">✓</span>
+        <div class="variant-head"><span class="variant-label">${escapeHtml(songLabel)} — ${escapeHtml(versionLabel)}</span>${genreTag}</div>
+        ${recipientLine}
+      `;
+      card.appendChild(createPremiumAudioPlayer(v.previewUrl, v.durationSeconds));
+      card.addEventListener('click', (e) => {
+        if (e.target.closest('audio') || e.target.closest('.variant-audio-error')) return;
+        togglePremiumCompareSelection(v.id, order);
+      });
+      cardsWrap.appendChild(card);
+    });
+
+    const slot = document.getElementById('premium-compare-checkout-slot');
+    slot.appendChild(checkoutBtn);
+    checkoutBtn.style.width = '100%';
+    checkoutBtn.style.flex = 'none';
+    checkoutBtn.style.justifyContent = 'center';
+    checkoutBtn.innerHTML = `${t.checkout_btn_standard} (<span id="checkout-price">£${order.price}</span>) →`;
+
+    const statusEl = document.getElementById('premium-compare-status-msg');
+    statusEl.textContent = '';
+    statusEl.className = '';
+    if (order.error) {
+      statusEl.textContent = t.regen_failed_recovered_msg;
+      statusEl.className = 'status-err';
+    }
+
+    updatePremiumCompareContinueState(order);
+  }
+
+  function togglePremiumCompareSelection(variantId, order) {
+    const idx = premiumCompareSelection.indexOf(variantId);
+    if (idx !== -1) {
+      premiumCompareSelection.splice(idx, 1);
+    } else {
+      // Clientul poate selecta STRICT doua — a treia bifa inlocuieste cea mai veche selectie,
+      // in loc sa fie pur si simplu respinsa (mai clar/predictibil decat un "click ignorat").
+      if (premiumCompareSelection.length >= 2) premiumCompareSelection.shift();
+      premiumCompareSelection.push(variantId);
+    }
+    renderPremiumCompareView(order);
+  }
+
+  // Butonul de plata ramane dezactivat pana cand EXACT doua sunt alese SI backend-ul a confirmat
+  // (POST /select) ca ambele ID-uri apartin comenzii — nu doar pe baza numararii locale.
+  async function updatePremiumCompareContinueState(order) {
+    const errorEl = document.getElementById('premium-compare-error');
+    if (premiumCompareSelection.length !== 2) {
+      checkoutBtn.disabled = true;
+      errorEl.textContent = premiumCompareSelection.length > 0 ? t.premium_compare_need_two : '';
+      return;
+    }
+    errorEl.textContent = '';
+    checkoutBtn.disabled = true;
+    try {
+      const res = await fetch(`/api/orders/${orderId}/select`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Access-Token': accessToken },
+        body: JSON.stringify({ variantId: premiumCompareSelection[0], variantId2: premiumCompareSelection[1] })
+      });
+      checkoutBtn.disabled = !res.ok;
+    } catch (err) {
+      checkoutBtn.disabled = true;
+    }
+  }
+
   function renderContent(order) {
     currentOrder = order;
 
@@ -2643,6 +3204,17 @@
       planBadge.style.display = 'flex';
     } else {
       planBadge.style.display = 'none';
+    }
+
+    // MODIFICARE STRICTĂ — fluxul Premium: rezultatul initial, editarea selectiva si pagina
+    // finala de comparare (hotfix 2026-08-10 runda 3). Ramura COMPLET separata, dedicata —
+    // niciuna din liniile de mai jos (renderVariants, updateStandardEditMenuVisibility,
+    // checkoutBtn text-building comun etc, toate specifice Standard/Video) nu mai ruleaza
+    // pentru Premium dupa acest punct. showState('content-state') e apelat chiar in
+    // renderPremiumFlow, la fel ca la finalul ramurii originale de mai jos.
+    if (order.plan === 'premium') {
+      renderPremiumFlow(order, isResume);
+      return;
     }
 
     // Standard, fluxul de editare cu alegere (Partea 2, hotfix 2026-08-08 + imbunatatire UI):

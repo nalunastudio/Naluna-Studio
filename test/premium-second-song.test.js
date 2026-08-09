@@ -118,8 +118,36 @@ test('comanda.html: submit handler porneste generarea DOAR la pasul final (getTo
   assert.match(comanda, /if \(selectedPlan\.id === 'premium' && currentStep === 4\) \{\s*showStep\(5\);\s*return;\s*\}/);
 });
 
-test('comanda.html: getTotalSteps() e 6 pentru premium, 4 pentru orice alt pachet (Standard/Video neschimbate)', () => {
-  assert.match(comanda, /function getTotalSteps\(\) \{\s*return selectedPlan\.id === 'premium' \? 6 : 4;\s*\}/);
+// MODIFICARE STRICTĂ — separarea configurarii Premium in doi pasi (hotfix 2026-08-10 runda 2):
+// genul (pasul 6) si destinatarul (pasul 7) sunt acum ecrane SEPARATE — Premium are 7 pasi in
+// total (5 originali + genul + destinatarul), nu 6.
+test('comanda.html: getTotalSteps() e 7 pentru premium (genul si destinatarul melodiei 2 sunt ecrane separate), 4 pentru orice alt pachet (Standard/Video neschimbate)', () => {
+  assert.match(comanda, /function getTotalSteps\(\) \{\s*return selectedPlan\.id === 'premium' \? 7 : 4;\s*\}/);
+});
+
+test('comanda.html: pasul 6 (genul) si pasul 7 (destinatarul) sunt ecrane distincte, fiecare cu propriul step-card', () => {
+  assert.match(comanda, /<div class="step-card" data-step="6" style="display:none;">/);
+  assert.match(comanda, /<div class="step-card" data-step="7" style="display:none;">/);
+  const idx6 = comanda.indexOf('data-step="6"');
+  const idx7 = comanda.indexOf('data-step="7"', idx6);
+  const step6Html = comanda.slice(idx6, idx7);
+  assert.ok(step6Html.includes('song2_genre_section_title'), 'pasul 6 trebuie sa contina sectiunea de gen');
+  assert.ok(!step6Html.includes('song2_target_section_title'), 'pasul 6 NU trebuie sa contina sectiunea de destinatar');
+  assert.match(step6Html, /data-next="7" data-validate="6"/, 'pasul 6 trebuie sa aiba un buton Continuă catre pasul 7, cu validare');
+});
+
+test('comanda.html: validateStep(6) cere genre2 obligatoriu si diferit de genre, inainte de a trece la pasul 7', () => {
+  const idx = comanda.indexOf('if (n === 6) {');
+  const snippet = comanda.slice(idx, idx + 500);
+  assert.ok(snippet.includes("t('val_genre2_required')"));
+  assert.ok(snippet.includes("t('val_genre_same')"));
+});
+
+test('comanda.html: butonul "Înapoi" de pe pasul 7 pastreaza genul ales pe pasul 6 (revine la pasul 6, nu reseteaza genre2Input)', () => {
+  const idx7 = comanda.indexOf('data-step="7"');
+  const idx8 = comanda.indexOf('</form>', idx7);
+  const step7Html = comanda.slice(idx7, idx8);
+  assert.match(step7Html, /data-prev="6"/);
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -153,7 +181,7 @@ test('comanda.html: click pe un card genre2 identic cu genre e blocat DOAR pentr
 // ---------------------------------------------------------------------------------------------
 test('comanda.html: sectiunea "Pentru cine este a doua melodie?" e intr-un .mandatory-section, cu marcaj badge_required, exact doua optiuni', () => {
   const idx = comanda.indexOf('song2_target_section_title');
-  const context = comanda.slice(idx - 400, idx + 1100);
+  const context = comanda.slice(idx - 400, idx + 1500);
   assert.ok(context.includes('mandatory-section'));
   assert.ok(context.includes('badge_required'));
   assert.ok(context.includes('song2_same_person'));
@@ -163,6 +191,21 @@ test('comanda.html: sectiunea "Pentru cine este a doua melodie?" e intr-un .mand
 
 test('server.js: POST /api/orders cere song2Target explicit ("same"/"other") pentru plan="premium", fara valoare implicita', () => {
   assert.match(server, /if \(plan === 'premium'\) \{\s*if \(song2Target !== 'same' && song2Target !== 'other'\) \{/);
+});
+
+// MODIFICARE STRICTĂ — cardurile "Aceeași persoană"/"Altă persoană" (hotfix 2026-08-10 runda 2):
+// ambele folosesc nuanta portocaliu-deschis (.song2-choice-card, aceleasi valori rgba deja
+// folosite in Standard), iar cel selectat se distinge printr-un chenar mai puternic + bifa —
+// niciodata sa nu para ca ambele sunt selectate simultan.
+test('comanda.html: cardurile same/other folosesc .song2-choice-card (nuanta portocalie pentru ambele) si au fiecare o bifa .song2-choice-check', () => {
+  assert.match(comanda, /<div class="theme-card theme-subcard song2-choice-card" id="song2-same-card" data-song2-target="same">\s*<span class="song2-choice-check">✓<\/span>/);
+  assert.match(comanda, /<div class="theme-card theme-subcard song2-choice-card" id="song2-other-card" data-song2-target="other">\s*<span class="song2-choice-check">✓<\/span>/);
+});
+
+test('comanda.html: .song2-choice-card are fundal portocaliu-deschis mereu vizibil, iar .song2-choice-card.active are chenar mai puternic (2px, gold-deep) si bifa vizibila', () => {
+  assert.match(comanda, /\.song2-choice-card\{\s*background:rgba\(168,131,75,\.07\); border:1px solid rgba\(168,131,75,\.35\); position:relative;/);
+  assert.match(comanda, /\.song2-choice-card\.active\{\s*border:2px solid var\(--gold-deep\); background:rgba\(168,131,75,\.16\);\s*\}/);
+  assert.match(comanda, /\.song2-choice-card\.active \.song2-choice-check\{ display:flex; \}/);
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -403,8 +446,8 @@ test('server.js: runGeneration dual-genre porneste exact DOUA cereri Suno in par
 test('server.js: waitForDualTaskAndFinalize construieste doua variante finale, fiecare cu recipientSnapshot propriu', () => {
   const idx = server.indexOf('async function waitForDualTaskAndFinalize');
   const snippet = server.slice(idx, idx + 1800);
-  assert.match(snippet, /\{ tracks: r1\.tracks, genre: genre1, taskId: taskId1, recipientSnapshot: getSong1EffectiveData\(fresh\) \}/);
-  assert.match(snippet, /\{ tracks: r2\.tracks, genre: genre2, taskId: taskId2, recipientSnapshot: getSong2EffectiveData\(fresh\) \}/);
+  assert.match(snippet, /\{ tracks: r1\.tracks, genre: genre1, taskId: taskId1, recipientSnapshot: getSong1EffectiveData\(fresh\), songSlot: 1 \}/);
+  assert.match(snippet, /\{ tracks: r2\.tracks, genre: genre2, taskId: taskId2, recipientSnapshot: getSong2EffectiveData\(fresh\), songSlot: 2 \}/);
 });
 
 test('server.js: Premium/Video esecul PARTIAL (o singura melodie reusita) e tratat ca esec TOTAL — "exact doua melodii" ramane o promisiune ferma, neschimbata', () => {

@@ -206,6 +206,26 @@
   }
   .song1-genre-hint{ font-size:13px; color:var(--text-secondary); margin-bottom:14px; }
 
+  /* MODIFICARE STRICTĂ — fluxul Premium, pasul "Pentru cine este a doua melodie?" (hotfix
+     2026-08-10, runda 2): ambele carduri (Aceeași persoană / Altă persoană) folosesc mereu
+     nuanța portocaliu-deschis (aceleași valori rgba(168,131,75,...) ca restul site-ului — nicio
+     culoare noua), ca sa fie clar ca sunt doua optiuni alese in mod egal. Cardul SELECTAT se
+     distinge printr-un chenar mai puternic (2px, var(--gold-deep)) SI o bifa vizibila — nu doar
+     un fundal usor diferit, ca sa nu para niciodata ca ambele sunt selectate simultan. */
+  .song2-choice-card{
+    background:rgba(168,131,75,.07); border:1px solid rgba(168,131,75,.35); position:relative;
+    padding-right:44px;
+  }
+  .song2-choice-card .song2-choice-check{
+    display:none; position:absolute; top:12px; right:14px; width:20px; height:20px;
+    border-radius:50%; background:var(--gold-deep); color:#fff; font-size:12px; font-weight:700;
+    align-items:center; justify-content:center; line-height:1;
+  }
+  .song2-choice-card.active{
+    border:2px solid var(--gold-deep); background:rgba(168,131,75,.16);
+  }
+  .song2-choice-card.active .song2-choice-check{ display:flex; }
+
   .btn{
     display:inline-flex; align-items:center; justify-content:center; gap:10px;
     padding:15px 26px; border-radius:999px; font-size:14px; font-weight:500;
@@ -612,10 +632,11 @@
       </div>
     </div>
 
-    <!-- MODIFICARE STRICTĂ — fluxul pachetului Premium £25 (hotfix 2026-08-09): configurarea
-         celei de-a doua melodii — genul (obligatoriu, diferit de primul) si destinatarul
-         (obligatoriu: aceeași persoană sau altcineva). Butonul final ramane dezactivat pana
-         cand toate alegerile obligatorii sunt complete si valide — vezi updateSong2ContinueState(). -->
+    <!-- MODIFICARE STRICTĂ — fluxul pachetului Premium £25 (hotfix 2026-08-09; SEPARARE ÎN DOI
+         PAȘI, hotfix 2026-08-10 runda 2): genul celei de-a doua melodii (obligatoriu, diferit de
+         primul) — acum ecran DEDICAT, separat de "Pentru cine este a doua melodie?" (pasul
+         urmator, data-step="7"). Butonul de mai jos NU trimite comanda — doar valideaza genul si
+         trece la pasul urmator (vezi validateStep(6)). -->
     <div class="step-card" data-step="6" style="display:none;">
       <h1 data-i18n="song2_config_title">Configurează a doua melodie</h1>
 
@@ -629,6 +650,23 @@
         <div id="song2-genre-slot"></div>
       </div>
 
+      <button type="button" class="btn btn-primary btn-continue" data-next="7" data-validate="6" data-i18n="btn_continue" style="width:100%; justify-content:center; margin-top:20px;">Continuă</button>
+
+      <div class="wizard-nav">
+        <button type="button" class="btn btn-ghost btn-back" data-prev="5" data-i18n="btn_back">Înapoi</button>
+        <span></span>
+      </div>
+    </div>
+
+    <!-- MODIFICARE STRICTĂ — fluxul pachetului Premium £25 (hotfix 2026-08-09; SEPARARE ÎN DOI
+         PAȘI, hotfix 2026-08-10 runda 2): destinatarul celei de-a doua melodii (obligatoriu:
+         aceeași persoană sau altcineva) — ecran DEDICAT, dupa alegerea genului (pasul 6). Genul
+         ramane pastrat (nu e resetat) daca utilizatorul apasa Înapoi si revine aici. Butonul
+         final ramane dezactivat pana cand toate alegerile obligatorii sunt complete si valide —
+         vezi updateSong2ContinueState(). -->
+    <div class="step-card" data-step="7" style="display:none;">
+      <h1 data-i18n="song2_config_title">Configurează a doua melodie</h1>
+
       <div class="mandatory-section">
         <span class="required-badge" data-i18n="badge_required">Obligatoriu</span>
         <h2 data-i18n="song2_target_section_title">2. Pentru cine este a doua melodie?</h2>
@@ -637,11 +675,15 @@
                (.theme-card:not(.theme-subcard)) — fara aceasta clasa, click aici ar declansa din
                greseala handler-ul de ocazie principala (occasionInput.value = undefined,
                recipientRole/senderRole resetate), exact bug-ul deja documentat si evitat pentru
-               toate celelalte sub-carduri din acest fisier. -->
-          <div class="theme-card theme-subcard" id="song2-same-card" data-song2-target="same">
+               toate celelalte sub-carduri din acest fisier. song2-choice-card: nuanta portocaliu-
+               deschis pentru AMBELE carduri (hotfix 2026-08-10 runda 2), cu bifa si chenar mai
+               puternic DOAR pe cel selectat (vezi .song2-choice-card.active mai sus). -->
+          <div class="theme-card theme-subcard song2-choice-card" id="song2-same-card" data-song2-target="same">
+            <span class="song2-choice-check">✓</span>
             <div class="theme-name" data-i18n="song2_same_person">Pentru aceeași persoană</div>
           </div>
-          <div class="theme-card theme-subcard" id="song2-other-card" data-song2-target="other">
+          <div class="theme-card theme-subcard song2-choice-card" id="song2-other-card" data-song2-target="other">
+            <span class="song2-choice-check">✓</span>
             <div class="theme-name" data-i18n="song2_other_person">Pentru altă persoană</div>
           </div>
         </div>
@@ -742,7 +784,7 @@
       <div id="status-msg-song2"></div>
 
       <div class="wizard-nav">
-        <button type="button" class="btn btn-ghost btn-back" data-prev="5" data-i18n="btn_back">Înapoi</button>
+        <button type="button" class="btn btn-ghost btn-back" data-prev="6" data-i18n="btn_back">Înapoi</button>
         <span></span>
       </div>
     </div>
@@ -2095,12 +2137,14 @@
   const STEP_KEY = 'currentStep';
   let currentStep = 1;
 
-  // MODIFICARE STRICTĂ — fluxul pachetului Premium £25 (hotfix 2026-08-09): Standard si Video
-  // raman la EXACT 4 pasi, neschimbat — DOAR Premium capata inca 2 pasi dedicati (sumar +
-  // configurarea celei de-a doua melodii). `selectedPlan` e declarat mai jos in acest script,
-  // dar functia insasi ruleaza abia dupa initializare completa, deci referinta e sigura.
+  // MODIFICARE STRICTĂ — fluxul pachetului Premium £25 (hotfix 2026-08-09; SEPARARE ÎN DOI PAȘI,
+  // hotfix 2026-08-10 runda 2): Standard si Video raman la EXACT 4 pasi, neschimbat — DOAR
+  // Premium capata inca 3 pasi dedicati (sumar, genul melodiei 2, destinatarul melodiei 2 — genul
+  // si destinatarul erau UN SINGUR ecran combinat, acum separate). `selectedPlan` e declarat mai
+  // jos in acest script, dar functia insasi ruleaza abia dupa initializare completa, deci
+  // referinta e sigura.
   function getTotalSteps() {
-    return selectedPlan.id === 'premium' ? 6 : 4;
+    return selectedPlan.id === 'premium' ? 7 : 4;
   }
 
   const stepCards = document.querySelectorAll('.step-card');
@@ -2239,6 +2283,27 @@
       const genre = document.getElementById('genre').value;
       setFieldError('genre', genre ? '' : t('val_genre'));
       if (!genre) { ok = false; firstInvalid = 'genre'; }
+    }
+
+    // MODIFICARE STRICTĂ — fluxul Premium, ecranul dedicat de gen pentru a doua melodie (hotfix
+    // 2026-08-10 runda 2): genul e obligatoriu SI diferit de primul — click-ul pe un gen identic
+    // e deja blocat mai sus (genre2Cards click handler), dar validam din nou aici, defensiv,
+    // inainte de a trece la ecranul urmator (persoana). genre2Field e un element vizibil
+    // (hidden inputul propriu-zis nu poate primi focus vizibil), deci derulam explicit catre el,
+    // acelasi tipar deja folosit la validarea finala de trimitere (mai jos in acest fisier).
+    if (n === 6) {
+      const g2 = genre2Input.value;
+      if (!g2) {
+        setFieldError('genre2', t('val_genre2_required'));
+        genre2Field.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        ok = false;
+      } else if (g2 === genreInput.value) {
+        setFieldError('genre2', t('val_genre_same'));
+        genre2Field.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        ok = false;
+      } else {
+        setFieldError('genre2', '');
+      }
     }
 
     if (n === 1) {

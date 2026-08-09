@@ -89,12 +89,20 @@ test('server.js: POST /api/orders/:orderId/regenerate accepta si valideaza schim
   );
 });
 
-test('server.js: schimbarea genului la regenerare e inclusa in editarea gratuita existenta, nu una suplimentara', () => {
+test('server.js: schimbarea genului la regenerare e inclusa in editarea gratuita existenta, nu una suplimentara (ramura veche, Standard/Video)', () => {
   const server = read('server.js');
+  // MODIFICARE STRICTĂ — fluxul Premium: editare selectiva (hotfix 2026-08-10 runda 3): ramura
+  // veche (variantId singular, Standard/Video) a fost mutata intr-o functie dedicata
+  // (handleLegacyRegenerate), separata de noua ramura Premium (handlePremiumSelectiveRegenerate,
+  // care apare INAINTEA ei in fisier si are propriul claim) — cautam DOAR in interiorul
+  // ramurii vechi, nu in tot fisierul.
+  const legacyStart = server.indexOf('async function handleLegacyRegenerate');
+  assert.ok(legacyStart > -1, 'handleLegacyRegenerate trebuie sa existe');
+  const legacyBody = server.slice(legacyStart);
   // genre se citeste si valideaza INAINTE de claimOrderForRegeneration (rezervarea editarii
   // gratuite) — nu exista o a doua rezervare/limita separata doar pentru schimbarea genului.
-  const genreIdx = server.indexOf('const requestedGenre = typeof req.body?.genre');
-  const claimIdx = server.indexOf('db.claimOrderForRegeneration(order.id, FREE_EDITS');
+  const genreIdx = legacyBody.indexOf('const requestedGenre = typeof req.body?.genre');
+  const claimIdx = legacyBody.indexOf('db.claimOrderForRegeneration(order.id, FREE_EDITS');
   assert.ok(genreIdx > -1 && claimIdx > -1 && genreIdx < claimIdx, 'genul trebuie citit/validat inainte de rezervarea (unica) a editarii gratuite');
 });
 

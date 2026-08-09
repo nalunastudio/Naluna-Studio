@@ -841,6 +841,15 @@ async function processConfirmedPayment(event, session) {
     await db.recordStripeEventIfNew(event.id, orderId);
     return { httpStatus: 200, body: { received: true, rejected: 'stale_variant' } };
   }
+  // MODIFICARE STRICTĂ — fluxul Premium: pagina finala de comparare (hotfix 2026-08-10 runda 3):
+  // aceeasi verificare, pentru a doua varianta aleasa — DOAR pentru Premium (session.metadata.
+  // selectedVariantId2 e mereu string gol pentru orice alt pachet, vezi POST /checkout).
+  const sessionVariantId2 = session.metadata.selectedVariantId2;
+  if (preCheckOrder.plan === 'premium' && sessionVariantId2 && preCheckOrder.selectedVariantId2 !== sessionVariantId2) {
+    console.error(`Comanda ${orderId}: a doua varianta din sesiune (${sessionVariantId2}) nu mai corespunde variantei curente (${preCheckOrder.selectedVariantId2}) — livrare refuzata.`);
+    await db.recordStripeEventIfNew(event.id, orderId);
+    return { httpStatus: 200, body: { received: true, rejected: 'stale_variant2' } };
+  }
   if (preCheckOrder.plan === 'video') {
     const sessionMediaRevision = Number(session.metadata.mediaRevision);
     if (Number.isFinite(sessionMediaRevision) && preCheckOrder.mediaRevision !== sessionMediaRevision) {
@@ -1769,7 +1778,157 @@ app.post('/api/orders/:orderId/generate', generationLimiter, requireOrderToken, 
 // ==========================================================================================
 // 3. Regenereaza (editare) — o noua pereche de variante, limitat la FREE_EDITS
 // ==========================================================================================
+// MODIFICARE STRICTĂ — fluxul Premium: editare selectiva pe pagina dedicata (hotfix 2026-08-10
+// runda 3): clientul alege explicit "Editez prima melodie" / "Editez a doua melodie" / ambele,
+// cu propriile campuri (feedback, gen) per melodie SELECTATA. Reutilizeaza EXACT acelasi
+// mecanism ca editarea Standard (variantele editate se ADAUGA alaturi de cele initiale,
+// niciodata nu le inlocuiesc — vezi finalizeVariantsIfNeeded, options.editVariantIds) si
+// ACEEASI singura editare gratuita per comanda (db.claimOrderForRegeneration, un singur claim
+// indiferent daca se editeaza 1 sau 2 melodii in aceeasi cerere). Complet separat de ramura de
+// mai jos (variantId singular), folosita in continuare NESCHIMBAT de Standard si Video.
 app.post('/api/orders/:orderId/regenerate', generationLimiter, requireOrderToken, async (req, res, next) => {
+  if (req.order.plan === 'premium' && Array.isArray(req.body?.songs)) {
+    return handlePremiumSelectiveRegenerate(req, res, next);
+  }
+  return handleLegacyRegenerate(req, res, next);
+});
+
+async function handlePremiumSelectiveRegenerate(req, res, next) {
+  try {
+    const order = req.order;
+    if (order.status === 'ready') return res.status(400).json({ error: 'Comanda e deja plătită și finalizată.' });
+
+    const songsInput = req.body.songs;
+    if (songsInput.length < 1 || songsInput.length > 2) {
+      return res.status(400).json({ error: 'Trebuie editată cel puțin o melodie, cel mult două.' });
+    }
+    const existingVariants = order.variants || [];
+    if (existingVariants.length !== 2) {
+      return res.status(400).json({ error: 'Comanda nu are exact două melodii inițiale.' });
+    }
+
+    const requestedVoice = typeof req.body?.voicePreference === 'string' ? req.body.voicePreference : null;
+    if (requestedVoice !== null && !VOICE_PREFERENCES.includes(requestedVoice)) {
+      return res.status(400).json({ error: invalidVoiceMessage(order.lang) });
+    }
+
+    const seenIds = new Set();
+    const parsedSongs = [];
+    for (const entry of songsInput) {
+      const variantId = typeof entry?.variantId === 'string' ? entry.variantId : null;
+      if (!variantId) return res.status(400).json({ error: sourceVariantRequiredMessage(order.lang) });
+      if (seenIds.has(variantId)) return res.status(400).json({ error: 'Aceeași melodie a fost trimisă de două ori.' });
+      seenIds.add(variantId);
+      const sourceVariant = existingVariants.find(v => v.id === variantId);
+      if (!sourceVariant) return res.status(400).json({ error: 'Varianta nu există.' });
+      const feedback = typeof entry?.feedback === 'string' ? entry.feedback.slice(0, 500) : null;
+      const requestedGenre = typeof entry?.genre === 'string' ? entry.genre : null;
+      if (requestedGenre !== null && !ALLOWED_GENRES.includes(requestedGenre)) {
+        return res.status(400).json({ error: invalidGenreMessage(order.lang) });
+      }
+      parsedSongs.push({ variantId, sourceVariant, feedback, requestedGenre });
+    }
+
+    // Genurile finale (dupa orice schimbare ceruta) trebuie sa ramana diferite intre ele —
+    // aceeasi regula ca la comanda initiala, verificata acum indiferent daca se editeaza una
+    // sau ambele melodii in aceasta cerere.
+    const finalGenreByVariantId = new Map(existingVariants.map(v => [v.id, v.genre]));
+    for (const song of parsedSongs) {
+      if (song.requestedGenre) finalGenreByVariantId.set(song.variantId, song.requestedGenre);
+    }
+    const finalGenres = existingVariants.map(v => finalGenreByVariantId.get(v.id));
+    if (finalGenres[0] && finalGenres[1] && finalGenres[0] === finalGenres[1]) {
+      return res.status(400).json({ error: sameGenreMessage(order.lang) });
+    }
+
+    if (order.generationAttempts >= credits.MAX_GENERATION_ATTEMPTS) {
+      await db.logCreditEvent({ orderId: order.id, eventType: 'blocked_retry_limit', note: `attempts=${order.generationAttempts}` });
+      return res.status(429).json({ error: 'Ai atins numărul maxim de încercări pentru această comandă. Contactează-ne pentru ajutor.' });
+    }
+    const guard = await credits.evaluateGuard('generation');
+    if (!guard.allowed) {
+      await db.logCreditEvent({ orderId: order.id, eventType: 'blocked_low_credit', balanceAfter: guard.balance, note: guard.reason });
+      return res.status(503).json({ error: 'Ne pare rău, sistemul este temporar indisponibil pentru regenerări noi. Te rugăm să încerci din nou în câteva minute.' });
+    }
+
+    // REZERVARE ATOMICA — exact acelasi mecanism ca editarea Standard/Video (un singur claim,
+    // indiferent daca se editeaza 1 sau 2 melodii in aceasta cerere — "o singura runda gratuita
+    // de editare", cerinta explicita). Previne dublul-click/reincercarile duplicate.
+    const claimed = await db.claimOrderForRegeneration(order.id, FREE_EDITS, requestedVoice, credits.MAX_GENERATION_ATTEMPTS);
+    if (!claimed) {
+      const fresh = await db.getOrderById(order.id);
+      if (fresh && fresh.status === 'ready') {
+        return res.status(400).json({ error: 'Comanda e deja plătită și finalizată.' });
+      }
+      if (fresh && fresh.editsUsed >= FREE_EDITS) {
+        return res.status(400).json({ error: 'Ai folosit editarea gratuită pentru această comandă. Alege varianta preferată pentru a continua.' });
+      }
+      if (fresh && fresh.generationAttempts >= credits.MAX_GENERATION_ATTEMPTS) {
+        return res.status(429).json({ error: 'Ai atins numărul maxim de încercări pentru această comandă. Contactează-ne pentru ajutor.' });
+      }
+      if (fresh && (fresh.status === 'generating' || fresh.status === 'processing_provider_result')) {
+        if (fresh.musicTaskId2) {
+          resumeDualTaskPolling(order.id);
+        } else if (fresh.musicTaskId) {
+          resumeExistingTaskPolling(order.id, fresh.musicTaskId);
+        }
+      }
+      return res.status(409).json({ error: 'Generarea este deja în desfășurare.' });
+    }
+
+    // Scriem genurile noi (daca s-au cerut) INAINTE de a porni generarea — runGeneration
+    // reciteste comanda din DB chiar la inceput, deci noul gen ajunge automat in prompt.
+    // Coloana corecta (genre vs genre2) se afla dupa POZITIA variantei in array-ul initial —
+    // vezi premiumEditSlotForVariant.
+    const genrePatch = {};
+    for (const song of parsedSongs) {
+      if (!song.requestedGenre) continue;
+      const { isSong2Slot } = premiumEditSlotForVariant(order, song.variantId);
+      genrePatch[isSong2Slot ? 'genre2' : 'genre'] = song.requestedGenre;
+    }
+    if (Object.keys(genrePatch).length > 0) {
+      await db.updateOrder(order.id, genrePatch);
+    }
+
+    const editVariantIds = parsedSongs.map(s => s.variantId);
+    const regenerationJobId = randomUUID();
+    await db.updateOrder(order.id, {
+      regenerateEditVariantIds: editVariantIds,
+      // regenerateSourceVariantId ramane null aici — apartine STRICT vechii ramuri
+      // (replaceVariantId, Video/Standard) si nu trebuie sa influenteze reluarile editarii
+      // selective Premium (vezi verificarea regenerateEditVariantIds INAINTEA lui in codul de
+      // reluare/callback).
+    });
+    await db.startRegenerationJob(order.id, regenerationJobId);
+    res.json({ started: true, regenerationJobId });
+
+    // feedback/versuri editate manual, per melodie — acelasi ghidaj ca la ramura veche, aplicat
+    // insa per-melodie, nu global.
+    const editSongsForGeneration = parsedSongs.map(song => {
+      const editedLyrics = typeof song.sourceVariant.editedLyrics === 'string' ? song.sourceVariant.editedLyrics.trim() : '';
+      let combinedFeedback = song.feedback;
+      if (editedLyrics) {
+        const lyricsInstruction = `Try to follow lyrics close to this rewritten version: ${editedLyrics}`;
+        combinedFeedback = song.feedback ? `${lyricsInstruction}. Also: ${song.feedback}` : lyricsInstruction;
+      }
+      return { variantId: song.variantId, feedback: combinedFeedback };
+    });
+
+    runPremiumEditGeneration(order.id, editSongsForGeneration, regenerationJobId).catch(async (err) => {
+      console.error('Eroare la editarea selectivă Premium pentru comanda', order.id, err.message);
+      try {
+        await db.refundEditIfReserved(order.id);
+        await markGenerationFailed(order.id, err.message || err, undefined, regenerationJobId);
+      } catch (dbErr) {
+        console.error('Eroare suplimentară la salvarea stării de eșec:', dbErr.message);
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function handleLegacyRegenerate(req, res, next) {
   try {
     const order = req.order;
     if (order.status === 'ready') return res.status(400).json({ error: 'Comanda e deja plătită și finalizată.' });
@@ -1936,7 +2095,7 @@ app.post('/api/orders/:orderId/regenerate', generationLimiter, requireOrderToken
   } catch (err) {
     next(err);
   }
-});
+}
 
 // ==========================================================================================
 // 3b. Salveaza versurile editate manual de client pentru o varianta (nu porneste nicio
@@ -1973,7 +2132,43 @@ app.post('/api/orders/:orderId/variants/:variantId/lyrics', express.json(), requ
 // ==========================================================================================
 // 4. Alege varianta preferata (inainte de plata)
 // ==========================================================================================
+// MODIFICARE STRICTĂ — fluxul Premium: pagina finala de comparare (hotfix 2026-08-10 runda 3):
+// clientul trebuie sa aleaga EXACT doua din cele 2-4 variante reale disponibile (2 daca n-a
+// editat nimic, 3 daca a editat o singura melodie, 4 daca a editat ambele) — niciodata mai
+// mult/mai putin. Body dedicat, doar pentru plan='premium': {variantId, variantId2}, ambele
+// obligatorii, distincte, si validate ca apartin STRICT acestei comenzi (niciodata ID-uri din
+// alta comanda). Standard/Video raman STRICT pe ramura originala de mai jos (un singur
+// variantId) — comportamentul lor ramane byte-identic.
 app.post('/api/orders/:orderId/select', requireOrderToken, async (req, res, next) => {
+  if (req.order.plan === 'premium' && req.body && typeof req.body.variantId2 === 'string') {
+    return handlePremiumSelectTwo(req, res, next);
+  }
+  return handleSelectOne(req, res, next);
+});
+
+async function handlePremiumSelectTwo(req, res, next) {
+  try {
+    const order = req.order;
+    const { variantId, variantId2 } = req.body;
+    if (typeof variantId !== 'string' || typeof variantId2 !== 'string') {
+      return res.status(400).json({ error: 'Trebuie alese exact două variante.' });
+    }
+    if (variantId === variantId2) {
+      return res.status(400).json({ error: 'Cele două variante alese trebuie să fie diferite.' });
+    }
+    const variants = order.variants || [];
+    const v1 = variants.find(v => v.id === variantId);
+    const v2 = variants.find(v => v.id === variantId2);
+    if (!v1 || !v2) return res.status(400).json({ error: 'Varianta nu există.' });
+
+    await db.updateOrder(order.id, { selectedVariantId: variantId, selectedVariantId2: variantId2 });
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function handleSelectOne(req, res, next) {
   try {
     const order = req.order;
 
@@ -2026,7 +2221,7 @@ app.post('/api/orders/:orderId/select', requireOrderToken, async (req, res, next
   } catch (err) {
     next(err);
   }
-});
+}
 
 // ==========================================================================================
 // 5. Status comanda (polling din frontend).
@@ -2073,7 +2268,14 @@ app.get('/api/orders/:orderId', async (req, res, next) => {
       // camp, melodia-mea.html nu poate distinge "Versiunea inițială" de "Versiunea editată"
       // (gasit direct la testarea reala: ambele carduri aparea etichetate "inițială", pentru
       // ca acest camp lipsea din whitelist-ul de raspuns, desi era scris corect in DB).
-      isEditedAlternative: !!v.isEditedAlternative
+      isEditedAlternative: !!v.isEditedAlternative,
+      // MODIFICARE STRICTĂ — fluxul Premium: pagina finala de comparare (hotfix 2026-08-10 runda
+      // 3): songSlot (1/2, stabil, NICIODATA dedus din genre) — grupeaza cardurile pe pagina de
+      // comparare dupa melodia CĂREIA îi aparțin, indiferent de câte editări au avut loc.
+      // recipient: numele persoanei pentru care e ACEASTA melodie — poate diferi intre cele doua
+      // melodii ("Pentru altă persoană"), afisat explicit pe fiecare card, cerinta explicita.
+      songSlot: v.songSlot || null,
+      recipient: v.recipient || order.recipient || null
     }));
 
     // Stare video derivata, expusa explicit clientului — vezi cerinta "A. Arhitectura si
@@ -2123,6 +2325,10 @@ app.get('/api/orders/:orderId', async (req, res, next) => {
       status: order.status,
       editsUsed: order.editsUsed,
       selectedVariantId: order.selectedVariantId || null,
+      // MODIFICARE STRICTĂ — fluxul Premium: pagina finala de comparare (hotfix 2026-08-10
+      // runda 3): a doua selectie finala — null pentru orice alt pachet. Necesar in
+      // melodia-mea.html ca selectia sa persiste dupa refresh, fara sa fie pierduta.
+      selectedVariantId2: order.selectedVariantId2 || null,
       error: order.error,
       price: order.price,
       genre: order.genre || null,
@@ -2172,6 +2378,13 @@ app.post('/api/orders/:orderId/checkout', requireOrderToken, async (req, res, ne
     }
     if (!order.selectedVariantId) {
       return res.status(400).json({ error: 'Alege o variantă înainte de plată.' });
+    }
+    // MODIFICARE STRICTĂ — fluxul Premium: pagina finala de comparare (hotfix 2026-08-10 runda
+    // 3): Premium livreaza DOUA melodii — plata nu poate incepe pana nu sunt alese explicit
+    // AMBELE (POST /select, {variantId, variantId2}), niciodata doar implicit prima varianta
+    // din array. Standard/Video nu au niciodata selectedVariantId2 (raman neatinse).
+    if (order.plan === 'premium' && !order.selectedVariantId2) {
+      return res.status(400).json({ error: 'Alege exact două melodii înainte de plată.' });
     }
 
     // ======================================================================================
@@ -2236,7 +2449,13 @@ app.post('/api/orders/:orderId/checkout', requireOrderToken, async (req, res, ne
     // sesiunea originala, pentru VECHEA versiune, chiar daca clientul between-timp a ales
     // alta varianta.
     // ======================================================================================
-    const versionFingerprint = `${order.selectedVariantId}-${order.mediaRevision}`;
+    // MODIFICARE STRICTĂ — fluxul Premium: pagina finala de comparare (hotfix 2026-08-10 runda
+    // 3): amprenta include si a doua varianta aleasa, pentru Premium — o schimbare a ORICAREIA
+    // din cele doua selectii invalideaza un link de plata vechi, la fel ca la selectedVariantId
+    // singular (Standard/Video, neschimbat).
+    const versionFingerprint = order.plan === 'premium'
+      ? `${order.selectedVariantId}-${order.selectedVariantId2}-${order.mediaRevision}`
+      : `${order.selectedVariantId}-${order.mediaRevision}`;
 
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
@@ -2267,6 +2486,11 @@ app.post('/api/orders/:orderId/checkout', requireOrderToken, async (req, res, ne
       metadata: {
         orderId: order.id,
         selectedVariantId: order.selectedVariantId,
+        // MODIFICARE STRICTĂ — fluxul Premium: pagina finala de comparare (hotfix 2026-08-10
+        // runda 3): a doua varianta aleasa, verificabila la webhook fara sa ai incredere doar
+        // in baza de date — string gol (nu null/undefined, Stripe metadata cere string) pentru
+        // orice comanda care nu e Premium.
+        selectedVariantId2: order.selectedVariantId2 || '',
         mediaRevision: String(order.mediaRevision),
         expectedAmount: String(Math.round(order.price * 100)),
         expectedCurrency: 'gbp'
@@ -2287,6 +2511,7 @@ app.post('/api/orders/:orderId/checkout', requireOrderToken, async (req, res, ne
     await db.updateOrder(order.id, {
       checkoutSessionId: session.id,
       checkoutVariantId: order.selectedVariantId,
+      checkoutVariantId2: order.selectedVariantId2 || null,
       checkoutMediaRevision: order.mediaRevision
     });
 
@@ -3025,6 +3250,20 @@ app.post('/api/music/callback', async (req, res) => {
       // Genul se afla PRIN ELIMINARE (vezi comentariul din runGeneration) — NICIODATA din
       // sourceVariant.genre (VECHI, dinainte de o eventuala schimbare de gen la editare).
       const isDualGenrePlan = PLAN_VARIANT_COUNT[order.plan] === 2;
+      // MODIFICARE STRICTĂ — fluxul Premium: editare selectiva (hotfix 2026-08-10 runda 3): vezi
+      // comentariul echivalent din resumeExistingTaskPolling — prioritate fata de ramura de mai
+      // jos, DOAR pentru editarea unei singure melodii din noul flux Premium.
+      if (isDualGenrePlan && order.regenerateEditVariantIds && order.regenerateEditVariantIds.length === 1) {
+        const [editVariantId] = order.regenerateEditVariantIds;
+        const { genreToUse: editGenreToUse, isSong2Slot: editIsSong2Slot } = premiumEditSlotForVariant(order, editVariantId);
+        const editOptions = { editVariantIds: [editVariantId] };
+        if (order.regenerationJobId) editOptions.regenerationJobId = order.regenerationJobId;
+        await finalizeVariantsIfNeeded(order.id, [{ tracks, genre: editGenreToUse, taskId, songSlot: editIsSong2Slot ? 2 : 1 }], editOptions).catch(err => {
+          console.error(`Callback SunoAPI: eroare la finalizarea comenzii ${order.id}:`, err.message);
+        });
+        res.status(200).json({ received: true });
+        return;
+      }
       const sourceVariant = (isDualGenrePlan && order.regenerateSourceVariantId)
         ? (order.variants || []).find(v => v.id === order.regenerateSourceVariantId)
         : null;
@@ -3175,10 +3414,15 @@ async function resumeExistingTaskPolling(orderId, taskId) {
         }
         return;
       }
+      // MODIFICARE STRICTĂ — fluxul Premium: editare selectiva (hotfix 2026-08-10 runda 3): vezi
+      // comentariul echivalent din resumeDualTaskPolling.
+      const dualFinalizeOptions = (order.regenerateEditVariantIds && order.regenerateEditVariantIds.length === 2)
+        ? { editVariantIds: order.regenerateEditVariantIds, regenerationJobId: order.regenerationJobId }
+        : {};
       await finalizeVariantsIfNeeded(orderId, [
-        { tracks: r1.tracks, genre: order.genre, taskId: order.musicTaskId },
-        { tracks: r2.tracks, genre: order.genre2, taskId: order.musicTaskId2 }
-      ]);
+        { tracks: r1.tracks, genre: order.genre, taskId: order.musicTaskId, songSlot: 1 },
+        { tracks: r2.tracks, genre: order.genre2, taskId: order.musicTaskId2, songSlot: 2 }
+      ], dualFinalizeOptions);
       return;
     }
 
@@ -3190,6 +3434,20 @@ async function resumeExistingTaskPolling(orderId, taskId) {
       return;
     }
     if (finalStatus === SUNO_SUCCESS_STATUS) {
+      // MODIFICARE STRICTĂ — fluxul Premium: editare selectiva (hotfix 2026-08-10 runda 3):
+      // regenerate_edit_variant_ids (setat DOAR de noul corp {songs:[...]}) are prioritate —
+      // semnaleaza ADAUGARE (append), niciodata inlocuire, pentru editarea unei SINGURE melodii
+      // Premium din noul flux. Ramura de mai jos (regenerateSourceVariantId, prin eliminare)
+      // ramane STRICT neschimbata pentru Video si pentru orice comanda Premium veche.
+      const isDualGenrePlan = PLAN_VARIANT_COUNT[order.plan] === 2;
+      if (isDualGenrePlan && order.regenerateEditVariantIds && order.regenerateEditVariantIds.length === 1) {
+        const [editVariantId] = order.regenerateEditVariantIds;
+        const { genreToUse, isSong2Slot } = premiumEditSlotForVariant(order, editVariantId);
+        const editOptions = { editVariantIds: [editVariantId] };
+        if (order.regenerationJobId) editOptions.regenerationJobId = order.regenerationJobId;
+        await finalizeVariantsIfNeeded(orderId, [{ tracks, genre: genreToUse, taskId, songSlot: isSong2Slot ? 2 : 1 }], editOptions);
+        return;
+      }
       // Regenerare partiala (Premium/Video, o singura varianta reeditata): foloseste genul
       // deja asociat variantei sursa si inlocuieste DOAR acea varianta — niciodata sora ei.
       // Standard, editare in curs: regenerateKeepOriginal (persistat in DB) pastreaza
@@ -3197,7 +3455,6 @@ async function resumeExistingTaskPolling(orderId, taskId) {
       // niciuna din cele doua nu se aplica — inlocuitor COMPLET (array-ul e oricum gol).
       // Genul se afla PRIN ELIMINARE (vezi comentariul din runGeneration) — NICIODATA din
       // sourceVariant.genre (VECHI, dinainte de o eventuala schimbare de gen la editare).
-      const isDualGenrePlan = PLAN_VARIANT_COUNT[order.plan] === 2;
       const sourceVariant = (isDualGenrePlan && order.regenerateSourceVariantId)
         ? (order.variants || []).find(v => v.id === order.regenerateSourceVariantId)
         : null;
@@ -3302,6 +3559,84 @@ function getSong2EffectiveData(order) {
     };
   }
   return getSong1EffectiveData(order);
+}
+
+// MODIFICARE STRICTĂ — fluxul Premium: editare selectiva (hotfix 2026-08-10 runda 3): slotul
+// (melodia 1 sau 2) unei variante aflate in curs de editare selectiva se afla STRICT dupa
+// POZITIA ei in order.variants — la crearea initiala, variants[0] corespunde INTOTDEAUNA lui
+// order.genre (melodia 1) si variants[1] lui order.genre2 (melodia 2), vezi
+// waitForDualTaskAndFinalize mai jos. Functia ramane corecta chiar daca AMBELE melodii isi
+// schimba genul in aceeasi cerere de editare (caz in care nu exista niciun "sibling neatins"
+// de folosit ca ancora, spre deosebire de logica "prin eliminare" folosita pentru regenerarea
+// partiala unica mai veche, options.replaceVariantId, ramasa neschimbata pentru Video).
+function premiumEditSlotForVariant(order, variantId) {
+  const variants = order.variants || [];
+  const idx = variants.findIndex(v => v.id === variantId);
+  const isSong2Slot = idx === 1;
+  const genreToUse = isSong2Slot ? order.genre2 : order.genre;
+  return { isSong2Slot, genreToUse };
+}
+
+// MODIFICARE STRICTĂ — fluxul Premium: editare selectiva (hotfix 2026-08-10 runda 3): reediteaza
+// DOAR melodia sau melodiile explicit selectate de client pe pagina dedicata de editare —
+// niciodata cealalta, neselectata. Rezultatele se ADAUGA alaturi de variantele initiale
+// (options.editVariantIds, vezi finalizeVariantsIfNeeded), niciodata nu le inlocuiesc — clientul
+// alege apoi explicit intre ele pe pagina de comparare. editSongs: [{variantId, feedback}],
+// 1 sau 2 elemente.
+async function runPremiumEditGeneration(orderId, editSongs, regenerationJobId) {
+  const order = await db.getOrderById(orderId);
+  if (!order) throw new Error('Comanda a dispărut în timpul generării');
+
+  perfLog(orderId, 'premium_edit_start', `melodii=${editSongs.length}`);
+  recordRegenerationProgress(orderId, regenerationJobId, 'prepared').catch(() => {});
+
+  // Sortate dupa slot (melodia 1 inaintea melodiei 2), INDIFERENT de ordinea in care clientul
+  // le-a trimis — waitForDualTaskAndFinalize (mai jos) presupune STRICT dispatches[0]=melodia 1,
+  // dispatches[1]=melodia 2 (deriva recipientSnapshot din getSong1/getSong2EffectiveData in
+  // aceasta ordine fixa); fara aceasta sortare, editarea "doar melodia 2" trimisa inaintea
+  // "melodiei 1" intr-un request cu ambele ar amesteca datele de destinatar intre cele doua.
+  const dispatches = editSongs
+    .map(song => {
+      const { isSong2Slot, genreToUse } = premiumEditSlotForVariant(order, song.variantId);
+      const recipientSnapshot = isSong2Slot ? getSong2EffectiveData(order) : getSong1EffectiveData(order);
+      const prompt = buildPrompt({ ...order, ...recipientSnapshot }, song.feedback, genreToUse);
+      return { variantId: song.variantId, isSong2Slot, genreToUse, recipientSnapshot, prompt };
+    })
+    .sort((a, b) => Number(a.isSong2Slot) - Number(b.isSong2Slot));
+
+  if (dispatches.length === 1) {
+    const [d] = dispatches;
+    const taskId = await callMusicProvider(orderId, d.prompt);
+    recordRegenerationProgress(orderId, regenerationJobId, 'dispatched').catch(() => {});
+    await db.updateOrder(orderId, { musicTaskId: taskId, musicTaskId2: null });
+    recordRegenerationProgress(orderId, regenerationJobId, 'processing').catch(() => {});
+    const { status: finalStatus, tracks } = await pollForResult(taskId, orderId);
+
+    if (finalStatus === 'ALREADY_FINALIZED_BY_CALLBACK') {
+      perfLog(orderId, 'polling_stopped_early_callback_won');
+      return;
+    }
+    if (finalStatus === 'LOCAL_POLL_TIMEOUT') return;
+    if (finalStatus !== SUNO_SUCCESS_STATUS) {
+      throw new Error(`Suno a raportat un status de eroare: ${finalStatus}`);
+    }
+    recordRegenerationProgress(orderId, regenerationJobId, 'audio_ready').catch(() => {});
+    await finalizeVariantsIfNeeded(orderId, [{ tracks, genre: d.genreToUse, taskId, recipientSnapshot: d.recipientSnapshot, songSlot: d.isSong2Slot ? 2 : 1 }], {
+      editVariantIds: [d.variantId],
+      regenerationJobId
+    });
+    return;
+  }
+
+  const [taskId1, taskId2] = await Promise.all(dispatches.map(d => callMusicProvider(orderId, d.prompt)));
+  await db.updateOrder(orderId, { musicTaskId: taskId1, musicTaskId2: taskId2 });
+  recordRegenerationProgress(orderId, regenerationJobId, 'dispatched').catch(() => {});
+  perfLog(orderId, 'premium_edit_dual_tasks_created', `gen1=${dispatches[0].genreToUse}, gen2=${dispatches[1].genreToUse}`);
+
+  await waitForDualTaskAndFinalize(orderId, taskId1, dispatches[0].genreToUse, taskId2, dispatches[1].genreToUse, {
+    editVariantIds: [dispatches[0].variantId, dispatches[1].variantId],
+    regenerationJobId
+  });
 }
 
 async function runGeneration(orderId, feedback, options = {}) {
@@ -3428,7 +3763,11 @@ async function runGeneration(orderId, feedback, options = {}) {
 // (POST /generate si /regenerate, ramura "deja in desfasurare") relua polling-ul DOAR pentru
 // musicTaskId (prima sarcina), niciodata musicTaskId2 — o comanda Premium/Video ramasa
 // blocata dupa expirarea ferestrei locale nu putea fi niciodata recuperata automat.
-async function waitForDualTaskAndFinalize(orderId, taskId1, genre1, taskId2, genre2) {
+// finalizeOptions (optional): transmise NESCHIMBATE catre finalizeVariantsIfNeeded — absent
+// (implicit) pentru generarea INITIALA (inlocuire completa, comportament original,
+// neschimbat); { editVariantIds: [...], regenerationJobId } pentru editarea selectiva Premium
+// (adauga alaturi, niciodata nu inlocuieste — vezi runPremiumEditGeneration mai sus).
+async function waitForDualTaskAndFinalize(orderId, taskId1, genre1, taskId2, genre2, finalizeOptions = {}) {
   const [r1, r2] = await Promise.all([
     pollForResult(taskId1, orderId),
     pollForResult(taskId2, orderId)
@@ -3452,9 +3791,9 @@ async function waitForDualTaskAndFinalize(orderId, taskId1, genre1, taskId2, gen
   // aceasta functie fara sa mai treaca prin runGeneration). Pentru Video/Premium-"Aceeași
   // persoană", cele doua snapshot-uri sunt identice — niciun comportament nou pentru ele.
   await finalizeVariantsIfNeeded(orderId, [
-    { tracks: r1.tracks, genre: genre1, taskId: taskId1, recipientSnapshot: getSong1EffectiveData(fresh) },
-    { tracks: r2.tracks, genre: genre2, taskId: taskId2, recipientSnapshot: getSong2EffectiveData(fresh) }
-  ]);
+    { tracks: r1.tracks, genre: genre1, taskId: taskId1, recipientSnapshot: getSong1EffectiveData(fresh), songSlot: 1 },
+    { tracks: r2.tracks, genre: genre2, taskId: taskId2, recipientSnapshot: getSong2EffectiveData(fresh), songSlot: 2 }
+  ], finalizeOptions);
 }
 
 // Reluare pentru comenzi Premium/Video (doua sarcini) ramase 'generating' peste fereastra
@@ -3469,7 +3808,15 @@ async function resumeDualTaskPolling(orderId) {
     const order = await db.getOrderById(orderId);
     orderBeforeAttempt = order;
     if (!order || !order.musicTaskId || !order.musicTaskId2) return;
-    await waitForDualTaskAndFinalize(orderId, order.musicTaskId, order.genre, order.musicTaskId2, order.genre2);
+    // MODIFICARE STRICTĂ — fluxul Premium: editare selectiva (hotfix 2026-08-10 runda 3): daca
+    // reluarea prinde o editare selectiva Premium a AMBELOR melodii (nu o generare initiala),
+    // finalizarea trebuie sa ADAUGE rezultatele, niciodata sa le inlocuiasca — semnalul e
+    // regenerate_edit_variant_ids, persistat de POST /regenerate inainte de a porni cele doua
+    // sarcini Suno.
+    const finalizeOptions = (order.regenerateEditVariantIds && order.regenerateEditVariantIds.length === 2)
+      ? { editVariantIds: order.regenerateEditVariantIds, regenerationJobId: order.regenerationJobId }
+      : {};
+    await waitForDualTaskAndFinalize(orderId, order.musicTaskId, order.genre, order.musicTaskId2, order.genre2, finalizeOptions);
   } catch (err) {
     console.error(`Reluare polling dual pentru comanda ${orderId}:`, err.message);
     await db.refundEditIfReserved(orderId).catch(refundErr => {
@@ -3555,7 +3902,7 @@ async function finalizeVariantsIfNeeded(orderId, requestsInfo, options = {}) {
   try {
     const builtVariants = [];
     const requestFailures = [];
-    for (const { tracks, genre, taskId, recipientSnapshot } of requestsInfo) {
+    for (const { tracks, genre, taskId, recipientSnapshot, songSlot } of requestsInfo) {
       if (!tracks || tracks.length === 0) {
         requestFailures.push(`genul "${genre}": Suno nu a intors nicio piesa cu audioUrl`);
         continue;
@@ -3574,6 +3921,12 @@ async function finalizeVariantsIfNeeded(orderId, requestsInfo, options = {}) {
       }
       if (built) {
         built.genre = genre;
+        // MODIFICARE STRICTĂ — fluxul Premium: pagina finala de comparare (hotfix 2026-08-10
+        // runda 3): songSlot (1 sau 2) identifica STABIL carei melodii apartine varianta —
+        // NICIODATA dedus din genre (care se poate schimba la editare, deci nu mai
+        // corespunde consistent cu order.genre/order.genre2 dupa o schimbare de gen).
+        // Absent pentru Standard (nefolosit acolo).
+        if (songSlot) built.songSlot = songSlot;
         // CONTINUARE — fluxul pachetului Premium £25 (hotfix 2026-08-09): salveaza SEPARAT, pe
         // fiecare varianta, destinatarul/relatia/numele folosite pentru EA — necesar pentru ca
         // o a doua melodie "Pentru altă persoană" sa nu piarda aceasta informatie la o editare
@@ -3616,6 +3969,22 @@ async function finalizeVariantsIfNeeded(orderId, requestsInfo, options = {}) {
       variants = existing.map(v => v.id === options.replaceVariantId ? replaced : v);
       newSelectedVariantId = options.keepSelectedVariantId || claimed.selectedVariantId;
       replacedOldVariants = existing.filter(v => v.id === options.replaceVariantId);
+    } else if (options.editVariantIds) {
+      // MODIFICARE STRICTĂ — fluxul Premium: editare selectiva (hotfix 2026-08-10 runda 3):
+      // 1 SAU 2 melodii au fost reeditate explicit de client (vezi POST /regenerate,
+      // {songs:[...]}) — la fel ca la Standard (options.keepOriginalAsAlternative de mai jos),
+      // NU inlocuim variantele sursa, le PASTRAM si adaugam rezultatele noi alaturi, ca
+      // alternative. Clientul alege apoi EXACT doua variante din cele 2-4 disponibile
+      // (POST /select extins, doar pentru premium) inainte ca plata sa devina posibila —
+      // de aceea selectedVariantId RAMANE null aici (si selectedVariantId2, mai jos, in
+      // apelul catre db.updateOrder). Nimic nu se sterge din storage (replacedOldVariants
+      // ramane gol) — originalele raman complet functionale/livrabile daca clientul alege
+      // pana la urma sa le pastreze pe ele.
+      const existing = claimed.variants || [];
+      const edited = builtVariants.map(v => ({ ...v, isEditedAlternative: true }));
+      variants = [...existing, ...edited];
+      newSelectedVariantId = null;
+      replacedOldVariants = [];
     } else if (options.keepOriginalAsAlternative) {
       // Standard, fluxul de editare cu alegere (Partea 2, hotfix 2026-08-08): editarea NU
       // inlocuieste originalul — il PASTREAZA, si adauga varianta noua alaturi, ca alegere
@@ -3637,7 +4006,7 @@ async function finalizeVariantsIfNeeded(orderId, requestsInfo, options = {}) {
       replacedOldVariants = claimed.variants || [];
     }
 
-    await db.updateOrder(orderId, {
+    const finalizePatch = {
       status: 'preview_ready',
       variants,
       selectedVariantId: newSelectedVariantId,
@@ -3649,7 +4018,17 @@ async function finalizeVariantsIfNeeded(orderId, requestsInfo, options = {}) {
       // Stergem orice mesaj de eroare ramas de la o incercare anterioara esuata — altfel ar
       // ramane afisat/expus indefinit dupa un succes ulterior (vezi markGenerationFailed).
       error: null
-    });
+    };
+    // MODIFICARE STRICTĂ — fluxul Premium: editare selectiva (hotfix 2026-08-10 runda 3): a
+    // doua selectie finala e resetata la null in ACELASI moment ca prima, ca sa oblige
+    // alegerea explicita pe pagina de comparare. Marcajul regenerate_edit_variant_ids nu mai
+    // e necesar dupa finalizare cu succes — curatat aici. Pentru orice alta regenerare
+    // (options.editVariantIds absent), ambele campuri raman complet neatinse.
+    if (options.editVariantIds) {
+      finalizePatch.selectedVariantId2 = null;
+      finalizePatch.regenerateEditVariantIds = null;
+    }
+    await db.updateOrder(orderId, finalizePatch);
     // 'ready' aici = ambele melodii (sau singura, pentru Standard) gata si redabile — NU
     // 100% pentru pachetul Video, care mai are o a doua faza (videoclipul) dupa aceasta; vezi
     // triggerVideoGeneration/generatePremiumExtras pentru 'video_processing'/'video_ready'.
