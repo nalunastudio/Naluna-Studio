@@ -372,11 +372,12 @@ test('melodia-mea.html: WEDDING_TYPE_HEADING_TEMPLATE si HEADING_PERSONALIZED_DU
 });
 
 // -------------------------------------------------------------------------------------------
-// 16-17. Standard, Premium si Cadou video au ramas neschimbate (regresie).
+// 16-17. Standard si Premium au ramas neschimbate (regresie). Cadou video (2026-08-14): corectat
+// intentionat la o singura melodie initiala, ca Standard — vezi PLAN_VARIANT_COUNT in server.js.
 // -------------------------------------------------------------------------------------------
-test('server.js: PLAN_VARIANT_COUNT si preturile pachetelor raman neschimbate', () => {
+test('server.js: PLAN_VARIANT_COUNT.standard/premium raman neschimbate, video e acum 1 (nu 2)', () => {
   const server = read('server.js');
-  assert.match(server, /PLAN_VARIANT_COUNT\s*=\s*\{\s*standard:\s*1,\s*premium:\s*2,\s*video:\s*2\s*\}/);
+  assert.match(server, /PLAN_VARIANT_COUNT\s*=\s*\{\s*standard:\s*1,\s*premium:\s*2,\s*video:\s*1\s*\}/);
 });
 
 test('melodia-mea.html: mecanismele Standard (plata directa, meniu pliabil, alegere variante) raman neatinse', () => {

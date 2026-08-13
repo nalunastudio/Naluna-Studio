@@ -121,11 +121,17 @@ const FETCH_TIMEOUT_MS = 25000;
 // Preturile NU vin niciodata de la client. Un client care modifica payload-ul (curl/devtools)
 // nu poate plati mai putin decat pretul real al pachetului ales.
 const PLAN_PRICES = { standard: 15, premium: 25, video: 35 };
-// REGULA FINALA A PACHETELOR (2026-08-07): sursa unica server-side pentru cate melodii
-// (variante) primeste fiecare plan — nu doar text in UI. Standard = o singura melodie,
-// un singur gen. Premium/Video = doua melodii COMPLETE, in doua genuri DIFERITE, alese
-// explicit de client (nu "prima varianta + a doua varianta a ACELUIASI gen").
-const PLAN_VARIANT_COUNT = { standard: 1, premium: 2, video: 2 };
+// REGULA FINALA A PACHETELOR (2026-08-14, corectata — vezi si comentariul de la
+// getGiftVariant in lib/entitlements.js): sursa unica server-side pentru cate melodii
+// (variante) primeste fiecare plan — nu doar text in UI. Standard SI Video = o singura
+// melodie initiala, un singur gen, cu O SINGURA editare/regenerare gratuita care PASTREAZA
+// originalul si adauga varianta editata alaturi (vezi options.keepOriginalAsAlternative in
+// finalizeVariantsIfNeeded) — clientul alege apoi explicit intre cele doua inainte de plata.
+// DOAR Premium ramane pachetul cu doua melodii COMPLETE, in doua genuri DIFERITE, alese
+// explicit de client de la inceput. Video NU mai e tratat ca un plan cu doua genuri initiale
+// (corectie 2026-08-14 — anterior PLAN_VARIANT_COUNT.video era gresit setat la 2, ceea ce
+// facea "Cadou video" sa ceara doua genuri de la inceput, exact ca Premium).
+const PLAN_VARIANT_COUNT = { standard: 1, premium: 2, video: 1 };
 const ALLOWED_OCCASIONS = ['dor', 'onomastica', 'aniversare', 'declaratie', 'nunta', 'pierdere', 'pentru-mine', 'altceva', 'bunici', 'parinti', 'matusa-unchi', 'socri', 'frati'];
 const ALLOWED_GENRES = ['emotional', 'suflet', 'pop', 'acustic', 'petrecere', 'balada', 'manele', 'copii', 'populara', 'rock', 'colind', 'modern', 'hiphop', 'manele_suflet', 'motivational'];
 const ALLOWED_LANGS = ['ro', 'en', 'de', 'es', 'it', 'fr', 'bg', 'tr'];
@@ -1520,11 +1526,13 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
     if (!PLAN_PRICES[plan]) {
       return res.status(400).json({ error: 'Pachet invalid.' });
     }
-    // REGULA FINALA A PACHETELOR (2026-08-07): Standard = o singura melodie, un singur gen.
-    // Premium/Video = doua melodii COMPLETE, in doua genuri DIFERITE, alese explicit de
-    // client — validate server-side, niciodata doar in UI (un client care manipuleaza
-    // requestul din devtools nu poate obtine entitlement Premium platind Standard, si nici
-    // nu poate forta doua melodii identice la Premium/Video).
+    // REGULA FINALA A PACHETELOR (corectata 2026-08-14): Standard SI Video = o singura
+    // melodie initiala, un singur gen (Video primeste apoi o singura editare gratuita, care
+    // pastreaza originalul si adauga alaturi varianta editata — vezi PLAN_VARIANT_COUNT).
+    // DOAR Premium cere doua genuri diferite de la inceput — validat server-side, niciodata
+    // doar in UI (un client care manipuleaza requestul din devtools nu poate obtine
+    // entitlement Premium platind Standard/Video, si nici nu poate forta doua melodii
+    // identice la Premium).
     let safeGenre2 = null;
     if (PLAN_VARIANT_COUNT[plan] === 2) {
       if (!ALLOWED_GENRES.includes(genre2)) {

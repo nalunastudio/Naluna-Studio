@@ -1,6 +1,8 @@
 // Teste de regresie STATICE (citesc direct sursa, fara server/DB) pentru regula finala a
-// pachetelor (hotfix 2026-08-07): Standard = 1 melodie/1 gen; Premium/Video = 2 melodii
-// complete, 2 genuri DIFERITE alese de client, fara cadru de "cadou din partea noastra".
+// pachetelor: Standard = 1 melodie/1 gen; Premium = 2 melodii complete, 2 genuri DIFERITE
+// alese de client, fara cadru de "cadou din partea noastra". Cadou video (corectat 2026-08-14,
+// "o singura melodie initiala + o editare"): NU mai e tratat ca Premium — foloseste acum EXACT
+// acelasi mecanism ca Standard, vezi test/video-single-song-edit.test.js pentru detalii.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -10,12 +12,12 @@ function read(relPath) {
   return fs.readFileSync(path.join(__dirname, '..', relPath), 'utf8');
 }
 
-test('PLAN_VARIANT_COUNT: Standard=1 varianta, Premium/Video=2 variante', () => {
+test('PLAN_VARIANT_COUNT: Standard=1 varianta, Premium=2 variante, Video=1 varianta (corectat 2026-08-14)', () => {
   const server = read('server.js');
   assert.match(
     server,
-    /PLAN_VARIANT_COUNT\s*=\s*\{\s*standard:\s*1,\s*premium:\s*2,\s*video:\s*2\s*\}/,
-    'PLAN_VARIANT_COUNT trebuie sa mapeze exact standard->1, premium->2, video->2'
+    /PLAN_VARIANT_COUNT\s*=\s*\{\s*standard:\s*1,\s*premium:\s*2,\s*video:\s*1\s*\}/,
+    'PLAN_VARIANT_COUNT trebuie sa mapeze exact standard->1, premium->2, video->1'
   );
 });
 

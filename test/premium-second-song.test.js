@@ -446,8 +446,11 @@ test('comanda.html: butonul de trimitere e dezactivat imediat la primul click (p
 // ---------------------------------------------------------------------------------------------
 // TEST 14: Premium genereaza exact doua melodii.
 // ---------------------------------------------------------------------------------------------
+// REVIZUIT (2026-08-14): PLAN_VARIANT_COUNT.premium ramane neschimbat (2); video a fost
+// corectat intentionat de la 2 la 1 ("Cadou video: o singura melodie initiala + o editare",
+// vezi test/video-single-song-edit.test.js) — nu afecteaza Premium.
 test('server.js: PLAN_VARIANT_COUNT.premium ramane exact 2 (neschimbat)', () => {
-  assert.match(server, /const PLAN_VARIANT_COUNT = \{ standard: 1, premium: 2, video: 2 \};/);
+  assert.match(server, /const PLAN_VARIANT_COUNT = \{ standard: 1, premium: 2, video: 1 \};/);
 });
 
 test('server.js: runGeneration dual-genre porneste exact DOUA cereri Suno in paralel, cu snapshot-uri distincte per melodie', () => {
@@ -503,8 +506,10 @@ test('server.js: PLAN_PRICES ramane exact neschimbat', () => {
   assert.match(server, /const PLAN_PRICES = \{ standard: 15, premium: 25, video: 35 \};/);
 });
 
-test('comanda.html: planNeedsGenre2 ramane neschimbata (Premium SI Video au amandoua nevoie de al doilea gen la validarea finala)', () => {
-  assert.match(comanda, /function planNeedsGenre2\(planId\) \{\s*return planId === 'premium' \|\| planId === 'video';\s*\}/);
+// REVIZUIT (2026-08-14, "Cadou video: o singura melodie initiala + o editare"): Video nu mai
+// are nevoie de un al doilea gen la crearea comenzii — vezi test/video-single-song-edit.test.js.
+test('comanda.html: planNeedsGenre2 e acum STRICT Premium (Video nu mai cere al doilea gen la validarea finala)', () => {
+  assert.match(comanda, /function planNeedsGenre2\(planId\) \{\s*return planId === 'premium';\s*\}/);
 });
 
 test('comanda.html: genre2Field revine la locul lui original (pasul 4) pentru orice plan diferit de premium — Video foloseste EXACT acelasi camp, in acelasi loc, ca inainte', () => {

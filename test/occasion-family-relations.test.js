@@ -345,7 +345,10 @@ test('melodia-mea.html: mecanismul de plata directa, meniul pliabil si alegerea 
   assert.ok(html.includes('function updateStandardEditMenuVisibility('));
 });
 
-test('server.js: PLAN_VARIANT_COUNT si preturile pachetelor raman neschimbate', () => {
+// REVIZUIT (2026-08-14, "Cadou video: o singura melodie initiala + o editare"): video: 2 a
+// fost corectat la video: 1 (Video = o singura melodie initiala, ca Standard, NU doua genuri
+// initiale ca Premium) — vezi PLAN_VARIANT_COUNT in server.js.
+test('server.js: PLAN_VARIANT_COUNT.standard/premium raman neschimbate, video e acum 1 (nu 2)', () => {
   const server = read('server.js');
-  assert.match(server, /PLAN_VARIANT_COUNT\s*=\s*\{\s*standard:\s*1,\s*premium:\s*2,\s*video:\s*2\s*\}/);
+  assert.match(server, /PLAN_VARIANT_COUNT\s*=\s*\{\s*standard:\s*1,\s*premium:\s*2,\s*video:\s*1\s*\}/);
 });

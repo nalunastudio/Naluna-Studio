@@ -288,9 +288,13 @@ test('buildPrompt: Nuntă/Botez si bunici (existente) raman EXACT neschimbate du
   assert.ok(promptBunici.includes('"grandmother"'), 'bunici trebuie sa functioneze exact ca inainte');
 });
 
-test('server.js: PLAN_VARIANT_COUNT si preturile pachetelor raman neschimbate', () => {
+// REVIZUIT (2026-08-14, "Cadou video: o singura melodie initiala + o editare"): preturile
+// pachetelor raman NESCHIMBATE (£15/£25/£35) — corectate aici DOAR pentru
+// PLAN_VARIANT_COUNT.video, care era gresit setat la 2 (facea Video sa se comporte ca Premium,
+// cu doua genuri initiale) si a fost corectat la 1 (Video = o melodie initiala, ca Standard).
+test('server.js: preturile pachetelor raman neschimbate; PLAN_VARIANT_COUNT.video e acum 1 (o singura melodie initiala, ca Standard, NU 2 ca Premium)', () => {
   assert.match(server, /const PLAN_PRICES = \{ standard: 15, premium: 25, video: 35 \};/);
-  assert.match(server, /const PLAN_VARIANT_COUNT = \{ standard: 1, premium: 2, video: 2 \};/);
+  assert.match(server, /const PLAN_VARIANT_COUNT = \{ standard: 1, premium: 2, video: 1 \};/);
 });
 
 test('melodia-mea.html: RELATION_DISPLAY_NOUNS.recipient a primit sister/brother fara sa modifice intrarile existente (grandmother/mother/aunt/mother_in_law)', () => {

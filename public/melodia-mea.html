@@ -1807,10 +1807,18 @@
     activeAudioLoadTimeouts.forEach(clearTimeout);
     activeAudioLoadTimeouts = [];
     variantsWrap.innerHTML = '';
+    // CORECȚIE (2026-08-14, "Cadou video: o singura melodie initiala + o editare"): Video
+    // foloseste acum EXACT acelasi mecanism de editare ca Standard (PLAN_VARIANT_COUNT.video=1
+    // in server.js) — o varianta cu v.isEditedAlternative=true inseamna o editare REALA a
+    // ACELEIASI melodii, nu o a doua melodie initiala intr-un gen diferit. Comenzile Video
+    // VECHI (dinainte de aceasta corectie, doua melodii initiale, in doua genuri diferite, FARA
+    // nicio editare reala) nu au niciodata acest flag — raman pe eticheta veche ("Melodia din
+    // videoclip"/"Melodia cadou"), neatinse, pentru compatibilitate.
+    const hasEditedAlternative = (order.variants || []).some(v => v.isEditedAlternative);
     (order.variants || []).forEach((v, i) => {
       const card = document.createElement('div');
       const isSelectedForClass = i === selectedVariantIndex;
-      const isStandardChoiceForClass = order.plan === 'standard' && (order.variants || []).length > 1;
+      const isStandardChoiceForClass = (order.plan === 'standard' || (order.plan === 'video' && hasEditedAlternative)) && (order.variants || []).length > 1;
       card.className = 'variant-card'
         + (isSelectedForClass ? ' selected' : '')
         + (isStandardChoiceForClass && isSelectedForClass ? ' standard-selected' : '');
@@ -1818,27 +1826,29 @@
 
       // Eticheta urmareste DINAMIC selectia curenta (nu pozitia in array) — varianta NEALEASA
       // ca principala ramane vizibila si descarcabila la fel ca cealalta, niciodata ascunsa.
-      // Comenzi NOI (Premium/Video, doua genuri diferite alese de client — vezi order.genre2
-      // in server.js): variantele au v.genre setat, etichetate neutru ("A doua melodie",
-      // FARA cadru de "cadou") si insotite de un tag vizibil cu genul (cerinta explicita —
-      // genul trebuie afisat langa fiecare player). Comenzi VECHI Standard, pastrate pentru
-      // compatibilitate (doua variante fara .genre, generate inainte de aceasta regula): pastram
-      // eticheta si nota originale ("cadou"), ca sa nu schimbam brusc afisarea unor comenzi deja
-      // livrate clientului.
+      // Comenzi Premium (doua genuri diferite alese de client — vezi order.genre2 in server.js):
+      // variantele au v.genre setat, etichetate neutru ("A doua melodie", FARA cadru de "cadou")
+      // si insotite de un tag vizibil cu genul (cerinta explicita — genul trebuie afisat langa
+      // fiecare player). Comenzi VECHI Standard, pastrate pentru compatibilitate (doua variante
+      // fara .genre, generate inainte de aceasta regula): pastram eticheta si nota originale
+      // ("cadou"), ca sa nu schimbam brusc afisarea unor comenzi deja livrate clientului.
       const isSelected = i === selectedVariantIndex;
       const hasGenreTag = !!v.genre;
-      // Standard, fluxul de editare cu alegere (Partea 2, hotfix 2026-08-08): editarea
-      // PASTREAZA originalul si adauga varianta editata alaturi (vezi finalizeVariantsIfNeeded,
-      // options.keepOriginalAsAlternative) — clientul alege explicit intre ele. Etichetele
-      // "Versiunea inițială"/"Versiunea editată" (NU "principala"/"cadou" — ramane O SINGURA
-      // melodie finala, nu doua incluse) — discriminate prin v.isEditedAlternative, NICIODATA
-      // prin selectedVariantIndex (care e -1/nedefinit pana la alegerea reala, vezi renderContent).
-      const isStandardEditChoice = order.plan === 'standard' && (order.variants || []).length > 1;
-      // Pachetul "Cadou video": cerinta explicita — cardul variantei SELECTATE (folosita in
-      // videoclip) trebuie sa apara mereu PRIMUL si etichetat "Melodia din videoclip", iar
-      // celalalt "Melodia cadou", indiferent de ordinea lor reala in array (vezi si
-      // `order:` CSS de mai jos, care face reordonarea vizuala fara sa atinga
-      // card.dataset.index — editarea/regenerarea raman legate corect de fiecare varianta).
+      // Standard SI Video (corectie 2026-08-14), fluxul de editare cu alegere (Partea 2, hotfix
+      // 2026-08-08): editarea PASTREAZA originalul si adauga varianta editata alaturi (vezi
+      // finalizeVariantsIfNeeded, options.keepOriginalAsAlternative) — clientul alege explicit
+      // intre ele. Etichetele "Versiunea inițială"/"Versiunea editată" (NU "principala"/"cadou" —
+      // ramane O SINGURA melodie finala, nu doua incluse) — discriminate prin
+      // v.isEditedAlternative, NICIODATA prin selectedVariantIndex (care e -1/nedefinit pana la
+      // alegerea reala, vezi renderContent).
+      const isStandardEditChoice = (order.plan === 'standard' || (order.plan === 'video' && hasEditedAlternative)) && (order.variants || []).length > 1;
+      // Pachetul "Cadou video" VECHI (comenzi dinainte de corectia 2026-08-14, cu doua melodii
+      // initiale in doua genuri diferite, fara nicio editare reala): cardul variantei SELECTATE
+      // (folosita in videoclip) apare mereu PRIMUL si etichetat "Melodia din videoclip", iar
+      // celalalt "Melodia cadou", indiferent de ordinea lor reala in array (vezi si `order:` CSS
+      // de mai jos, care face reordonarea vizuala fara sa atinga card.dataset.index). Pentru
+      // comenzile Video NOI (isStandardEditChoice=true), acest cod nu se mai activeaza — Video
+      // foloseste ecranul de comparare "Versiunea inițială"/"Versiunea editată", exact ca Standard.
       const isVideoPlan = order.plan === 'video';
       const label = isStandardEditChoice
         ? (v.isEditedAlternative ? t.variant_edited_label : t.variant_original_label)
@@ -1847,7 +1857,7 @@
           : (isSelected
               ? t.variant_main_label
               : (hasGenreTag ? t.variant_second_label : t.variant_gift_label));
-      if (isVideoPlan) card.style.order = isSelected ? '0' : '1';
+      if (isVideoPlan && !isStandardEditChoice) card.style.order = isSelected ? '0' : '1';
       const genreTagHtml = hasGenreTag
         ? `<span class="variant-genre-tag">${escapeHtml(t['genre_' + v.genre] || v.genre)}</span>`
         : '';
@@ -2168,10 +2178,13 @@
     const sourceVariantId = selected ? selected.id : null;
     const requestedGenre = editGenreSelect.value || null;
 
-    // Validare client-side (Premium/Video): cele doua genuri trebuie sa ramana diferite —
+    // Validare client-side (STRICT Premium): cele doua genuri trebuie sa ramana diferite —
     // aceeasi regula pe care serverul o aplica oricum, verificata aici doar ca sa nu trimitem
     // o cerere care va fi respinsa sigur, si ca sa aratam eroarea exact langa selector.
-    const isDualGenrePlanClient = currentOrder.plan === 'premium' || currentOrder.plan === 'video';
+    // CORECȚIE (2026-08-14, "Cadou video ramane la o singura melodie initiala, exact ca
+    // Standard"): Video nu mai are doua genuri initiale — la momentul editarii (singura, gratuita)
+    // exista o singura varianta, deci aceasta verificare nu se mai aplica pentru el.
+    const isDualGenrePlanClient = currentOrder.plan === 'premium';
     if (isDualGenrePlanClient && requestedGenre) {
       const otherVariant = (currentOrder.variants || []).find(v => v.id !== sourceVariantId);
       if (otherVariant && otherVariant.genre && otherVariant.genre === requestedGenre) {
@@ -2197,9 +2210,10 @@
     if (currentOrder.plan === 'standard') {
       checkoutBtn.disabled = true;
     }
-    // Mesajul corect: Standard creeaza o SINGURA versiune editata (pastreaza originalul) —
-    // "2 variante noi" era corect doar pentru Premium/Video (doua genuri regenerate).
-    statusMsgEl.textContent = currentOrder.plan === 'standard' ? t.msg_regenerating_standard : t.msg_regenerating;
+    // Mesajul corect: Standard SI Video (corectie 2026-08-14) creeaza o SINGURA versiune
+    // editata (pastreaza originalul) — "2 variante noi" ramane corect DOAR pentru Premium
+    // (doua genuri regenerate).
+    statusMsgEl.textContent = (currentOrder.plan === 'standard' || currentOrder.plan === 'video') ? t.msg_regenerating_standard : t.msg_regenerating;
     statusMsgEl.className = '';
 
     const feedback = feedbackEl.value || null;
@@ -2821,7 +2835,11 @@
   // click handler-ul butonului de deschidere/inchidere (fara sa re-randeze variantele/playerele
   // audio — evita exact bucla/re-randarea inutila reparata anterior in acest fisier).
   function updateStandardEditMenuVisibility(order, pendingVariantChoice) {
-    const isStandardEditChoice = order.plan === 'standard' && (order.variants || []).length > 1;
+    // CORECȚIE (2026-08-14): vezi comentariul identic din renderVariants() — Video foloseste
+    // acum acelasi ecran de alegere ca Standard, DOAR dupa o editare REALA (v.isEditedAlternative);
+    // comenzile Video vechi (doua genuri initiale, fara nicio editare) raman neatinse.
+    const hasEditedAlternative = (order.variants || []).some(v => v.isEditedAlternative);
+    const isStandardEditChoice = (order.plan === 'standard' || (order.plan === 'video' && hasEditedAlternative)) && (order.variants || []).length > 1;
     const standardDirectEditMode = order.plan === 'standard' && !isStandardEditChoice;
 
     if (isStandardEditChoice) {
@@ -3644,16 +3662,19 @@
       return;
     }
 
-    // Standard, fluxul de editare cu alegere (Partea 2, hotfix 2026-08-08 + imbunatatire UI):
-    // dupa o editare reusita, backend-ul lasa INTENTIONAT selectedVariantId=null (vezi
-    // finalizeVariantsIfNeeded, options.keepOriginalAsAlternative) — clientul TREBUIE sa aleaga
-    // explicit intre "Versiunea inițială" si "Versiunea editată" inainte ca plata sa devina
-    // posibila. selectedVariantIndex ramane -1 (NICIUN card evidentiat) exact in acest caz —
-    // pentru orice alta comanda (selectedVariantId mereu setat de generarea initiala)
-    // comportamentul e neschimbat. isStandardEditChoice ramane adevarat si DUPA alegere (cat
-    // timp exista 2 variante Standard) — editarea gratuita a fost deja folosita, deci meniul de
-    // editare nu mai trebuie sa reapara niciodata, indiferent daca s-a ales deja sau nu.
-    const isStandardEditChoice = order.plan === 'standard' && (order.variants || []).length > 1;
+    // Standard SI Video (corectie 2026-08-14), fluxul de editare cu alegere (Partea 2, hotfix
+    // 2026-08-08 + imbunatatire UI): dupa o editare reusita, backend-ul lasa INTENTIONAT
+    // selectedVariantId=null (vezi finalizeVariantsIfNeeded, options.keepOriginalAsAlternative)
+    // — clientul TREBUIE sa aleaga explicit intre "Versiunea inițială" si "Versiunea editată"
+    // inainte ca plata sa devina posibila. selectedVariantIndex ramane -1 (NICIUN card evidentiat)
+    // exact in acest caz — pentru orice alta comanda (selectedVariantId mereu setat de generarea
+    // initiala) comportamentul e neschimbat. isStandardEditChoice ramane adevarat si DUPA alegere
+    // (cat timp exista 2 variante rezultate dintr-o editare reala) — editarea gratuita a fost deja
+    // folosita, deci meniul de editare nu mai trebuie sa reapara niciodata, indiferent daca s-a
+    // ales deja sau nu. Video vechi (doua genuri initiale, fara editare reala) ramane neatins —
+    // vezi hasEditedAlternative, comentariul identic din renderVariants()/updateStandardEditMenuVisibility().
+    const hasEditedAlternative = (order.variants || []).some(v => v.isEditedAlternative);
+    const isStandardEditChoice = (order.plan === 'standard' || (order.plan === 'video' && hasEditedAlternative)) && (order.variants || []).length > 1;
     const pendingVariantChoice = !order.selectedVariantId && (order.variants || []).length > 1;
     selectedVariantIndex = pendingVariantChoice ? -1 : 0;
     if (order.selectedVariantId && order.variants) {

@@ -148,8 +148,8 @@ test('melodia-mea.html: sectiunea de alegere are titlu + subtext dedicate, afisa
 test('melodia-mea.html: cardurile Standard cu alegere sunt etichetate "Versiunea inițială"/"Versiunea editată", NU "cadou"', () => {
   const html = read('public/melodia-mea.html');
   assert.ok(
-    html.includes("const isStandardEditChoice = order.plan === 'standard' && (order.variants || []).length > 1;"),
-    'trebuie detectat explicit cazul Standard cu 2 variante (original+editat)'
+    html.includes("(order.plan === 'standard' || (order.plan === 'video' && hasEditedAlternative)) && (order.variants || []).length > 1;"),
+    'trebuie detectat explicit cazul Standard (sau Video cu o editare reala) cu 2 variante (original+editat)'
   );
   assert.ok(
     html.includes('v.isEditedAlternative ? t.variant_edited_label : t.variant_original_label'),
@@ -219,11 +219,13 @@ test('melodia-mea.html: textul butonului de confirmare e "Creează noua versiune
   assert.ok(!html.includes("confirm_yes: 'Da, regenerează'"), 'textul vechi nu mai trebuie sa existe');
 });
 
-test('melodia-mea.html: mesajul de regenerare pentru Standard e corect ("o singura versiune"), nu mesajul generic "2 variante noi"', () => {
+// REVIZUIT (2026-08-14): Video foloseste acum acelasi mesaj ca Standard ("o singura versiune"),
+// nu mai mesajul generic "2 variante noi" — vezi test/video-single-song-edit.test.js.
+test('melodia-mea.html: mesajul de regenerare pentru Standard SI Video e corect ("o singura versiune"), nu mesajul generic "2 variante noi" (ramas STRICT pentru Premium)', () => {
   const html = read('public/melodia-mea.html');
   assert.ok(
-    html.includes("statusMsgEl.textContent = currentOrder.plan === 'standard' ? t.msg_regenerating_standard : t.msg_regenerating;"),
-    'mesajul trebuie ales in functie de pachet — Standard produce o singura varianta editata, Premium/Video doua'
+    html.includes("statusMsgEl.textContent = (currentOrder.plan === 'standard' || currentOrder.plan === 'video') ? t.msg_regenerating_standard : t.msg_regenerating;"),
+    'mesajul trebuie ales in functie de pachet — Standard si Video produc o singura varianta editata, Premium doua'
   );
 });
 
@@ -367,7 +369,7 @@ test('emailul si descarcarea dupa plata livreaza EXCLUSIV versiunea selectata pe
   const entitlements = read('lib/entitlements.js');
   // deja verificat separat (getGiftVariant), reconfirmat aici in contextul explicit al cerintei:
   // Standard NU mai livreaza niciodata a doua varianta, indiferent de ce alta varianta exista.
-  assert.ok(entitlements.includes("if (!order || order.plan === 'standard') return null;"), 'getGiftVariant trebuie sa refuze explicit Standard');
+  assert.ok(entitlements.includes("if (!order || order.plan === 'standard' || order.plan === 'video') return null;"), 'getGiftVariant trebuie sa refuze explicit Standard (si acum Video, corectie 2026-08-14)');
   assert.ok(
     server.includes("const variant = (order.variants || []).find(v => v.id === order.selectedVariantId);"),
     'livrarea principala (email/descarcare) trebuie sa foloseasca exact selectedVariantId, niciodata prima varianta din array sau alta presupunere'

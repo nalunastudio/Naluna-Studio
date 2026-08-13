@@ -486,10 +486,14 @@
       const fullUrl = `/media/full/${orderId}?token=${encodeURIComponent(accessToken || '')}`;
       const variant = (data.variants || []).find(v => v.id === data.selectedVariantId) || {};
 
-      // "Melodia cadou" (cealalta varianta, nealeasa ca principala) — livrata la TOATE cele
-      // trei pachete (Standard/Premium/Video), nu doar audio-ul principal. Vezi
-      // getGiftVariant/GET /media/full/:orderId/gift in server.js.
-      const giftVariant = (data.variants || []).find(v => v.id !== data.selectedVariantId);
+      // "Melodia cadou" (cealalta varianta, nealeasa ca principala) — livrata DOAR la Premium
+      // (doua melodii complete, in doua genuri diferite, promisiunea ferma a pachetului). Vezi
+      // getGiftVariant/GET /media/full/:orderId/gift in server.js — replicat aici identic.
+      // CORECȚIE (2026-08-14, "Cadou video: o singura melodie initiala + o editare"): Video NU
+      // mai livreaza nicio "melodie cadou" — cele doua variante posibile (originala/editata)
+      // sunt DOAR alternative ale ACELEIASI melodii, din care clientul a ales deja UNA singura;
+      // cealalta nu trebuie livrata (la fel ca la Standard, care nu a livrat-o niciodata aici).
+      const giftVariant = (data.plan === 'video') ? null : (data.variants || []).find(v => v.id !== data.selectedVariantId);
       const giftUrl = giftVariant ? `/media/full/${orderId}/gift?token=${encodeURIComponent(accessToken || '')}` : null;
 
       // Extrasele de pachet (WAV pentru premium/video, videoclip pentru video) se genereaza
