@@ -139,6 +139,57 @@ test('buildPrompt: o poveste scurta este integrata COMPLET (netrunchiata) alatur
 });
 
 // ---------------------------------------------------------------------------------------------
+// CERINTA (2026-08-13, runda 3, "construiește melodia din povestea clientului, începând cu
+// primele versuri"): povestea nu mai apare ULTIMA in promptul trimis catre Suno (dupa toate
+// etichetele tehnice) — e mutata imediat dupa stil+limba+CINE (Recipient/Sender/Relationship),
+// INAINTEA ocaziei si instructiunilor de personalizare/voce — verificat structural (ordinea
+// substring-urilor in promptul final), nu doar prezenta lor.
+// ---------------------------------------------------------------------------------------------
+test('buildPrompt: povestea (Story:) apare STRUCTURAL inainte de "Occasion:" in promptul final — nu mai e ultima, dupa toate instructiunile tehnice', () => {
+  const combos = [
+    {
+      occasion: 'bunici', recipientRole: 'grandmother', genre: 'suflet', lang: 'ro',
+      recipient: 'Maria', senderName: 'Karla', relationship: 'nepoata', voicePreference: 'auto',
+      story: 'Bunico, te iubesc, tu ești viața mea, îți mulțumesc că m-ai crescut și că mi-ai fost alături'
+    },
+    {
+      occasion: 'nunta', weddingType: 'wedding', genre: 'manele_suflet', lang: 'ro',
+      recipient: 'Alexandru și Maria', senderName: 'Andrei și Mara', relationship: 'nașii de cununie',
+      voicePreference: 'duet',
+      story: 'V-ati cunoscut acum zece ani la facultate. La multi ani din partea nasilor Andrei si Mara!'
+    }
+  ];
+  combos.forEach(order => {
+    const prompt = buildPrompt(order, '', undefined);
+    const storyIdx = prompt.search(/Story[^:]*:\s*\S/i);
+    const occasionIdx = prompt.indexOf('Occasion:');
+    assert.ok(storyIdx !== -1, `povestea trebuie sa fie prezenta, a produs: ${prompt}`);
+    assert.ok(occasionIdx !== -1, `"Occasion:" trebuie sa fie prezent, a produs: ${prompt}`);
+    assert.ok(storyIdx < occasionIdx, `povestea trebuie sa apara INAINTE de "Occasion:" (structura noua, context intai), a produs: ${prompt}`);
+    // Recipient/Sender/Relationship trebuie sa apara si ele inainte de poveste (CINE, apoi CE-a scris).
+    const recipientIdx = prompt.indexOf('Recipient:');
+    assert.ok(recipientIdx !== -1 && recipientIdx < storyIdx, `"Recipient:" trebuie sa apara inainte de poveste, a produs: ${prompt}`);
+  });
+});
+
+test('buildPrompt: separarea poveste 1/poveste 2 Premium ramane corecta cu noua structura (poveste plasata inainte de ocazie) — melodia pentru soție nu contine povestea bunicii, si invers', () => {
+  const song1 = {
+    occasion: 'declaratie', recipientMode: 'single', genre: 'emotional', lang: 'ro',
+    recipient: 'Ana', senderName: 'Mihai', relationship: 'soție', voicePreference: 'male',
+    story: 'Ana, esti sotia mea de 10 ani, multumesc pentru tot ce faci pentru familia noastra.'
+  };
+  const song2 = {
+    occasion: 'bunici', recipientRole: 'grandmother', genre: 'suflet', lang: 'ro',
+    recipient: 'Maria', senderName: 'Karla', relationship: 'nepoata', voicePreference: 'auto',
+    story: 'Bunico, te iubesc, tu ești viața mea, îți mulțumesc că m-ai crescut.'
+  };
+  const prompt1 = buildPrompt(song1, '', undefined);
+  const prompt2 = buildPrompt(song2, '', undefined);
+  assert.ok(prompt1.includes('sotia mea') && !prompt1.includes('crescut'), `melodia 1 (soție) nu trebuie sa contina povestea melodiei 2 (bunica), a produs: ${prompt1}`);
+  assert.ok(prompt2.includes('crescut') && !prompt2.includes('sotia mea'), `melodia 2 (bunica) nu trebuie sa contina povestea melodiei 1 (soție), a produs: ${prompt2}`);
+});
+
+// ---------------------------------------------------------------------------------------------
 // (1) Pastrarea exacta a versurilor editate.
 // ---------------------------------------------------------------------------------------------
 test('server.js: buildExactLyricsRequest trimite versurile editate VERBATIM (customMode:true, campul "prompt" = versurile), niciodata ca instructiune catre un model care le rescrie', () => {

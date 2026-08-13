@@ -2334,7 +2334,15 @@ app.get('/api/orders/:orderId', async (req, res, next) => {
       // recipient: numele persoanei pentru care e ACEASTA melodie — poate diferi intre cele doua
       // melodii ("Pentru altă persoană"), afisat explicit pe fiecare card, cerinta explicita.
       songSlot: v.songSlot || null,
-      recipient: v.recipient || order.recipient || null
+      recipient: v.recipient || order.recipient || null,
+      // ADAUGAT (2026-08-13, runda 3, "afiseaza persoana corecta pentru fiecare melodie in
+      // meniul de editare Premium"): cauza reala a bug-ului — v.relationship era deja calculat
+      // si stocat corect per varianta (getSong2EffectiveData, la generarea initiala), dar
+      // LIPSEA din acest whitelist, deci melodia-mea.html primea mereu `undefined` pentru
+      // AMBELE variante si cadea pe fallback-ul order.relationship (relatia melodiei 1) pentru
+      // amandoua butoanele — niciodata o eroare de UI, o eroare de date netransmise. Nu e
+      // secreta (acelasi motiv ca `recipient`, deja expus mai sus si la nivelul comenzii).
+      relationship: v.relationship || order.relationship || null
     }));
 
     // Stare video derivata, expusa explicit clientului — vezi cerinta "A. Arhitectura si
@@ -5931,7 +5939,21 @@ function buildPrompt(order, feedback, genreOverride) {
   // introdus de client, uneori intr-o alta limba. O lista de etichete e neutra fata de
   // limba textului din campurile recipient/sender/relationship. Instructiunea de voce
   // vine ULTIMA, dupa personalizare — separata clar, propria ei propozitie.
-  function buildFixedPart(rec, snd, rel) {
+  //
+  // CORECȚIE (2026-08-13, runda 3, "construiește melodia din povestea clientului, începând
+  // cu primele versuri"): promptul complet e ACUM impartit in DOUA bucati (headPart1/headPart2)
+  // ca povestea sa poata fi plasata INTRE ele — imediat dupa stil+limba+CINE (destinatar/
+  // expeditor/relatie), inaintea instructiunilor de ocazie/personalizare/voce. Motivul: desi
+  // clauza "open verse 1 with a real detail" exista deja in instructiune (currentInstruction()),
+  // povestea insasi aparea mereu ULTIMA in promptul trimis catre Suno — dupa toate etichetele
+  // tehnice — ceea ce (verificat pe comenzi reale de productie) o facea sa para material
+  // secundar, nu subiectul principal al melodiei. Mutata acum imediat langa "cine e melodia
+  // asta despre", inaintea instructiunilor "cum s-o construiesti" — model comun, eficient, de
+  // structurare a promptului (context intai, instructiuni de folosire a lui dupa). Lungimea
+  // totala a `head` (headPart1+headPart2) ramane IDENTICA cu inainte — doar ORDINEA in promptul
+  // final se schimba (vezi mai jos); cascada de scurtare de mai jos ramane neschimbata (masoara
+  // acelasi total).
+  function buildHeadPart1(rec, snd, rel) {
     let lines = `Recipient: ${rec}.`;
     // IMPORTANT: verificam valoarea CURENTA (snd/rel, care pot fi golite de cascada de
     // scurtare de mai jos), nu flag-urile fixe hasSender/hasRelationship calculate o
@@ -5939,7 +5961,13 @@ function buildPrompt(order, feedback, genreOverride) {
     // "Relationship: ." (segment gol, in loc sa fie omis complet, irosind spatiu).
     if (hasSender && snd) lines += ` Sender: ${snd}.`;
     if (hasRelationship && rel) lines += ` Relationship: ${rel}.`;
-    return `${styleTags}. Write the song lyrics entirely in ${lyricsLanguage}. Occasion: ${occasionLabel}.${currentOccasionInstruction()} ${lines}${currentInstruction()}${currentVoiceInstruction()}`;
+    return `${styleTags}. Write the song lyrics entirely in ${lyricsLanguage}. ${lines}`;
+  }
+  function buildHeadPart2() {
+    return ` Occasion: ${occasionLabel}.${currentOccasionInstruction()}${currentInstruction()}${currentVoiceInstruction()}`;
+  }
+  function buildFixedPart(rec, snd, rel) {
+    return buildHeadPart1(rec, snd, rel) + buildHeadPart2();
   }
 
   let head = buildFixedPart(recipient, sender, relationship);
@@ -6042,7 +6070,13 @@ function buildPrompt(order, feedback, genreOverride) {
     }
   }
 
-  let prompt = `${head}${storyFull}${feedbackFull}`;
+  // CORECȚIE (2026-08-13, runda 3): povestea (storyFull) e plasata ACUM intre cele doua
+  // bucati ale partii fixe — imediat dupa stil+limba+CINE (headPart1), inaintea ocaziei si
+  // instructiunilor de personalizare/voce (headPart2) — vezi comentariul de la buildHeadPart1/2
+  // de mai sus. `head` (folosit doar pentru calculul bugetului, mai sus) ramane byte-identic ca
+  // lungime cu buildHeadPart1(...) + buildHeadPart2() — doar promptul FINAL trimis catre Suno
+  // are ordinea schimbata.
+  let prompt = `${buildHeadPart1(recipient, sender, relationship)}${storyFull}${buildHeadPart2()}${feedbackFull}`;
 
   // plasa de siguranta — in teorie nu ar trebui sa se intample, dat fiind bugetul calculat mai sus,
   // dar nu trimitem niciodata catre Suno un prompt mai lung decat limita documentata

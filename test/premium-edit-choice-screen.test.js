@@ -13,6 +13,20 @@ function read(relPath) {
 }
 
 const melodia = read('public/melodia-mea.html');
+const server = read('server.js');
+
+// CORECȚIE (2026-08-13, runda 3, "afiseaza persoana corecta pentru fiecare melodie in meniul
+// de editare Premium"): cauza reala — GET /api/orders/:orderId (safeVariants) NU trimitea
+// niciodata campul `relationship` per varianta catre client, desi era deja calculat/stocat
+// corect server-side (getSong2EffectiveData) — songPersonLabel() din melodia-mea.html primea
+// deci mereu `v.relationship === undefined` pentru AMBELE variante si cadea pe fallback-ul
+// order.relationship (relatia melodiei 1) pentru amandoua butoanele.
+test('server.js: GET /api/orders/:orderId (safeVariants) expune campul relationship per varianta — necesar ca melodia-mea.html sa afiseze persoana CORECTA a fiecarei melodii, nu mereu persoana melodiei 1', () => {
+  const idx = server.indexOf('const safeVariants = (order.variants || []).map(v => ({');
+  assert.ok(idx !== -1);
+  const body = server.slice(idx, idx + 2600);
+  assert.ok(body.includes('relationship: v.relationship || order.relationship || null'), 'relationship trebuie inclus explicit in whitelist-ul trimis catre client');
+});
 
 test('melodia-mea.html: "Editează versurile" deschide ecranul de alegere (premiumEditChoiceOpen), NU direct editorul primei melodii', () => {
   const idx = melodia.indexOf("editBtn.onclick = () => {");
