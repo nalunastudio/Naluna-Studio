@@ -93,7 +93,9 @@ test('server.js: editarea selectiva foloseste ACEEASI rezervare atomica (un sing
 test('server.js: finalizeVariantsIfNeeded, options.editVariantIds ADAUGA variantele noi alaturi de cele initiale — NICIODATA nu le inlocuieste, nu sterge nimic din storage', () => {
   const idx = server.indexOf('} else if (options.editVariantIds) {');
   assert.ok(idx !== -1);
-  const body = server.slice(idx, idx + 1300);
+  // fereastra marita (2026-08-13): fix pentru "versiunea inițială și editată afișează
+  // aceleași versuri" a adaugat cod/comentarii in aceasta ramura.
+  const body = server.slice(idx, idx + 2300);
   assert.ok(body.includes('variants = [...existing, ...edited];'), 'variantele initiale trebuie pastrate, cele noi ADAUGATE alaturi');
   assert.ok(body.includes('replacedOldVariants = [];'), 'nimic nu trebuie sters din storage la o editare selectiva');
   assert.ok(body.includes('isEditedAlternative: true'), 'variantele noi trebuie marcate explicit ca alternative editate');
@@ -143,16 +145,22 @@ test('melodia-mea.html: pasul 1 respinge versuri goale inainte de a trece la pas
   assert.ok(body.includes('t.edit_genre_same_error'));
 });
 
-test('melodia-mea.html: editarea trimite mereu EXACT ambele melodii (niciodata mai putin) — {songs:[song1,song2]}, fiecare cu versuri, gen si voce independente', () => {
+// CORECȚIE (2026-08-13, runda 2, "editeaza STRICT melodia aleasa"): editarea NU mai trimite
+// mereu ambele melodii necondiționat — clientul alege explicit pe ecranul anterior
+// (renderPremiumEditChoiceView) melodia 1, melodia 2, sau ambele (premiumEditChoice), iar
+// submitSongs() primeste STRICT array-ul corespunzator alegerii. Fiecare melodie foloseste
+// versuri/gen/voce/feedback INDEPENDENTE (functia comuna songPayload), indiferent cate melodii
+// sunt trimise intr-o anumita apasare.
+test('melodia-mea.html: fiecare melodie e trimisa STRICT cand a fost aleasa (premiumEditChoice), cu versuri/gen/voce/feedback independente — niciodata ambele "din oficiu"', () => {
   const idx = melodia.indexOf('function renderPremiumEditView(order) {');
   const endIdx = melodia.indexOf('function renderPremiumCompareView(order) {');
   const body = melodia.slice(idx, endIdx);
-  assert.ok(body.includes('variantId: v1.id,'));
-  assert.ok(body.includes('variantId: v2.id,'));
-  assert.ok(body.includes('voicePreference: song1Voice'));
-  assert.ok(body.includes('voicePreference: song2Voice'));
-  assert.ok(body.includes('normalizeSectionLabelsForSaving(song1Lyrics.value.trim(), order.lang)'));
-  assert.ok(body.includes('normalizeSectionLabelsForSaving(song2Lyrics.value.trim(), order.lang)'));
+  assert.ok(body.includes("if (premiumEditChoice === 'song1') {"), 'modul "doar melodia 1" trebuie sa existe');
+  assert.ok(body.includes("} else if (premiumEditChoice === 'song2') {"), 'modul "doar melodia 2" trebuie sa existe');
+  assert.ok(body.includes('songPayload(v1, song1Lyrics, song1GenreSelect, song1Voice, song1Feedback)'), 'melodia 1 foloseste STRICT propriile campuri');
+  assert.ok(body.includes('songPayload(v2, song2Lyrics, song2GenreSelect, song2Voice, song2Feedback)'), 'melodia 2 foloseste STRICT propriile campuri');
+  assert.ok(body.includes('submitSongs([songPayload(v1, song1Lyrics, song1GenreSelect, song1Voice, song1Feedback)], continueBtn);'), 'modul "doar melodia 1" trimite STRICT un array cu o singura melodie');
+  assert.ok(body.includes('submitSongs([songPayload(v2, song2Lyrics, song2GenreSelect, song2Voice, song2Feedback)], startBtn);'), 'modul "doar melodia 2" trimite STRICT un array cu o singura melodie');
 });
 
 test('melodia-mea.html: "Înapoi" (pasul 2 -> pasul 1) doar comuta vizibilitatea — NU reseteaza campurile deja completate ale primei melodii', () => {
@@ -178,11 +186,15 @@ test('melodia-mea.html: dupa apasarea butonului de editare, se navigheaza la se-
   assert.ok(body.includes('mode=regenerate'));
 });
 
-test('melodia-mea.html: butonul de start al editarii se dezactiveaza IMEDIAT la primul click (protectie aditionala fata de dublul-click)', () => {
-  const idx = melodia.indexOf('function renderPremiumEditView(order) {');
-  const endIdx = melodia.indexOf('function renderPremiumCompareView(order) {');
-  const body = melodia.slice(idx, endIdx);
-  assert.ok(body.includes('startBtn.disabled = true;'));
+// CORECȚIE (2026-08-13, runda 2): dezactivarea imediata la primul click ruleaza acum in
+// functia comuna submitSongs(songs, btn) — reutilizata de toate cele trei moduri, deci
+// protectia impotriva dublului-click se aplica identic indiferent ce buton a fost apasat
+// (continueBtn in modul "doar melodia 1", startBtn in celelalte doua moduri).
+test('melodia-mea.html: butonul de trimitere se dezactiveaza IMEDIAT la primul click (protectie aditionala fata de dublul-click) — functia comuna submitSongs', () => {
+  const idx = melodia.indexOf('async function submitSongs(songs, btn) {');
+  assert.ok(idx !== -1);
+  const body = melodia.slice(idx, idx + 300);
+  assert.ok(body.includes('btn.disabled = true;'));
 });
 
 // ---------------------------------------------------------------------------------------------

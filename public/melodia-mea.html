@@ -441,11 +441,27 @@
           <div id="premium-result-status-msg" style="font-size:13px; margin-top:10px; text-align:center;"></div>
         </div>
 
+        <!-- CORECȚIE (2026-08-13, "ecran de alegere a melodiei care va fi editată — DOAR
+             Premium"): apasarea "Editează versurile" nu mai deschide direct editorul primei
+             melodii — deschide INTAI acest ecran de alegere (chenar/culori identice cu
+             .standard-choice-box, reutilizate exact). Clientul alege explicit melodia 1, melodia
+             2, sau ambele — vezi premiumEditChoice/goToPremiumEditChoice mai jos. Butonul negru
+             de plata ramane vizibil aici (checkoutBtn reparentat in #premium-edit-choice-checkout-slot). -->
+        <div id="premium-edit-choice-view" style="display:none;">
+          <div class="standard-choice-box">
+            <h2 id="premium-edit-choice-title" style="font-family:'Fraunces', serif; font-weight:700; font-size:20px; color:#8A4B0A; margin:0 0 18px; text-align:center;"></h2>
+            <div id="premium-edit-choice-buttons"></div>
+            <div id="premium-edit-choice-checkout-slot" style="display:flex; justify-content:center; margin-top:6px;"></div>
+          </div>
+        </div>
+
         <!-- MODIFICARE STRICTĂ — editare secventiala, pe rand, pentru ambele melodii (hotfix,
              runda 4): inlocuieste complet vechiul ecran cu bife optionale (chenare aproape
              goale, text iesit din ele — reparat prin eliminare completa, nu prin patch-uri).
              Acum EXACT doi pasi, ambele melodii editate mereu, in ordine — vezi
-             renderPremiumEditView()/goToPremiumEditStep(). -->
+             renderPremiumEditView()/goToPremiumEditStep(). CORECȚIE (2026-08-13): acum
+             pasii afisati depind de alegerea clientului pe ecranul de mai sus (premiumEditChoice
+             — 'song1'/'song2'/'both') — vezi renderPremiumEditView() pentru logica completa. -->
         <div id="premium-edit-view" style="display:none;">
           <div id="premium-edit-step1">
             <div class="premium-edit-song-indicator" id="premium-edit-step1-indicator"></div>
@@ -486,6 +502,11 @@
 
             <div class="field-error" id="premium-edit-step1-error" style="margin:10px 0;"></div>
             <button type="button" class="btn btn-primary" id="premium-edit-step1-continue-btn" style="width:100%; justify-content:center; margin-top:6px;"></button>
+            <!-- CORECȚIE (2026-08-13): vizibil STRICT cand clientul editeaza o singura melodie
+                 (premiumEditChoice 'song1' sau 'song2') — "Înapoi" duce la ecranul de alegere,
+                 nu la pasul 1 (care, in acele moduri, e chiar ecranul curent). Ascuns implicit
+                 (modul 'both', comportamentul original, neschimbat). -->
+            <button type="button" class="btn btn-ghost" id="premium-edit-step1-back-btn" style="display:none; width:100%; justify-content:center; margin-top:8px;"></button>
           </div>
 
           <div id="premium-edit-step2" style="display:none;">
@@ -534,6 +555,10 @@
           </div>
 
           <div id="premium-edit-status-msg" style="font-size:13px; margin-top:10px; text-align:center;"></div>
+          <!-- CORECȚIE (2026-08-13, "butonul negru de plata trebuie sa ramana"): pozitionat
+               DUPA editorul activ (pasul 1 SAU pasul 2, oricare e vizibil) — niciodata ascuns
+               in timpul editarii, indiferent ce a ales clientul pe ecranul anterior. -->
+          <div id="premium-edit-view-checkout-slot" style="display:flex; justify-content:center; margin-top:14px;"></div>
         </div>
 
         <!-- CORECȚIE (2026-08-13, "muta caseta de selecție Premium sub cele patru melodii"):
@@ -916,6 +941,9 @@
       premium_compare_title: 'Ce versiune vrei să primești?',
       premium_compare_subtitle: 'Ascultă cele 4 melodii, apoi alege 2 pentru a continua la plată.',
       premium_compare_need_two: 'Alege exact două melodii.',
+      premium_edit_choice_title: 'Nu este exact ce îți dorești? Spune-ne ce melodie ți-ar plăcea să editezi',
+      premium_edit_choice_both: 'Amândouă',
+      premium_edit_choice_song_btn: (songLabel, person, genre) => person ? `${songLabel} pentru ${person} — ${genre}` : `${songLabel} — ${genre}`,
       editor_title: 'Editează versurile', editor_hint: 'Modifică un cuvânt, un vers sau o strofă. Formatarea pe strofe rămâne neschimbată.',
       save_btn: 'Salvează modificările', cancel_btn: 'Renunță',
       lyrics_saved_msg: 'Versurile au fost salvate. Pentru a auzi modificările, regenerează melodia',
@@ -988,6 +1016,9 @@
       premium_compare_title: 'Which version do you want to receive?',
       premium_compare_subtitle: 'Listen to all 4 songs, then choose 2 to continue to payment.',
       premium_compare_need_two: 'Choose exactly two songs.',
+      premium_edit_choice_title: "Not quite right? Tell us which song you'd like to edit",
+      premium_edit_choice_both: 'Both',
+      premium_edit_choice_song_btn: (songLabel, person, genre) => person ? `${songLabel} for ${person} — ${genre}` : `${songLabel} — ${genre}`,
       editor_title: 'Edit the lyrics', editor_hint: 'Change a word, a line, or a verse. The verse formatting stays the same.',
       save_btn: 'Save changes', cancel_btn: 'Cancel',
       lyrics_saved_msg: 'Lyrics saved. Regenerate the song to hear the changes',
@@ -1060,6 +1091,9 @@
       premium_compare_title: 'Welche Version möchtest du erhalten?',
       premium_compare_subtitle: 'Höre dir alle 4 Lieder an und wähle dann 2 aus, um mit der Zahlung fortzufahren.',
       premium_compare_need_two: 'Wähle genau zwei Lieder aus.',
+      premium_edit_choice_title: 'Nicht ganz richtig? Sag uns, welches Lied du bearbeiten möchtest',
+      premium_edit_choice_both: 'Beide',
+      premium_edit_choice_song_btn: (songLabel, person, genre) => person ? `${songLabel} für ${person} — ${genre}` : `${songLabel} — ${genre}`,
       editor_title: 'Text bearbeiten', editor_hint: 'Ändere ein Wort, eine Zeile oder eine Strophe. Die Strophenformatierung bleibt gleich.',
       save_btn: 'Änderungen speichern', cancel_btn: 'Abbrechen',
       lyrics_saved_msg: 'Text gespeichert. Regeneriere das Lied, um die Änderungen zu hören',
@@ -1132,6 +1166,9 @@
       premium_compare_title: '¿Qué versión quieres recibir?',
       premium_compare_subtitle: 'Escucha las 4 canciones y elige 2 para continuar al pago.',
       premium_compare_need_two: 'Elige exactamente dos canciones.',
+      premium_edit_choice_title: '¿No es exactamente lo que quieres? Dinos qué canción te gustaría editar',
+      premium_edit_choice_both: 'Ambas',
+      premium_edit_choice_song_btn: (songLabel, person, genre) => person ? `${songLabel} para ${person} — ${genre}` : `${songLabel} — ${genre}`,
       editor_title: 'Editar la letra', editor_hint: 'Cambia una palabra, un verso o una estrofa. El formato de las estrofas no cambia.',
       save_btn: 'Guardar cambios', cancel_btn: 'Cancelar',
       lyrics_saved_msg: 'Letra guardada. Regenera la canción para escuchar los cambios',
@@ -1204,6 +1241,9 @@
       premium_compare_title: 'Quale versione vuoi ricevere?',
       premium_compare_subtitle: 'Ascolta tutte e 4 le canzoni, poi scegline 2 per continuare al pagamento.',
       premium_compare_need_two: 'Scegli esattamente due canzoni.',
+      premium_edit_choice_title: 'Non è esattamente ciò che desideri? Dicci quale canzone vorresti modificare',
+      premium_edit_choice_both: 'Entrambe',
+      premium_edit_choice_song_btn: (songLabel, person, genre) => person ? `${songLabel} per ${person} — ${genre}` : `${songLabel} — ${genre}`,
       editor_title: 'Modifica il testo', editor_hint: 'Cambia una parola, un verso o una strofa. La formattazione delle strofe resta invariata.',
       save_btn: 'Salva le modifiche', cancel_btn: 'Annulla',
       lyrics_saved_msg: 'Testo salvato. Rigenera la canzone per ascoltare le modifiche',
@@ -1276,6 +1316,9 @@
       premium_compare_title: 'Quelle version veux-tu recevoir ?',
       premium_compare_subtitle: 'Écoute les 4 chansons, puis choisis-en 2 pour continuer vers le paiement.',
       premium_compare_need_two: 'Choisis exactement deux chansons.',
+      premium_edit_choice_title: "Ce n'est pas tout à fait ça ? Dis-nous quelle chanson tu aimerais modifier",
+      premium_edit_choice_both: 'Les deux',
+      premium_edit_choice_song_btn: (songLabel, person, genre) => person ? `${songLabel} pour ${person} — ${genre}` : `${songLabel} — ${genre}`,
       editor_title: 'Modifier les paroles', editor_hint: 'Modifiez un mot, un vers ou un couplet. La mise en forme des couplets reste identique.',
       save_btn: 'Enregistrer les modifications', cancel_btn: 'Annuler',
       lyrics_saved_msg: 'Paroles enregistrées. Régénérez la chanson pour entendre les changements',
@@ -1348,6 +1391,9 @@
       premium_compare_title: 'Коя версия искаш да получиш?',
       premium_compare_subtitle: 'Изслушай всичките 4 песни, после избери 2, за да продължиш към плащането.',
       premium_compare_need_two: 'Избери точно две песни.',
+      premium_edit_choice_title: 'Не е съвсем това? Кажи ни коя песен искаш да редактираш',
+      premium_edit_choice_both: 'И двете',
+      premium_edit_choice_song_btn: (songLabel, person, genre) => person ? `${songLabel} за ${person} — ${genre}` : `${songLabel} — ${genre}`,
       editor_title: 'Редактирай текста', editor_hint: 'Промени дума, стих или куплет. Форматирането на куплетите остава същото.',
       save_btn: 'Запази промените', cancel_btn: 'Откажи',
       lyrics_saved_msg: 'Текстът е запазен. Регенерирай песента, за да чуеш промените',
@@ -1420,6 +1466,9 @@
       premium_compare_title: 'Hangi versiyonu almak istiyorsun?',
       premium_compare_subtitle: 'Tüm 4 şarkıyı dinle, sonra ödemeye devam etmek için 2 tanesini seç.',
       premium_compare_need_two: 'Tam olarak iki şarkı seç.',
+      premium_edit_choice_title: 'Tam istediğin gibi değil mi? Hangi şarkıyı düzenlemek istediğini söyle',
+      premium_edit_choice_both: 'İkisi de',
+      premium_edit_choice_song_btn: (songLabel, person, genre) => person ? `${songLabel} (${person} için) — ${genre}` : `${songLabel} — ${genre}`,
       editor_title: 'Sözleri düzenle', editor_hint: 'Bir kelimeyi, bir dizeyi veya bir kıtayı değiştirin. Kıta biçimlendirmesi aynı kalır.',
       save_btn: 'Değişiklikleri kaydet', cancel_btn: 'Vazgeç',
       lyrics_saved_msg: 'Sözler kaydedildi. Değişiklikleri duymak için şarkıyı yeniden oluşturun',
@@ -2880,6 +2929,13 @@
   //      EXACT doua inainte de plata.
   // ============================================================================================
   let premiumEditViewOpen = false; // comutator LOCAL (nu persistat server-side, nu afecteaza DB)
+  // CORECȚIE (2026-08-13, "ecran de alegere a melodiei de editat"): premiumEditChoiceOpen
+  // controleaza noul ecran intermediar (aparut ACUM intre premium-result-view si
+  // premium-edit-view); premiumEditChoice retine alegerea clientului — 'song1', 'song2' sau
+  // 'both' — folosita de renderPremiumEditView() ca sa arate STRICT pasii relevanti si sa
+  // trimita STRICT melodia/melodiile alese la POST /regenerate.
+  let premiumEditChoiceOpen = false;
+  let premiumEditChoice = 'both';
   let premiumCompareSelection = [];
   let premiumCompareInitialized = false;
 
@@ -2960,6 +3016,7 @@
 
   function renderPremiumFlow(order, isResumeFlag) {
     const resultView = document.getElementById('premium-result-view');
+    const editChoiceView = document.getElementById('premium-edit-choice-view');
     const editView = document.getElementById('premium-edit-view');
     const compareView = document.getElementById('premium-compare-view');
     const variants = order.variants || [];
@@ -2981,16 +3038,26 @@
 
     if (variants.length > 2) {
       premiumEditViewOpen = false;
+      premiumEditChoiceOpen = false;
       resultView.style.display = 'none';
+      editChoiceView.style.display = 'none';
       editView.style.display = 'none';
       compareView.style.display = 'block';
       renderPremiumCompareView(order);
     } else if (premiumEditViewOpen) {
       resultView.style.display = 'none';
+      editChoiceView.style.display = 'none';
       compareView.style.display = 'none';
       editView.style.display = 'block';
       renderPremiumEditView(order);
+    } else if (premiumEditChoiceOpen) {
+      resultView.style.display = 'none';
+      editView.style.display = 'none';
+      compareView.style.display = 'none';
+      editChoiceView.style.display = 'block';
+      renderPremiumEditChoiceView(order);
     } else {
+      editChoiceView.style.display = 'none';
       editView.style.display = 'none';
       compareView.style.display = 'none';
       resultView.style.display = 'block';
@@ -3032,8 +3099,10 @@
 
     const editBtn = document.getElementById('premium-edit-open-btn');
     document.getElementById('premium-edit-open-btn-label').textContent = t.edit_lyrics_btn;
+    // CORECȚIE (2026-08-13): "Editează versurile" deschide ACUM ecranul de alegere (melodia 1/
+    // melodia 2/ambele), niciodata direct editorul primei melodii.
     editBtn.onclick = () => {
-      premiumEditViewOpen = true;
+      premiumEditChoiceOpen = true;
       renderPremiumFlow(order, false);
     };
 
@@ -3062,6 +3131,62 @@
     });
   }
 
+  // CORECȚIE (2026-08-13, "ecran de alegere a melodiei care va fi editată"): eticheta "pentru
+  // cine" a unei melodii — foloseste relatia (text liber, deja in limba clientului, deci fara
+  // nevoie de traducere) daca exista, altfel numele destinatarului. v.relationship exista DOAR
+  // pe varianta melodiei 2 cand "Pentru altă persoană" a fost ales (vezi getSong2EffectiveData);
+  // in toate celelalte cazuri (melodia 1, sau melodia 2 "Pentru aceeași persoană"), cade natural
+  // pe order.relationship — relatia principala a comenzii, corecta si pentru melodia 1.
+  function songPersonLabel(v, order) {
+    const rel = (v && v.relationship) || order.relationship;
+    if (rel && String(rel).trim()) return String(rel).trim();
+    const rec = (v && v.recipient) || order.recipient;
+    return rec ? String(rec).trim() : '';
+  }
+
+  // CORECȚIE (2026-08-13, "ecran de alegere a melodiei care va fi editată — DOAR Premium"):
+  // ecranul intermediar dintre rezultat si editor — clientul alege EXACT ce vrea sa editeze
+  // (melodia 1, melodia 2, sau ambele) inainte ca vreun editor sa se deschida. Butonul negru de
+  // plata ramane vizibil AICI (reparentat in slotul dedicat), niciodata ascuns in timpul alegerii.
+  function renderPremiumEditChoiceView(order) {
+    const variants = order.variants || [];
+    const v1 = variants[0], v2 = variants[1];
+
+    document.getElementById('premium-edit-choice-title').textContent = t.premium_edit_choice_title;
+
+    const buttonsWrap = document.getElementById('premium-edit-choice-buttons');
+    buttonsWrap.innerHTML = '';
+
+    function addChoiceButton(label, choice) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'standard-genre-choice-btn';
+      btn.textContent = label;
+      btn.onclick = () => {
+        premiumEditChoice = choice;
+        premiumEditChoiceOpen = false;
+        premiumEditViewOpen = true;
+        renderPremiumFlow(order, false);
+      };
+      buttonsWrap.appendChild(btn);
+    }
+
+    const genre1Label = (v1.genre && t['genre_' + v1.genre]) || v1.genre || '';
+    const genre2Label = (v2.genre && t['genre_' + v2.genre]) || v2.genre || '';
+    addChoiceButton(t.premium_edit_choice_song_btn(t.premium_song1_label, songPersonLabel(v1, order), genre1Label), 'song1');
+    addChoiceButton(t.premium_edit_choice_song_btn(t.premium_song2_label, songPersonLabel(v2, order), genre2Label), 'song2');
+    addChoiceButton(t.premium_edit_choice_both, 'both');
+
+    // Butonul negru de plata trebuie sa ramana vizibil pe TOATE ecranele Premium — reparentat
+    // aici, exact ca pe rezultat/comparare (acelasi element logic, niciodata duplicat/ascuns).
+    const slot = document.getElementById('premium-edit-choice-checkout-slot');
+    slot.appendChild(checkoutBtn);
+    checkoutBtn.style.width = '100%';
+    checkoutBtn.style.flex = 'none';
+    checkoutBtn.style.justifyContent = 'center';
+    checkoutBtn.innerHTML = `${t.checkout_btn_standard} (<span id="checkout-price">£${order.price}</span>) →`;
+  }
+
   // MODIFICARE STRICTĂ — editare secventiala, pe rand, pentru ambele melodii (hotfix, runda 4):
   // NU un comutator server-side — doar starea locala a pasului curent (1 sau 2) in interiorul
   // ecranului de editare. "Înapoi" doar comuta afisarea intre cele doua div-uri de pas — NU
@@ -3072,6 +3197,15 @@
     document.getElementById('premium-edit-step1').style.display = step === 1 ? 'block' : 'none';
     document.getElementById('premium-edit-step2').style.display = step === 2 ? 'block' : 'none';
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  // CORECȚIE (2026-08-13): revine la ecranul de alegere (melodia 1/melodia 2/ambele) — NU
+  // reseteaza premiumEditChoice (ramane util daca clientul apasa "Editează versurile" din nou,
+  // desi renderPremiumEditChoiceView oricum permite o noua alegere explicita imediat).
+  function backToPremiumEditChoice(order) {
+    premiumEditViewOpen = false;
+    premiumEditChoiceOpen = true;
+    renderPremiumFlow(order, false);
   }
 
   function renderPremiumEditView(order) {
@@ -3117,8 +3251,8 @@
     document.getElementById('premium-edit-song2-lyrics-label').textContent = t.editor_title;
     document.getElementById('premium-edit-song2-lyrics-explain').textContent = t.editor_hint;
 
-    document.getElementById('premium-edit-step1-continue-btn').textContent = t.premium_edit_step1_continue_btn;
     document.getElementById('premium-edit-back-btn').textContent = t.premium_edit_back_btn;
+    document.getElementById('premium-edit-step1-back-btn').textContent = t.premium_edit_back_btn;
     // CORECȚIE: reutilizeaza EXACT textul (si cheia de traducere) butonului portocaliu
     // Standard — t.confirm_yes ("Creează noua versiune"), deja tradus in 8 limbi — in loc de
     // o cheie separata, cu text diferit ("Creează noile versiuni").
@@ -3178,54 +3312,35 @@
     statusEl.textContent = '';
     statusEl.className = '';
 
-    goToPremiumEditStep(1);
+    // CORECȚIE (2026-08-13, "butonul negru de plata trebuie sa ramana"): reparentat AICI,
+    // dupa editorul activ — vizibil in toate cele trei moduri (o melodie, cealalta, sau
+    // ambele), niciodata ascuns in timpul editarii.
+    const editCheckoutSlot = document.getElementById('premium-edit-view-checkout-slot');
+    editCheckoutSlot.appendChild(checkoutBtn);
+    checkoutBtn.style.width = '100%';
+    checkoutBtn.style.flex = 'none';
+    checkoutBtn.style.justifyContent = 'center';
+    checkoutBtn.innerHTML = `${t.checkout_btn_standard} (<span id="checkout-price">£${order.price}</span>) →`;
+    checkoutBtn.disabled = true;
 
-    document.getElementById('premium-edit-step1-continue-btn').onclick = () => {
-      if (!song1Lyrics.value.trim()) {
-        setStepError(1, t.lyrics_empty_error);
-        return;
-      }
-      setStepError(1, '');
-      goToPremiumEditStep(2);
-    };
+    function songPayload(variant, lyricsEl, genreSelect, voice, feedbackEl) {
+      return {
+        variantId: variant.id,
+        lyrics: normalizeSectionLabelsForSaving(lyricsEl.value.trim(), order.lang),
+        genre: genreSelect.value !== variant.genre ? genreSelect.value : undefined,
+        voicePreference: voice,
+        feedback: feedbackEl.value.trim() || undefined
+      };
+    }
 
-    // "Înapoi" pastreaza TOATE valorile deja introduse pentru prima melodie (voce/gen/versuri)
-    // — comuta STRICT vizibilitatea, nu re-randeaza si nu reseteaza nimic.
-    document.getElementById('premium-edit-back-btn').onclick = () => {
-      goToPremiumEditStep(1);
-    };
-
-    const startBtn = document.getElementById('premium-edit-start-btn');
-    startBtn.disabled = false;
-    startBtn.onclick = async () => {
-      setStepError(2, '');
-      if (!song2Lyrics.value.trim()) {
-        setStepError(2, t.lyrics_empty_error);
-        return;
-      }
-      if (song1GenreSelect.value === song2GenreSelect.value) {
-        setStepError(2, t.edit_genre_same_error);
-        return;
-      }
-      const songs = [
-        {
-          variantId: v1.id,
-          lyrics: normalizeSectionLabelsForSaving(song1Lyrics.value.trim(), order.lang),
-          genre: song1GenreSelect.value !== v1.genre ? song1GenreSelect.value : undefined,
-          voicePreference: song1Voice,
-          feedback: song1Feedback.value.trim() || undefined
-        },
-        {
-          variantId: v2.id,
-          lyrics: normalizeSectionLabelsForSaving(song2Lyrics.value.trim(), order.lang),
-          genre: song2GenreSelect.value !== v2.genre ? song2GenreSelect.value : undefined,
-          voicePreference: song2Voice,
-          feedback: song2Feedback.value.trim() || undefined
-        }
-      ];
-      // dezactivat imediat la primul click — previne dublul-click/joburi duplicate (protectie
-      // aditionala fata de rezervarea atomica deja existenta server-side, db.claimOrderForRegeneration).
-      startBtn.disabled = true;
+    // CORECȚIE (2026-08-13, "editeaza STRICT melodia aleasa"): un singur punct de trimitere
+    // catre server, reutilizat de toate cele trei moduri — array-ul `songs` contine STRICT
+    // melodia/melodiile alese pe ecranul anterior (premiumEditChoice), niciodata amandoua
+    // "din oficiu". Backend-ul (handlePremiumSelectiveRegenerate) accepta deja 1 SAU 2 melodii
+    // si NU creeaza o varianta falsa pentru melodia needitata (vezi finalizeVariantsIfNeeded,
+    // options.editVariantIds — adauga STRICT rezultatele reale, niciodata o copie).
+    async function submitSongs(songs, btn) {
+      btn.disabled = true;
       statusEl.textContent = t.msg_regenerating;
       statusEl.className = '';
       try {
@@ -3241,13 +3356,92 @@
         }
         statusEl.textContent = t.msg_error_prefix + (data.error || t.msg_try_again);
         statusEl.className = 'status-err';
-        startBtn.disabled = false;
+        btn.disabled = false;
       } catch (err) {
         statusEl.textContent = t.msg_conn_error;
         statusEl.className = 'status-err';
-        startBtn.disabled = false;
+        btn.disabled = false;
       }
-    };
+    }
+
+    const continueBtn = document.getElementById('premium-edit-step1-continue-btn');
+    const step1BackBtn = document.getElementById('premium-edit-step1-back-btn');
+    const backBtn = document.getElementById('premium-edit-back-btn');
+    const startBtn = document.getElementById('premium-edit-start-btn');
+    startBtn.disabled = false;
+
+    // CORECȚIE (2026-08-13, "ecran de alegere a melodiei care va fi editată"): pasii afisati
+    // si actiunea butoanelor depind ACUM STRICT de alegerea clientului (premiumEditChoice),
+    // stabilita pe ecranul anterior (renderPremiumEditChoiceView) — niciodata "ambele din
+    // oficiu", cum era inainte.
+    if (premiumEditChoice === 'song1') {
+      // DOAR prima melodie — pasul 1 e SINGURUL vizibil; devine el insusi butonul de trimitere
+      // (nu mai "continua la pasul 2", care nu mai exista in acest mod).
+      document.getElementById('premium-edit-step1').style.display = 'block';
+      document.getElementById('premium-edit-step2').style.display = 'none';
+      continueBtn.textContent = t.confirm_yes;
+      step1BackBtn.style.display = 'block';
+      step1BackBtn.onclick = () => backToPremiumEditChoice(order);
+      continueBtn.onclick = () => {
+        if (!song1Lyrics.value.trim()) {
+          setStepError(1, t.lyrics_empty_error);
+          return;
+        }
+        setStepError(1, '');
+        submitSongs([songPayload(v1, song1Lyrics, song1GenreSelect, song1Voice, song1Feedback)], continueBtn);
+      };
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else if (premiumEditChoice === 'song2') {
+      // DOAR a doua melodie — pasul 2 e SINGURUL vizibil (pasul 1 sarit complet); "Înapoi"
+      // duce la ecranul de alegere, niciodata la pasul 1 (niciodata aratat in acest mod).
+      document.getElementById('premium-edit-step1').style.display = 'none';
+      document.getElementById('premium-edit-step2').style.display = 'block';
+      step1BackBtn.style.display = 'none';
+      backBtn.onclick = () => backToPremiumEditChoice(order);
+      startBtn.onclick = () => {
+        setStepError(2, '');
+        if (!song2Lyrics.value.trim()) {
+          setStepError(2, t.lyrics_empty_error);
+          return;
+        }
+        submitSongs([songPayload(v2, song2Lyrics, song2GenreSelect, song2Voice, song2Feedback)], startBtn);
+      };
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+      // AMBELE — comportamentul original, neschimbat: pasul 1, apoi pasul 2, ambele melodii
+      // trimise impreuna, cu verificarea existenta ca cele doua genuri raman diferite.
+      step1BackBtn.style.display = 'none';
+      continueBtn.textContent = t.premium_edit_step1_continue_btn;
+      goToPremiumEditStep(1);
+      continueBtn.onclick = () => {
+        if (!song1Lyrics.value.trim()) {
+          setStepError(1, t.lyrics_empty_error);
+          return;
+        }
+        setStepError(1, '');
+        goToPremiumEditStep(2);
+      };
+      // "Înapoi" pastreaza TOATE valorile deja introduse pentru prima melodie (voce/gen/versuri)
+      // — comuta STRICT vizibilitatea, nu re-randeaza si nu reseteaza nimic.
+      backBtn.onclick = () => {
+        goToPremiumEditStep(1);
+      };
+      startBtn.onclick = () => {
+        setStepError(2, '');
+        if (!song2Lyrics.value.trim()) {
+          setStepError(2, t.lyrics_empty_error);
+          return;
+        }
+        if (song1GenreSelect.value === song2GenreSelect.value) {
+          setStepError(2, t.edit_genre_same_error);
+          return;
+        }
+        submitSongs([
+          songPayload(v1, song1Lyrics, song1GenreSelect, song1Voice, song1Feedback),
+          songPayload(v2, song2Lyrics, song2GenreSelect, song2Voice, song2Feedback)
+        ], startBtn);
+      };
+    }
   }
 
   function renderPremiumCompareView(order) {

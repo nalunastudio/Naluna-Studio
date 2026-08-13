@@ -1859,7 +1859,7 @@ async function handlePremiumSelectiveRegenerate(req, res, next) {
       // 4): versurile editate manual (camp precompletat cu versurile curente, editabil direct)
       // si vocea aleasa, ACUM per melodie — nu mai exista un camp global de feedback in noul
       // flux Premium. Cate un obiect per melodie, independent, exact ca genul.
-      const lyricsInput = typeof entry?.lyrics === 'string' ? entry.lyrics.trim().slice(0, 4000) : null;
+      const lyricsInput = typeof entry?.lyrics === 'string' ? truncateAtWordBoundary(entry.lyrics.trim(), 4000) : null;
       const songVoice = typeof entry?.voicePreference === 'string' ? entry.voicePreference : null;
       if (songVoice !== null && !VOICE_PREFERENCES.includes(songVoice)) {
         return res.status(400).json({ error: invalidVoiceMessage(order.lang) });
@@ -4153,6 +4153,40 @@ async function finalizeVariantsIfNeeded(orderId, requestsInfo, options = {}) {
           built.originalLyrics = canonicalLyrics;
           built.editedLyrics = null;
           built.lyricsUpdatedAt = new Date().toISOString();
+        } else if (!built.originalLyrics || !built.originalLyrics.trim()) {
+          // CORECȚIE (2026-08-13, "verifica inainte de trimitere ca versurile nu sunt goale"):
+          // DOAR pentru versurile scrise de Suno insusi (customMode:false — fara canonicalLyrics,
+          // deci nu e o editare cu versuri exacte ale clientului), o SINGURA reincercare
+          // controlata daca raspunsul nu contine deloc versuri — nu un ciclu nelimitat, nu un
+          // serviciu extern nou, doar acelasi apel catre furnizor, o singura data in plus.
+          // Verificarile de continut/gramatica (cuvinte taiate, propozitii fara sens) NU pot fi
+          // detectate fiabil aici, fara analiza semantica reala (risc mare de fals-pozitive care
+          // ar dubla costul in credite fara beneficiu cert) — mitigate DOAR preventiv, prin
+          // instructiunile explicite de mai sus (currentInstruction: "complete words only, no
+          // shortening"), niciodata printr-o reincercare oarba pe baza unei euristici nesigure.
+          console.warn(`Comanda ${orderId}: versuri goale primite de la furnizor pentru genul "${genre}" — reincerc o singura data.`);
+          try {
+            const retryOrder = recipientSnapshot ? { ...claimed, ...recipientSnapshot } : claimed;
+            const retryPrompt = buildPrompt(retryOrder, '', genre);
+            const retryTaskId = await callMusicProvider(orderId, retryPrompt);
+            const retryResult = await pollForResult(retryTaskId, orderId);
+            if (retryResult.status === SUNO_SUCCESS_STATUS && retryResult.tracks && retryResult.tracks.length) {
+              for (const retryTrack of retryResult.tracks.slice(0, 2)) {
+                if (retryTrack.lyrics && retryTrack.lyrics.trim()) {
+                  const retryBuilt = await buildVariantFromTrack(orderId, randomUUID().slice(0, 8), retryTrack, retryTaskId);
+                  if (retryBuilt.originalLyrics && retryBuilt.originalLyrics.trim()) {
+                    built = retryBuilt;
+                    built.genre = genre;
+                    if (songSlot) built.songSlot = songSlot;
+                    if (recipientSnapshot) Object.assign(built, recipientSnapshot);
+                    break;
+                  }
+                }
+              }
+            }
+          } catch (retryErr) {
+            console.error(`Comanda ${orderId}: reincercarea pentru versuri goale a esuat (${retryErr.message}) — continui cu rezultatul original.`);
+          }
         }
         builtVariants.push(built);
       } else {
@@ -4199,7 +4233,19 @@ async function finalizeVariantsIfNeeded(orderId, requestsInfo, options = {}) {
       // apelul catre db.updateOrder). Nimic nu se sterge din storage (replacedOldVariants
       // ramane gol) — originalele raman complet functionale/livrabile daca clientul alege
       // pana la urma sa le pastreze pe ele.
-      const existing = claimed.variants || [];
+      // CORECȚIE (2026-08-13, "versiunea inițială și versiunea editată afișează aceleași
+      // versuri"): variantele SURSA (existing) au primit `editedLyrics` = textul din editor
+      // MAI SUS, in POST /regenerate (linia ~1949), STRICT ca sa poata fi transmis mai departe
+      // ca `exactLyrics` catre Suno (vezi canonicalEditedLyricsFor, folosit deja pentru
+      // `built.originalLyrics` mai sus) — dar acel camp NU era niciodata curatat dupa ce
+      // editarea se finaliza. Rezultat: varianta ORIGINALA ramanea, pe ecran, cu editedLyrics
+      // inca setat la textul editat — iar UI-ul (lyricsTextRaw = v.editedLyrics || v.originalLyrics)
+      // afisa exact acelasi text si la "versiunea inițială" si la "versiunea editată". Golim
+      // AICI editedLyrics pe variantele sursa (dupa ce a fost deja citit si folosit mai sus),
+      // ca originalul sa isi arate din nou PROPRIUL text neschimbat.
+      const sourceIdSet = new Set(sourceVariantIdsInOrder.filter(Boolean));
+      const existing = (claimed.variants || []).map(v =>
+        sourceIdSet.has(v.id) ? { ...v, editedLyrics: null } : v);
       const edited = builtVariants.map(v => ({ ...v, isEditedAlternative: true }));
       variants = [...existing, ...edited];
       newSelectedVariantId = null;
@@ -4213,7 +4259,12 @@ async function finalizeVariantsIfNeeded(orderId, requestsInfo, options = {}) {
       // din storage (replacedOldVariants ramane gol) — originalul trebuie sa ramana complet
       // functional/livrabil daca editarea esueaza sau daca clientul alege pana la urma sa
       // pastreze originalul.
-      const existing = claimed.variants || [];
+      // CORECȚIE (2026-08-13): acelasi motiv ca la ramura Premium de mai sus — golim
+      // editedLyrics pe varianta sursa dupa ce a fost deja citita/folosita, ca originalul sa
+      // isi arate din nou propriul text, nu textul editat lasat acolo de POST /regenerate.
+      const sourceIdSet = new Set(sourceVariantIdsInOrder.filter(Boolean));
+      const existing = (claimed.variants || []).map(v =>
+        sourceIdSet.has(v.id) ? { ...v, editedLyrics: null } : v);
       const edited = builtVariants[0];
       edited.isEditedAlternative = true;
       variants = [...existing, edited];
@@ -5377,13 +5428,27 @@ async function getAudioDuration(filePath) {
 // Corectia principala a regresiei ramane insa eliminarea cuvantului "instrumental" din
 // instructiunile de mai jos (vezi currentInstruction()) — acest revert de lungime e o masura
 // suplimentara de siguranta, nu inlocuieste acea corectie.
+//
+// CORECȚIE (2026-08-13, runda "mesajele clientului dispar din versuri"): 500 s-a dovedit
+// insuficient pentru comenzi reale cu ocazie+relatie lungi (ex. Nuntă/Botez cu nași) SI un
+// mesaj explicit scris de client (ex. "La mulți ani din partea nașilor Andrei și Mara") —
+// verificat empiric ca `head` (stil+ocazie+destinatar+expeditor+relatie+voce), desi deja
+// scurtat maximal de cascada de mai jos, poate singur ajunge la 420+ caractere pentru
+// asemenea comenzi, lasand sub 80 caractere pentru poveste — insuficient sa incapa un mesaj
+// explicit care nu se afla chiar la inceputul textului scris de client. Marit la 600 (crestere
+// MODESTA, +20%, NU o revenire la 2800) — testat exhaustiv (vezi
+// test/lyrics-exact-story-premium-sequential.test.js) ca (a) cuvantul "instrumental"
+// tot nu apare in niciun caz, (b) mesaje explicite realiste supravietuiesc netrunchiate chiar
+// si pe ocazia cea mai incarcata (nuntă/botez). Corectia principala ramane tot eliminarea
+// cuvantului "instrumental" — aceasta crestere e mult sub pragul (2800/2000) care a corelat
+// anterior cu regresia, si ramane o masura suplimentara, nu inlocuitoare.
 // Prioritate la trunchiere (partea fixa nu se taie niciodata):
 //   1. limba + stilul + ocazia + destinatarul — obligatorii, intacte
 //   2. feedback-ul de editare (daca exista) — i se rezerva spatiu, dar limitat
 //   3. povestea — umple spatiul ramas, prima taiata daca nu incape tot
 // Taierea se face pe caractere Unicode complete (code points), nu pe unitati UTF-16,
 // ca sa nu rupem niciodata un caracter multi-byte (emoji, litere in afara BMP) la mijloc.
-const SUNO_PROMPT_MAX_LEN = 500;
+const SUNO_PROMPT_MAX_LEN = 600;
 
 // imparte corect pe caractere Unicode si taie fara sa rupa vreunul la mijloc
 function truncateSafely(str, maxLen) {
@@ -5392,6 +5457,25 @@ function truncateSafely(str, maxLen) {
   const chars = Array.from(str);
   if (chars.length <= maxLen) return str;
   return chars.slice(0, maxLen).join('').trimEnd();
+}
+
+// CORECȚIE (2026-08-13, "nu taia niciun cuvant la mijloc"): folosita STRICT pentru versuri
+// scrise/editate de client (POST /regenerate, {songs:[{lyrics}]}) — plasa de siguranta
+// server-side pentru un text care depaseste maxlength=4000 al textarea-ului din UI (rar
+// declansata in practica, dar posibila — camp trimis direct, fara UI). Un simplu .slice(0,4000)
+// putea taia exact in mijlocul unui cuvant sau al unei propozitii; aceasta varianta se retrage
+// pana la ultima limita completa de cuvant/vers (spatiu sau linie noua) in interiorul limitei,
+// niciodata mai departe decat maxLen.
+function truncateAtWordBoundary(str, maxLen) {
+  if (!str) return '';
+  if (maxLen <= 0) return '';
+  const chars = Array.from(str);
+  if (chars.length <= maxLen) return str;
+  const cut = chars.slice(0, maxLen).join('');
+  const lastBoundary = Math.max(cut.lastIndexOf('\n'), cut.lastIndexOf(' '));
+  // daca nu exista niciun spatiu/linie noua in interiorul limitei (un singur "cuvant" foarte
+  // lung), pastram taierea bruta — nu exista o limita de cuvant mai buna disponibila.
+  return (lastBoundary > 0 ? cut.slice(0, lastBoundary) : cut).trimEnd();
 }
 
 // Mapare ocazie -> descriere semantica scurta, in engleza (trimisa catre SunoAPI). Valorile
@@ -5591,7 +5675,10 @@ const RELATIONSHIP_MAX_LEN = 60;
 // vezi comentariul de la SUNO_PROMPT_MAX_LEN. Povestea NU mai e garantata completa (limitare
 // reala, de raportat explicit) — un prompt scurt, concis, e configuratia dovedita sa produca
 // melodii cu voce, in mod fiabil.
-const STORY_MIN_RESERVE = 160;
+// CORECȚIE (2026-08-13, runda "mesajele clientului dispar din versuri"): marita proportional
+// la 190 (SUNO_PROMPT_MAX_LEN 500->600, deci rezerva creste cu acelasi raport) — vezi
+// comentariul de la SUNO_PROMPT_MAX_LEN pentru motiv si testare.
+const STORY_MIN_RESERVE = 190;
 
 // Extras la scop de modul (2026-08-13) — mutate din interiorul buildPrompt() ca sa poata fi
 // reutilizate si de buildExactLyricsRequest() (campul "style" pentru customMode:true), fara
@@ -5813,10 +5900,25 @@ function buildPrompt(order, feedback, genreOverride) {
   // orice comanda reala unde instructiunea originala ar fi supravietuit. "never invented" preia
   // rolul clauzei vechi "Use only real details from the story — invent nothing" (pastrata ca
   // cerinta, doar reformulata mai scurt ca sa incapa alaturi de clauza noua de prim vers).
-  const instructionWithSenderFull = ' Write this as a personal song from the sender to the recipient, opening the first verse with a real, specific, never-invented detail from the story — never a generic line. Start the vocals around 8-10 seconds, never immediately. Name the recipient early and again in the chorus. Mention the sender once.';
-  const instructionWithSenderShort = ' Short intro; open verse 1 with a real, never-invented story detail, not generic; name recipient early and in chorus; mention sender once.';
-  const instructionNoSenderFull = ' Open the first verse with a real, specific, never-invented detail from the story — never a generic line. Start the vocals around 8-10 seconds, never immediately. Address the recipient by name naturally in the lyrics.';
-  const instructionNoSenderShort = ' Short intro; open verse 1 with a real, never-invented story detail, not generic. Address recipient by name naturally.';
+  //
+  // CORECȚIE (2026-08-13, runda "cuvinte taiate/versuri incorecte gramatical" — ex. real,
+  // raportat live: "ești totul pentru mi" in loc de "ești totul pentru mine"): am verificat
+  // exhaustiv codul propriu (extractSunoTracks, buildVariantFromTrack, afisarea din
+  // melodia-mea.html, schema DB — variants e JSONB, fara nicio limita de tip VARCHAR) — NU
+  // exista nicio trunchiere proprie a versurilor generate; taierea/forma incorecta provine din
+  // felul in care furnizorul (Suno, customMode:false, isi scrie singur versurile din promptul
+  // descriptiv) alege sa comprime cuvinte pentru rima/ritm. Singura parghie reala disponibila e
+  // o instructiune explicita, care cere clar cuvinte intregi si gramatica corecta — adaugata
+  // aici (bugetul marit la 600 face loc acestei clauze fara sa elimine povestea).
+  const instructionWithSenderFull = ' Write this as a personal song from the sender to the recipient, opening the first verse with a real, specific, never-invented detail from the story — never a generic line. Use only complete, grammatically correct words in the target language — never a shortened or invented word form. Start the vocals around 8-10 seconds, never immediately. Name the recipient early and again in the chorus. Mention the sender once.';
+  // fereastra SCURTA trebuie sa ramana chiar scurta (folosita cand bugetul fix, `head`, tot nu
+  // incape — daca ea insasi devine lunga, cascada de scurtare isi pierde sensul, exact bug-ul
+  // gasit empiric aici la runda "cuvinte taiate": adaugarea clauzei de gramatica ca text simplu
+  // concatenat umfla forma "scurta" la 200+ caractere, impingand `head` mult peste buget chiar
+  // si pentru comenzi tipice, scurte).
+  const instructionWithSenderShort = ' Short intro; verse 1: real, not invented, story detail; complete words only, no shortening; name recipient early+chorus; mention sender once.';
+  const instructionNoSenderFull = ' Open the first verse with a real, specific, never-invented detail from the story — never a generic line. Use only complete, grammatically correct words in the target language — never a shortened or invented word form. Start the vocals around 8-10 seconds, never immediately. Address the recipient by name naturally in the lyrics.';
+  const instructionNoSenderShort = ' Short intro; verse 1: real, not invented, story detail. Address recipient by name naturally, complete words only, no shortening.';
 
   let useShortInstruction = false;
   function currentInstruction() {
@@ -5891,9 +5993,15 @@ function buildPrompt(order, feedback, genreOverride) {
   // varianta dinainte de aceasta corectie. Continutul povestii ramane prioritar fata de
   // formularea instructiunii (cerinta explicita — nu sacrificam informatii reale din poveste
   // ca sa incapa text explicativ suplimentar).
+  // CORECȚIE (2026-08-13, "mesajele clientului dispar din versuri" — ex. real, raportat live:
+  // "La mulți ani din partea nașilor Andrei și Mara" lipsea complet din versuri): etichetele
+  // Full/Short cer acum explicit reproducerea CUVANT CU CUVANT a oricarui mesaj/urare scrisa
+  // explicit de client in poveste — nu doar folosirea "unor detalii" din ea. Ramane totusi
+  // subordonata continutului real al povestii (vezi MIN_USEFUL_STORY_CHARS mai jos): daca
+  // bugetul nu face loc etichetei, cade pe eticheta simpla, niciodata pe eliminarea povestii.
   const storyLabelPlain = ' Story/details to include: ';
-  const storyLabelShort = ' Verse 1 opens with a real story detail. Story: ';
-  const storyLabelFull = ' First verse must open with a real detail from this story, never a generic line. Story: ';
+  const storyLabelShort = ' Verse 1 opens with a real story detail; include any explicit message word-for-word. Story: ';
+  const storyLabelFull = ' First verse must open with a real detail from this story, never a generic line; include any explicit written message (e.g. a greeting) exactly, word-for-word, unchanged. Story: ';
   const MIN_USEFUL_STORY_CHARS = 40;
   const feedbackLabel = ' Client-requested adjustment: ';
   const feedbackText = feedback ? String(feedback).trim() : '';

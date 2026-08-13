@@ -64,14 +64,18 @@ test('finalizeVariantsIfNeeded: dupa o editare Standard, selectedVariantId raman
   const server = read('server.js');
   const idx = server.indexOf('options.keepOriginalAsAlternative) {');
   assert.ok(idx > -1, 'ramura keepOriginalAsAlternative trebuie sa existe');
-  const branch = server.slice(idx, idx + 1200);
+  // fereastra marita (2026-08-13): vezi comentariul de la testul de mai jos (aceeasi cauza).
+  const branch = server.slice(idx, idx + 1600);
   assert.ok(branch.includes('newSelectedVariantId = null;'), 'niciuna din cele doua variante nu trebuie preselectata automat — POST /checkout respinge deja o cerere fara selectedVariantId');
 });
 
 test('finalizeVariantsIfNeeded: editarea Standard NU sterge niciun fisier din storage (originalul trebuie sa ramana livrabil)', () => {
   const server = read('server.js');
   const idx = server.indexOf('options.keepOriginalAsAlternative) {');
-  const branch = server.slice(idx, idx + 1200);
+  // fereastra marita (2026-08-13): comentariul + codul care goleste editedLyrics pe varianta
+  // sursa (fix pentru "versiunea inițială și editată afișează aceleași versuri") au impins
+  // "replacedOldVariants = [];" dincolo de fereastra veche de 1200 caractere.
+  const branch = server.slice(idx, idx + 1600);
   assert.ok(branch.includes('replacedOldVariants = [];'), 'nimic nu trebuie sters din storage la editarea Standard cu pastrarea originalului');
 });
 

@@ -22,7 +22,7 @@ const melodia = read('public/melodia-mea.html');
 // sintetice, exact tiparul din test/bunici-amandoi-relation-name.test.js — verificare FUNCTIONALA
 // (nu doar text static).
 function loadBuildPrompt() {
-  const startMarker = 'const SUNO_PROMPT_MAX_LEN = 500;';
+  const startMarker = 'const SUNO_PROMPT_MAX_LEN = 600;';
   const startIdx = server.indexOf(startMarker);
   assert.ok(startIdx !== -1, 'nu am gasit inceputul blocului buildPrompt in server.js');
   const funcStart = server.indexOf('function buildPrompt(order, feedback, genreOverride) {', startIdx);
@@ -71,19 +71,19 @@ test('buildPrompt: promptul generat NU contine niciodata cuvantul "instrumental"
   });
 });
 
-test('buildPrompt: bugetul de prompt (customMode:false) a revenit la valorile dovedite, stabile — 500 caractere total, cel putin 160 rezervate povestii', () => {
-  assert.match(server, /const SUNO_PROMPT_MAX_LEN = 500;/);
-  assert.match(server, /const STORY_MIN_RESERVE = 160;/);
+test('buildPrompt: bugetul de prompt (customMode:false) — 600 caractere total (marit MODEST, +20%, fata de 500, ca mesajele explicite ale clientului sa nu mai fie taiate complet — vezi comentariul de la SUNO_PROMPT_MAX_LEN), cel putin 190 rezervate povestii', () => {
+  assert.match(server, /const SUNO_PROMPT_MAX_LEN = 600;/);
+  assert.match(server, /const STORY_MIN_RESERVE = 190;/);
 });
 
-test('buildPrompt: pentru o comanda tipica (campuri normale, poveste rezonabila), promptul ramane sub 500 caractere si contine detalii reale din poveste', () => {
+test('buildPrompt: pentru o comanda tipica (campuri normale, poveste rezonabila), promptul ramane sub 600 caractere si contine detalii reale din poveste', () => {
   const order = {
     occasion: 'aniversare', genre: 'pop', lang: 'ro',
     recipient: 'Maria', senderName: 'Ana', relationship: 'prietena',
     voicePreference: 'auto', story: 'Ne-am cunoscut la facultate si de atunci suntem cele mai bune prietene.'
   };
   const prompt = buildPrompt(order, '', undefined);
-  assert.ok(prompt.length <= 500);
+  assert.ok(prompt.length <= 600);
   // CORECȚIE (2026-08-13, "povestea din prima strofă"): eticheta dinaintea povestii e acum
   // aleasa adaptiv (storyLabelFull/Short/Plain, dupa spatiul chiar disponibil), toate insa
   // terminandu-se in "Story: " — testul verifica ce conteaza cu adevarat: ca inceputul REAL
@@ -115,10 +115,11 @@ test('buildPrompt: instructiunea "deschide primul vers cu un detaliu real din po
   };
   [typical, worstCase].forEach((order) => {
     const prompt = buildPrompt(order, '', undefined);
-    assert.ok(prompt.length <= 500, `promptul trebuie sa ramana sub 500 caractere, a produs ${prompt.length}`);
-    assert.match(prompt, /open verse 1 with a real,? (never-invented )?story detail|opening the first verse with a real,? specific,? (never-invented )?detail/i,
+    assert.ok(prompt.length <= 600, `promptul trebuie sa ramana sub 600 caractere, a produs ${prompt.length}`);
+    assert.match(prompt, /verse 1:? real,? (not invented,? )?(never-invented )?story detail|opening the first verse with a real,? specific,? (never-invented )?detail/i,
       `instructiunea de deschidere a primului vers trebuie sa fie prezenta, a produs: ${prompt}`);
-    assert.match(prompt, /never-invented/i, `clauza "niciodata inventat" trebuie sa fie prezenta (echivalentul cerintei vechi "Use only real details — invent nothing"), a produs: ${prompt}`);
+    assert.match(prompt, /never-invented|not invented/i, `clauza "niciodata inventat" trebuie sa fie prezenta (echivalentul cerintei vechi "Use only real details — invent nothing"), a produs: ${prompt}`);
+    assert.match(prompt, /complete words only, no shortening|grammatically correct words/i, `instructiunea de cuvinte complete/gramatica corecta trebuie sa fie prezenta, a produs: ${prompt}`);
     const storyIdx = prompt.search(/Story[^:]*:\s*\S/i);
     assert.ok(storyIdx !== -1, `continutul real al povestii trebuie sa fie prezent, a produs: ${prompt}`);
   });
@@ -134,7 +135,7 @@ test('buildPrompt: o poveste scurta este integrata COMPLET (netrunchiata) alatur
   // eticheta dinaintea povestii difera dupa spatiul disponibil (vezi testul de mai sus) — ce
   // conteaza aici e ca textul povestii insusi ajunge COMPLET, netrunchiat, indiferent de eticheta.
   assert.ok(prompt.includes('Esti cea mai buna prietena.'), `povestea scurta trebuie sa apara integral, netrunchiata, a produs: ${prompt}`);
-  assert.match(prompt, /open verse 1 with a real,? (never-invented )?story detail/i);
+  assert.match(prompt, /verse 1:? real,? (not invented,? )?(never-invented )?story detail/i);
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -303,11 +304,18 @@ test('melodia-mea.html: editarea Premium (ambele melodii) contine caseta "Nu est
   assert.ok(body.includes('t.feedback_ph'));
 });
 
-test('melodia-mea.html: feedback-ul liber al fiecarei melodii e inclus in payload-ul trimis catre POST /regenerate', () => {
-  const idx = melodia.indexOf('const songs = [');
-  const body = melodia.slice(idx, idx + 700);
-  assert.ok(body.includes('feedback: song1Feedback.value.trim() || undefined'));
-  assert.ok(body.includes('feedback: song2Feedback.value.trim() || undefined'));
+// CORECȚIE (2026-08-13, runda 2, "ecran de alegere a melodiei care va fi editată"): payload-ul
+// per melodie e acum construit de o functie comuna songPayload(variant, lyricsEl, genreSelect,
+// voice, feedbackEl), reutilizata de toate cele trei moduri (o melodie/cealalta/ambele) —
+// feedback-ul ramane STRICT `feedbackEl.value.trim() || undefined`, per melodie, indiferent de
+// mod (nu doar cand ambele sunt editate).
+test('melodia-mea.html: feedback-ul liber al fiecarei melodii e inclus in payload-ul trimis catre POST /regenerate (functia comuna songPayload, reutilizata in toate cele trei moduri)', () => {
+  const idx = melodia.indexOf('function songPayload(variant, lyricsEl, genreSelect, voice, feedbackEl) {');
+  assert.ok(idx !== -1, 'functia comuna songPayload trebuie sa existe');
+  const body = melodia.slice(idx, idx + 400);
+  assert.ok(body.includes('feedback: feedbackEl.value.trim() || undefined'));
+  assert.ok(melodia.includes('songPayload(v1, song1Lyrics, song1GenreSelect, song1Voice, song1Feedback)'));
+  assert.ok(melodia.includes('songPayload(v2, song2Lyrics, song2GenreSelect, song2Voice, song2Feedback)'));
 });
 
 test('server.js: editarea a doua melodii Premium dispecerizeaza catre Suno STRICT pe rand — a doua sarcina NU porneste inainte ca prima sa fi reusit (fara Promise.all pe cele doua dispatch-uri)', () => {
@@ -413,7 +421,9 @@ test('server.js: fisierele audio ale unei variante noi folosesc o cale de storag
 test('server.js: editVariantIds ADAUGA variantele noi alaturi de cele existente (niciodata nu le inlocuieste) — ID-ul, audio-ul, versurile si genul originalului raman intacte dupa o editare', () => {
   const idx = server.indexOf('} else if (options.editVariantIds) {');
   assert.ok(idx !== -1);
-  const body = server.slice(idx, idx + 1200);
+  // fereastra marita (2026-08-13): fix pentru "versiunea inițială și editată afișează
+  // aceleași versuri" a adaugat cod/comentarii in aceasta ramura.
+  const body = server.slice(idx, idx + 2300);
   assert.ok(body.includes('variants = [...existing, ...edited];'));
 });
 

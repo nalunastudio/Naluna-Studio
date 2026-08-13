@@ -91,8 +91,12 @@ test('melodia-mea.html: NU mai exista bife optionale de selectie a melodiei — 
   assert.ok(!melodia.includes('type="checkbox"') || !melodia.slice(melodia.indexOf('id="premium-edit-view"'), melodia.indexOf('id="premium-compare-view"')).includes('type="checkbox"'));
 });
 
-test('melodia-mea.html: butonul pasului 1 este "Continuă la a doua melodie" (premium_edit_step1_continue_btn); butonul final reutilizeaza EXACT butonul portocaliu Standard (t.confirm_yes, "Creează noua versiune")', () => {
-  assert.match(melodia, /getElementById\('premium-edit-step1-continue-btn'\)\.textContent = t\.premium_edit_step1_continue_btn;/);
+// CORECȚIE (2026-08-13, runda 2): in modul "Amândouă" (premiumEditChoice==='both'), butonul
+// pasului 1 tot foloseste textul premium_edit_step1_continue_btn — dar acum prin variabila
+// `continueBtn` (const continueBtn = document.getElementById(...)), nu direct inline, pentru
+// ca acelasi buton devine buton de TRIMITERE (t.confirm_yes) in modurile "o singura melodie".
+test('melodia-mea.html: butonul pasului 1 este "Continuă la a doua melodie" (premium_edit_step1_continue_btn) in modul "Amândouă"; butonul final reutilizeaza EXACT butonul portocaliu Standard (t.confirm_yes, "Creează noua versiune")', () => {
+  assert.match(melodia, /continueBtn\.textContent = t\.premium_edit_step1_continue_btn;/);
   assert.match(melodia, /getElementById\('premium-edit-start-btn'\)\.textContent = t\.confirm_yes;/);
   assert.match(melodia, /premium_edit_step1_continue_btn: 'Continuă la a doua melodie',/);
   // butonul final trebuie sa fie vizual identic cu CTA-ul portocaliu Standard.
@@ -159,12 +163,14 @@ test('server.js: versurile trimise (modificate manual) sunt salvate PE VARIANTA 
   assert.ok(body.includes('editedLyrics: patch.lyrics'));
 });
 
+// CORECȚIE (2026-08-13, runda 2): normalizarea ruleaza acum in functia comuna songPayload(),
+// reutilizata pentru toate cele trei moduri — parametrul `lyricsEl` e generic (song1Lyrics SAU
+// song2Lyrics, dupa apelul concret), nu mai apare literal in corpul functiei.
 test('melodia-mea.html: versurile sunt normalizate INAPOI la etichetele standard (engleza) inainte de a fi trimise catre server — niciodata trimise cu etichete traduse', () => {
-  const idx = melodia.indexOf('function renderPremiumEditView(order) {');
-  const end = melodia.indexOf('function renderPremiumCompareView(order) {');
-  const body = melodia.slice(idx, end);
-  assert.ok(body.includes('normalizeSectionLabelsForSaving(song1Lyrics.value.trim(), order.lang)'));
-  assert.ok(body.includes('normalizeSectionLabelsForSaving(song2Lyrics.value.trim(), order.lang)'));
+  const idx = melodia.indexOf('function songPayload(variant, lyricsEl, genreSelect, voice, feedbackEl) {');
+  assert.ok(idx !== -1);
+  const body = melodia.slice(idx, idx + 400);
+  assert.ok(body.includes('normalizeSectionLabelsForSaving(lyricsEl.value.trim(), order.lang)'));
 });
 
 // ---------------------------------------------------------------------------------------------
