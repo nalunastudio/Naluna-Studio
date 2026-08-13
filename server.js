@@ -5619,17 +5619,26 @@ const OCCASION_INSTRUCTIONS = {
   // MODIFICARE STRICTĂ — pagina de ocazie (hotfix 2026-08-08): toate cele 4 ocazii de familie
   // impartasesc aceeasi atmosfera de baza — relatia EXACTA (bunica/mama/matusa/soacra etc.) e
   // adaugata separat, natural, de relationClause() mai jos, nu aici.
+  //
+  // CORECȚIE (2026-08-13, runda 4, "versurile contin detalii inventate" — ex. real, raportat
+  // live: "Țin minte mâinile tale cum făceau ceaiul" pentru o matusa a carei poveste NU mentiona
+  // ceaiul deloc): "cherished memories", lasat deschis/nespecificat, era o invitatie implicita
+  // pentru model sa INVENTEZE o amintire plauzibila (ceai, bucatarie etc.) ori de cate ori
+  // povestea clientului era scurta sau nu continea o amintire concreta — modelul "completa"
+  // atmosfera ceruta cu propriile idei. Ancorat acum EXPLICIT la povestea de mai jos ("from the
+  // story below"/"only what the story below actually says") — atmosfera calda ramane ceruta,
+  // dar sursa amintirilor devine STRICT povestea, niciodata imaginatia modelului.
   bunici: {
-    full: 'Warm, loving family tribute — full of gratitude and cherished memories, never generic.',
-    short: 'Warm family tribute, gratitude and memories.'
+    full: 'Warm, loving family tribute — express gratitude using only the memories and details from the story below, never invented ones.',
+    short: 'Warm family tribute, gratitude — only the story\'s own memories, never invented.'
   },
   parinti: {
-    full: 'Warm, loving family tribute — full of gratitude and cherished memories, never generic.',
-    short: 'Warm family tribute, gratitude and memories.'
+    full: 'Warm, loving family tribute — express gratitude using only the memories and details from the story below, never invented ones.',
+    short: 'Warm family tribute, gratitude — only the story\'s own memories, never invented.'
   },
   'matusa-unchi': {
-    full: 'Warm, loving family tribute — full of gratitude and cherished memories, never generic.',
-    short: 'Warm family tribute, gratitude and memories.'
+    full: 'Warm, loving family tribute — express gratitude using only the memories and details from the story below, never invented ones.',
+    short: 'Warm family tribute, gratitude — only the story\'s own memories, never invented.'
   },
   socri: {
     full: 'Warm, respectful family tribute — full of gratitude and appreciation, never generic.',
@@ -5640,8 +5649,8 @@ const OCCASION_INSTRUCTIONS = {
   // increderea/sprijinul (cerute pentru Frate), ca sa acopere natural ambele formulari cerute.
   // Adresarea EXACTA ("sora mea"/"fratele meu" + nume) e adaugata separat de relationClause().
   frati: {
-    full: 'The idea, mood and chorus must center on the bond between siblings — closeness, family love, trust, mutual support, and cherished shared memories (childhood or otherwise). This must feel distinctly like a sibling relationship, never a romantic or a simple friendship song.',
-    short: 'Sibling bond — closeness, trust, support, shared memories; never romantic.'
+    full: 'The idea, mood and chorus must center on the bond between siblings — closeness, family love, trust, mutual support, using only the shared memories actually described in the story below, never invented ones. This must feel distinctly like a sibling relationship, never a romantic or a simple friendship song.',
+    short: 'Sibling bond — closeness, trust, support; only the story\'s own memories, never invented; never romantic.'
   }
 };
 // CONTINUARE — personalizarea reala a versurilor (hotfix 2026-08-08): "Nuntă" si "Botez" sunt
@@ -5657,6 +5666,33 @@ const WEDDING_TYPE_INSTRUCTIONS = {
   baptism: {
     full: 'The idea, mood and chorus must clearly center on a BAPTISM/CHRISTENING — the child joining the family, blessing, joy, and a new beginning. Naturally include a phrase like "today is your baptism day" (translated naturally into the lyrics language). Never mention a wedding or a marriage.',
     short: 'Clearly a baptism song — blessing and new beginning; "today is your baptism day"; never wedding.'
+  }
+};
+// CORECȚIE (2026-08-13, runda 4, "versurile contin detalii inventate" — ex. real, raportat live:
+// "Nașilor le bate glasul tare când vă văd aici, în lumina asta", pentru povestea "Mulțumim că
+// ne-ați ales nași, vă iubim"): WEDDING_TYPE_INSTRUCTIONS de mai sus cerea INTOTDEAUNA fraza
+// "today is your wedding day"/"today is your baptism day", adresata destinatarului ca si cum EL
+// ar fi cel sarbatorit (mire/mireasa la nunta, respectiv copilul botezat) — corect in acel caz,
+// dar GRESIT/contradictoriu cand destinatarul e nașii (multumiti DE cuplu/familie, nu cei
+// sarbatoriti) — modelul, incercand sa impace o instructiune fara sens pentru acest destinatar,
+// umplea golul cu versuri vagi, fara legatura cu povestea reala ("in lumina asta"). IMPORTANT:
+// DOAR nas/nasa (godfather/godmother/godparents) apartin acestei liste — fin/fina/finii
+// (godson/goddaughter/godchildren) sunt EXACT copilul botezat, deci EI sunt cei sarbatoriti la
+// botez ("today is your baptism day" e corect pentru ei, la fel ca mireasa/mirele la nunta) —
+// niciodata incluse aici.
+const WEDDING_NONCOUPLE_ROLES = ['godfather', 'godmother', 'godparents'];
+const WEDDING_TYPE_INSTRUCTIONS_NONCOUPLE = {
+  wedding: {
+    full: 'The idea, mood and chorus must clearly center on a WEDDING — the couple thanking and honoring the recipient for their role and support (e.g. as godparents), never addressing the recipient as if they themselves are the ones getting married. Never mention a baptism, a christening, or a child joining the family.',
+    // fereastra SCURTA trebuie sa ramana comparabila ca lungime cu originalul WEDDING_TYPE_INSTRUCTIONS.wedding.short
+    // (~88 caractere) — o versiune mai lunga aici a impins `head` mult peste buget pentru comenzi
+    // cu nume lungi + voce duet, lasand ZERO spatiu pentru poveste (regresie gasita empiric, prin
+    // testare directa a acestui exact scenariu, inainte de a fi trimisa in productie).
+    short: 'Wedding: honors recipient\'s role, never as if it is their own wedding; never baptism.'
+  },
+  baptism: {
+    full: 'The idea, mood and chorus must clearly center on a BAPTISM/CHRISTENING — thanking and honoring the recipient for their role and support (e.g. as godparents), never addressing the recipient as if the baptism/christening is about them. Never mention a wedding or a marriage.',
+    short: 'Baptism: honors recipient\'s role, never as if the baptism is about them; never wedding.'
   }
 };
 // Fallback pentru comenzi vechi/valoare necunoscuta de ocazie (Partea 2, punctul 11) —
@@ -5762,8 +5798,12 @@ function buildPrompt(order, feedback, genreOverride) {
   // weddingType cunoscut, folosim instructiunea DEDICATA (nunta SAU botez, niciodata amestecate)
   // in loc de instructiunea generica 'nunta' de mai sus — care ramane doar fallback pentru
   // comenzile vechi, create inainte ca weddingType sa devina obligatoriu.
+  // CORECȚIE (2026-08-13, runda 4): pentru nași/fini (destinatar DIN AFARA cuplului la o
+  // nunta/botez — vezi WEDDING_TYPE_INSTRUCTIONS_NONCOUPLE mai sus), folosim varianta care nu
+  // ii adreseaza gresit ca si cum EI s-ar casatori/boteza.
+  const isWeddingNonCoupleRecipient = order.occasion === 'nunta' && WEDDING_NONCOUPLE_ROLES.includes(effectiveRecipientRole);
   const occasionInstructionSet = (order.occasion === 'nunta' && WEDDING_TYPE_INSTRUCTIONS[order.weddingType])
-    ? WEDDING_TYPE_INSTRUCTIONS[order.weddingType]
+    ? (isWeddingNonCoupleRecipient ? WEDDING_TYPE_INSTRUCTIONS_NONCOUPLE[order.weddingType] : WEDDING_TYPE_INSTRUCTIONS[order.weddingType])
     : (OCCASION_INSTRUCTIONS[order.occasion] || OCCASION_INSTRUCTION_FALLBACK);
   let useShortOccasionInstruction = false;
   let includeOccasionInstruction = true;
@@ -6027,9 +6067,16 @@ function buildPrompt(order, feedback, genreOverride) {
   // explicit de client in poveste — nu doar folosirea "unor detalii" din ea. Ramane totusi
   // subordonata continutului real al povestii (vezi MIN_USEFUL_STORY_CHARS mai jos): daca
   // bugetul nu face loc etichetei, cade pe eticheta simpla, niciodata pe eliminarea povestii.
+  // CORECȚIE (2026-08-13, runda 4, "versurile contin detalii inventate" — ex. real, raportat
+  // live: "Țin minte mâinile tale cum făceau ceaiul" pentru o poveste care NU mentiona ceaiul):
+  // clauza "include any explicit message word-for-word" a fost inlocuita in eticheta SCURTA cu
+  // "invent nothing beyond it" — mai scurta (deci supravietuieste mai des cascadei de scurtare)
+  // SI directa la cauza principala raportata acum (inventia, nu doar omiterea mesajelor). Forma
+  // COMPLETA pastreaza ambele cerinte (mesaj exact + fara inventii), folosita cand bugetul chiar
+  // permite.
   const storyLabelPlain = ' Story/details to include: ';
-  const storyLabelShort = ' Verse 1 opens with a real story detail; include any explicit message word-for-word. Story: ';
-  const storyLabelFull = ' First verse must open with a real detail from this story, never a generic line; include any explicit written message (e.g. a greeting) exactly, word-for-word, unchanged. Story: ';
+  const storyLabelShort = ' Verse 1 opens with a real story detail — invent nothing beyond it. Story: ';
+  const storyLabelFull = ' First verse must open with a real detail from this story, never a generic line; include any explicit written message exactly; invent nothing beyond what is written here. Story: ';
   const MIN_USEFUL_STORY_CHARS = 40;
   const feedbackLabel = ' Client-requested adjustment: ';
   const feedbackText = feedback ? String(feedback).trim() : '';

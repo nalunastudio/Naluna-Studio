@@ -155,3 +155,33 @@ test('comanda.html: label-ul panoului de familie foloseste data-i18n (nu text ha
   assert.ok(html.includes('data-i18n="label_recipient_role"'));
   assert.ok(html.includes("t('relation_' + role)"), 'cardurile de relatie de familie trebuie generate din traduceri, nu text fix');
 });
+
+// CORECȚIE (2026-08-13, runda 5, "eticheta Bunică in loc de Bunica"): butonul afisat sub
+// "Pentru cine e cântecul?" (relation_grandmother, randat prin t('relation_' + role)) trebuie
+// sa afiseze exact "Bunica" (fara diacriticul final "ă"), NICIODATA "Bunică". Titlul separat
+// "Pentru bunica sau bunicul" (theme_bunici_name) ramane NESCHIMBAT — foloseste deja forma
+// corecta, minuscula, si nu trebuie atins. Valoarea interna (cheia recipientRole, 'grandmother')
+// nu e afectata — se schimba STRICT eticheta RO afisata.
+test('comanda.html: eticheta RO a butonului "Bunica" (relation_grandmother) e exact "Bunica", niciodata "Bunică" — restul traducerilor RO ramane neatins', () => {
+  const html = read('public/comanda.html');
+  assert.match(html, /relation_grandmother: 'Bunica',/, 'eticheta romana trebuie sa fie exact "Bunica"');
+  assert.ok(!html.includes("relation_grandmother: 'Bunică'"), 'forma veche "Bunică" nu mai trebuie sa existe');
+  assert.ok(html.includes("theme_bunici_name: 'Pentru bunica sau bunicul',"), 'titlul "Pentru bunica sau bunicul" trebuie sa ramana NESCHIMBAT');
+  // celelalte etichete de relatie din aceeasi lista RO raman neschimbate (nicio inlocuire globala).
+  assert.ok(html.includes("relation_grandfather: 'Bunic',"));
+  assert.ok(html.includes("relation_mother: 'Mamă',"));
+  assert.ok(html.includes("relation_aunt: 'Mătușă',"));
+});
+
+test('comanda.html: valoarea interna (recipientRole=\'grandmother\') si celelalte 7 traduceri ale relation_grandmother raman neschimbate', () => {
+  const html = read('public/comanda.html');
+  // valoarea interna folosita ca data-role/recipientRole ramane 'grandmother' — nicio schimbare
+  // la enum-ul folosit de backend (server.js valideaza deja acest string, neatins de aceasta runda).
+  assert.ok(html.includes("data-role=\"${role}\""), 'data-role ramane bazat pe valoarea interna a rolului, nu pe eticheta afisata');
+  const otherLangLabels = {
+    en: 'Grandmother', de: 'Oma', es: 'Abuela', it: 'Nonna', fr: 'Grand-mère', bg: 'Баба', tr: 'Büyükanne'
+  };
+  Object.values(otherLangLabels).forEach(label => {
+    assert.ok(html.includes(`relation_grandmother: '${label}'`), `traducerea "${label}" trebuie sa ramana neschimbata`);
+  });
+});

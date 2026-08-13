@@ -185,8 +185,11 @@ test('buildPrompt: separarea poveste 1/poveste 2 Premium ramane corecta cu noua 
   };
   const prompt1 = buildPrompt(song1, '', undefined);
   const prompt2 = buildPrompt(song2, '', undefined);
-  assert.ok(prompt1.includes('sotia mea') && !prompt1.includes('crescut'), `melodia 1 (soție) nu trebuie sa contina povestea melodiei 2 (bunica), a produs: ${prompt1}`);
-  assert.ok(prompt2.includes('crescut') && !prompt2.includes('sotia mea'), `melodia 2 (bunica) nu trebuie sa contina povestea melodiei 1 (soție), a produs: ${prompt2}`);
+  // Verificam inceputul fiecarei povesti (garantat sa supravietuiasca bugetului, indiferent de
+  // trunchiere) — nu un cuvant de la finalul ei, care poate fi legitim trunchiat de bugetul de
+  // prompt fara ca asta sa insemne o amestecare a poveștilor.
+  assert.ok(prompt1.includes('sotia mea') && !prompt1.includes('Bunico'), `melodia 1 (soție) nu trebuie sa contina povestea melodiei 2 (bunica), a produs: ${prompt1}`);
+  assert.ok(prompt2.includes('Bunico') && !prompt2.includes('sotia mea'), `melodia 2 (bunica) nu trebuie sa contina povestea melodiei 1 (soție), a produs: ${prompt2}`);
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -483,6 +486,60 @@ test('server.js: la pagina finala, cele 4 carduri Premium sorteaza dupa songSlot
   const body = melodia.slice(idx, idx + 800);
   assert.ok(body.includes('if (slotA !== slotB) return slotA - slotB;'));
   assert.ok(body.includes('return Number(!!a.isEditedAlternative) - Number(!!b.isEditedAlternative);'));
+});
+
+// ---------------------------------------------------------------------------------------------
+// CERINTE (2026-08-13, runda 5, "versurile contin detalii inventate"):
+// (1) destinatarul "din afara cuplului" la o nunta/botez (nași) primeste o instructiune care NU
+//     ii cere sa se adreseze ca si cum EL s-ar casatori/boteza — cauza reala a versurilor vagi,
+//     fara legatura cu povestea ("Nașilor le bate glasul tare... in lumina asta");
+// (2) fin/fina (godson/goddaughter) RAMAN in continuare adresati ca cei sarbatoriti la botez
+//     ("today is your baptism day") — ei SUNT copilul botezat, spre deosebire de nași;
+// (3) instructiunile de ocazie pentru familie (bunici/parinti/matusa-unchi/frati) ancoreaza
+//     "amintirile" STRICT la poveste, niciodata la imaginatia modelului — cauza reala a
+//     detaliilor inventate ("Țin minte mâinile tale cum făceau ceaiul", fara ceai in poveste).
+// ---------------------------------------------------------------------------------------------
+test('buildPrompt: nășii (recipientRole godparents) la o nunta primesc instructiunea "thanking/honoring their role", NICIODATA "today is your wedding day" (care i-ar adresa gresit ca si cum s-ar casatori ei)', () => {
+  const prompt = buildPrompt({
+    occasion: 'nunta', weddingType: 'wedding', recipientRole: 'godparents', genre: 'suflet', lang: 'ro',
+    recipient: 'Andrei', senderName: 'Alexandru', relationship: 'nași', voicePreference: 'auto',
+    story: 'Mulțumim că ne-ați ales nași, vă iubim'
+  }, '', undefined);
+  assert.ok(!prompt.includes('"today is your wedding day"'), `nu trebuie sa adreseze nasii ca si cum s-ar casatori ei, a produs: ${prompt}`);
+  assert.match(prompt, /honors? recipient'?s role|honoring the recipient for their role/i, `trebuie sa multumeasca/onoreze rolul lor, a produs: ${prompt}`);
+  assert.ok(prompt.includes('Mulțumim că ne-ați ales nași'), `povestea reala trebuie sa fie prezenta, a produs: ${prompt}`);
+});
+
+test('buildPrompt: finii (recipientRole godson/goddaughter) la un botez RAMAN adresati ca cei sarbatoriti — "today is your baptism day" ramane corect pentru ei, spre deosebire de nași', () => {
+  const prompt = buildPrompt({
+    occasion: 'nunta', weddingType: 'baptism', recipientRole: 'goddaughter', genre: 'suflet', lang: 'ro',
+    recipient: 'Ana', senderName: 'Maria', relationship: 'fină', voicePreference: 'auto',
+    story: 'Fetita noastra draga, azi e ziua ta cea mare.'
+  }, '', undefined);
+  assert.ok(prompt.includes('"today is your baptism day"'), `finii SUNT copilul botezat, sarbatoriti direct — a produs: ${prompt}`);
+});
+
+test('buildPrompt: instructiunile de ocazie pentru familie (bunici/parinti/matusa-unchi/frati) cer explicit ca amintirile sa vina STRICT din poveste, niciodata inventate', () => {
+  const idx = server.indexOf('const OCCASION_INSTRUCTIONS = {');
+  const end = server.indexOf('};', idx);
+  const body = server.slice(idx, end);
+  ['bunici', 'parinti', "'matusa-unchi'", 'frati'].forEach(key => {
+    const keyIdx = body.indexOf(key);
+    assert.ok(keyIdx !== -1, `ocazia ${key} trebuie sa existe`);
+    const slice = body.slice(keyIdx, keyIdx + 400);
+    assert.match(slice, /never invented|invent nothing|invented ones/i, `ocazia ${key} trebuie sa interzica explicit amintirile inventate, a produs: ${slice}`);
+  });
+});
+
+test('buildPrompt: cel putin un semnal explicit anti-inventie ("invent nothing"/"never invented"/"not invented") ramane prezent in prompt, indiferent de eticheta de poveste aleasa de cascada de scurtare', () => {
+  const order = {
+    occasion: 'matusa-unchi', recipientRole: 'aunt', genre: 'suflet', lang: 'ro',
+    recipient: 'Simona', senderName: 'Ioana', relationship: 'nepoata', voicePreference: 'auto',
+    story: 'Multumesc pentru tot sprijinul tau, esti o parte importanta din viata mea, te iubesc mult.'
+  };
+  const prompt = buildPrompt(order, '', undefined);
+  assert.match(prompt, /invent nothing|never invented|not invented|invented ones/i, `cel putin un semnal anti-inventie trebuie sa fie prezent, a produs: ${prompt}`);
+  assert.ok(prompt.includes('Multumesc pentru tot sprijinul'), `inceputul povestii reale trebuie sa fie prezent, a produs: ${prompt}`);
 });
 
 // ---------------------------------------------------------------------------------------------
