@@ -431,6 +431,115 @@ test('server.js: toate cele 15 genuri existente raman mapate — niciunul elimin
   assert.equal(mappedCount, 15, `trebuie sa existe exact 15 genuri mapate, gasite ${mappedCount}`);
 });
 
+// ---------------------------------------------------------------------------------------------
+// CERINTE (2026-08-13, runda 7, "profilurile Hip-Hop și Rock"): DOAR aceste doua chei din
+// GENRE_STYLE_MAP au fost rescrise, ca melodia sa fie imediat recognoscibila drept genul ales —
+// celelalte 13 genuri raman byte-identice cu inainte. Niciun nume de artist, titlu de piesa sau
+// link TikTok nu apare in text (cerinta explicita — referintele trebuie transformate in
+// caracteristici muzicale generale, niciodata citate direct).
+// ---------------------------------------------------------------------------------------------
+test('server.js: profilul Hip-Hop (GENRE_STYLE_MAP.hiphop) contine caracteristicile obligatorii — beat/kick/snare/hi-hat/bass, hook melodic scurt, versuri ritmice apropiate de rap, dictie clara, refren melodic, mix modern curat', () => {
+  const idx = server.indexOf('const GENRE_STYLE_MAP = {');
+  const end = server.indexOf('};', idx);
+  const body = server.slice(idx, end);
+  const hiphopMatch = body.match(/hiphop: '([^']+)'/);
+  assert.ok(hiphopMatch, 'hiphop trebuie sa fie mapat');
+  const tag = hiphopMatch[1];
+  assert.match(tag, /kick/i, 'trebuie sa mentioneze kick-ul');
+  assert.match(tag, /snare|clap/i, 'trebuie sa mentioneze snare/clap');
+  assert.match(tag, /hi-hat/i, 'trebuie sa mentioneze hi-hat-urile');
+  assert.match(tag, /bass/i, 'trebuie sa mentioneze bass-ul');
+  assert.match(tag, /rap|rhythmic/i, 'trebuie sa mentioneze interpretarea ritmica/apropiata de rap');
+  assert.match(tag, /diction/i, 'trebuie sa mentioneze dictia clara');
+  assert.match(tag, /chorus/i, 'trebuie sa mentioneze refrenul');
+  assert.ok(tag.length <= 220, `descrierea trebuie sa ramana rezonabil de compacta, a produs ${tag.length} caractere`);
+});
+
+test('server.js: profilul Rock (GENRE_STYLE_MAP.rock) contine caracteristicile obligatorii — chitara electrica distorsionata, tobe live, bass electric, voce puternica, refren amplu', () => {
+  const idx = server.indexOf('const GENRE_STYLE_MAP = {');
+  const end = server.indexOf('};', idx);
+  const body = server.slice(idx, end);
+  const rockMatch = body.match(/rock: '([^']+)'/);
+  assert.ok(rockMatch, 'rock trebuie sa fie mapat');
+  const tag = rockMatch[1];
+  assert.match(tag, /electric guitar/i, 'trebuie sa mentioneze chitara electrica');
+  assert.match(tag, /distort/i, 'trebuie sa mentioneze distorsiunea (riff-ul de chitara)');
+  assert.match(tag, /drums/i, 'trebuie sa mentioneze tobele');
+  assert.match(tag, /bass/i, 'trebuie sa mentioneze bass-ul');
+  assert.match(tag, /vocal/i, 'trebuie sa mentioneze vocea');
+  assert.match(tag, /chorus/i, 'trebuie sa mentioneze refrenul');
+  assert.ok(tag.length <= 220, `descrierea trebuie sa ramana rezonabil de compacta, a produs ${tag.length} caractere`);
+});
+
+test('server.js: descrierile Hip-Hop si Rock nu contin nume de artisti, titluri de piese sau linkuri TikTok — doar caracteristici muzicale generale', () => {
+  const idx = server.indexOf('const GENRE_STYLE_MAP = {');
+  const end = server.indexOf('};', idx);
+  const body = server.slice(idx, end);
+  const hiphopTag = body.match(/hiphop: '([^']+)'/)[1];
+  const rockTag = body.match(/rock: '([^']+)'/)[1];
+  [hiphopTag, rockTag].forEach(tag => {
+    assert.ok(!/tiktok/i.test(tag), `nu trebuie sa contina "tiktok", a produs: ${tag}`);
+    assert.ok(!/vm\.tiktok\.com/i.test(tag), `nu trebuie sa contina un link TikTok, a produs: ${tag}`);
+    assert.ok(!/http/i.test(tag), `nu trebuie sa contina niciun URL, a produs: ${tag}`);
+  });
+});
+
+test('server.js: celelalte 13 genuri raman BYTE-IDENTICE cu inainte de aceasta runda — DOAR hiphop si rock au fost modificate', () => {
+  const idx = server.indexOf('const GENRE_STYLE_MAP = {');
+  const end = server.indexOf('};', idx);
+  const body = server.slice(idx, end);
+  const unchanged = {
+    emotional: 'cinematic orchestral ballad, swelling strings and piano, rubato build, breathy vulnerable vocal, tearful climax',
+    suflet: 'intimate de suflet ballad, sparse guitar or piano, close warm vocal, quiet confessional unpolished mood',
+    pop: 'commercial pop, 100-120bpm, verse-chorus-bridge, synth hook, polished vocal, radio-ready energy',
+    acustic: 'unplugged acoustic folk, fingerpicked guitar, light percussion, natural room sound, plain sincere vocal',
+    petrecere: 'fast Romanian party beat, 130+bpm, syncopated dance rhythm, horns and synth stabs, shouted chorus, club energy',
+    balada: 'slow rubato piano ballad, sustained strings, no beat, dramatic dynamic swells, powerful sustained vocal',
+    manele: 'Romanian manele de jale, oriental scale, mournful clarinet, melismatic vocal slides, minor key grief',
+    copii: 'cheerful childrens song, simple major-key melody, glockenspiel and ukulele, bouncy rhythm, bright vocal',
+    populara: 'Romanian muzica populara, taraf violin and accordion, rustic dance rhythm, unornamented vocal, no autotune',
+    colind: 'traditional Romanian carol, sleigh bells and choir, warm acoustic guitar, gentle festive reverent vocal',
+    modern: 'sleek modern pop-electronic, deep 808 sub bass, glossy synth pads, vocal chops, minimalist premium production',
+    manele_suflet: 'Romanian manele de suflet, oriental scale, romantic clarinet, warm melismatic vocal, devoted love build',
+    motivational: 'inspirational anthem, driving toms, major-key triumphant chords, confident vocal, uplifting final chorus'
+  };
+  Object.entries(unchanged).forEach(([genre, expectedTag]) => {
+    assert.ok(body.includes(`${genre}: '${expectedTag}'`), `genul "${genre}" trebuie sa ramana neschimbat, a produs alta valoare`);
+  });
+});
+
+test('buildPrompt: comanda cu genre=hiphop primeste STRICT profilul Hip-Hop in prompt, niciodata profilul Rock — si invers pentru genre=rock', () => {
+  const baseOrder = {
+    occasion: 'aniversare', lang: 'ro', recipient: 'Maria', senderName: 'Ana',
+    relationship: 'prietena', voicePreference: 'auto',
+    story: 'Ne-am cunoscut la facultate acum 8 ani si de atunci suntem cele mai bune prietene.'
+  };
+  const hiphopPrompt = buildPrompt({ ...baseOrder, genre: 'hiphop' }, '', undefined);
+  const rockPrompt = buildPrompt({ ...baseOrder, genre: 'rock' }, '', undefined);
+  assert.match(hiphopPrompt, /modern hip-hop/i, `promptul pentru genre=hiphop trebuie sa contina profilul Hip-Hop, a produs: ${hiphopPrompt}`);
+  assert.ok(!/distorted electric guitar/i.test(hiphopPrompt), `promptul pentru genre=hiphop NU trebuie sa contina profilul Rock, a produs: ${hiphopPrompt}`);
+  assert.match(rockPrompt, /distorted electric guitar/i, `promptul pentru genre=rock trebuie sa contina profilul Rock, a produs: ${rockPrompt}`);
+  assert.ok(!/modern hip-hop/i.test(rockPrompt), `promptul pentru genre=rock NU trebuie sa contina profilul Hip-Hop, a produs: ${rockPrompt}`);
+  // versurile/povestea/vocea raman neschimbate — doar stilul difera intre cele doua prompturi.
+  assert.ok(hiphopPrompt.includes('Ne-am cunoscut la facultate') && rockPrompt.includes('Ne-am cunoscut la facultate'), 'povestea trebuie sa ramana identica, indiferent de gen');
+});
+
+test('buildPrompt: profilurile Hip-Hop si Rock raman sub bugetul de 600 caractere chiar si in cel mai incarcat scenariu real (nume maxime, ocazie nunta, voce duet) — niciun cuvant taiat din nume/poveste', () => {
+  const worstCaseBase = {
+    occasion: 'nunta', weddingType: 'wedding',
+    recipient: 'Alexandru Ionut Popescu Georgescu', senderName: 'Familia Popescu Georgescu Ionescu',
+    relationship: 'cei mai buni prieteni din copilarie si colegii de facultate', voicePreference: 'duet', lang: 'ro',
+    story: 'O poveste foarte lunga cu multe detalii importante despre viata noastra impreuna, calatorii, momente grele si fericite, sprijin reciproc.'
+  };
+  ['hiphop', 'rock'].forEach(genre => {
+    const prompt = buildPrompt({ ...worstCaseBase, genre }, '', undefined);
+    assert.ok(prompt.length <= 600, `promptul pentru genre=${genre} trebuie sa ramana sub 600 caractere, a produs ${prompt.length}`);
+    assert.ok(!/instrumental/i.test(prompt), `promptul pentru genre=${genre} nu trebuie sa contina cuvantul "instrumental", a produs: ${prompt}`);
+    assert.ok(prompt.includes('Alexandru Ionut Popescu Georgescu'), `numele destinatarului trebuie sa ramana COMPLET pentru genre=${genre}, a produs: ${prompt}`);
+    assert.ok(prompt.includes('Familia Popescu Georgescu Ionescu'), `numele expeditorului trebuie sa ramana COMPLET pentru genre=${genre}, a produs: ${prompt}`);
+  });
+});
+
 test('server.js: buildExactLyricsRequest (customMode:true, versuri exacte) nu contine niciodata cuvantul "instrumental" in campul style, pentru niciun gen sau voce', () => {
   const idx = server.indexOf('function buildExactLyricsRequest');
   const end = server.indexOf('\n}', idx) + 2;

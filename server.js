@@ -5727,6 +5727,16 @@ const STORY_MIN_RESERVE = 190;
 // Extras la scop de modul (2026-08-13) — mutate din interiorul buildPrompt() ca sa poata fi
 // reutilizate si de buildExactLyricsRequest() (campul "style" pentru customMode:true), fara
 // sa duplicam cele 15 descrieri de gen. Continutul ramane byte-identic cu inainte.
+// CORECȚIE (2026-08-13, runda 7, "Hip-Hop și Rock nu erau suficient de recognoscibile"):
+// descrierile hiphop/rock au fost rescrise, DOAR pentru aceste doua chei — celelalte 13 genuri
+// raman byte-identice. Linkurile TikTok trimise ca referinta NU au putut fi accesate/redate in
+// acest mediu (verificat direct — pagina TikTok necesita randare JS, doar coaja generica a
+// aplicatiei e disponibila prin fetch text, fara continut audio/video real) — folosite in schimb
+// profilurile muzicale OBLIGATORII furnizate explicit. Fiecare descriere foloseste ACELASI stil
+// concis, cu instrumentatie/tehnica concreta (nu adjective de atmosfera), consecvent cu restul
+// mapei — testat empiric (sandbox local) ca ramane sub bugetul de 600 caractere chiar si in cel
+// mai incarcat scenariu real (nume maxime, ocazie nunta, voce duet). Niciun nume de artist,
+// piesa sau link TikTok in text — doar caracteristici muzicale generale.
 const GENRE_STYLE_MAP = {
   emotional: 'cinematic orchestral ballad, swelling strings and piano, rubato build, breathy vulnerable vocal, tearful climax',
   suflet: 'intimate de suflet ballad, sparse guitar or piano, close warm vocal, quiet confessional unpolished mood',
@@ -5737,10 +5747,10 @@ const GENRE_STYLE_MAP = {
   manele: 'Romanian manele de jale, oriental scale, mournful clarinet, melismatic vocal slides, minor key grief',
   copii: 'cheerful childrens song, simple major-key melody, glockenspiel and ukulele, bouncy rhythm, bright vocal',
   populara: 'Romanian muzica populara, taraf violin and accordion, rustic dance rhythm, unornamented vocal, no autotune',
-  rock: 'driving rock, distorted electric guitar riff, live drums, powerful chest-voice vocal, big anthemic chorus',
+  rock: 'live rock sound, distorted electric guitar riff, power chords, electric bass, energetic drums, strong vocal, dynamic verses building to a big chorus, guitar and vocal upfront',
   colind: 'traditional Romanian carol, sleigh bells and choir, warm acoustic guitar, gentle festive reverent vocal',
   modern: 'sleek modern pop-electronic, deep 808 sub bass, glossy synth pads, vocal chops, minimalist premium production',
-  hiphop: 'modern hip-hop, punchy 808 kick, hi-hat rolls, rap-sung flow, ad-libs, no ballad melody',
+  hiphop: 'modern hip-hop, punchy kick, firm snare/clap, syncopated hi-hats, deep bass, short repeatable hook, rhythmic near-rap verses, clear diction, melodic chorus, clean modern mix',
   manele_suflet: 'Romanian manele de suflet, oriental scale, romantic clarinet, warm melismatic vocal, devoted love build',
   motivational: 'inspirational anthem, driving toms, major-key triumphant chords, confident vocal, uplifting final chorus'
 };
