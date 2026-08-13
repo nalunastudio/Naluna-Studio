@@ -23,8 +23,8 @@ const comanda = read('public/comanda.html');
 // TESTE 1-4: configurarea Premium in doi pasi (deja acoperite in detaliu de
 // test/premium-second-song.test.js — verificam aici doar coerenta finala).
 // ---------------------------------------------------------------------------------------------
-test('comanda.html: Premium are 7 pasi (genul melodiei 2 si destinatarul sunt ecrane separate)', () => {
-  assert.match(comanda, /function getTotalSteps\(\) \{\s*return selectedPlan\.id === 'premium' \? 7 : 4;\s*\}/);
+test('comanda.html: Premium are 7 sau 8 pasi (genul melodiei 2 si destinatarul sunt ecrane separate; al 8-lea, mini-pagina dedicata datelor persoanei 2, ADAUGAT 2026-08-13, apare STRICT cand "Pentru altă persoană" a fost ales)', () => {
+  assert.match(comanda, /function getTotalSteps\(\) \{\s*if \(selectedPlan\.id !== 'premium'\) return 4;\s*return song2TargetInput\.value === 'other' \? 8 : 7;\s*\}/);
 });
 
 // ---------------------------------------------------------------------------------------------

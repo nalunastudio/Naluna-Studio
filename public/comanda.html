@@ -778,18 +778,16 @@
               <div class="field-error" id="err-song2Name2"></div>
             </div>
           </div>
-
-          <!-- Numele destinatarului cand NU e "Amândoi" — pentru orice ocazie (generica SAU rol
-               individual de familie/nunta), mirrors #recipient de pe pasul 2 (acelasi camp
-               universal, indiferent de ocazie). -->
-          <div class="field" id="song2-single-name-field" style="display:none; margin-top:16px;">
-            <label data-i18n="song2_recipient_name_label">Numele destinatarului</label>
-            <input type="text" id="song2-recipient-name" maxlength="60">
-            <div class="field-error" id="err-song2RecipientName"></div>
-          </div>
         </div>
       </div>
 
+      <!-- CORECȚIE (2026-08-13): butonul foloseste type="submit" ca inainte (comportamentul de
+           redirectare defensiva a form-ului, pentru Enter-ul implicit intr-un camp de text, ramane
+           neschimbat) — dar acum NU mai trimite direct comanda pentru "Pentru altă persoană":
+           submit handler-ul redirectioneaza explicit catre pasul 8 (mini-pagina dedicata) in acel
+           caz, exact acelasi tipar deja folosit pentru redirectarea pasului 4->5. Eticheta se
+           schimba dinamic intre "Continuă" (target=other, mai e un pas) si textul complet
+           (target=same, acesta chiar trimite comanda) — vezi updateSong2ContinueButtonLabel(). -->
       <button type="submit" class="btn btn-primary" id="song2-continue-btn" disabled style="width:100%; justify-content:center; margin-top:20px;">
         <span data-i18n="song2_continue_btn" id="song2-continue-btn-label">Continuă și creează cele două previzualizări</span>
       </button>
@@ -798,6 +796,55 @@
 
       <div class="wizard-nav">
         <button type="button" class="btn btn-ghost btn-back" data-prev="6" data-i18n="btn_back">Înapoi</button>
+        <span></span>
+      </div>
+    </div>
+
+    <!-- ADAUGAT (2026-08-13) — mini-pagina dedicata pentru datele persoanei/melodiei 2, EXCLUSIV
+         Premium SI EXCLUSIV cand "Pentru altă persoană" a fost ales (pasul 7). Reutilizeaza EXACT
+         componentele/stilul campurilor de pe pasul 2 (acelasi tipar .field/label/input/textarea,
+         aceleasi chei de traducere pentru sender/relationship/story — niciun text nou pentru ele).
+         Campul de nume (id="song2-recipient-name") e MUTAT AICI de pe pasul 7 (nu duplicat) —
+         acelasi element, acelasi id, toata logica JS existenta (validare, draft, payload) ramane
+         neschimbata. Ordinea cerută explicit: nume, expeditor, relație, poveste. -->
+    <div class="step-card" data-step="8" style="display:none;">
+      <h1 data-i18n="song2_config_title">Configurează a doua melodie</h1>
+
+      <!-- Numele destinatarului cand NU e "Amândoi" — pentru orice ocazie (generica SAU rol
+           individual de familie/nunta), mirrors #recipient de pe pasul 2 (acelasi camp
+           universal, indiferent de ocazie). Vizibilitatea ramane gestionata identic de
+           refreshSong2OtherUI() (element mutat, nu recreat — acelasi id). -->
+      <div class="field" id="song2-single-name-field" style="display:none;">
+        <label data-i18n="song2_recipient_name_label">Numele celei de-a doua persoane</label>
+        <input type="text" id="song2-recipient-name" maxlength="60">
+        <div class="field-error" id="err-song2RecipientName"></div>
+      </div>
+
+      <div class="field">
+        <label for="song2-sender-name" data-i18n="label_sender">Din partea cui e cântecul</label>
+        <input type="text" id="song2-sender-name" placeholder="ex: Maria, sau Maria și Alexandra" data-i18n-placeholder="ph_sender" maxlength="100">
+        <div class="field-error" id="err-song2SenderName"></div>
+      </div>
+      <div class="field">
+        <label for="song2-relationship" data-i18n="label_relationship">Ce relație există între voi</label>
+        <input type="text" id="song2-relationship" placeholder="ex: soție și soț, mamă și fiică, prieteni" data-i18n-placeholder="ph_relationship" maxlength="60">
+        <div class="field-error" id="err-song2Relationship"></div>
+      </div>
+      <div class="field">
+        <label for="song2-story" data-i18n="label_story">Povestea / detalii de inclus în versuri</label>
+        <textarea id="song2-story" placeholder="Spune-ne ce vă leagă, ce momente importante ați trăit, ce îi iubești cel mai mult, ce vrei să îi transmiți și orice detaliu pe care vrei să îl auzi în melodie" data-i18n-placeholder="ph_story"></textarea>
+        <div class="price-note" style="margin-top:6px;" data-i18n="story_hint">Poți scrie în orice limbă — versurile vor fi generate în limba aleasă mai sus</div>
+        <div class="field-error" id="err-song2Story"></div>
+      </div>
+
+      <button type="submit" class="btn btn-primary" id="song2-details-continue-btn" disabled style="width:100%; justify-content:center; margin-top:20px;">
+        <span data-i18n="song2_continue_btn" id="song2-details-continue-btn-label">Continuă și creează cele două previzualizări</span>
+      </button>
+      <div class="price-note" style="margin-top:10px; text-align:center;" data-i18n="note_free">Nu plătești acum. Plătești doar dacă îți place rezultatul</div>
+      <div id="status-msg-song2-details"></div>
+
+      <div class="wizard-nav">
+        <button type="button" class="btn btn-ghost btn-back" data-prev="7" data-i18n="btn_back">Înapoi</button>
         <span></span>
       </div>
     </div>
@@ -968,7 +1015,7 @@
       song2_target_section_title: '2. Pentru cine este a doua melodie?',
       song2_same_person: 'Pentru aceeași persoană',
       song2_other_person: 'Pentru altă persoană',
-      song2_recipient_name_label: 'Numele destinatarului',
+      song2_recipient_name_label: 'Numele celei de-a doua persoane',
       val_song2_target: 'Alege pentru cine este a doua melodie',
       val_song2_recipient_name: 'Completează numele destinatarului',
       song2_continue_btn: 'Continuă și creează cele două previzualizări',
@@ -1132,7 +1179,7 @@
       song2_target_section_title: '2. Who is the second song for?',
       song2_same_person: 'For the same person',
       song2_other_person: 'For someone else',
-      song2_recipient_name_label: "Recipient's name",
+      song2_recipient_name_label: "The second person's name",
       val_song2_target: 'Choose who the second song is for',
       val_song2_recipient_name: "Fill in the recipient's name",
       song2_continue_btn: 'Continue and create both previews',
@@ -1296,7 +1343,7 @@
       song2_target_section_title: '2. Für wen ist das zweite Lied?',
       song2_same_person: 'Für dieselbe Person',
       song2_other_person: 'Für eine andere Person',
-      song2_recipient_name_label: 'Name der empfangenden Person',
+      song2_recipient_name_label: 'Name der zweiten Person',
       val_song2_target: 'Wähle, für wen das zweite Lied ist',
       val_song2_recipient_name: 'Gib den Namen der empfangenden Person ein',
       song2_continue_btn: 'Weiter und beide Vorschauen erstellen',
@@ -1460,7 +1507,7 @@
       song2_target_section_title: '2. ¿Para quién es la segunda canción?',
       song2_same_person: 'Para la misma persona',
       song2_other_person: 'Para otra persona',
-      song2_recipient_name_label: 'Nombre del destinatario',
+      song2_recipient_name_label: 'Nombre de la segunda persona',
       val_song2_target: 'Elige para quién es la segunda canción',
       val_song2_recipient_name: 'Completa el nombre del destinatario',
       song2_continue_btn: 'Continuar y crear las dos previsualizaciones',
@@ -1624,7 +1671,7 @@
       song2_target_section_title: '2. Per chi è la seconda canzone?',
       song2_same_person: 'Per la stessa persona',
       song2_other_person: 'Per un\'altra persona',
-      song2_recipient_name_label: 'Nome del destinatario',
+      song2_recipient_name_label: 'Nome della seconda persona',
       val_song2_target: 'Scegli per chi è la seconda canzone',
       val_song2_recipient_name: 'Inserisci il nome del destinatario',
       song2_continue_btn: 'Continua e crea entrambe le anteprime',
@@ -1788,7 +1835,7 @@
       song2_target_section_title: '2. Pour qui est la deuxième chanson ?',
       song2_same_person: 'Pour la même personne',
       song2_other_person: 'Pour une autre personne',
-      song2_recipient_name_label: 'Prénom du destinataire',
+      song2_recipient_name_label: 'Prénom de la deuxième personne',
       val_song2_target: 'Choisissez pour qui est la deuxième chanson',
       val_song2_recipient_name: 'Renseignez le prénom du destinataire',
       song2_continue_btn: 'Continuer et créer les deux aperçus',
@@ -1952,7 +1999,7 @@
       song2_target_section_title: '2. За кого е втората песен?',
       song2_same_person: 'За същия човек',
       song2_other_person: 'За друг човек',
-      song2_recipient_name_label: 'Име на получателя',
+      song2_recipient_name_label: 'Име на втория човек',
       val_song2_target: 'Избери за кого е втората песен',
       val_song2_recipient_name: 'Попълни името на получателя',
       song2_continue_btn: 'Продължи и създай двата прегледа',
@@ -2116,7 +2163,7 @@
       song2_target_section_title: '2. İkinci şarkı kimin için?',
       song2_same_person: 'Aynı kişi için',
       song2_other_person: 'Başka biri için',
-      song2_recipient_name_label: 'Alıcının adı',
+      song2_recipient_name_label: 'İkinci kişinin adı',
       val_song2_target: 'İkinci şarkının kimin için olduğunu seçin',
       val_song2_recipient_name: 'Alıcının adını girin',
       song2_continue_btn: 'Devam et ve iki önizlemeyi de oluştur',
@@ -2156,8 +2203,14 @@
   // si destinatarul erau UN SINGUR ecran combinat, acum separate). `selectedPlan` e declarat mai
   // jos in acest script, dar functia insasi ruleaza abia dupa initializare completa, deci
   // referinta e sigura.
+  // ADAUGAT (2026-08-13): Premium capata un al 8-lea pas, DAR STRICT DOAR cand "Pentru altă
+  // persoană" a fost ales (mini-pagina dedicata datelor persoanei 2) — "Pentru aceeași
+  // persoană" ramane la 7 pasi, neschimbat (nimic nou de completat pentru melodia 2 in acel
+  // caz). song2TargetInput e declarat mai jos in acest script, dar functia insasi ruleaza
+  // abia dupa initializare completa (acelasi principiu ca la selectedPlan mai sus).
   function getTotalSteps() {
-    return selectedPlan.id === 'premium' ? 7 : 4;
+    if (selectedPlan.id !== 'premium') return 4;
+    return song2TargetInput.value === 'other' ? 8 : 7;
   }
 
   const stepCards = document.querySelectorAll('.step-card');
@@ -2807,6 +2860,12 @@
   const song2Name1Label = document.getElementById('song2-name1-label');
   const song2Name2Label = document.getElementById('song2-name2-label');
   const song2ContinueBtn = document.getElementById('song2-continue-btn');
+  // ADAUGAT (2026-08-13) — mini-pagina dedicata (pasul 8): expeditor/relatie/poveste PROPRII
+  // melodiei 2, complet separate de campurile principale #sender/#relationship/#story.
+  const song2SenderNameInput = document.getElementById('song2-sender-name');
+  const song2RelationshipInput = document.getElementById('song2-relationship');
+  const song2StoryInput = document.getElementById('song2-story');
+  const song2DetailsContinueBtn = document.getElementById('song2-details-continue-btn');
 
   // Cele 13 ocazii, in ACEEASI ordine ca pe pasul 1 (vezi #theme-grid) — sursa unica pentru
   // etichetele lor ramane translations[lang].theme_<occ>_name/desc, acelasi tipar deja folosit
@@ -2986,7 +3045,20 @@
       song2SingleNameField.style.display = 'block';
     }
 
+    // ADAUGAT (2026-08-13): butonul pasului 7 nu mai trimite direct comanda cand "Pentru altă
+    // persoană" e ales (submit handler-ul redirectioneaza catre mini-pagina pasul 8) — eticheta
+    // reflecta explicit acest lucru ("Continuă", generic, reutilizat din restul formularului),
+    // fata de textul complet, folosit STRICT cand "Pentru aceeași persoană" chiar trimite
+    // comanda aici. getTotalSteps() se recalculeaza automat (citeste song2TargetInput.value),
+    // deci progresul (X din Y pasi) se actualizeaza corect fara alta interventie.
+    const song2ContinueLabelEl = document.getElementById('song2-continue-btn-label');
+    if (song2ContinueLabelEl) {
+      song2ContinueLabelEl.textContent = song2TargetInput.value === 'other' ? t('btn_continue') : t('song2_continue_btn');
+    }
+    updateProgressLabel();
+
     updateSong2ContinueState();
+    updateSong2DetailsContinueState();
   }
 
   [song2SameCard, song2OtherCard].forEach(card => {
@@ -3005,6 +3077,11 @@
         song2RecipientNameInput.value = '';
         song2Name1Input.value = '';
         song2Name2Input.value = '';
+        // ADAUGAT (2026-08-13) — mini-pagina pasul 8: golite si campurile proprii melodiei 2
+        // (expeditor/relatie/poveste), pentru acelasi motiv ca liniile de mai sus.
+        song2SenderNameInput.value = '';
+        song2RelationshipInput.value = '';
+        song2StoryInput.value = '';
       }
       setFieldError('song2Target', '');
       refreshSong2OtherUI();
@@ -3045,9 +3122,15 @@
     });
   });
 
-  song2RecipientNameInput.addEventListener('input', () => { setFieldError('song2RecipientName', ''); updateSong2ContinueState(); saveDraft(); });
+  // CORECȚIE (2026-08-13): campul numelui s-a mutat pe mini-pagina (pasul 8) — validitatea lui
+  // conteaza acum pentru song2DetailsContinueBtn (pasul 8), nu pentru song2ContinueBtn (pasul 7).
+  song2RecipientNameInput.addEventListener('input', () => { setFieldError('song2RecipientName', ''); updateSong2DetailsContinueState(); saveDraft(); });
   song2Name1Input.addEventListener('input', () => { setFieldError('song2Name1', ''); updateSong2ContinueState(); saveDraft(); });
   song2Name2Input.addEventListener('input', () => { setFieldError('song2Name2', ''); updateSong2ContinueState(); saveDraft(); });
+  // ADAUGAT (2026-08-13) — mini-pagina dedicata (pasul 8): expeditor/relatie/poveste proprii.
+  song2SenderNameInput.addEventListener('input', () => { setFieldError('song2SenderName', ''); updateSong2DetailsContinueState(); saveDraft(); });
+  song2RelationshipInput.addEventListener('input', () => { setFieldError('song2Relationship', ''); updateSong2DetailsContinueState(); saveDraft(); });
+  song2StoryInput.addEventListener('input', () => { setFieldError('song2Story', ''); updateSong2DetailsContinueState(); saveDraft(); });
 
   // CITEȘTE eticheta genului direct din cardul corespunzator de pe pasul 3 (deja randat corect
   // in limba curenta de applyLang() — inclusiv "Pop", care NU are o cheie data-i18n proprie,
@@ -3084,17 +3167,33 @@
         const needsSenderRole = !!SENDER_ROLE_OPTIONS[song2RecipientRoleInput.value];
         if (needsSenderRole && !song2SenderRoleInput.value) return false;
       }
+      // CORECȚIE (2026-08-13): numele persoanei individuale (cazul "not isBoth") s-a MUTAT pe
+      // mini-pagina dedicata (pasul 8) — nu mai face parte din validarea pasului 7. "Amândoi"
+      // (name1/name2) ramane STRICT pe pasul 7, neschimbat — acele campuri nu s-au mutat.
       const isBoth = FAMILY_BOTH_ROLES.includes(song2RecipientRoleInput.value) || NUNTA_BOTH_ROLES.includes(song2RecipientRoleInput.value);
       if (isBoth) {
         if (!song2Name1Input.value.trim() || !song2Name2Input.value.trim()) return false;
-      } else if (!song2RecipientNameInput.value.trim()) {
-        return false;
       }
     }
     return true;
   }
   function updateSong2ContinueState() {
     if (song2ContinueBtn) song2ContinueBtn.disabled = !song2AllValid();
+  }
+
+  // ADAUGAT (2026-08-13) — mini-pagina dedicata (pasul 8): validitatea PROPRIE a acestui pas,
+  // complet separata de song2AllValid() (pasul 7). Numele individual (cand nu e "Amândoi") s-a
+  // mutat aici — acelasi camp/id, doar relocat — impreuna cu expeditorul/relatia/povestea, noi.
+  function song2DetailsAllValid() {
+    const isBoth = FAMILY_BOTH_ROLES.includes(song2RecipientRoleInput.value) || NUNTA_BOTH_ROLES.includes(song2RecipientRoleInput.value);
+    if (!isBoth && !song2RecipientNameInput.value.trim()) return false;
+    if (!song2SenderNameInput.value.trim()) return false;
+    if (!song2RelationshipInput.value.trim()) return false;
+    if (!song2StoryInput.value.trim()) return false;
+    return true;
+  }
+  function updateSong2DetailsContinueState() {
+    if (song2DetailsContinueBtn) song2DetailsContinueBtn.disabled = !song2DetailsAllValid();
   }
 
   voiceCards.forEach(c => {
@@ -3260,6 +3359,19 @@
         : null,
       weddingType2: (selectedPlan.id === 'premium' && song2TargetInput.value === 'other')
         ? song2WeddingTypeInput.value
+        : null,
+      // ADAUGAT (2026-08-13) — mini-pagina dedicata datelor persoanei 2: expeditorul, relația și
+      // povestea PROPRII melodiei 2 — relevante STRICT pentru plan='premium' cu "Pentru altă
+      // persoană" (server-side, POST /api/orders le cere și le validează doar în acel caz).
+      // Niciodată nu se copiază automat din senderName/relationship/story (melodia 1).
+      senderName2: (selectedPlan.id === 'premium' && song2TargetInput.value === 'other')
+        ? song2SenderNameInput.value
+        : null,
+      relationship2: (selectedPlan.id === 'premium' && song2TargetInput.value === 'other')
+        ? song2RelationshipInput.value
+        : null,
+      story2: (selectedPlan.id === 'premium' && song2TargetInput.value === 'other')
+        ? song2StoryInput.value
         : null
     };
   }
@@ -3299,7 +3411,11 @@
         song2NuntaGroup: song2NuntaGroup,
         song2RecipientName: song2RecipientNameInput.value,
         song2Name1: song2Name1Input.value,
-        song2Name2: song2Name2Input.value
+        song2Name2: song2Name2Input.value,
+        // ADAUGAT (2026-08-13) — mini-pagina dedicata datelor persoanei 2.
+        song2SenderName: song2SenderNameInput.value,
+        song2Relationship: song2RelationshipInput.value,
+        song2Story: song2StoryInput.value
       };
       localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
     } catch (err) {
@@ -3363,6 +3479,12 @@
     if (draft.song2RecipientName) song2RecipientNameInput.value = draft.song2RecipientName;
     if (draft.song2Name1) song2Name1Input.value = draft.song2Name1;
     if (draft.song2Name2) song2Name2Input.value = draft.song2Name2;
+    // ADAUGAT (2026-08-13) — mini-pagina dedicata datelor persoanei 2: revenirea la pasul
+    // anterior (sau reincarcarea paginii) pastreaza valorile introduse, la fel ca restul
+    // formularului.
+    if (draft.song2SenderName) song2SenderNameInput.value = draft.song2SenderName;
+    if (draft.song2Relationship) song2RelationshipInput.value = draft.song2Relationship;
+    if (draft.song2Story) song2StoryInput.value = draft.song2Story;
     if (draft.voicePreference) {
       voiceInput.value = draft.voicePreference;
       voiceCards.forEach(c => c.classList.toggle('active', c.dataset.voice === draft.voicePreference));
@@ -3439,6 +3561,18 @@
     // catre ecranul dedicat in loc sa incercam o trimitere invalida.
     if (selectedPlan.id === 'premium' && currentStep === 4) {
       showStep(5);
+      return;
+    }
+
+    // ADAUGAT (2026-08-13) — mini-pagina dedicata datelor persoanei 2 (pasul 8): butonul pasului
+    // 7 ("song2-continue-btn") ramane type="submit" (acelasi tipar ca mai sus, pentru Enter
+    // implicit), dar cand "Pentru altă persoană" a fost ales, NU trimite direct comanda —
+    // redirectioneaza catre mini-pagina, exact acelasi tipar ca redirectarea pasului 4->5.
+    // "Pentru aceeași persoană" ramane neschimbat: pasul 7 e in continuare pasul final pentru
+    // acel caz (getTotalSteps() intoarce 7, nu 8), deci aceasta ramura nu se activeaza.
+    if (selectedPlan.id === 'premium' && currentStep === 7 && song2TargetInput.value === 'other') {
+      updateSong2DetailsContinueState();
+      showStep(8);
       return;
     }
 
@@ -3527,14 +3661,38 @@
       }
     }
 
+    // ADAUGAT (2026-08-13) — mini-pagina dedicata datelor persoanei 2 (pasul 8): plasa de
+    // siguranta redundanta fata de gating-ul butonului (updateSong2DetailsContinueState) —
+    // acelasi tipar/pozitionare ca validarea de mai sus pentru campurile pasului 7.
+    if (selectedPlan.id === 'premium' && song2TargetInput.value === 'other') {
+      if (!song2SenderNameInput.value.trim()) {
+        setFieldError('song2SenderName', t('val_sender'));
+        song2SenderNameInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+      }
+      if (!song2RelationshipInput.value.trim()) {
+        setFieldError('song2Relationship', t('val_relationship'));
+        song2RelationshipInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+      }
+      if (!song2StoryInput.value.trim()) {
+        setFieldError('song2Story', t('val_story'));
+        song2StoryInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+      }
+    }
+
     // MODIFICARE STRICTĂ — fluxul pachetului Premium £25 (hotfix 2026-08-09): butonul REAL de
     // trimitere difera dupa pachet — Standard/Video folosesc butonul "Generează..." de pe
-    // pasul 4 (neschimbat), Premium foloseste butonul "Continuă..." de pe pasul 6 (ecranul
-    // dedicat celei de-a doua melodii). Restul logicii de mai jos (creare comanda + /generate)
-    // e complet comuna, reutilizata identic pentru toate cele trei pachete.
-    const activeBtn = selectedPlan.id === 'premium' ? song2ContinueBtn : generateBtn;
+    // pasul 4 (neschimbat), Premium foloseste butonul "Continuă..." de pe pasul 7 ("Pentru
+    // aceeași persoană") SAU butonul mini-paginii, pasul 8 ("Pentru altă persoană" — ADAUGAT
+    // 2026-08-13). Restul logicii de mai jos (creare comanda + /generate) e complet comuna,
+    // reutilizata identic pentru toate cazurile.
+    const activeBtn = selectedPlan.id === 'premium'
+      ? (song2TargetInput.value === 'other' ? song2DetailsContinueBtn : song2ContinueBtn)
+      : generateBtn;
     const activeBtnLabel = selectedPlan.id === 'premium'
-      ? document.getElementById('song2-continue-btn-label')
+      ? document.getElementById(song2TargetInput.value === 'other' ? 'song2-details-continue-btn-label' : 'song2-continue-btn-label')
       : document.getElementById('generate-btn-label');
 
     activeBtn.disabled = true;

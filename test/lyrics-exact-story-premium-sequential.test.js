@@ -150,13 +150,82 @@ test('server.js: sursa canonica a versurilor e recitita din DB (claimed.variants
 // povestea (portiunea care incape) e IDENTICA pentru ambele melodii Premium, niciodata inlocuita
 // cu una generica.
 // ---------------------------------------------------------------------------------------------
-test('server.js: ambele melodii Premium initiale primesc EXACT aceeasi poveste (order.story nu e suprascris de getSong2EffectiveData)', () => {
+// CORECȚIE (2026-08-13, "separarea completa a celor doua persoane si povesti") — cauza reala a
+// amestecarii poveștilor: getSong2EffectiveData() nu returna NICIODATA senderName/relationship/
+// story — buildPrompt({...order, ...getSong2EffectiveData(order)}) folosea deci INTOTDEAUNA
+// campurile comenzii principale (melodia 1) pentru AMBELE melodii, chiar si cand destinatarul
+// melodiei 2 era complet diferit (ex. melodia 1 pentru nași ar fi "scurs" povestea despre nași
+// si in melodia 2, pentru bunica). Adaugate order.senderName2/relationship2/story2 (coloane noi
+// in DB, populate STRICT de mini-pagina dedicata) — returnate de getSong2EffectiveData() DOAR
+// cand song2Target='other', suprascriind corect senderName/relationship/story prin spread.
+test('server.js: getSong2EffectiveData() returneaza senderName2/relationship2/story2 PROPRII melodiei 2, cand "Pentru altă persoană" a fost ales', () => {
   const idx = server.indexOf('function getSong2EffectiveData(order)');
-  const body = server.slice(idx, idx + 700);
-  assert.ok(!body.includes('story'), 'getSong2EffectiveData nu trebuie sa suprascrie/elimine campul story — ambele melodii trebuie sa foloseasca povestea comuna a comenzii');
+  const body = server.slice(idx, idx + 1400);
+  assert.ok(body.includes('senderName: order.senderName2,'));
+  assert.ok(body.includes('relationship: order.relationship2,'));
+  assert.ok(body.includes('story: order.story2'));
+});
+
+test('server.js: getSong2EffectiveData() NU copiaza niciodata senderName/relationship/story ale melodiei 1 (nu exista niciun fallback intre ele in acest caz)', () => {
+  const idx = server.indexOf('function getSong2EffectiveData(order)');
+  const end = server.indexOf('\n}', idx) + 2;
+  const body = server.slice(idx, end);
+  assert.ok(!/senderName:\s*order\.senderName[,\n]/.test(body), 'nu trebuie sa foloseasca order.senderName (melodia 1) ca sursa pentru melodia 2');
+  assert.ok(!/relationship:\s*order\.relationship[,\n]/.test(body), 'nu trebuie sa foloseasca order.relationship (melodia 1) ca sursa pentru melodia 2');
+  assert.ok(!/story:\s*order\.story[,\n]/.test(body), 'nu trebuie sa foloseasca order.story (melodia 1) ca sursa pentru melodia 2');
+});
+
+test('server.js: ambele melodii Premium initiale folosesc buildPrompt cu getSong2EffectiveData(order) pentru melodia 2 (mecanismul de suprascriere ramane cablat corect)', () => {
   const dualGenIdx = server.indexOf('const promptGenre1 = buildPrompt(order, feedback, order.genre);');
   assert.ok(dualGenIdx !== -1);
   assert.ok(server.includes('const promptGenre2 = buildPrompt({ ...order, ...getSong2EffectiveData(order) }, feedback, order.genre2);'));
+});
+
+// Verificare FUNCTIONALA (nu doar text static) — exact exemplul obligatoriu din cerinta:
+// melodia 1 pentru nași nu trebuie sa contina povestea bunicii, si invers.
+function loadSong2EffectiveData() {
+  const startIdx = server.indexOf('function getSong1EffectiveData(order) {');
+  const endIdx = server.indexOf('\nfunction getSong2EffectiveData', startIdx);
+  const endOfSecond = server.indexOf('\n}', endIdx) + 2;
+  const snippet = server.slice(startIdx, endOfSecond);
+  return new Function(`${snippet}\nreturn getSong2EffectiveData;`)();
+}
+const getSong2EffectiveData = loadSong2EffectiveData();
+
+test('buildPrompt: exemplul obligatoriu din cerinta — melodia pentru nași (melodia 1) nu conține povestea bunicii, iar melodia pentru bunică (melodia 2) nu conține povestea nașilor — separare completa, verificata functional', () => {
+  // Campuri fixe scurte, ocazii generice — bugetul de 500 caractere (verificat, dovedit stabil,
+  // vezi revertul de urgenta) nu trebuie sa fie motivul pentru care testul ar pica; ce se
+  // verifica AICI e STRICT separarea datelor, nu cascada de scurtare (acoperita de alte teste).
+  const order = {
+    plan: 'premium',
+    occasion: 'dor', recipient: 'Mihai', genre: 'balada', genre2: 'populara', lang: 'ro',
+    senderName: 'A', relationship: 'nași',
+    story: 'MARKER-NASI: povestea exclusiva a nașilor.',
+    song2Target: 'other', occasion2: 'altceva',
+    recipient2: 'Maria', senderName2: 'B', relationship2: 'nepoată',
+    story2: 'MARKER-BUNICA: povestea exclusiva a bunicii.'
+  };
+  const promptSong1 = buildPrompt(order, '', order.genre);
+  const promptSong2 = buildPrompt({ ...order, ...getSong2EffectiveData(order) }, '', order.genre2);
+
+  assert.ok(promptSong1.includes('MARKER-NASI'), 'promptul melodiei 1 (nași) trebuie sa contina povestea nașilor');
+  assert.ok(!promptSong1.includes('MARKER-BUNICA'), 'promptul melodiei 1 (nași) NU trebuie sa contina povestea bunicii');
+
+  assert.ok(promptSong2.includes('MARKER-BUNICA'), 'promptul melodiei 2 (bunica) trebuie sa contina povestea bunicii');
+  assert.ok(!promptSong2.includes('MARKER-NASI'), 'promptul melodiei 2 (bunica) NU trebuie sa contina povestea nașilor');
+});
+
+test('buildPrompt: cand "Pentru aceeași persoană" e ales (song2Target=same), melodia 2 foloseste STRICT datele melodiei 1 — getSong2EffectiveData cade pe getSong1EffectiveData (care nu returneaza story/senderName/relationship, deci spread-ul NU suprascrie valorile comenzii principale)', () => {
+  const order = {
+    plan: 'premium', occasion: 'declaratie', recipient: 'Maria', genre: 'pop', genre2: 'rock', lang: 'ro',
+    senderName: 'Andrei', relationship: 'soț',
+    story: 'Povestea comuna unica, aceeasi pentru ambele melodii.',
+    song2Target: 'same'
+  };
+  const effective2 = getSong2EffectiveData(order);
+  assert.equal(effective2.story, undefined, 'getSong1EffectiveData nu returneaza story — spread-ul nu trebuie sa suprascrie order.story');
+  const promptSong2 = buildPrompt({ ...order, ...effective2 }, '', order.genre2);
+  assert.ok(promptSong2.includes('Povestea comuna'), 'promptul melodiei 2 trebuie sa contina povestea comenzii principale, nemodificata');
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -264,6 +333,45 @@ test('server.js: markGenerationFailed curata regenerateEditVariantIds la o edita
   assert.ok(idx !== -1);
   const body = server.slice(idx, idx + 1500);
   assert.ok(body.includes('regenerateEditVariantIds: null'), 'esecul unei generari/editari trebuie sa curete explicit regenerateEditVariantIds, ca o comanda Premium sa nu ramana blocata intr-o stare "editare in desfasurare" stale');
+});
+
+// ---------------------------------------------------------------------------------------------
+// (3) Pastrarea reala a versiunilor initiale si editate — Premium.
+// Verificare (nu o corectie noua — mecanismul exista deja, confirmat aici explicit): fiecare
+// varianta noua (rezultata dintr-o editare) primeste un ID PROPRIU (randomUUID, niciodata
+// reutilizat de la sursa), fisiere audio la o cale de storage DERIVATA din acel ID nou (deci
+// niciodata acelasi URL/fisier ca originalul), si e ADAUGATA alaturi de variantele existente
+// (niciodata nu le inlocuieste) — vezi si finalizeVariantsIfNeeded (options.editVariantIds mai
+// sus: "variants = [...existing, ...edited]").
+// ---------------------------------------------------------------------------------------------
+test('server.js: buildVariantFromTrack aloca un ID PROPRIU fiecarei variante noi (randomUUID, niciodata id-ul variantei sursa)', () => {
+  const idx = server.indexOf('async function buildVariantFromTrack(orderId, variantId, track, taskId)');
+  assert.ok(idx !== -1);
+  const body = server.slice(idx, idx + 200);
+  assert.ok(body.includes('variantId, track, taskId'), 'variantId e primit ca parametru, generat de apelant (randomUUID), niciodata derivat din varianta sursa');
+  const callerIdx = server.indexOf('built = await buildVariantFromTrack(orderId, randomUUID().slice(0, 8), track, taskId);');
+  assert.ok(callerIdx !== -1, 'apelantul (finalizeVariantsIfNeeded) trebuie sa genereze un ID nou, aleator, pentru fiecare varianta construita');
+});
+
+test('server.js: fisierele audio ale unei variante noi folosesc o cale de storage DERIVATA din noul ID — niciodata acelasi URL/fisier ca varianta originala', () => {
+  const idx = server.indexOf('async function buildVariantFromTrack');
+  const body = server.slice(idx, idx + 3000);
+  assert.ok(body.includes('const fullKey = `orders/full/${orderId}-${variantId}.mp3`;'));
+  assert.ok(body.includes('const previewKey = `orders/preview/${orderId}-${variantId}.mp3`;'));
+});
+
+test('server.js: editVariantIds ADAUGA variantele noi alaturi de cele existente (niciodata nu le inlocuieste) — ID-ul, audio-ul, versurile si genul originalului raman intacte dupa o editare', () => {
+  const idx = server.indexOf('} else if (options.editVariantIds) {');
+  assert.ok(idx !== -1);
+  const body = server.slice(idx, idx + 1200);
+  assert.ok(body.includes('variants = [...existing, ...edited];'));
+});
+
+test('server.js: la pagina finala, cele 4 carduri Premium sorteaza dupa songSlot apoi isEditedAlternative — ordinea corecta este mereu inițiala 1, noua 1, inițiala 2, noua 2', () => {
+  const idx = melodia.indexOf('function renderPremiumCompareView(order) {');
+  const body = melodia.slice(idx, idx + 800);
+  assert.ok(body.includes('if (slotA !== slotB) return slotA - slotB;'));
+  assert.ok(body.includes('return Number(!!a.isEditedAlternative) - Number(!!b.isEditedAlternative);'));
 });
 
 // ---------------------------------------------------------------------------------------------

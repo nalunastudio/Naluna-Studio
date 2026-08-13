@@ -1376,7 +1376,10 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
     const {
       occasion, recipient, senderName, relationship, email, phone, story, genre, genre2, plan, lang, voicePreference,
       grandparentType, recipientRole, senderRole, recipientMode, recipientNames, weddingType,
-      song2Target, occasion2, recipientRole2, senderRole2, recipientMode2, recipientNames2, recipient2, weddingType2
+      song2Target, occasion2, recipientRole2, senderRole2, recipientMode2, recipientNames2, recipient2, weddingType2,
+      // ADAUGAT (2026-08-13) — mini-pagina dedicata datelor persoanei 2 (Premium): expeditorul,
+      // relația și povestea PROPRII melodiei 2 — complet separate de senderName/relationship/story.
+      senderName2, relationship2, story2
     } = req.body || {};
     const safeLang = ALLOWED_LANGS.includes(lang) ? lang : 'ro';
 
@@ -1545,6 +1548,13 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
     let safeRecipientNames2 = null;
     let safeRecipient2 = null;
     let safeWeddingType2 = null;
+    // ADAUGAT (2026-08-13) — mini-pagina dedicata datelor persoanei 2: expeditorul, relația și
+    // povestea PROPRII melodiei 2. NICIODATA copiate din senderName/relationship/story
+    // (melodia 1) — validate STRICT cu aceleasi reguli ca acele campuri (isValidString,
+    // aceleasi limite de lungime), obligatorii DOAR cand plan='premium' SI song2Target='other'.
+    let safeSenderName2 = null;
+    let safeRelationship2 = null;
+    let safeStory2 = null;
     if (plan === 'premium') {
       if (song2Target !== 'same' && song2Target !== 'other') {
         return res.status(400).json({ error: missingFieldMessage('song2Target', safeLang) });
@@ -1619,6 +1629,22 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
           return res.status(400).json({ error: missingFieldMessage('recipient', safeLang) });
         }
         safeRecipient2 = recipient2.trim();
+
+        // ADAUGAT (2026-08-13) — mini-pagina dedicata datelor persoanei 2: aceleasi reguli de
+        // validare ca senderName/relationship/story (melodia 1), aplicate STRICT campurilor
+        // proprii melodiei 2 — niciodata un fallback catre valorile melodiei 1.
+        if (!isValidString(senderName2, 1, 100)) {
+          return res.status(400).json({ error: missingFieldMessage('sender', safeLang) });
+        }
+        safeSenderName2 = senderName2.trim();
+        if (!isValidString(relationship2, 1, 60)) {
+          return res.status(400).json({ error: missingFieldMessage('relationship', safeLang) });
+        }
+        safeRelationship2 = relationship2.trim();
+        if (!isValidString(story2, 5, 2000)) {
+          return res.status(400).json({ error: missingFieldMessage('story', safeLang) });
+        }
+        safeStory2 = story2.trim();
       }
     }
 
@@ -1657,7 +1683,10 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
       recipientMode2: safeRecipientMode2,
       recipientNames2: safeRecipientNames2,
       recipient2: safeRecipient2,
-      weddingType2: safeWeddingType2
+      weddingType2: safeWeddingType2,
+      senderName2: safeSenderName2,
+      relationship2: safeRelationship2,
+      story2: safeStory2
     });
 
     res.json({ orderId: order.id, accessToken: order.accessToken });
@@ -3637,7 +3666,18 @@ function getSong2EffectiveData(order) {
       recipientRole: order.recipientRole2,
       senderRole: order.senderRole2,
       recipientMode: order.recipientMode2,
-      recipientNames: order.recipientNames2
+      recipientNames: order.recipientNames2,
+      // ADAUGAT (2026-08-13) — cauza reala a "amestecarii povestilor": pana acum, aceasta functie
+      // NU returna senderName/relationship/story — buildPrompt() (apelat cu
+      // {...order, ...getSong2EffectiveData(order)}) folosea deci INTOTDEAUNA senderName/
+      // relationship/story ale comenzii principale (melodia 1) pentru AMBELE melodii, chiar si
+      // cand destinatarul melodiei 2 era complet diferit. Acum, cand "Pentru altă persoană" a
+      // fost ales, melodia 2 foloseste STRICT propriile ei date (order.senderName2/relationship2/
+      // story2, completate pe mini-pagina dedicata) — niciodata cele ale melodiei 1, niciodata
+      // un fallback intre ele.
+      senderName: order.senderName2,
+      relationship: order.relationship2,
+      story: order.story2
     };
   }
   return getSong1EffectiveData(order);

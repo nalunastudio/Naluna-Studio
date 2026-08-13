@@ -173,6 +173,17 @@ async function initDb() {
   // wedding_type_2: 'wedding'|'baptism' — OBLIGATORIU DOAR cand occasion_2='nunta'.
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS wedding_type_2 TEXT;`);
 
+  // ADAUGAT (2026-08-13) — mini-pagina dedicata datelor persoanei 2 (Premium, "Pentru altă
+  // persoană"): pana acum, senderName/relationship/story erau GLOBALE — a doua melodie folosea
+  // mereu povestea/expeditorul/relatia primei melodii, chiar daca destinatarul era complet
+  // diferit (ex. melodia 2 pentru bunica ar fi folosit din greseala povestea despre nași).
+  // Aceste trei coloane noi permit separarea COMPLETA a datelor celor doua melodii — populate
+  // STRICT cand plan='premium' SI song2Target='other' (vezi POST /api/orders), NULL in orice
+  // alt caz (Standard/Video neatinse, sau Premium cu "Pentru aceeași persoană").
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS sender_name_2 TEXT;`);
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS relationship_2 TEXT;`);
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS story_2 TEXT;`);
+
   // Urmarire: din ce varianta (versuri editate de client) a pornit ultima regenerare —
   // pentru transparenta/audit. Versurile originale/editate/data ultimei editari per
   // varianta se salveaza in JSON-ul deja existent al coloanei `variants` (vezi
@@ -464,6 +475,11 @@ function rowToOrder(row) {
     recipientNames2: row.recipient_names_2 || null,
     recipient2: row.recipient_2 || null,
     weddingType2: row.wedding_type_2 || null,
+    // ADAUGAT (2026-08-13) — mini-pagina dedicata datelor persoanei 2: expeditorul, relația și
+    // povestea PROPRII melodiei 2, complet separate de senderName/relationship/story (melodia 1).
+    senderName2: row.sender_name_2 || null,
+    relationship2: row.relationship_2 || null,
+    story2: row.story_2 || null,
     regenerateSourceVariantId: row.regenerate_source_variant_id,
     regenerateKeepOriginal: !!row.regenerate_keep_original,
     editReserved: row.edit_reserved,
@@ -494,8 +510,8 @@ function rowToOrder(row) {
 async function createOrder(order) {
   const result = await pool.query(
     `INSERT INTO orders
-      (id, access_token, occasion, recipient, email, story, genre, genre2, plan, price, lang, status, edits_used, variants, selected_variant_id, sender_name, relationship, voice_preference, phone, grandparent_type, recipient_role, sender_role, recipient_mode, recipient_names, wedding_type, song2_target, occasion_2, recipient_role_2, sender_role_2, recipient_mode_2, recipient_names_2, recipient_2, wedding_type_2)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33)
+      (id, access_token, occasion, recipient, email, story, genre, genre2, plan, price, lang, status, edits_used, variants, selected_variant_id, sender_name, relationship, voice_preference, phone, grandparent_type, recipient_role, sender_role, recipient_mode, recipient_names, wedding_type, song2_target, occasion_2, recipient_role_2, sender_role_2, recipient_mode_2, recipient_names_2, recipient_2, wedding_type_2, sender_name_2, relationship_2, story_2)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36)
      RETURNING *`,
     [
       order.id, order.accessToken, order.occasion, order.recipient, order.email,
@@ -508,7 +524,9 @@ async function createOrder(order) {
       order.weddingType || null,
       order.song2Target || null, order.occasion2 || null, order.recipientRole2 || null, order.senderRole2 || null, order.recipientMode2 || null,
       order.recipientNames2 ? JSON.stringify(order.recipientNames2) : null,
-      order.recipient2 || null, order.weddingType2 || null
+      order.recipient2 || null, order.weddingType2 || null,
+      // ADAUGAT (2026-08-13) — mini-pagina dedicata datelor persoanei 2.
+      order.senderName2 || null, order.relationship2 || null, order.story2 || null
     ]
   );
   return rowToOrder(result.rows[0]);

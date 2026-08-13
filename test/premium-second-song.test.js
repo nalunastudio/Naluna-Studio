@@ -121,8 +121,8 @@ test('comanda.html: submit handler porneste generarea DOAR la pasul final (getTo
 // MODIFICARE STRICTĂ — separarea configurarii Premium in doi pasi (hotfix 2026-08-10 runda 2):
 // genul (pasul 6) si destinatarul (pasul 7) sunt acum ecrane SEPARATE — Premium are 7 pasi in
 // total (5 originali + genul + destinatarul), nu 6.
-test('comanda.html: getTotalSteps() e 7 pentru premium (genul si destinatarul melodiei 2 sunt ecrane separate), 4 pentru orice alt pachet (Standard/Video neschimbate)', () => {
-  assert.match(comanda, /function getTotalSteps\(\) \{\s*return selectedPlan\.id === 'premium' \? 7 : 4;\s*\}/);
+test('comanda.html: getTotalSteps() e 7 sau 8 pentru premium (8 STRICT cand "Pentru altă persoană" a fost ales — mini-pagina dedicata, ADAUGAT 2026-08-13), 4 pentru orice alt pachet (Standard/Video neschimbate)', () => {
+  assert.match(comanda, /function getTotalSteps\(\) \{\s*if \(selectedPlan\.id !== 'premium'\) return 4;\s*return song2TargetInput\.value === 'other' \? 8 : 7;\s*\}/);
 });
 
 test('comanda.html: pasul 6 (genul) si pasul 7 (destinatarul) sunt ecrane distincte, fiecare cu propriul step-card', () => {
@@ -360,7 +360,11 @@ test('comanda.html: butonul "Continuă..." incepe disabled si e controlat DOAR d
   assert.match(comanda, /function song2AllValid\(\) \{/);
 });
 
-test('comanda.html: song2AllValid() verifica genul (diferit de primul), alegerea same\\/other, SI (daca "other") ocazia, relatia/nunta si numele complete', () => {
+// MODIFICARE (2026-08-13): campul numelui individual (cazul "not isBoth") s-a MUTAT pe mini-
+// pagina dedicata (pasul 8) — validitatea lui se verifica acum in song2DetailsAllValid(), NU
+// in song2AllValid() (pasul 7). "Amândoi" (name1/name2) ramane STRICT in song2AllValid(),
+// neschimbat — acele campuri nu s-au mutat.
+test('comanda.html: song2AllValid() (pasul 7) verifica genul (diferit de primul), alegerea same/other, SI (daca "other") ocazia, relatia/nunta si numele "Amândoi" — numele individual s-a mutat in song2DetailsAllValid()', () => {
   const start = comanda.indexOf('function song2AllValid() {');
   const snippet = comanda.slice(start, start + 1400);
   assert.ok(snippet.includes("if (!genre2Input.value || genre2Input.value === genreInput.value) return false;"));
@@ -371,7 +375,17 @@ test('comanda.html: song2AllValid() verifica genul (diferit de primul), alegerea
   assert.ok(snippet.includes("if (!song2RecipientRoleInput.value) return false;"));
   assert.ok(snippet.includes("const needsSenderRole = !!SENDER_ROLE_OPTIONS[song2RecipientRoleInput.value];"));
   assert.ok(snippet.includes("if (!song2Name1Input.value.trim() || !song2Name2Input.value.trim()) return false;"));
-  assert.ok(snippet.includes("} else if (!song2RecipientNameInput.value.trim()) {"));
+  assert.ok(!snippet.includes("} else if (!song2RecipientNameInput.value.trim()) {"), 'verificarea numelui individual NU mai trebuie sa fie in song2AllValid() — s-a mutat in song2DetailsAllValid()');
+});
+
+test('comanda.html: song2DetailsAllValid() (mini-pagina, pasul 8) verifica numele individual (cand nu e "Amândoi"), expeditorul, relatia si povestea — toate proprii melodiei 2', () => {
+  const start = comanda.indexOf('function song2DetailsAllValid() {');
+  assert.ok(start !== -1);
+  const snippet = comanda.slice(start, start + 700);
+  assert.ok(snippet.includes('if (!isBoth && !song2RecipientNameInput.value.trim()) return false;'));
+  assert.ok(snippet.includes('if (!song2SenderNameInput.value.trim()) return false;'));
+  assert.ok(snippet.includes('if (!song2RelationshipInput.value.trim()) return false;'));
+  assert.ok(snippet.includes('if (!song2StoryInput.value.trim()) return false;'));
 });
 
 // ---------------------------------------------------------------------------------------------
