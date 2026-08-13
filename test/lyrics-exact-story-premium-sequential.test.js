@@ -20,10 +20,9 @@ const melodia = read('public/melodia-mea.html');
 
 // Extrage buildPrompt() (si dependintele ei contigue) direct din server.js si il RULEAZA cu date
 // sintetice, exact tiparul din test/bunici-amandoi-relation-name.test.js — verificare FUNCTIONALA
-// (nu doar text static) ca o poveste la lungimea maxima reala (2000 caractere) ajunge INTREAGA
-// in promptul final, nu doar cateva sute de caractere din ea.
+// (nu doar text static).
 function loadBuildPrompt() {
-  const startMarker = 'const SUNO_PROMPT_MAX_LEN = 2800;';
+  const startMarker = 'const SUNO_PROMPT_MAX_LEN = 500;';
   const startIdx = server.indexOf(startMarker);
   assert.ok(startIdx !== -1, 'nu am gasit inceputul blocului buildPrompt in server.js');
   const funcStart = server.indexOf('function buildPrompt(order, feedback, genreOverride) {', startIdx);
@@ -45,29 +44,47 @@ function loadBuildPrompt() {
 }
 const buildPrompt = loadBuildPrompt();
 
-test('buildPrompt: o poveste la lungimea maxima reala (2000 caractere) ajunge INTREAGA in prompt, netrunchiata — verificare functionala, nu doar text static', () => {
-  const phrase = 'Povestea completa a noastra, cu multe detalii importante. ';
-  const longStory = phrase.repeat(Math.ceil(2000 / phrase.length)).slice(0, 2000);
-  assert.equal(longStory.length, 2000);
+// ---------------------------------------------------------------------------------------------
+// REGRESIE CRITICA (2026-08-13): melodii generate fara voce ("[Instrumental]" in loc de
+// versuri). Cauza gasita: cuvantul "instrumental" aparea LITERAL in textul promptului trimis
+// furnizorului (in "short natural instrumental intro"/"instrumental opening"), plus un buget
+// de prompt marit anterior (pana la 2800 caractere/2000 caractere poveste bruta) care corela,
+// verificat direct pe comenzi reale de productie, cu un risc mult mai mare ca furnizorul sa
+// genereze o piesa integral instrumentala. Ambele au fost corectate: cuvantul eliminat complet
+// din text, iar bugetul adus inapoi la valoarea dovedita (500/160).
+// ---------------------------------------------------------------------------------------------
+test('buildPrompt: promptul generat NU contine niciodata cuvantul "instrumental" (posibila cauza a regresiei) — verificat pe mai multe combinatii reale de ocazie/gen/voce', () => {
+  const combos = [
+    { occasion: 'aniversare', genre: 'pop', voicePreference: 'auto' },
+    { occasion: 'dor', genre: 'balada', voicePreference: 'female' },
+    { occasion: 'declaratie', genre: 'manele_suflet', voicePreference: 'male' },
+    { occasion: 'altceva', genre: 'rock', voicePreference: 'duet' }
+  ];
+  combos.forEach(({ occasion, genre, voicePreference }) => {
+    const order = {
+      occasion, genre, lang: 'ro', recipient: 'Maria', senderName: 'Ana',
+      relationship: 'prietena', voicePreference,
+      story: 'O poveste reala, cu detalii importante despre momentele noastre impreuna.'
+    };
+    const prompt = buildPrompt(order, '', undefined);
+    assert.ok(!/instrumental/i.test(prompt), `promptul pentru ocazia="${occasion}" gen="${genre}" voce="${voicePreference}" nu trebuie sa contina cuvantul "instrumental", a produs: ${prompt}`);
+  });
+});
+
+test('buildPrompt: bugetul de prompt (customMode:false) a revenit la valorile dovedite, stabile — 500 caractere total, cel putin 160 rezervate povestii', () => {
+  assert.match(server, /const SUNO_PROMPT_MAX_LEN = 500;/);
+  assert.match(server, /const STORY_MIN_RESERVE = 160;/);
+});
+
+test('buildPrompt: pentru o comanda tipica (campuri normale, poveste rezonabila), promptul ramane sub 500 caractere si contine detalii reale din poveste', () => {
   const order = {
     occasion: 'aniversare', genre: 'pop', lang: 'ro',
     recipient: 'Maria', senderName: 'Ana', relationship: 'prietena',
-    voicePreference: 'auto', story: longStory
+    voicePreference: 'auto', story: 'Ne-am cunoscut la facultate si de atunci suntem cele mai bune prietene.'
   };
   const prompt = buildPrompt(order, '', undefined);
-  assert.ok(prompt.includes(longStory), 'povestea intreaga (2000 caractere) trebuie sa apara integral in prompt, fara nicio trunchiere');
-});
-
-test('buildPrompt: o poveste la lungimea maxima (2000) plus feedback de editare (500) tot incap amandoua, fara sa se elimine povestea', () => {
-  const longStory = 'Detaliu real despre povestea noastra impreuna. '.repeat(42).slice(0, 2000);
-  const feedback = 'F'.repeat(500);
-  const order = {
-    occasion: 'dor', genre: 'balada', lang: 'ro',
-    recipient: 'Ion', senderName: 'Maria', relationship: 'sotie',
-    voicePreference: 'female', story: longStory
-  };
-  const prompt = buildPrompt(order, feedback, undefined);
-  assert.ok(prompt.includes(longStory), 'povestea trebuie sa ramana intreaga chiar si cu feedback de editare prezent');
+  assert.ok(prompt.length <= 500);
+  assert.ok(prompt.includes('Story/details to include: Ne-am cunoscut'), 'inceputul real al povestii trebuie sa apara in prompt (limitarea reala e ca bugetul de 500 caractere poate tot trunchia finalul unei povesti mai lungi, nu ca povestea ar fi inlocuita cu una generica)');
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -76,7 +93,7 @@ test('buildPrompt: o poveste la lungimea maxima (2000) plus feedback de editare 
 test('server.js: buildExactLyricsRequest trimite versurile editate VERBATIM (customMode:true, campul "prompt" = versurile), niciodata ca instructiune catre un model care le rescrie', () => {
   assert.match(server, /function buildExactLyricsRequest\(order, exactLyrics, genreOverride, voicePreference, feedback\) \{/);
   const idx = server.indexOf('function buildExactLyricsRequest');
-  const body = server.slice(idx, idx + 2200);
+  const body = server.slice(idx, idx + 2600);
   assert.ok(body.includes('return { style, title, lyrics };'), 'trebuie sa returneze versurile ca un camp separat, netrunchiat de bugetul de stil');
 });
 
@@ -126,17 +143,13 @@ test('server.js: sursa canonica a versurilor e recitita din DB (claimed.variants
 });
 
 // ---------------------------------------------------------------------------------------------
-// (2) Folosirea completa a povestii clientului.
+// (2) Folosirea povestii clientului la ambele melodii Premium.
+// LIMITARE REALA, de raportat explicit: dupa revertul de urgenta (SUNO_PROMPT_MAX_LEN inapoi la
+// 500), povestea NU mai este garantata sa incapa intreaga in prompt pentru comenzi cu campuri
+// lungi — prioritatea absoluta e generarea fiabila cu voce. Ce ramane garantat, testat mai jos:
+// povestea (portiunea care incape) e IDENTICA pentru ambele melodii Premium, niciodata inlocuita
+// cu una generica.
 // ---------------------------------------------------------------------------------------------
-test('server.js: bugetul de prompt (customMode:false) a fost marit semnificativ fata de limita gresita de 500 caractere, verificata direct impotriva API-ului real', () => {
-  assert.match(server, /const SUNO_PROMPT_MAX_LEN = 2800;/);
-  assert.match(server, /const STORY_MIN_RESERVE = 2000;/);
-});
-
-test('server.js: rezerva garantata pentru poveste (2000) acopera lungimea MAXIMA reala permisa la creare (isValidString(story, 5, 2000)) — povestea nu mai poate fi trunchiata in practica', () => {
-  assert.match(server, /if \(!isValidString\(story, 5, 2000\)\) \{/);
-});
-
 test('server.js: ambele melodii Premium initiale primesc EXACT aceeasi poveste (order.story nu e suprascris de getSong2EffectiveData)', () => {
   const idx = server.indexOf('function getSong2EffectiveData(order)');
   const body = server.slice(idx, idx + 700);
@@ -214,6 +227,43 @@ test('melodia-mea.html: Standard ramane STRICT neschimbat — editorul de versur
   assert.ok(melodia.includes('id="lyrics-textarea"'));
   assert.ok(melodia.includes('id="premium-edit-song1-lyrics"'));
   assert.ok(melodia.includes('id="premium-edit-song2-lyrics"'));
+});
+
+// ---------------------------------------------------------------------------------------------
+// Continuarea regresiei critice (2026-08-13): toate genurile, campul style pentru versurile
+// exacte, si "[Instrumental]" niciodata hardcodat de codul propriu.
+// ---------------------------------------------------------------------------------------------
+test('server.js: toate cele 15 genuri existente raman mapate — niciunul eliminat, redenumit sau inlocuit cu un fallback generic', () => {
+  const idx = server.indexOf('const GENRE_STYLE_MAP = {');
+  const end = server.indexOf('};', idx);
+  const body = server.slice(idx, end);
+  const expectedGenres = [
+    'emotional', 'suflet', 'pop', 'acustic', 'petrecere', 'balada', 'manele', 'copii',
+    'populara', 'rock', 'colind', 'modern', 'hiphop', 'manele_suflet', 'motivational'
+  ];
+  expectedGenres.forEach(genre => {
+    assert.match(body, new RegExp(`\\b${genre}: '`), `genul "${genre}" trebuie sa ramana mapat in GENRE_STYLE_MAP`);
+  });
+  const mappedCount = (body.match(/^\s*\w+: '/gm) || []).length;
+  assert.equal(mappedCount, 15, `trebuie sa existe exact 15 genuri mapate, gasite ${mappedCount}`);
+});
+
+test('server.js: buildExactLyricsRequest (customMode:true, versuri exacte) nu contine niciodata cuvantul "instrumental" in campul style, pentru niciun gen sau voce', () => {
+  const idx = server.indexOf('function buildExactLyricsRequest');
+  const end = server.indexOf('\n}', idx) + 2;
+  const body = server.slice(idx, end);
+  assert.ok(!/instrumental/i.test(body.replace(/\/\/.*$/gm, '')), 'codul (fara comentarii) care construieste campul style nu trebuie sa contina cuvantul "instrumental"');
+});
+
+test('server.js: "[Instrumental]" nu e niciodata hardcodat de codul propriu — apare STRICT ca text primit de la furnizor (extractSunoTracks), niciodata ca fallback/default al aplicatiei', () => {
+  assert.ok(!server.includes('[Instrumental]'), 'niciun cod propriu nu trebuie sa foloseasca acest text ca valoare implicita/fallback');
+});
+
+test('server.js: markGenerationFailed curata regenerateEditVariantIds la o editare Premium esuata — o comanda nu trebuie sa ramana cu semnalul de editare selectiva "agatat" dupa un esec', () => {
+  const idx = server.indexOf('async function markGenerationFailed');
+  assert.ok(idx !== -1);
+  const body = server.slice(idx, idx + 1500);
+  assert.ok(body.includes('regenerateEditVariantIds: null'), 'esecul unei generari/editari trebuie sa curete explicit regenerateEditVariantIds, ca o comanda Premium sa nu ramana blocata intr-o stare "editare in desfasurare" stale');
 });
 
 // ---------------------------------------------------------------------------------------------

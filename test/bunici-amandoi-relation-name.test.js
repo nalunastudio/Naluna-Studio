@@ -19,7 +19,7 @@ function read(relPath) {
 // jos) — trebuie adaugat manual in preludiul sandbox-ului, la fel ca VOICE_PREFERENCES.
 function loadBuildPrompt() {
   const server = read('server.js');
-  const startMarker = 'const SUNO_PROMPT_MAX_LEN = 2800;';
+  const startMarker = 'const SUNO_PROMPT_MAX_LEN = 500;';
   const startIdx = server.indexOf(startMarker);
   assert.ok(startIdx !== -1, 'nu am gasit inceputul blocului buildPrompt in server.js');
   const funcStart = server.indexOf('function buildPrompt(order, feedback, genreOverride) {', startIdx);

@@ -88,7 +88,7 @@ test('markGenerationFailed: revine la preview_ready (nu generation_failed) cand 
   const server = read('server.js');
   assert.ok(server.includes('async function markGenerationFailed(orderId, errMessage, knownVariants, regenerationJobId)'), 'functia trebuie sa existe');
   assert.ok(
-    server.includes("await db.updateOrder(orderId, { status: 'preview_ready', error: safeError });"),
+    server.includes("await db.updateOrder(orderId, { status: 'preview_ready', error: safeError, regenerateEditVariantIds: null });"),
     'daca hasSellableVariants, comanda trebuie sa revina la preview_ready, NU generation_failed — cerinta explicita: "daca regenerarea esueaza, versiunea initiala ramane disponibila/selectabila"'
   );
 });

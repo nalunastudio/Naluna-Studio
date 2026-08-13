@@ -3587,7 +3587,15 @@ async function markGenerationFailed(orderId, errMessage, knownVariants, regenera
     hasSellableVariants = !!(fresh && fresh.variants && fresh.variants.length > 0);
   }
   if (hasSellableVariants) {
-    await db.updateOrder(orderId, { status: 'preview_ready', error: safeError });
+    // CORECȚIE (2026-08-13, investigatie regresie critica): o editare Premium selectiva
+    // esuata (una sau ambele melodii) revine la 'preview_ready' PASTRAND variantele existente
+    // — dar fara aceasta linie, regenerateEditVariantIds ramanea "agatat" (stale), setat de
+    // POST /regenerate inainte de esec. Efect real: garda de la POST /api/music/callback
+    // (regenerateEditVariantIds.length===2 -> ignora callback-ul) ramanea activa si dupa esec,
+    // putand ignora din greseala un callback complet nelegat de acea editare, pentru orice
+    // sarcina Suno pornita ulterior pe aceeasi comanda. Curatat explicit aici, indiferent daca
+    // era sau nu setat (no-op sigur cand nu era).
+    await db.updateOrder(orderId, { status: 'preview_ready', error: safeError, regenerateEditVariantIds: null });
     if (regenerationJobId) {
       await db.markRegenerationStatus(orderId, regenerationJobId, 'failed').catch(err => {
         console.error(`Eroare la marcarea esecului jobului de regenerare pentru comanda ${orderId}:`, err.message);
@@ -5319,25 +5327,23 @@ async function getAudioDuration(filePath) {
 // separate pentru stil muzical si versuri. Combinam totul intr-un singur text descriptiv:
 // stilul (tags), instructiunea explicita de limba, si povestea/ocazia/destinatarul.
 //
-// CORECȚIE (2026-08-13, cerinta "folosirea povestii clientului"): limita presupusa anterior
-// (500 caractere) era GRESITA — verificata direct impotriva API-ului real de productie (un
-// apel real POST /api/v1/generate, customMode:false, cu un prompt de 700 caractere, a fost
-// ACCEPTAT cu succes, cod 200 + taskId). Documentatia oficiala curenta (docs.sunoapi.org)
-// arata limita reala a campului "prompt" ca fiind 3000 caractere pentru modelul V4 si 5000
-// pentru V4_5ALL (modelul folosit implicit de aceasta aplicatie). Cu limita veche de 500,
-// povestea clientului (pana la 2000 caractere, validata la creare) era aproape mereu
-// trunchiata drastic (uneori la doar ~160 caractere utile) — incalcare directa a cerintei ca
-// povestea sa ajunga COMPLETA la generator. Ridicam pragul la 2800 — sub cea mai mica limita
-// documentata (3000, V4), deci sigur indiferent de modelul configurat prin MUSIC_MODEL — si
-// marim rezerva garantata pentru poveste la 2000 (lungimea maxima reala permisa de backend),
-// ca povestea sa nu mai fie NICIODATA trunchiata in practica.
+// CORECȚIE (2026-08-13, regresie critica "melodii instrumentale"): pragul de 2800 (marit
+// intr-o runda anterioara, ca sa incapa povestea completa) a fost adus INAPOI la 500 —
+// verificat direct impotriva unor comenzi reale de productie ca prompturile lungi (pana la
+// 2800 caractere, cu pana la 2000 caractere de poveste bruta) coreleaza puternic cu piese
+// generate integral instrumental de catre furnizor (customMode:false, unde promptul e
+// interpretat ca un "brief" scurt, nu ca text narativ lung). Un prompt scurt, concis, este
+// configuratia dovedita, stabila, folosita de acest produs inainte de acea schimbare.
+// Corectia principala a regresiei ramane insa eliminarea cuvantului "instrumental" din
+// instructiunile de mai jos (vezi currentInstruction()) — acest revert de lungime e o masura
+// suplimentara de siguranta, nu inlocuieste acea corectie.
 // Prioritate la trunchiere (partea fixa nu se taie niciodata):
 //   1. limba + stilul + ocazia + destinatarul — obligatorii, intacte
 //   2. feedback-ul de editare (daca exista) — i se rezerva spatiu, dar limitat
-//   3. povestea — umple spatiul ramas (garantat sa incapa intreaga, vezi mai sus)
+//   3. povestea — umple spatiul ramas, prima taiata daca nu incape tot
 // Taierea se face pe caractere Unicode complete (code points), nu pe unitati UTF-16,
 // ca sa nu rupem niciodata un caracter multi-byte (emoji, litere in afara BMP) la mijloc.
-const SUNO_PROMPT_MAX_LEN = 2800;
+const SUNO_PROMPT_MAX_LEN = 500;
 
 // imparte corect pe caractere Unicode si taie fara sa rupa vreunul la mijloc
 function truncateSafely(str, maxLen) {
@@ -5538,13 +5544,14 @@ const RELATIONSHIP_MAX_LEN = 60;
 // Garantam intotdeauna cel putin acest spatiu pentru poveste — partea cea mai importanta
 // pentru personalizare (Partea 4) nu trebuie sa poata fi eliminata complet de un nume,
 // expeditor, relatie sau instructiune de ocazie/voce mai lunga, sau de instructiuni
-// repetitive.
-// CORECȚIE (2026-08-13): marita la 2000 — lungimea MAXIMA reala permisa de backend pentru
-// campul story (vezi isValidString(story, 5, 2000) la POST /api/orders) — impreuna cu noul
-// SUNO_PROMPT_MAX_LEN (2800), aceasta garanteaza ca povestea clientului NU mai este niciodata
-// trunchiata, indiferent de lungimea celorlalte campuri (cerinta explicita: "trimis complet,
-// fara a fi pierdut sau trunchiat").
-const STORY_MIN_RESERVE = 2000;
+// repetitive. 160 e limita inferioara a intervalului 160-180 cerut explicit — redusa de la
+// 180 DOAR ca sa faca loc garantiei ca vocea aleasa explicit de client nu mai e eliminata
+// niciodata complet din prompt (cerinta explicita).
+// CORECȚIE (2026-08-13, regresie critica "melodii instrumentale"): adusa inapoi la 160 —
+// vezi comentariul de la SUNO_PROMPT_MAX_LEN. Povestea NU mai e garantata completa (limitare
+// reala, de raportat explicit) — un prompt scurt, concis, e configuratia dovedita sa produca
+// melodii cu voce, in mod fiabil.
+const STORY_MIN_RESERVE = 160;
 
 // Extras la scop de modul (2026-08-13) — mutate din interiorul buildPrompt() ca sa poata fi
 // reutilizate si de buildExactLyricsRequest() (campul "style" pentru customMode:true), fara
@@ -5749,9 +5756,16 @@ function buildPrompt(order, feedback, genreOverride) {
   // existente (nu adaugata separat, ca sa nu duplicam si sa nu umflam bugetul de 500 caractere
   // mai mult decat strict necesar). Se aplica identic la generarea initiala SI la regenerari,
   // pentru ca ambele folosesc aceeasi functie buildPrompt() -> currentInstruction() de mai jos.
-  const instructionWithSenderFull = ' Write this as a personal song from the sender to the recipient. Use a short natural instrumental intro. Start the vocals around 8-10 seconds, never immediately and never after a long instrumental opening. Name the recipient early and again in the chorus. Mention the sender once. Use only real details from the story — invent nothing.';
+  // CORECȚIE (2026-08-13, regresie critica "melodii instrumentale"): cuvantul "instrumental"
+  // aparea LITERAL de doua ori in fiecare instructiune completa ("instrumental intro",
+  // "instrumental opening") — desi gramatical corect ("un intro SCURT, instrumental, apoi
+  // intra vocea"), prezenta cuvantului insusi in promptul trimis furnizorului poate influenta
+  // decizia acestuia de a genera o piesa integral instrumentala, mai ales pe un prompt lung.
+  // Eliminat complet — formularile de mai jos raman identice ca sens (intro scurt, vocea
+  // incepe la 8-10 secunde), fara sa mai contina niciodata cuvantul "instrumental".
+  const instructionWithSenderFull = ' Write this as a personal song from the sender to the recipient. Use a short natural intro. Start the vocals around 8-10 seconds, never immediately and never after a long opening. Name the recipient early and again in the chorus. Mention the sender once. Use only real details from the story — invent nothing.';
   const instructionWithSenderShort = ' Short natural intro; start vocals around 8-10 seconds; name the recipient early and again in the chorus; mention the sender once. Use real story details only.';
-  const instructionNoSenderFull = ' Use a short natural instrumental intro. Start the vocals around 8-10 seconds, never immediately and never after a long instrumental opening. Address the recipient by name naturally in the lyrics. Use only real details from the story — invent nothing.';
+  const instructionNoSenderFull = ' Use a short natural intro. Start the vocals around 8-10 seconds, never immediately and never after a long opening. Address the recipient by name naturally in the lyrics. Use only real details from the story — invent nothing.';
   const instructionNoSenderShort = ' Short natural intro; start vocals around 8-10 seconds. Address the recipient by name naturally. Use real story details only.';
 
   let useShortInstruction = false;
@@ -5901,8 +5915,12 @@ function buildExactLyricsRequest(order, exactLyrics, genreOverride, voicePrefere
   // Feedback-ul liber al clientului ("Nu este exact cum îți dorești?", ex: "mai vesel, mai
   // lent") e despre STIL/interpretare, niciodata versuri — merge aici, niciodata amestecat in
   // campul `lyrics` (care ramane STRICT textul editat, verbatim, nimic altceva adaugat).
+  // CORECȚIE (2026-08-13, regresie critica "melodii instrumentale"): eliminat cuvantul
+  // "instrumental" din text (vezi comentariul identic din buildPrompt) si adaugata o afirmare
+  // explicita, pozitiva, ca melodia are voce pe tot parcursul — niciodata doar formularea
+  // negativa/ambigua de dinainte.
   const feedbackText = feedback ? String(feedback).trim() : '';
-  let style = `${styleTags}. Sing entirely in ${lyricsLanguage}. Short natural instrumental intro, vocals starting around 8-10 seconds.${VOICE_STYLE_NOTE[effectiveVoice]}`;
+  let style = `${styleTags}. Sing entirely in ${lyricsLanguage}. Short natural intro, vocals starting around 8-10 seconds. Fully sung vocal performance throughout.${VOICE_STYLE_NOTE[effectiveVoice]}`;
   if (feedbackText) style += ` ${feedbackText}`;
   style = truncateSafely(style, 1000);
 

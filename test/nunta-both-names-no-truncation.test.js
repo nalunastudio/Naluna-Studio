@@ -21,7 +21,7 @@ function read(relPath) {
 // serverul HTTP real si ar cere DATABASE_URL).
 function loadBuildPrompt() {
   const server = read('server.js');
-  const startMarker = 'const SUNO_PROMPT_MAX_LEN = 2800;';
+  const startMarker = 'const SUNO_PROMPT_MAX_LEN = 500;';
   const startIdx = server.indexOf(startMarker);
   assert.ok(startIdx !== -1, 'nu am gasit inceputul blocului buildPrompt in server.js');
   const funcStart = server.indexOf('function buildPrompt(order, feedback, genreOverride) {', startIdx);
@@ -113,10 +113,7 @@ test('buildPrompt: un rol individual de nunta (nu "Amândoi") ramane un nume nor
     recipientNames: null
   });
   const prompt = buildPrompt(order, '', undefined);
-  // MODIFICARE (2026-08-13, "folosirea povestii clientului"): plafonul total a crescut la 2800
-  // (limita reala verificata, nu cea gresita de 500) — invarianta reala testata aici ramane
-  // "numele individual, foarte lung, tot trece prin cascada de scurtare", nu cifra veche.
-  assert.ok(prompt.length <= 2800, 'promptul trebuie sa ramana sub noul plafon de 2800 caractere');
+  assert.ok(prompt.length <= 500, 'promptul trebuie sa ramana sub limita de 500 caractere pentru un nume individual, netprotejat');
   assert.ok(!prompt.includes('M'.repeat(200)), 'numele individual foarte lung (200 caractere) trebuie totusi trunchiat de cascada, spre deosebire de combo-ul protejat "Amândoi"');
 });
 

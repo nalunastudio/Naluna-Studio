@@ -18,7 +18,7 @@ function read(relPath) {
 // fara sa importam server.js intreg (care ar porni serverul HTTP real si ar cere DATABASE_URL).
 function loadBuildPrompt() {
   const server = read('server.js');
-  const startIdx = server.indexOf('const SUNO_PROMPT_MAX_LEN = 2800;');
+  const startIdx = server.indexOf('const SUNO_PROMPT_MAX_LEN = 500;');
   assert.ok(startIdx !== -1, 'nu am gasit inceputul blocului buildPrompt in server.js');
   const funcStart = server.indexOf('function buildPrompt(order, feedback, genreOverride) {', startIdx);
   assert.ok(funcStart !== -1, 'nu am gasit function buildPrompt(...)');

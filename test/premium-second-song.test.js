@@ -24,7 +24,7 @@ const dbjs = read('db.js');
 // buildPrompt() + getSong1EffectiveData/getSong2EffectiveData — functii PURE, extrase textual
 // din server.js si evaluate intr-un sandbox, acelasi tipar stabilit in rundele anterioare.
 function loadPremiumHelpers() {
-  const startIdx = server.indexOf('const SUNO_PROMPT_MAX_LEN = 2800;');
+  const startIdx = server.indexOf('const SUNO_PROMPT_MAX_LEN = 500;');
   assert.ok(startIdx !== -1, 'nu am gasit inceputul blocului buildPrompt in server.js');
   const funcStart = server.indexOf('function buildPrompt(order, feedback, genreOverride) {', startIdx);
   assert.ok(funcStart !== -1, 'nu am gasit function buildPrompt(...)');
