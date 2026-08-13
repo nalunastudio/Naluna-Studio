@@ -2492,11 +2492,19 @@
     } catch (e) { /* urmatorul poll/refresh manual va corecta */ }
   }
 
+  // CORECȚIE (2026-08-14, "iPhone: bifa albastră din selector nu continua fluxul"): thumbnail-ul
+  // local pentru un VIDEOCLIP din coadă nu mai construiește niciodată un element <video> legat
+  // de blob-ul local — doar iconița statică. Un <video src="blob:..." preload="metadata"> obliga
+  // Safari/iOS să decodeze imediat metadata fiecărui videoclip local, pentru TOATE videoclipurile
+  // selectate deodată, chiar înainte ca vreun upload să înceapă — pentru materiale mari (normale
+  // pe un iPhone), acest decode simultan poate bloca vizibil firul principal exact în momentul
+  // confirmării selecției, dând senzația că "nu se întâmplă nimic". Fotografiile (<img>) rămân
+  // neschimbate — randarea unei imagini dintr-un blob e ieftină, fără nicio decodare de metadata.
   function renderQueueList() {
     const el = document.getElementById('mem-staged-list');
     el.innerHTML = uploadQueue.map(q => `
       <div class="mem-item" data-queue-id="${q.localId}">
-        <span class="mem-thumb">${q.thumbUrl ? (q.file.type.startsWith('video') ? `<video src="${q.thumbUrl}" muted playsinline preload="metadata"></video>` : `<img src="${q.thumbUrl}" alt="">`) : (q.file.type.startsWith('video') ? '🎬' : '🖼️')}</span>
+        <span class="mem-thumb">${q.file.type.startsWith('video') ? '🎬' : (q.thumbUrl ? `<img src="${q.thumbUrl}" alt="">` : '🖼️')}</span>
         <div class="mem-info">
           <span class="mem-name">${escapeHtml(q.file.name)}</span>
           <span class="mem-meta ${q.status === 'error' ? 'err' : ''}">${
@@ -2654,18 +2662,40 @@
     }
     memStatusEl.textContent = '';
     memStatusEl.className = 'mem-status';
+    // CORECȚIE (2026-08-14, "iPhone: bifa albastră din selector nu continua fluxul"): fiecare
+    // fișier e adăugat în coadă independent, izolat cu try/catch — dacă UN SINGUR fișier din
+    // selecție ridică o excepție la construirea intrării (ex. URL.createObjectURL eșuează pentru
+    // un blob particular), restul fișierelor selectate NU mai trebuie pierdute tăcut, iar
+    // renderQueueList()/processUploadQueue() de mai jos tot trebuie să ruleze — înainte, o
+    // excepție neprinsă aici oprea ÎNTREG handler-ul înainte să ajungă la acele apeluri, exact
+    // simptomul raportat ("selectez materiale, apăs confirmarea, nu se întâmplă nimic vizibil").
+    // thumbUrl se creează STRICT pentru fotografii — vezi comentariul din renderQueueList() pentru
+    // videoclipuri (niciun <video src="blob:..."> local, deci nicio nevoie de object URL aici).
     files.forEach(file => {
-      const entry = {
-        localId: 'q' + Math.random().toString(36).slice(2),
-        file,
-        section: null,
-        status: 'pending',
-        progress: 0,
-        errorMsg: null,
-        thumbUrl: /^(image|video)\//.test(file.type) ? URL.createObjectURL(file) : null,
-        xhr: null
-      };
-      uploadQueue.push(entry);
+      try {
+        const entry = {
+          localId: 'q' + Math.random().toString(36).slice(2),
+          file,
+          section: null,
+          status: 'pending',
+          progress: 0,
+          errorMsg: null,
+          thumbUrl: /^image\//.test(file.type) ? URL.createObjectURL(file) : null,
+          xhr: null
+        };
+        uploadQueue.push(entry);
+      } catch (err) {
+        uploadQueue.push({
+          localId: 'q' + Math.random().toString(36).slice(2),
+          file,
+          section: null,
+          status: 'error',
+          progress: 0,
+          errorMsg: t.memories_upload_error,
+          thumbUrl: null,
+          xhr: null
+        });
+      }
     });
     renderQueueList();
     processUploadQueue();
