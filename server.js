@@ -5803,10 +5803,20 @@ function buildPrompt(order, feedback, genreOverride) {
   // decizia acestuia de a genera o piesa integral instrumentala, mai ales pe un prompt lung.
   // Eliminat complet — formularile de mai jos raman identice ca sens (intro scurt, vocea
   // incepe la 8-10 secunde), fara sa mai contina niciodata cuvantul "instrumental".
-  const instructionWithSenderFull = ' Write this as a personal song from the sender to the recipient. Use a short natural intro. Start the vocals around 8-10 seconds, never immediately and never after a long opening. Name the recipient early and again in the chorus. Mention the sender once. Use only real details from the story — invent nothing.';
-  const instructionWithSenderShort = ' Short natural intro; start vocals around 8-10 seconds; name the recipient early and again in the chorus; mention the sender once. Use real story details only.';
-  const instructionNoSenderFull = ' Use a short natural intro. Start the vocals around 8-10 seconds, never immediately and never after a long opening. Address the recipient by name naturally in the lyrics. Use only real details from the story — invent nothing.';
-  const instructionNoSenderShort = ' Short natural intro; start vocals around 8-10 seconds. Address the recipient by name naturally. Use real story details only.';
+  // CORECȚIE (2026-08-13, "povestea din prima strofă"): clauza de deschidere a primului vers
+  // NU e adaugata separat/suplimentar (asta ar consuma buget in plus fata de instructiunea deja
+  // existenta si ar fi prima sacrificata de cascada de scurtare — testat empiric, ramanea
+  // eliminata aproape mereu). In schimb, ESTE INTEGRATA direct in instructiune, INLOCUIND text
+  // redundant ("Use a short natural intro" / "never after a long opening" se suprapun oricum cu
+  // "start vocals around 8-10 seconds") — lungimea totala ramane egala sau mai mica decat
+  // inainte, deci supravietuieste in `head` la fel de fiabil ca instructiunea originala, pentru
+  // orice comanda reala unde instructiunea originala ar fi supravietuit. "never invented" preia
+  // rolul clauzei vechi "Use only real details from the story — invent nothing" (pastrata ca
+  // cerinta, doar reformulata mai scurt ca sa incapa alaturi de clauza noua de prim vers).
+  const instructionWithSenderFull = ' Write this as a personal song from the sender to the recipient, opening the first verse with a real, specific, never-invented detail from the story — never a generic line. Start the vocals around 8-10 seconds, never immediately. Name the recipient early and again in the chorus. Mention the sender once.';
+  const instructionWithSenderShort = ' Short intro; open verse 1 with a real, never-invented story detail, not generic; name recipient early and in chorus; mention sender once.';
+  const instructionNoSenderFull = ' Open the first verse with a real, specific, never-invented detail from the story — never a generic line. Start the vocals around 8-10 seconds, never immediately. Address the recipient by name naturally in the lyrics.';
+  const instructionNoSenderShort = ' Short intro; open verse 1 with a real, never-invented story detail, not generic. Address recipient by name naturally.';
 
   let useShortInstruction = false;
   function currentInstruction() {
@@ -5871,7 +5881,20 @@ function buildPrompt(order, feedback, genreOverride) {
   // budgetForFixedPart — dar il aduc suficient de aproape incat povestea tot primeste in
   // jur de 180+ caractere (calculat mai jos din spatiul chiar ramas, nu presupus).
 
-  const storyLabel = ' Story/details to include: ';
+  // CORECȚIE (2026-08-13, "povestea din prima strofă"): pe langa clauza integrata deja in
+  // `currentInstruction()` (care nu consuma buget suplimentar fata de instructiunea originala),
+  // adaugam AICI un al doilea semnal, direct langa povestea insasi — dar DOAR daca bugetul
+  // ramas ii face loc fara sa fure spatiu util din continutul povestii propriu-zise. Trei
+  // variante, alese in cascada dupa spatiul chiar disponibil (`remaining`, calculat mai jos):
+  // eticheta completa (cu instructiune), eticheta scurta (instructiune minimala), sau eticheta
+  // simpla originala (fara instructiune) — niciodata mai putin generoasa cu povestea decat
+  // varianta dinainte de aceasta corectie. Continutul povestii ramane prioritar fata de
+  // formularea instructiunii (cerinta explicita — nu sacrificam informatii reale din poveste
+  // ca sa incapa text explicativ suplimentar).
+  const storyLabelPlain = ' Story/details to include: ';
+  const storyLabelShort = ' Verse 1 opens with a real story detail. Story: ';
+  const storyLabelFull = ' First verse must open with a real detail from this story, never a generic line. Story: ';
+  const MIN_USEFUL_STORY_CHARS = 40;
   const feedbackLabel = ' Client-requested adjustment: ';
   const feedbackText = feedback ? String(feedback).trim() : '';
 
@@ -5896,7 +5919,12 @@ function buildPrompt(order, feedback, genreOverride) {
 
   // povestea umple spatiul ramas (cel putin STORY_MIN_RESERVE, cu exceptia cazului extrem
   // in care head-ul singur ar depasi deja limita totala — practic imposibil dupa scurtarile
-  // de mai sus, dar tratat sigur oricum)
+  // de mai sus, dar tratat sigur oricum). Alegem eticheta cea mai instructiva care tot lasa
+  // cel putin MIN_USEFUL_STORY_CHARS pentru continutul real al povestii.
+  let storyLabel = storyLabelFull;
+  if (remaining - storyLabel.length < MIN_USEFUL_STORY_CHARS) storyLabel = storyLabelShort;
+  if (remaining - storyLabel.length < MIN_USEFUL_STORY_CHARS) storyLabel = storyLabelPlain;
+
   let storyFull = '';
   const storyBudget = remaining - storyLabel.length;
   if (storyBudget > 0) {

@@ -84,7 +84,57 @@ test('buildPrompt: pentru o comanda tipica (campuri normale, poveste rezonabila)
   };
   const prompt = buildPrompt(order, '', undefined);
   assert.ok(prompt.length <= 500);
-  assert.ok(prompt.includes('Story/details to include: Ne-am cunoscut'), 'inceputul real al povestii trebuie sa apara in prompt (limitarea reala e ca bugetul de 500 caractere poate tot trunchia finalul unei povesti mai lungi, nu ca povestea ar fi inlocuita cu una generica)');
+  // CORECȚIE (2026-08-13, "povestea din prima strofă"): eticheta dinaintea povestii e acum
+  // aleasa adaptiv (storyLabelFull/Short/Plain, dupa spatiul chiar disponibil), toate insa
+  // terminandu-se in "Story: " — testul verifica ce conteaza cu adevarat: ca inceputul REAL
+  // al povestii clientului apare in prompt imediat dupa "Story:", indiferent care varianta de
+  // eticheta a fost aleasa.
+  assert.ok(prompt.includes('Ne-am cunoscut'), 'inceputul real al povestii trebuie sa apara in prompt (limitarea reala e ca bugetul de 500 caractere poate tot trunchia finalul unei povesti mai lungi, nu ca povestea ar fi inlocuita cu una generica)');
+});
+
+// ---------------------------------------------------------------------------------------------
+// CERINTA (2026-08-13): povestea clientului trebuie sa apara in versuri INCA DIN PRIMA STROFA,
+// nu doar undeva in prompt. Instructiunea "open verse 1 with a real story detail" e integrata
+// DIRECT in currentInstruction() (inlocuind text redundant, nu adaugata suplimentar), deci nu
+// consuma buget in plus fata de instructiunea originala si supravietuieste cascadei de scurtare
+// la fel de fiabil ca instructiunea dinainte de aceasta corectie — verificat pe o comanda tipica
+// SI pe cel mai incarcat caz real (nunta, campuri lungi, gen cu tag de stil lung).
+// ---------------------------------------------------------------------------------------------
+test('buildPrompt: instructiunea "deschide primul vers cu un detaliu real din poveste" ajunge in prompt, atat pentru o comanda tipica cat si pentru cazul cel mai incarcat (nunta, campuri lungi)', () => {
+  const typical = {
+    occasion: 'aniversare', genre: 'pop', lang: 'ro',
+    recipient: 'Maria', senderName: 'Ana', relationship: 'prietena', voicePreference: 'auto',
+    story: 'Ne-am cunoscut la facultate acum 8 ani si de atunci suntem cele mai bune prietene, am trecut prin multe impreuna.'
+  };
+  const worstCase = {
+    occasion: 'nunta', genre: 'manele_suflet', lang: 'ro',
+    recipient: 'Alexandru Ionut Popescu si Maria Elena Ionescu',
+    senderName: 'Familia Popescu si Ionescu, nasii si toti prietenii apropiati',
+    relationship: 'nasii de cununie si cei mai buni prieteni din copilarie', voicePreference: 'duet',
+    story: 'V-ati cunoscut acum zece ani la o petrecere organizata de prieteni comuni, iar de atunci povestea voastra de dragoste a fost una plina de calatorii si sprijin reciproc.'
+  };
+  [typical, worstCase].forEach((order) => {
+    const prompt = buildPrompt(order, '', undefined);
+    assert.ok(prompt.length <= 500, `promptul trebuie sa ramana sub 500 caractere, a produs ${prompt.length}`);
+    assert.match(prompt, /open verse 1 with a real,? (never-invented )?story detail|opening the first verse with a real,? specific,? (never-invented )?detail/i,
+      `instructiunea de deschidere a primului vers trebuie sa fie prezenta, a produs: ${prompt}`);
+    assert.match(prompt, /never-invented/i, `clauza "niciodata inventat" trebuie sa fie prezenta (echivalentul cerintei vechi "Use only real details — invent nothing"), a produs: ${prompt}`);
+    const storyIdx = prompt.search(/Story[^:]*:\s*\S/i);
+    assert.ok(storyIdx !== -1, `continutul real al povestii trebuie sa fie prezent, a produs: ${prompt}`);
+  });
+});
+
+test('buildPrompt: o poveste scurta este integrata COMPLET (netrunchiata) alaturi de instructiunea de prim vers', () => {
+  const order = {
+    occasion: 'aniversare', genre: 'pop', lang: 'ro',
+    recipient: 'Maria', senderName: 'Ana', relationship: 'prietena', voicePreference: 'auto',
+    story: 'Esti cea mai buna prietena.'
+  };
+  const prompt = buildPrompt(order, '', undefined);
+  // eticheta dinaintea povestii difera dupa spatiul disponibil (vezi testul de mai sus) — ce
+  // conteaza aici e ca textul povestii insusi ajunge COMPLET, netrunchiat, indiferent de eticheta.
+  assert.ok(prompt.includes('Esti cea mai buna prietena.'), `povestea scurta trebuie sa apara integral, netrunchiata, a produs: ${prompt}`);
+  assert.match(prompt, /open verse 1 with a real,? (never-invented )?story detail/i);
 });
 
 // ---------------------------------------------------------------------------------------------

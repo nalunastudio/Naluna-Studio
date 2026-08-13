@@ -154,6 +154,10 @@
   }
   #standard-choice-title{ font-family:'Fraunces', serif; font-weight:700; font-size:24px; color:#8A4B0A; margin:0 0 10px; text-align:center; }
   #standard-choice-subtitle{ font-size:14px; color:var(--text-secondary); margin:0 0 22px; text-align:center; }
+  /* CORECȚIE (2026-08-13): caseta de selecție Premium reutilizeaza EXACT stilul titlului si
+     subtitlului Standard (aceleasi declaratii, doar pe un alt selector — Standard nu e atins). */
+  #premium-compare-title{ font-family:'Fraunces', serif; font-weight:700; font-size:24px; color:#8A4B0A; margin:0 0 10px; text-align:center; }
+  #premium-compare-subtitle{ font-size:14px; color:var(--text-secondary); margin:0 0 22px; text-align:center; }
   .standard-genre-choice-btn{
     display:flex; width:100%; min-height:56px; margin-bottom:12px; padding:14px 20px;
     font-size:15px; font-weight:600; text-align:center; align-items:center; justify-content:center;
@@ -532,13 +536,21 @@
           <div id="premium-edit-status-msg" style="font-size:13px; margin-top:10px; text-align:center;"></div>
         </div>
 
+        <!-- CORECȚIE (2026-08-13, "muta caseta de selecție Premium sub cele patru melodii"):
+             cele 4 carduri (#premium-compare-cards) apar ACUM PRIME, inaintea casetei de
+             selecție — caseta (eyebrow/titlu/subtitlu/cele 4 butoane/plata) e MUTATA dupa ele,
+             nu duplicata. Caseta reutilizeaza EXACT clasa .standard-choice-box (chenar
+             portocaliu, fundal cald, aceleasi colturi/spatiere) folosita deja de Standard. -->
         <div id="premium-compare-view" style="display:none;">
-          <span class="standard-choice-eyebrow" id="premium-compare-eyebrow" style="display:block; text-align:center; margin:0 auto 12px;"></span>
-          <h2 id="premium-compare-title" style="font-family:'Fraunces',serif; font-weight:400; font-size:19px; margin:0 0 6px; text-align:center;"></h2>
-          <p id="premium-compare-subtitle" style="color:var(--text-secondary); font-size:14px; margin:0 0 18px;"></p>
           <div id="premium-compare-cards"></div>
-          <div class="field-error" id="premium-compare-error" style="margin-bottom:10px;"></div>
-          <div id="premium-compare-checkout-slot"></div>
+          <div class="standard-choice-box">
+            <span class="standard-choice-eyebrow" id="premium-compare-eyebrow"></span>
+            <h2 id="premium-compare-title"></h2>
+            <p id="premium-compare-subtitle"></p>
+            <div id="premium-compare-buttons"></div>
+            <div class="field-error" id="premium-compare-error" style="margin-bottom:10px;"></div>
+            <div id="premium-compare-checkout-slot" style="display:flex; justify-content:center;"></div>
+          </div>
           <div id="premium-compare-status-msg" style="font-size:13px; margin-top:10px; text-align:center;"></div>
         </div>
 
@@ -3296,6 +3308,29 @@
         togglePremiumCompareSelection(v.id, order);
       });
       cardsWrap.appendChild(card);
+    });
+
+    // CORECȚIE (2026-08-13, "conținutul exact al casetei Premium"): patru butoane distincte,
+    // in ordinea exacta ceruta (melodia 1 inițială, melodia 1 editată, melodia 2 inițială,
+    // melodia 2 editată — aceeasi ordine ca `variants`, deja sortata mai sus), fiecare cu
+    // genul REAL al variantei respective (v.genre, niciodata presupus/mostenit de la alta
+    // varianta) — reutilizeaza EXACT clasa .standard-genre-choice-btn folosita de Standard.
+    // Apasarea unui buton comuta ACEEASI selectie ca apasarea cardului corespunzator (aceeasi
+    // functie togglePremiumCompareSelection, acelasi array premiumCompareSelection) — cardul
+    // si butonul lui raman mereu in sincron, un singur ID sursa a adevarului.
+    const buttonsWrap = document.getElementById('premium-compare-buttons');
+    buttonsWrap.innerHTML = '';
+    variants.forEach(v => {
+      const songLabel = v.songSlot === 2 ? t.premium_song2_label : t.premium_song1_label;
+      const versionLabel = v.isEditedAlternative ? t.variant_edited_label : t.variant_original_label;
+      const genreLabel = (v.genre && t['genre_' + v.genre]) || v.genre || '';
+      const isChosen = premiumCompareSelection.includes(v.id);
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'standard-genre-choice-btn' + (isChosen ? ' chosen' : '');
+      btn.textContent = `${songLabel} — ${versionLabel}: ${genreLabel}`;
+      btn.addEventListener('click', () => togglePremiumCompareSelection(v.id, order));
+      buttonsWrap.appendChild(btn);
     });
 
     const slot = document.getElementById('premium-compare-checkout-slot');
