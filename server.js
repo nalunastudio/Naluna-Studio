@@ -990,6 +990,35 @@ app.get('/admin', adminAuthLimiter, requireAdminAuth, (req, res) => {
 });
 app.use('/api/admin', adminAuthLimiter, requireAdminAuth);
 
+// ==========================================================================================
+// TEMPORAR (2026-08-13) — cleanup pentru O SINGURA comanda de test, creata pentru validarea
+// reala end-to-end a fix-ului "pastrarea exacta a versurilor editate" (comanda de test
+// a8bf6480-50fc-41a4-a961-3d42de83380e, email e2e-lyrics-test@nalunastudio-internal.test).
+// Sterge randul din DB si fisierele audio din storage. Refuza explicit orice comanda deja
+// platita ('ready') — protectie impotriva folosirii gresite pe o comanda reala. VA FI ELIMINAT
+// dupa folosire, la fel ca endpoint-urile similare de testare din aceasta sesiune.
+// ==========================================================================================
+app.delete('/api/admin/test/order/:orderId', async (req, res, next) => {
+  try {
+    const order = await db.getOrderById(req.params.orderId);
+    if (!order) return res.status(404).json({ error: 'Comanda nu există.' });
+    if (order.status === 'ready') {
+      return res.status(400).json({ error: 'Refuz să șterg o comandă deja plătită și livrată.' });
+    }
+    const keysToDelete = (order.variants || []).flatMap(v => [
+      v.fullKey ? { type: 'private', key: v.fullKey } : null,
+      v.previewKey ? { type: 'public', key: v.previewKey } : null,
+      v.wavKey ? { type: 'private', key: v.wavKey } : null,
+      v.videoKey ? { type: 'private', key: v.videoKey } : null
+    ].filter(Boolean));
+    await Promise.allSettled(keysToDelete.map(k => k.type === 'private' ? storage.deletePrivateFile(k.key) : storage.deletePublicFile(k.key)));
+    await db.pool.query('DELETE FROM orders WHERE id = $1', [order.id]);
+    res.json({ deleted: true, orderId: order.id, filesRemoved: keysToDelete.length });
+  } catch (err) {
+    next(err);
+  }
+});
+
 app.get('/api/admin/orders', async (req, res, next) => {
   try {
     const list = await db.listOrders();
