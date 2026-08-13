@@ -115,7 +115,10 @@ test('server.js: editarea AMBELOR melodii (2 elemente in editVariantIds) produce
   const idx = server.indexOf('async function runPremiumEditGeneration');
   const end = server.indexOf('async function runGeneration(orderId, feedback, options = {}) {');
   const body = server.slice(idx, end);
-  assert.match(body, /editVariantIds: \[dispatches\[0\]\.variantId, dispatches\[1\]\.variantId\]/);
+  // MODIFICARE (2026-08-13, "editare secventiala"): dispecerizare secventiala (d1/d2), nu mai
+  // paralela (dispatches[0]/dispatches[1] prin Promise.all) — vezi
+  // test/lyrics-exact-story-premium-sequential.test.js pentru acoperirea noului comportament.
+  assert.match(body, /editVariantIds: \[d1\.variantId, d2\.variantId\]/);
 });
 
 test('server.js: editarea nu regenereaza melodia neselectata — runPremiumEditGeneration dispatch-eaza STRICT catre editSongs primite, niciodata catre sora neselectata', () => {
@@ -233,7 +236,7 @@ test('server.js: GET /api/orders/:orderId expune selectedVariantId2 (necesar ca 
 
 test('melodia-mea.html: pagina de comparare initializeaza selectia din order.selectedVariantId\\/2 O SINGURA DATA per incarcare — nu suprascrie alegerile locale ale clientului la fiecare re-render', () => {
   const idx = melodia.indexOf('function renderPremiumCompareView(order) {');
-  const body = melodia.slice(idx, idx + 1300);
+  const body = melodia.slice(idx, idx + 1500);
   assert.ok(body.includes('if (!premiumCompareInitialized) {'));
 });
 
@@ -294,7 +297,9 @@ test('server.js: handleLegacyRegenerate (variantId singular) ramane STRICT ramur
   assert.ok(idx !== -1);
   const body = server.slice(idx, idx + 12000);
   assert.ok(body.includes('const requestedVariantId = typeof req.body?.variantId'));
-  assert.ok(body.includes("? { replaceVariantId: requestedVariantId, regenerationJobId }"));
+  // MODIFICARE (2026-08-13, "pastrarea exacta a versurilor editate"): regenOptions include acum
+  // si exactLyrics — replaceVariantId/regenerationJobId raman neschimbate ca structura.
+  assert.ok(body.includes("? { replaceVariantId: requestedVariantId, regenerationJobId, exactLyrics: exactLyrics || null }"));
 });
 
 // REGRESIE CONFIRMATA LA TESTAREA LIVE PE STAGING (hotfix 2026-08-10 runda 3): fara ascundere

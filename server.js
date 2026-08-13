@@ -1939,14 +1939,15 @@ async function handlePremiumSelectiveRegenerate(req, res, next) {
     // MODIFICARE STRICTĂ (runda 4): vocea e acum SI ea per melodie (songVoice), aplicata direct
     // la construirea prompt-ului (vezi runPremiumEditGeneration) — niciodata doar la nivel de
     // comanda intreaga, ca inainte.
+    // CORECȚIE (2026-08-13, "pastrarea exacta a versurilor editate"): `exactLyrics`, cand
+    // exista, NU mai e amestecat in `feedback` ca o "instructiune de a incerca sa urmeze"
+    // versurile (SunoAPI, customMode:false, nu garanta deloc reproducerea exacta — Suno isi
+    // putea rescrie propriile versuri). Transmis SEPARAT catre runPremiumEditGeneration, care
+    // il trimite verbatim prin customMode:true (vezi buildExactLyricsRequest) — `feedback`
+    // ramane STRICT observatia libera a clientului (voce/gen/alte cereri), niciodata versuri.
     const editSongsForGeneration = parsedSongs.map(song => {
-      const editedLyrics = song.lyricsInput || (typeof song.sourceVariant.editedLyrics === 'string' ? song.sourceVariant.editedLyrics.trim() : '');
-      let combinedFeedback = song.feedback;
-      if (editedLyrics) {
-        const lyricsInstruction = `Try to follow lyrics close to this rewritten version: ${editedLyrics}`;
-        combinedFeedback = song.feedback ? `${lyricsInstruction}. Also: ${song.feedback}` : lyricsInstruction;
-      }
-      return { variantId: song.variantId, feedback: combinedFeedback, voicePreference: song.songVoice };
+      const exactLyrics = song.lyricsInput || (typeof song.sourceVariant.editedLyrics === 'string' ? song.sourceVariant.editedLyrics.trim() : '');
+      return { variantId: song.variantId, feedback: song.feedback, exactLyrics: exactLyrics || null, voicePreference: song.songVoice };
     });
 
     runPremiumEditGeneration(order.id, editSongsForGeneration, regenerationJobId).catch(async (err) => {
@@ -2061,21 +2062,15 @@ async function handleLegacyRegenerate(req, res, next) {
       await db.updateOrder(order.id, { videoStaleReason: 'song_regenerated' });
     }
 
-    // Daca varianta aleasa are versuri editate manual (melodia-mea.html), le folosim ca
-    // instructiune puternica pentru urmatoarea generare. IMPORTANT (vezi si comentariul
-    // din extractSunoTracks): SunoAPI, in configuratia confirmata (customMode:false), NU
-    // accepta versuri exacte trimise de noi — Suno scrie singur versurile, pornind de la
-    // un prompt descriptiv de max. 500 caractere. Nu putem deci garanta ca noua generare
-    // va reproduce exact textul editat — il folosim ca ghidaj, nu ca versuri impuse. Daca
-    // varianta aleasa NU are versuri editate, folosim doar feedback-ul general si datele
-    // comenzii (comportamentul implicit dinainte). Nu folosim niciodata versurile altei
-    // variante decat cea aleasa explicit.
-    const editedLyrics = typeof sourceVariant.editedLyrics === 'string' ? sourceVariant.editedLyrics.trim() : '';
-    let combinedFeedback = feedback;
-    if (editedLyrics) {
-      const lyricsInstruction = `Try to follow lyrics close to this rewritten version: ${editedLyrics}`;
-      combinedFeedback = feedback ? `${lyricsInstruction}. Also: ${feedback}` : lyricsInstruction;
-    }
+    // CORECȚIE (2026-08-13, "pastrarea exacta a versurilor editate"): daca varianta aleasa are
+    // versuri editate manual (melodia-mea.html), le trimitem VERBATIM catre Suno, prin
+    // customMode:true (vezi buildExactLyricsRequest, folosit mai jos in runGeneration cand
+    // options.exactLyrics e prezent) — niciodata ca "ghidaj" amestecat in feedback-ul general,
+    // care nu garanta nicio reproducere exacta (SunoAPI, in customMode:false, isi scrie singur
+    // versurile din promptul descriptiv). `feedback` ramane STRICT observatia libera a
+    // clientului (voce/gen/alte cereri), niciodata versuri. Nu folosim niciodata versurile
+    // altei variante decat cea aleasa explicit.
+    const exactLyrics = typeof sourceVariant.editedLyrics === 'string' ? sourceVariant.editedLyrics.trim() : '';
 
     // Daca clientul a cerut si o schimbare de gen, actualizam ACUM coloana corecta din DB
     // (genre pentru Standard sau varianta 1, genre2 pentru varianta 2 la Premium/Video) —
@@ -2113,9 +2108,9 @@ async function handleLegacyRegenerate(req, res, next) {
     // reeditat -> regenerare PARTIALA (doar acel gen). Standard: PASTREAZA varianta initiala
     // ca alternativa (nu mai inlocuieste intreg array-ul).
     const regenOptions = (PLAN_VARIANT_COUNT[order.plan] === 2)
-      ? { replaceVariantId: requestedVariantId, regenerationJobId }
-      : { keepOriginalAsAlternative: true, regenerationJobId };
-    runGeneration(order.id, combinedFeedback, regenOptions).catch(async (err) => {
+      ? { replaceVariantId: requestedVariantId, regenerationJobId, exactLyrics: exactLyrics || null }
+      : { keepOriginalAsAlternative: true, regenerationJobId, exactLyrics: exactLyrics || null };
+    runGeneration(order.id, feedback, regenOptions).catch(async (err) => {
       console.error('Eroare la regenerare pentru comanda', order.id, err.message);
       try {
         // Generarea a esuat — restituim ATOMIC editarea gratuita rezervata mai sus, DOAR
@@ -3269,10 +3264,17 @@ app.post('/api/music/callback', async (req, res) => {
     // setat) NU pot fi finalizate de un callback individual: Suno trimite un callback PER
     // SARCINA, iar un callback pentru O SINGURA sarcina nu poate sti daca CEALALTA sarcina
     // (celalalt gen) e deja gata. Finalizarea combinata a ambelor genuri se face STRICT prin
-    // polling, in runGeneration (vezi Promise.all acolo) — apelarea prematura a
+    // polling, in runGeneration/runPremiumEditGeneration — apelarea prematura a
     // finalizeVariantsIfNeeded aici ar scrie doar UN gen ca rezultat final, incalcand
     // promisiunea "exact doua melodii" a pachetului.
-    if (order.musicTaskId2) {
+    // CORECȚIE (2026-08-13, "editare secventiala"): editarea Premium a 2 melodii dispecerizeaza
+    // ACUM sarcinile Suno STRICT pe rand (musicTaskId2 ramane null cat timp prima melodie inca
+    // se genereaza) — in acest interval, un callback pentru prima sarcina NU trebuie sa
+    // finalizeze nimic (ar declansa exact bug-ul descris mai sus: "inlocuire completa", ca la o
+    // generare initiala, stergand variantele existente). regenerateEditVariantIds.length===2
+    // (setat de POST /regenerate INAINTE de a porni prima sarcina, sters abia dupa finalizarea
+    // AMBELOR melodii) identifica sigur aceasta fereastra, indiferent de musicTaskId2.
+    if (order.musicTaskId2 || (order.regenerateEditVariantIds && order.regenerateEditVariantIds.length === 2)) {
       res.status(200).json({ received: true });
       return;
     }
@@ -3483,6 +3485,43 @@ async function resumeExistingTaskPolling(orderId, taskId) {
         await finalizeVariantsIfNeeded(orderId, [{ tracks, genre: genreToUse, taskId, songSlot: isSong2Slot ? 2 : 1 }], editOptions);
         return;
       }
+      // CORECȚIE (2026-08-13, "editare secventiala") — editarea selectiva Premium a AMBELOR
+      // melodii dispecerizeaza acum sarcinile Suno STRICT pe rand (vezi runPremiumEditGeneration):
+      // daca serverul a fost repornit exact in fereastra in care prima melodie inca se genera
+      // (musicTaskId2 inca null, regenerateEditVariantIds are 2 elemente), taskId de mai sus e
+      // STRICT primul dintre cele doua. NU finalizam cu o singura varianta noua aici (ar declansa
+      // exact bug-ul descris la /api/music/callback mai sus) — dispecerizam acum a doua melodie
+      // (cu genul/versurile deja persistate, aceleasi surse canonice folosite si initial) si
+      // finalizam ATOMIC abia dupa ce si ea reuseste, exact ca la traseul normal, neintrerupt.
+      if (isDualGenrePlan && order.regenerateEditVariantIds && order.regenerateEditVariantIds.length === 2) {
+        const [editVariantId1, editVariantId2] = order.regenerateEditVariantIds;
+        const { genreToUse: genre1, isSong2Slot: isSong2Slot1 } = premiumEditSlotForVariant(order, editVariantId1);
+        const { genreToUse: genre2, isSong2Slot: isSong2Slot2 } = premiumEditSlotForVariant(order, editVariantId2);
+        const recipientSnapshot2 = isSong2Slot2 ? getSong2EffectiveData(order) : getSong1EffectiveData(order);
+        const variant2 = (order.variants || []).find(v => v.id === editVariantId2);
+        const exactLyrics2 = variant2 && typeof variant2.editedLyrics === 'string' ? variant2.editedLyrics.trim() : '';
+        const requestPayload2 = exactLyrics2
+          ? buildExactLyricsRequest({ ...order, ...recipientSnapshot2 }, exactLyrics2, genre2, order.voicePreference)
+          : buildPrompt({ ...order, ...recipientSnapshot2 }, null, genre2);
+        const taskId2 = await callMusicProvider(orderId, requestPayload2);
+        await db.updateOrder(orderId, { musicTaskId: taskId, musicTaskId2: taskId2 });
+        if (order.regenerationJobId) recordRegenerationProgress(orderId, order.regenerationJobId, 'dispatched_song2').catch(() => {});
+        const r2 = await pollForResult(taskId2, orderId);
+        if (r2.status === 'ALREADY_FINALIZED_BY_CALLBACK' || r2.status === 'LOCAL_POLL_TIMEOUT') return;
+        if (r2.status !== SUNO_SUCCESS_STATUS) {
+          console.error(`Reluare editare secventiala Premium: comanda ${orderId} a esuat la a doua melodie: ${r2.status}.`);
+          await db.refundEditIfReserved(orderId);
+          await markGenerationFailed(orderId, `Suno: ${r2.status}`, order.variants, order.regenerationJobId);
+          return;
+        }
+        const editOptions2 = { editVariantIds: [editVariantId1, editVariantId2] };
+        if (order.regenerationJobId) editOptions2.regenerationJobId = order.regenerationJobId;
+        await finalizeVariantsIfNeeded(orderId, [
+          { tracks, genre: genre1, taskId, songSlot: isSong2Slot1 ? 2 : 1 },
+          { tracks: r2.tracks, genre: genre2, taskId: taskId2, recipientSnapshot: recipientSnapshot2, songSlot: isSong2Slot2 ? 2 : 1 }
+        ], editOptions2);
+        return;
+      }
       // Regenerare partiala (Premium/Video, o singura varianta reeditata): foloseste genul
       // deja asociat variantei sursa si inlocuieste DOAR acea varianta — niciodata sora ei.
       // Standard, editare in curs: regenerateKeepOriginal (persistat in DB) pastreaza
@@ -3640,14 +3679,20 @@ async function runPremiumEditGeneration(orderId, editSongs, regenerationJobId) {
       // nou construit prin spread, order.voicePreference original ramane neatins in DB decat
       // daca vreo alta cale il actualizeaza explicit).
       const effectiveVoice = VOICE_PREFERENCES.includes(song.voicePreference) ? song.voicePreference : order.voicePreference;
-      const prompt = buildPrompt({ ...order, ...recipientSnapshot, voicePreference: effectiveVoice }, song.feedback, genreToUse);
-      return { variantId: song.variantId, isSong2Slot, genreToUse, recipientSnapshot, prompt };
+      // CORECȚIE (2026-08-13, "pastrarea exacta a versurilor editate"): cand clientul a editat
+      // manual versurile ACESTEI melodii (song.exactLyrics), le trimitem VERBATIM catre Suno
+      // prin customMode:true (buildExactLyricsRequest) — niciodata prin buildPrompt(), care le-ar
+      // fi trecut doar ca un "ghidaj" text, fara nicio garantie de reproducere exacta.
+      const requestPayload = song.exactLyrics
+        ? buildExactLyricsRequest({ ...order, ...recipientSnapshot }, song.exactLyrics, genreToUse, effectiveVoice, song.feedback)
+        : buildPrompt({ ...order, ...recipientSnapshot, voicePreference: effectiveVoice }, song.feedback, genreToUse);
+      return { variantId: song.variantId, isSong2Slot, genreToUse, recipientSnapshot, requestPayload };
     })
     .sort((a, b) => Number(a.isSong2Slot) - Number(b.isSong2Slot));
 
   if (dispatches.length === 1) {
     const [d] = dispatches;
-    const taskId = await callMusicProvider(orderId, d.prompt);
+    const taskId = await callMusicProvider(orderId, d.requestPayload);
     recordRegenerationProgress(orderId, regenerationJobId, 'dispatched').catch(() => {});
     await db.updateOrder(orderId, { musicTaskId: taskId, musicTaskId2: null });
     recordRegenerationProgress(orderId, regenerationJobId, 'processing').catch(() => {});
@@ -3669,13 +3714,52 @@ async function runPremiumEditGeneration(orderId, editSongs, regenerationJobId) {
     return;
   }
 
-  const [taskId1, taskId2] = await Promise.all(dispatches.map(d => callMusicProvider(orderId, d.prompt)));
-  await db.updateOrder(orderId, { musicTaskId: taskId1, musicTaskId2: taskId2 });
+  // MODIFICARE STRICTĂ (2026-08-13, "editare secventiala") — cerinta explicita: cele doua
+  // melodii se proceseaza STRICT pe rand ("nu regenera ambele simultan", "nu avansa la
+  // următoarea melodie până când regenerarea celei curente nu s-a încheiat cu succes").
+  // INAINTE: cele doua sarcini Suno erau pornite in PARALEL (Promise.all) — schimbat aici la
+  // dispatch SECVENTIAL real: sarcina melodiei 2 nu pleaca deloc catre Suno decat DUPA ce
+  // sarcina melodiei 1 a raportat SUCCES. O eroare la melodia 1 opreste totul imediat (melodia
+  // 2 nu porneste niciodata) — variantele existente raman complet neatinse. Finalizarea
+  // (adaugarea celor doua variante noi in comanda) ramane INSA atomica, intr-un singur apel la
+  // finalizeVariantsIfNeeded, dupa AMBELE succese — pastreaza neschimbata garantia "exact doua
+  // melodii noi, niciodata doar una" si logica de reluare existenta (musicTaskId2 e setat abia
+  // dupa ce melodia 1 s-a confirmat, niciodata inainte).
+  const [d1, d2] = dispatches;
+  const taskId1 = await callMusicProvider(orderId, d1.requestPayload);
+  await db.updateOrder(orderId, { musicTaskId: taskId1, musicTaskId2: null });
   recordRegenerationProgress(orderId, regenerationJobId, 'dispatched').catch(() => {});
-  perfLog(orderId, 'premium_edit_dual_tasks_created', `gen1=${dispatches[0].genreToUse}, gen2=${dispatches[1].genreToUse}`);
+  perfLog(orderId, 'premium_edit_song1_dispatched', `gen1=${d1.genreToUse}`);
+  const r1 = await pollForResult(taskId1, orderId);
+  if (r1.status === 'ALREADY_FINALIZED_BY_CALLBACK') {
+    perfLog(orderId, 'polling_stopped_early_callback_won');
+    return;
+  }
+  if (r1.status === 'LOCAL_POLL_TIMEOUT') return; // ramane 'generating'; reluat de resumeExistingTaskPolling
+  if (r1.status !== SUNO_SUCCESS_STATUS) {
+    throw new Error(`Suno a raportat un status de eroare pentru prima melodie: ${r1.status}`);
+  }
 
-  await waitForDualTaskAndFinalize(orderId, taskId1, dispatches[0].genreToUse, taskId2, dispatches[1].genreToUse, {
-    editVariantIds: [dispatches[0].variantId, dispatches[1].variantId],
+  const taskId2 = await callMusicProvider(orderId, d2.requestPayload);
+  await db.updateOrder(orderId, { musicTaskId: taskId1, musicTaskId2: taskId2 });
+  recordRegenerationProgress(orderId, regenerationJobId, 'dispatched_song2').catch(() => {});
+  perfLog(orderId, 'premium_edit_song2_dispatched', `gen2=${d2.genreToUse}`);
+  const r2 = await pollForResult(taskId2, orderId);
+  if (r2.status === 'ALREADY_FINALIZED_BY_CALLBACK') {
+    perfLog(orderId, 'polling_stopped_early_callback_won');
+    return;
+  }
+  if (r2.status === 'LOCAL_POLL_TIMEOUT') return; // ramane 'generating'; reluat de resumeDualTaskPolling
+  if (r2.status !== SUNO_SUCCESS_STATUS) {
+    throw new Error(`Suno a raportat un status de eroare pentru a doua melodie: ${r2.status}`);
+  }
+
+  recordRegenerationProgress(orderId, regenerationJobId, 'audio_ready').catch(() => {});
+  await finalizeVariantsIfNeeded(orderId, [
+    { tracks: r1.tracks, genre: d1.genreToUse, taskId: taskId1, recipientSnapshot: d1.recipientSnapshot, songSlot: d1.isSong2Slot ? 2 : 1 },
+    { tracks: r2.tracks, genre: d2.genreToUse, taskId: taskId2, recipientSnapshot: d2.recipientSnapshot, songSlot: d2.isSong2Slot ? 2 : 1 }
+  ], {
+    editVariantIds: [d1.variantId, d2.variantId],
     regenerationJobId
   });
 }
@@ -3716,8 +3800,13 @@ async function runGeneration(orderId, feedback, options = {}) {
     const isSong2Slot = genreToUse === order.genre2 && order.genre2 !== order.genre;
     const recipientSnapshot = isSong2Slot ? getSong2EffectiveData(order) : getSong1EffectiveData(order);
     recordRegenerationProgress(orderId, options.regenerationJobId, 'prepared').catch(() => {});
-    const prompt = buildPrompt({ ...order, ...recipientSnapshot }, feedback, genreToUse);
-    const taskId = await callMusicProvider(orderId, prompt);
+    // CORECȚIE (2026-08-13, "pastrarea exacta a versurilor editate"): daca sursa are versuri
+    // editate manual (options.exactLyrics), trimitem VERBATIM catre Suno prin customMode:true —
+    // niciodata prin buildPrompt(), care nu garanteaza nicio reproducere exacta.
+    const requestPayload = options.exactLyrics
+      ? buildExactLyricsRequest({ ...order, ...recipientSnapshot }, options.exactLyrics, genreToUse, order.voicePreference, feedback)
+      : buildPrompt({ ...order, ...recipientSnapshot }, feedback, genreToUse);
+    const taskId = await callMusicProvider(orderId, requestPayload);
     recordRegenerationProgress(orderId, options.regenerationJobId, 'dispatched').catch(() => {});
     await db.updateOrder(orderId, { musicTaskId: taskId, musicTaskId2: null });
     recordRegenerationProgress(orderId, options.regenerationJobId, 'processing').catch(() => {});
@@ -3742,8 +3831,12 @@ async function runGeneration(orderId, feedback, options = {}) {
   // clientul alege explicit intre ele (Partea 2, hotfix 2026-08-08).
   if (!isDualGenrePlan) {
     recordRegenerationProgress(orderId, options.regenerationJobId, 'prepared').catch(() => {});
-    const prompt = buildPrompt(order, feedback);
-    const taskId = await callMusicProvider(orderId, prompt);
+    // CORECȚIE (2026-08-13, "pastrarea exacta a versurilor editate") — vezi comentariul
+    // identic din ramura Premium/Video de mai sus.
+    const requestPayload = options.exactLyrics
+      ? buildExactLyricsRequest(order, options.exactLyrics, order.genre, order.voicePreference, feedback)
+      : buildPrompt(order, feedback);
+    const taskId = await callMusicProvider(orderId, requestPayload);
     recordRegenerationProgress(orderId, options.regenerationJobId, 'dispatched').catch(() => {});
     await db.updateOrder(orderId, { musicTaskId: taskId, musicTaskId2: null });
     recordRegenerationProgress(orderId, options.regenerationJobId, 'processing').catch(() => {});
@@ -3941,9 +4034,37 @@ async function finalizeVariantsIfNeeded(orderId, requestsInfo, options = {}) {
   recordGenerationProgress(orderId, 'finalizing').catch(() => {});
 
   try {
+    // CORECȚIE (2026-08-13, "pastrarea exacta a versurilor editate"): versurile AFISATE langa
+    // o varianta noua, rezultata dintr-o editare, trebuie sa fie EXACT cele trimise de client —
+    // niciodata cele intoarse de Suno (vezi buildVariantFromTrack, care altfel ar folosi
+    // track.lyrics, un camp al raspunsului furnizorului). Recalculam sursa canonica AICI, citind
+    // direct `claimed.variants` (varianta sursa, cu editedLyrics deja salvat de POST /regenerate
+    // INAINTE de a porni generarea) — functioneaza identic si la o reluare dupa restart
+    // (resumeDualTaskPolling/resumeExistingTaskPolling), pentru ca citeste starea reala din DB,
+    // nu un parametru transmis prin lantul de apeluri, care s-ar pierde la un restart al
+    // procesului. Un array PARALEL cu requestsInfo — index cu index — pentru ca ordinea
+    // requestsInfo/builtVariants e mereu aceeasi ordine in care au fost dispecerizate cererile
+    // (vezi runPremiumEditGeneration/runGeneration: editVariantIds si dispatches sunt construite
+    // din aceeasi sursa, in aceeasi ordine).
+    const sourceVariantIdsInOrder = options.editVariantIds
+      ? options.editVariantIds
+      : options.replaceVariantId
+        ? [options.replaceVariantId]
+        : (options.keepOriginalAsAlternative && claimed.regenerateSourceVariantId)
+          ? [claimed.regenerateSourceVariantId]
+          : [];
+    function canonicalEditedLyricsFor(sourceVariantId) {
+      if (!sourceVariantId) return null;
+      const src = (claimed.variants || []).find(v => v.id === sourceVariantId);
+      if (!src) return null;
+      return (typeof src.editedLyrics === 'string' && src.editedLyrics.trim()) ? src.editedLyrics.trim() : null;
+    }
+
     const builtVariants = [];
     const requestFailures = [];
+    let requestIndex = -1;
     for (const { tracks, genre, taskId, recipientSnapshot, songSlot } of requestsInfo) {
+      requestIndex += 1;
       if (!tracks || tracks.length === 0) {
         requestFailures.push(`genul "${genre}": Suno nu a intors nicio piesa cu audioUrl`);
         continue;
@@ -3976,6 +4097,15 @@ async function finalizeVariantsIfNeeded(orderId, requestsInfo, options = {}) {
         // recipientSnapshot e identic cu datele principale ale comenzii — nicio schimbare
         // practica fata de inainte.
         if (recipientSnapshot) Object.assign(built, recipientSnapshot);
+        // CORECȚIE (2026-08-13): daca aceasta varianta rezulta dintr-o editare cu versuri
+        // exacte, fortam versurile afisate sa fie EXACT textul canonic salvat — niciodata
+        // ce a intors Suno (track.lyrics, deja atribuit de buildVariantFromTrack mai sus).
+        const canonicalLyrics = canonicalEditedLyricsFor(sourceVariantIdsInOrder[requestIndex]);
+        if (canonicalLyrics) {
+          built.originalLyrics = canonicalLyrics;
+          built.editedLyrics = null;
+          built.lyricsUpdatedAt = new Date().toISOString();
+        }
         builtVariants.push(built);
       } else {
         requestFailures.push(`genul "${genre}": ${lastErr ? lastErr.message : 'motiv necunoscut'}`);
@@ -4958,29 +5088,50 @@ function extractSunoTracks(payload) {
 // poate ajunge oricand, chiar in paralel cu polling-ul) sa poata identifica ce comanda
 // corespunde raspunsului primit de la Suno.
 // ==========================================================================================
-async function callMusicProvider(orderId, prompt) {
-  // validare explicita inainte de request — desi buildPrompt() deja arunca eroare pentru
-  // un prompt gol, verificam din nou aici, la locul unde chiar pleaca cererea catre Suno
+// requestInput: fie un STRING (comportamentul original — customMode:false, Suno scrie
+// versurile din promptul descriptiv), fie un OBIECT {style, title, lyrics} (adaugat
+// 2026-08-13, cerinta "pastrarea exacta a versurilor editate") — customMode:true, campul
+// "prompt" trimis catre Suno devine EXACT textul din `lyrics`, folosit verbatim ca versuri
+// cantate ("The prompt will be strictly used as the lyrics and sung in the generated
+// track." — docs.sunoapi.org). Foloseste ACEEASI functie/acelasi endpoint pentru ambele
+// cazuri, ca sa nu duplicam logica de creare a task-ului/gestionare erori.
+async function callMusicProvider(orderId, requestInput) {
+  const isCustomLyrics = requestInput && typeof requestInput === 'object';
+  const prompt = isCustomLyrics ? requestInput.lyrics : requestInput;
+
+  // validare explicita inainte de request — desi buildPrompt()/buildExactLyricsRequest()
+  // arunca deja eroare pentru campuri goale, verificam din nou aici, la locul unde chiar
+  // pleaca cererea catre Suno
   if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
     throw new Error('Prompt invalid sau gol — cererea catre SunoAPI nu a fost trimisa.');
+  }
+  if (isCustomLyrics && (!requestInput.style || !requestInput.style.trim())) {
+    throw new Error('Stilul muzical (style) e gol — cererea customMode:true catre SunoAPI nu a fost trimisa.');
   }
 
   // Model configurabil prin variabila de mediu MUSIC_MODEL — vezi .env.example pentru
   // valorile acceptate de furnizor (V4_5ALL, V4, V4_5, V4_5PLUS, V5). Daca variabila lipseste
   // sau e goala, ramanem pe V4_5ALL (modelul folosit dintotdeauna) — schimbarea modelului e
-  // deci strict opt-in, niciodata automata. Verificat direct in documentatia oficiala
-  // sunoapi.org: toate aceste modele accepta acelasi prompt de max. 500 caractere in
-  // customMode:false, deci buildPrompt() nu are nevoie de nicio ajustare la schimbarea
-  // modelului.
+  // deci strict opt-in, niciodata automata.
   const musicModel = (process.env.MUSIC_MODEL && process.env.MUSIC_MODEL.trim()) || 'V4_5ALL';
 
-  const requestBody = {
-    prompt,
-    customMode: false,
-    instrumental: false,
-    model: musicModel,
-    callBackUrl: `${DOMAIN}/api/music/callback`
-  };
+  const requestBody = isCustomLyrics
+    ? {
+        prompt,                 // versurile EXACTE, verbatim — cantate ca atare de Suno (customMode:true)
+        style: requestInput.style,
+        title: requestInput.title || 'Naluna',
+        customMode: true,
+        instrumental: false,
+        model: musicModel,
+        callBackUrl: `${DOMAIN}/api/music/callback`
+      }
+    : {
+        prompt,
+        customMode: false,
+        instrumental: false,
+        model: musicModel,
+        callBackUrl: `${DOMAIN}/api/music/callback`
+      };
 
   const createRes = await fetchWithTimeout(`${process.env.MUSIC_API_BASE_URL}/api/v1/generate`, {
     method: 'POST',
@@ -5168,14 +5319,25 @@ async function getAudioDuration(filePath) {
 // separate pentru stil muzical si versuri. Combinam totul intr-un singur text descriptiv:
 // stilul (tags), instructiunea explicita de limba, si povestea/ocazia/destinatarul.
 //
-// LIMITA SUNOAPI: cu customMode:false, campul "prompt" e limitat la 500 caractere.
+// CORECȚIE (2026-08-13, cerinta "folosirea povestii clientului"): limita presupusa anterior
+// (500 caractere) era GRESITA — verificata direct impotriva API-ului real de productie (un
+// apel real POST /api/v1/generate, customMode:false, cu un prompt de 700 caractere, a fost
+// ACCEPTAT cu succes, cod 200 + taskId). Documentatia oficiala curenta (docs.sunoapi.org)
+// arata limita reala a campului "prompt" ca fiind 3000 caractere pentru modelul V4 si 5000
+// pentru V4_5ALL (modelul folosit implicit de aceasta aplicatie). Cu limita veche de 500,
+// povestea clientului (pana la 2000 caractere, validata la creare) era aproape mereu
+// trunchiata drastic (uneori la doar ~160 caractere utile) — incalcare directa a cerintei ca
+// povestea sa ajunga COMPLETA la generator. Ridicam pragul la 2800 — sub cea mai mica limita
+// documentata (3000, V4), deci sigur indiferent de modelul configurat prin MUSIC_MODEL — si
+// marim rezerva garantata pentru poveste la 2000 (lungimea maxima reala permisa de backend),
+// ca povestea sa nu mai fie NICIODATA trunchiata in practica.
 // Prioritate la trunchiere (partea fixa nu se taie niciodata):
 //   1. limba + stilul + ocazia + destinatarul — obligatorii, intacte
 //   2. feedback-ul de editare (daca exista) — i se rezerva spatiu, dar limitat
-//   3. povestea — umple spatiul ramas, prima taiata daca nu incape tot
+//   3. povestea — umple spatiul ramas (garantat sa incapa intreaga, vezi mai sus)
 // Taierea se face pe caractere Unicode complete (code points), nu pe unitati UTF-16,
 // ca sa nu rupem niciodata un caracter multi-byte (emoji, litere in afara BMP) la mijloc.
-const SUNO_PROMPT_MAX_LEN = 500;
+const SUNO_PROMPT_MAX_LEN = 2800;
 
 // imparte corect pe caractere Unicode si taie fara sa rupa vreunul la mijloc
 function truncateSafely(str, maxLen) {
@@ -5376,10 +5538,38 @@ const RELATIONSHIP_MAX_LEN = 60;
 // Garantam intotdeauna cel putin acest spatiu pentru poveste — partea cea mai importanta
 // pentru personalizare (Partea 4) nu trebuie sa poata fi eliminata complet de un nume,
 // expeditor, relatie sau instructiune de ocazie/voce mai lunga, sau de instructiuni
-// repetitive. 160 e limita inferioara a intervalului 160-180 cerut explicit — redusa de la
-// 180 DOAR ca sa faca loc garantiei ca vocea aleasa explicit de client nu mai e eliminata
-// niciodata complet din prompt (cerinta explicita).
-const STORY_MIN_RESERVE = 160;
+// repetitive.
+// CORECȚIE (2026-08-13): marita la 2000 — lungimea MAXIMA reala permisa de backend pentru
+// campul story (vezi isValidString(story, 5, 2000) la POST /api/orders) — impreuna cu noul
+// SUNO_PROMPT_MAX_LEN (2800), aceasta garanteaza ca povestea clientului NU mai este niciodata
+// trunchiata, indiferent de lungimea celorlalte campuri (cerinta explicita: "trimis complet,
+// fara a fi pierdut sau trunchiat").
+const STORY_MIN_RESERVE = 2000;
+
+// Extras la scop de modul (2026-08-13) — mutate din interiorul buildPrompt() ca sa poata fi
+// reutilizate si de buildExactLyricsRequest() (campul "style" pentru customMode:true), fara
+// sa duplicam cele 15 descrieri de gen. Continutul ramane byte-identic cu inainte.
+const GENRE_STYLE_MAP = {
+  emotional: 'cinematic orchestral ballad, swelling strings and piano, rubato build, breathy vulnerable vocal, tearful climax',
+  suflet: 'intimate de suflet ballad, sparse guitar or piano, close warm vocal, quiet confessional unpolished mood',
+  pop: 'commercial pop, 100-120bpm, verse-chorus-bridge, synth hook, polished vocal, radio-ready energy',
+  acustic: 'unplugged acoustic folk, fingerpicked guitar, light percussion, natural room sound, plain sincere vocal',
+  petrecere: 'fast Romanian party beat, 130+bpm, syncopated dance rhythm, horns and synth stabs, shouted chorus, club energy',
+  balada: 'slow rubato piano ballad, sustained strings, no beat, dramatic dynamic swells, powerful sustained vocal',
+  manele: 'Romanian manele de jale, oriental scale, mournful clarinet, melismatic vocal slides, minor key grief',
+  copii: 'cheerful childrens song, simple major-key melody, glockenspiel and ukulele, bouncy rhythm, bright vocal',
+  populara: 'Romanian muzica populara, taraf violin and accordion, rustic dance rhythm, unornamented vocal, no autotune',
+  rock: 'driving rock, distorted electric guitar riff, live drums, powerful chest-voice vocal, big anthemic chorus',
+  colind: 'traditional Romanian carol, sleigh bells and choir, warm acoustic guitar, gentle festive reverent vocal',
+  modern: 'sleek modern pop-electronic, deep 808 sub bass, glossy synth pads, vocal chops, minimalist premium production',
+  hiphop: 'modern hip-hop, punchy 808 kick, hi-hat rolls, rap-sung flow, ad-libs, no ballad melody',
+  manele_suflet: 'Romanian manele de suflet, oriental scale, romantic clarinet, warm melismatic vocal, devoted love build',
+  motivational: 'inspirational anthem, driving toms, major-key triumphant chords, confident vocal, uplifting final chorus'
+};
+const LYRICS_LANGUAGE_NAMES = {
+  ro: 'Romanian', en: 'English', de: 'German', es: 'Spanish',
+  it: 'Italian', fr: 'French', bg: 'Bulgarian', tr: 'Turkish'
+};
 
 function buildPrompt(order, feedback, genreOverride) {
   // Rescris complet (2026-08-03, audit de calitate muzicala) — versiunea anterioara folosea
@@ -5401,34 +5591,12 @@ function buildPrompt(order, feedback, genreOverride) {
   // (verificat: genul selectat chiar ajunge, corect si complet, in promptul final), dar nu
   // poate garanta autenticitate muzicala perfecta daca modelul insusi nu are capacitatea sa
   // o produca — o limitare a providerului, nu a codului.
-  const genreMap = {
-    emotional: 'cinematic orchestral ballad, swelling strings and piano, rubato build, breathy vulnerable vocal, tearful climax',
-    suflet: 'intimate de suflet ballad, sparse guitar or piano, close warm vocal, quiet confessional unpolished mood',
-    pop: 'commercial pop, 100-120bpm, verse-chorus-bridge, synth hook, polished vocal, radio-ready energy',
-    acustic: 'unplugged acoustic folk, fingerpicked guitar, light percussion, natural room sound, plain sincere vocal',
-    petrecere: 'fast Romanian party beat, 130+bpm, syncopated dance rhythm, horns and synth stabs, shouted chorus, club energy',
-    balada: 'slow rubato piano ballad, sustained strings, no beat, dramatic dynamic swells, powerful sustained vocal',
-    manele: 'Romanian manele de jale, oriental scale, mournful clarinet, melismatic vocal slides, minor key grief',
-    copii: 'cheerful childrens song, simple major-key melody, glockenspiel and ukulele, bouncy rhythm, bright vocal',
-    populara: 'Romanian muzica populara, taraf violin and accordion, rustic dance rhythm, unornamented vocal, no autotune',
-    rock: 'driving rock, distorted electric guitar riff, live drums, powerful chest-voice vocal, big anthemic chorus',
-    colind: 'traditional Romanian carol, sleigh bells and choir, warm acoustic guitar, gentle festive reverent vocal',
-    modern: 'sleek modern pop-electronic, deep 808 sub bass, glossy synth pads, vocal chops, minimalist premium production',
-    hiphop: 'modern hip-hop, punchy 808 kick, hi-hat rolls, rap-sung flow, ad-libs, no ballad melody',
-    manele_suflet: 'Romanian manele de suflet, oriental scale, romantic clarinet, warm melismatic vocal, devoted love build',
-    motivational: 'inspirational anthem, driving toms, major-key triumphant chords, confident vocal, uplifting final chorus'
-  };
-
-  const languageNames = {
-    ro: 'Romanian', en: 'English', de: 'German', es: 'Spanish',
-    it: 'Italian', fr: 'French', bg: 'Bulgarian', tr: 'Turkish'
-  };
-  const lyricsLanguage = languageNames[order.lang] || 'Romanian';
+  const lyricsLanguage = LYRICS_LANGUAGE_NAMES[order.lang] || 'Romanian';
   // genreOverride: folosit pentru a doua cerere Suno (Premium/Video, al doilea gen ales de
   // client) — restul promptului (poveste, destinatar, ocazie, voce) ramane IDENTIC intre
   // cele doua cereri; DOAR stilul muzical difera, ca ambele melodii sa fie despre aceeasi
   // poveste reala, in doua interpretari muzicale reale, distincte.
-  const styleTags = genreMap[genreOverride || order.genre] || 'pop, warm vocals';
+  const styleTags = GENRE_STYLE_MAP[genreOverride || order.genre] || 'pop, warm vocals';
   // MODIFICARE STRICTĂ — pagina de ocazie (hotfix 2026-08-08): relatia EXACTA (recipientRole/
   // senderRole), aleasa explicit de client la creare — NICIODATA dedusa aici din nume/voce.
   // Fallback pentru comenzi vechi cu occasion='bunici' create in fereastra scurta cat a existat
@@ -5510,7 +5678,7 @@ function buildPrompt(order, feedback, genreOverride) {
           ? ` Address as ${roNoun}+name, never bare name (from their ${senderNoun}).`
           : ` Address as ${roNoun}+name, never bare name.`)
       : (senderNoun
-          ? ` Always address the recipient as ${roNoun} plus their name (never bare first name); the song is from their ${senderNoun}.`
+          ? ` Always address the recipient as ${roNoun} plus their name (never by first name alone); the song is from their ${senderNoun}.`
           : ` Always address the recipient as ${roNoun} plus their name, never by first name alone.`);
     if (isBoth) clause += ' Never omit either person.';
     return clause;
@@ -5697,6 +5865,53 @@ function buildPrompt(order, feedback, genreOverride) {
   }
 
   return prompt;
+}
+
+// ==========================================================================================
+// ADAUGAT (2026-08-13) — cerinta "pastrarea exacta a versurilor editate": construieste cererea
+// customMode:true pentru SunoAPI, folosita STRICT cand clientul a editat manual versurile unei
+// melodii (editor -> POST /regenerate). Spre deosebire de buildPrompt() (customMode:false, Suno
+// scrie singur versurile dintr-un prompt descriptiv), aici campul "prompt" trimis catre Suno
+// devine EXACT `exactLyrics`, verbatim — Suno il canta ca atare, fara sa il rescrie ("The
+// prompt will be strictly used as the lyrics and sung in the generated track.", confirmat
+// direct in documentatia oficiala docs.sunoapi.org). Nu mai trecem povestea/ocazia/destinatarul
+// aici — versurile deja editate de client CONTIN toata personalizarea ceruta; repetarea lor
+// intr-un camp separat ar fi doar zgomot si ar concura inutil cu bugetul de caractere.
+// Returneaza {style, title, lyrics} — vezi callMusicProvider() pentru cum sunt trimise mai
+// departe catre furnizor.
+function buildExactLyricsRequest(order, exactLyrics, genreOverride, voicePreference, feedback) {
+  const lyrics = String(exactLyrics || '').trim();
+  if (!lyrics) {
+    throw new Error('Versurile editate sunt goale — cererea cu versuri exacte nu poate fi trimisa.');
+  }
+
+  const lyricsLanguage = LYRICS_LANGUAGE_NAMES[order.lang] || 'Romanian';
+  const styleTags = GENRE_STYLE_MAP[genreOverride || order.genre] || 'pop, warm vocals';
+
+  const VOICE_STYLE_NOTE = {
+    female: ' Female lead vocal.',
+    male: ' Male lead vocal.',
+    duet: ' Male and female duet, both voices clearly present.',
+    auto: ''
+  };
+  const effectiveVoice = VOICE_PREFERENCES.includes(voicePreference) ? voicePreference : 'auto';
+
+  // Stilul (max. 1000 caractere pentru V4_5ALL, verificat in documentatia oficiala) — DOAR
+  // directie muzicala/vocala, niciodata versuri sau poveste (acelea sunt deja in `lyrics`).
+  // Feedback-ul liber al clientului ("Nu este exact cum îți dorești?", ex: "mai vesel, mai
+  // lent") e despre STIL/interpretare, niciodata versuri — merge aici, niciodata amestecat in
+  // campul `lyrics` (care ramane STRICT textul editat, verbatim, nimic altceva adaugat).
+  const feedbackText = feedback ? String(feedback).trim() : '';
+  let style = `${styleTags}. Sing entirely in ${lyricsLanguage}. Short natural instrumental intro, vocals starting around 8-10 seconds.${VOICE_STYLE_NOTE[effectiveVoice]}`;
+  if (feedbackText) style += ` ${feedbackText}`;
+  style = truncateSafely(style, 1000);
+
+  // Titlu scurt (max. 80 caractere pentru V4_5ALL) — derivat din destinatar, fara sa expuna
+  // niciun detaliu din poveste; simplu fallback daca destinatarul lipseste.
+  const recipient = String(order.recipient || '').trim();
+  const title = truncateSafely(recipient ? `Song for ${recipient}` : 'Naluna', 80);
+
+  return { style, title, lyrics };
 }
 
 // ==========================================================================================

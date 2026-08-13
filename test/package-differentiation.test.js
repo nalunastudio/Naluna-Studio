@@ -50,7 +50,7 @@ test('POST /api/orders/:orderId/regenerate: Premium/Video regenereaza DOAR varia
     'regenerarea trebuie sa decida optiunile dupa numarul de variante al pachetului'
   );
   assert.ok(
-    server.includes('{ replaceVariantId: requestedVariantId, regenerationJobId }'),
+    server.includes('{ replaceVariantId: requestedVariantId, regenerationJobId, exactLyrics: exactLyrics || null }'),
     'regenerarea Premium/Video trebuie sa treaca replaceVariantId catre runGeneration'
   );
 });

@@ -46,8 +46,10 @@ test('server.js: POST /regenerate seteaza regenerateKeepOriginal=true DOAR pentr
 
 test('server.js: regenerarea Standard trece keepOriginalAsAlternative catre runGeneration', () => {
   const server = read('server.js');
+  // MODIFICARE (2026-08-13, "pastrarea exacta a versurilor editate"): regenOptions include acum
+  // si exactLyrics — keepOriginalAsAlternative/regenerationJobId raman neschimbate ca structura.
   assert.ok(
-    server.includes(': { keepOriginalAsAlternative: true, regenerationJobId };'),
+    server.includes(': { keepOriginalAsAlternative: true, regenerationJobId, exactLyrics: exactLyrics || null };'),
     'ramura non-Premium/Video a regenOptions trebuie sa fie keepOriginalAsAlternative, nu {} (inlocuire completa)'
   );
 });

@@ -425,7 +425,13 @@
         <div id="premium-result-view" style="display:none;">
           <div id="premium-result-players"></div>
           <div style="display:flex; flex-direction:column; gap:12px; margin-top:8px;">
-            <button type="button" class="btn-cta-orange" id="premium-edit-open-btn" style="max-width:none;"></button>
+            <!-- CORECȚIE (2026-08-13): reutilizeaza EXACT aceeasi caseta conturata, cu creion,
+                 folosita de Standard (#edit-menu-toggle-btn, .btn-toggle-orange) — nu mai e un
+                 buton CTA plin (btn-cta-orange), care nu corespundea cerintei "aceeași casetă
+                 conturată, cu creion". -->
+            <button type="button" class="btn-toggle-orange" id="premium-edit-open-btn" style="max-width:none;">
+              <span aria-hidden="true">✏️</span> <span id="premium-edit-open-btn-label"></span>
+            </button>
             <div id="premium-result-checkout-slot"></div>
           </div>
           <div id="premium-result-status-msg" style="font-size:13px; margin-top:10px; text-align:center;"></div>
@@ -454,6 +460,18 @@
               <label id="premium-edit-song1-genre-label" class="edit-zone-title"></label>
               <p class="edit-zone-explain" id="premium-edit-song1-genre-explain"></p>
               <select id="premium-edit-song1-genre"></select>
+            </div>
+
+            <!-- CORECȚIE (2026-08-13): caseta "Nu este exact cum îți dorești?" + badge-ul
+                 OPȚIONAL — lipsea complet din editarea Premium, desi e o componenta ceruta
+                 explicit, reutilizata identic din editarea Standard (#feedback). -->
+            <div class="field edit-zone" style="margin-top:14px;">
+              <div class="edit-zone-title-row">
+                <label for="premium-edit-song1-feedback" class="edit-zone-title" id="premium-edit-song1-feedback-label"></label>
+                <span class="edit-zone-optional" id="premium-edit-song1-feedback-badge"></span>
+              </div>
+              <p class="edit-zone-explain" id="premium-edit-song1-feedback-explain"></p>
+              <textarea id="premium-edit-song1-feedback"></textarea>
             </div>
 
             <div class="field edit-zone" style="margin-top:14px;">
@@ -486,6 +504,15 @@
             </div>
 
             <div class="field edit-zone" style="margin-top:14px;">
+              <div class="edit-zone-title-row">
+                <label for="premium-edit-song2-feedback" class="edit-zone-title" id="premium-edit-song2-feedback-label"></label>
+                <span class="edit-zone-optional" id="premium-edit-song2-feedback-badge"></span>
+              </div>
+              <p class="edit-zone-explain" id="premium-edit-song2-feedback-explain"></p>
+              <textarea id="premium-edit-song2-feedback"></textarea>
+            </div>
+
+            <div class="field edit-zone" style="margin-top:14px;">
               <label id="premium-edit-song2-lyrics-label" class="edit-zone-title"></label>
               <p class="edit-zone-explain" id="premium-edit-song2-lyrics-explain"></p>
               <textarea id="premium-edit-song2-lyrics" style="min-height:200px; font-family:'Fraunces', serif; font-style:italic; line-height:1.65;" maxlength="4000"></textarea>
@@ -502,7 +529,8 @@
         </div>
 
         <div id="premium-compare-view" style="display:none;">
-          <h2 id="premium-compare-title" style="font-family:'Fraunces',serif; font-weight:400; font-size:19px; margin:0 0 6px;"></h2>
+          <span class="standard-choice-eyebrow" id="premium-compare-eyebrow" style="display:block; text-align:center; margin:0 auto 12px;"></span>
+          <h2 id="premium-compare-title" style="font-family:'Fraunces',serif; font-weight:400; font-size:19px; margin:0 0 6px; text-align:center;"></h2>
           <p id="premium-compare-subtitle" style="color:var(--text-secondary); font-size:14px; margin:0 0 18px;"></p>
           <div id="premium-compare-cards"></div>
           <div class="field-error" id="premium-compare-error" style="margin-bottom:10px;"></div>
@@ -869,8 +897,9 @@
       premium_edit_voice_label: 'Alege vocea',
       premium_edit_step1_continue_btn: 'Continuă la a doua melodie',
       premium_edit_back_btn: 'Înapoi',
-      premium_compare_title: 'Ce două melodii vrei să primești?',
-      premium_compare_subtitle: 'Ascultă toate versiunile și alege exact două pentru a continua la plată.',
+      premium_compare_eyebrow: 'PASUL URMĂTOR',
+      premium_compare_title: 'Ce versiune vrei să primești?',
+      premium_compare_subtitle: 'Ascultă cele 4 melodii, apoi alege 2 pentru a continua la plată.',
       premium_compare_need_two: 'Alege exact două melodii.',
       editor_title: 'Editează versurile', editor_hint: 'Modifică un cuvânt, un vers sau o strofă. Formatarea pe strofe rămâne neschimbată.',
       save_btn: 'Salvează modificările', cancel_btn: 'Renunță',
@@ -941,8 +970,9 @@
       premium_edit_voice_label: 'Choose the voice',
       premium_edit_step1_continue_btn: 'Continue to the second song',
       premium_edit_back_btn: 'Back',
-      premium_compare_title: 'Which two songs do you want to receive?',
-      premium_compare_subtitle: 'Listen to all versions and choose exactly two to continue to payment.',
+      premium_compare_eyebrow: 'NEXT STEP',
+      premium_compare_title: 'Which version do you want to receive?',
+      premium_compare_subtitle: 'Listen to all 4 songs, then choose 2 to continue to payment.',
       premium_compare_need_two: 'Choose exactly two songs.',
       editor_title: 'Edit the lyrics', editor_hint: 'Change a word, a line, or a verse. The verse formatting stays the same.',
       save_btn: 'Save changes', cancel_btn: 'Cancel',
@@ -1013,8 +1043,9 @@
       premium_edit_voice_label: 'Wähle die Stimme',
       premium_edit_step1_continue_btn: 'Weiter zum zweiten Lied',
       premium_edit_back_btn: 'Zurück',
-      premium_compare_title: 'Welche zwei Lieder möchtest du erhalten?',
-      premium_compare_subtitle: 'Höre dir alle Versionen an und wähle genau zwei aus, um mit der Zahlung fortzufahren.',
+      premium_compare_eyebrow: 'NÄCHSTER SCHRITT',
+      premium_compare_title: 'Welche Version möchtest du erhalten?',
+      premium_compare_subtitle: 'Höre dir alle 4 Lieder an und wähle dann 2 aus, um mit der Zahlung fortzufahren.',
       premium_compare_need_two: 'Wähle genau zwei Lieder aus.',
       editor_title: 'Text bearbeiten', editor_hint: 'Ändere ein Wort, eine Zeile oder eine Strophe. Die Strophenformatierung bleibt gleich.',
       save_btn: 'Änderungen speichern', cancel_btn: 'Abbrechen',
@@ -1085,8 +1116,9 @@
       premium_edit_voice_label: 'Elige la voz',
       premium_edit_step1_continue_btn: 'Continuar a la segunda canción',
       premium_edit_back_btn: 'Atrás',
-      premium_compare_title: '¿Qué dos canciones quieres recibir?',
-      premium_compare_subtitle: 'Escucha todas las versiones y elige exactamente dos para continuar al pago.',
+      premium_compare_eyebrow: 'SIGUIENTE PASO',
+      premium_compare_title: '¿Qué versión quieres recibir?',
+      premium_compare_subtitle: 'Escucha las 4 canciones y elige 2 para continuar al pago.',
       premium_compare_need_two: 'Elige exactamente dos canciones.',
       editor_title: 'Editar la letra', editor_hint: 'Cambia una palabra, un verso o una estrofa. El formato de las estrofas no cambia.',
       save_btn: 'Guardar cambios', cancel_btn: 'Cancelar',
@@ -1157,8 +1189,9 @@
       premium_edit_voice_label: 'Scegli la voce',
       premium_edit_step1_continue_btn: 'Continua alla seconda canzone',
       premium_edit_back_btn: 'Indietro',
-      premium_compare_title: 'Quali due canzoni vuoi ricevere?',
-      premium_compare_subtitle: 'Ascolta tutte le versioni e scegli esattamente due per continuare al pagamento.',
+      premium_compare_eyebrow: 'PROSSIMO PASSO',
+      premium_compare_title: 'Quale versione vuoi ricevere?',
+      premium_compare_subtitle: 'Ascolta tutte e 4 le canzoni, poi scegline 2 per continuare al pagamento.',
       premium_compare_need_two: 'Scegli esattamente due canzoni.',
       editor_title: 'Modifica il testo', editor_hint: 'Cambia una parola, un verso o una strofa. La formattazione delle strofe resta invariata.',
       save_btn: 'Salva le modifiche', cancel_btn: 'Annulla',
@@ -1229,8 +1262,9 @@
       premium_edit_voice_label: 'Choisis la voix',
       premium_edit_step1_continue_btn: 'Continuer vers la deuxième chanson',
       premium_edit_back_btn: 'Retour',
-      premium_compare_title: 'Quelles deux chansons veux-tu recevoir ?',
-      premium_compare_subtitle: 'Écoute toutes les versions et choisis-en exactement deux pour continuer vers le paiement.',
+      premium_compare_eyebrow: 'ÉTAPE SUIVANTE',
+      premium_compare_title: 'Quelle version veux-tu recevoir ?',
+      premium_compare_subtitle: 'Écoute les 4 chansons, puis choisis-en 2 pour continuer vers le paiement.',
       premium_compare_need_two: 'Choisis exactement deux chansons.',
       editor_title: 'Modifier les paroles', editor_hint: 'Modifiez un mot, un vers ou un couplet. La mise en forme des couplets reste identique.',
       save_btn: 'Enregistrer les modifications', cancel_btn: 'Annuler',
@@ -1301,8 +1335,9 @@
       premium_edit_voice_label: 'Избери гласа',
       premium_edit_step1_continue_btn: 'Продължи към втората песен',
       premium_edit_back_btn: 'Назад',
-      premium_compare_title: 'Кои две песни искаш да получиш?',
-      premium_compare_subtitle: 'Изслушай всички версии и избери точно две, за да продължиш към плащането.',
+      premium_compare_eyebrow: 'СЛЕДВАЩА СТЪПКА',
+      premium_compare_title: 'Коя версия искаш да получиш?',
+      premium_compare_subtitle: 'Изслушай всичките 4 песни, после избери 2, за да продължиш към плащането.',
       premium_compare_need_two: 'Избери точно две песни.',
       editor_title: 'Редактирай текста', editor_hint: 'Промени дума, стих или куплет. Форматирането на куплетите остава същото.',
       save_btn: 'Запази промените', cancel_btn: 'Откажи',
@@ -1373,8 +1408,9 @@
       premium_edit_voice_label: 'Sesi seç',
       premium_edit_step1_continue_btn: 'İkinci şarkıya devam et',
       premium_edit_back_btn: 'Geri',
-      premium_compare_title: 'Hangi iki şarkıyı almak istiyorsun?',
-      premium_compare_subtitle: 'Tüm versiyonları dinle ve ödemeye devam etmek için tam olarak iki tanesini seç.',
+      premium_compare_eyebrow: 'SONRAKİ ADIM',
+      premium_compare_title: 'Hangi versiyonu almak istiyorsun?',
+      premium_compare_subtitle: 'Tüm 4 şarkıyı dinle, sonra ödemeye devam etmek için 2 tanesini seç.',
       premium_compare_need_two: 'Tam olarak iki şarkı seç.',
       editor_title: 'Sözleri düzenle', editor_hint: 'Bir kelimeyi, bir dizeyi veya bir kıtayı değiştirin. Kıta biçimlendirmesi aynı kalır.',
       save_btn: 'Değişiklikleri kaydet', cancel_btn: 'Vazgeç',
@@ -2987,7 +3023,7 @@
     });
 
     const editBtn = document.getElementById('premium-edit-open-btn');
-    editBtn.textContent = t.edit_lyrics_btn;
+    document.getElementById('premium-edit-open-btn-label').textContent = t.edit_lyrics_btn;
     editBtn.onclick = () => {
       premiumEditViewOpen = true;
       renderPremiumFlow(order, false);
@@ -3057,6 +3093,15 @@
     document.getElementById('premium-edit-song2-genre-label').textContent = t.edit_genre_label;
     document.getElementById('premium-edit-song2-genre-explain').textContent = t.edit_genre_explain;
 
+    // CORECȚIE (2026-08-13): caseta "Nu este exact cum îți dorești?" — reutilizeaza EXACT
+    // aceleasi texte (feedback_label/explain/optional_badge/ph) folosite de editarea Standard.
+    ['premium-edit-song1-feedback', 'premium-edit-song2-feedback'].forEach(prefix => {
+      document.getElementById(prefix + '-label').textContent = t.feedback_label;
+      document.getElementById(prefix + '-explain').textContent = t.feedback_explain;
+      document.getElementById(prefix + '-badge').textContent = t.feedback_optional_badge;
+      document.getElementById(prefix).placeholder = t.feedback_ph;
+    });
+
     // Editarea manuala a versurilor reutilizeaza EXACT titlul/explicatia ecranului dedicat deja
     // existent (editor_title/editor_hint, folosite si de openLyricsEditor) — niciun text nou.
     document.getElementById('premium-edit-song1-lyrics-label').textContent = t.editor_title;
@@ -3089,6 +3134,13 @@
     const song2Lyrics = document.getElementById('premium-edit-song2-lyrics');
     song1Lyrics.value = translateSectionLabelsForDisplay(effectiveLyrics(v1), order.lang);
     song2Lyrics.value = translateSectionLabelsForDisplay(effectiveLyrics(v2), order.lang);
+
+    // Feedback-ul liber (STRICT optional, la fel ca la Standard) — nu se persista intre randari,
+    // reincepe gol de fiecare data cand editarea Premium se deschide.
+    const song1Feedback = document.getElementById('premium-edit-song1-feedback');
+    const song2Feedback = document.getElementById('premium-edit-song2-feedback');
+    song1Feedback.value = '';
+    song2Feedback.value = '';
 
     // Vocea — independenta per melodie (cerinta explicita), initializata implicit cu vocea
     // curenta a comenzii pentru ambele, pana clientul alege explicit alta pentru vreuna din ele.
@@ -3149,13 +3201,15 @@
           variantId: v1.id,
           lyrics: normalizeSectionLabelsForSaving(song1Lyrics.value.trim(), order.lang),
           genre: song1GenreSelect.value !== v1.genre ? song1GenreSelect.value : undefined,
-          voicePreference: song1Voice
+          voicePreference: song1Voice,
+          feedback: song1Feedback.value.trim() || undefined
         },
         {
           variantId: v2.id,
           lyrics: normalizeSectionLabelsForSaving(song2Lyrics.value.trim(), order.lang),
           genre: song2GenreSelect.value !== v2.genre ? song2GenreSelect.value : undefined,
-          voicePreference: song2Voice
+          voicePreference: song2Voice,
+          feedback: song2Feedback.value.trim() || undefined
         }
       ];
       // dezactivat imediat la primul click — previne dublul-click/joburi duplicate (protectie
@@ -3196,6 +3250,7 @@
       if (slotA !== slotB) return slotA - slotB;
       return Number(!!a.isEditedAlternative) - Number(!!b.isEditedAlternative);
     });
+    document.getElementById('premium-compare-eyebrow').textContent = t.premium_compare_eyebrow;
     document.getElementById('premium-compare-title').textContent = t.premium_compare_title;
     document.getElementById('premium-compare-subtitle').textContent = t.premium_compare_subtitle;
 
