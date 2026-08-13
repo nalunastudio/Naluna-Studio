@@ -124,9 +124,18 @@ test('server.js: protectia "Amândoi" foloseste recipientMode STRICT === "both" 
   assert.ok(server.includes('typeof order.recipientNames.name2 === \'string\' && order.recipientNames.name2.trim()'));
 });
 
-test('server.js: cascada de scurtare sare peste trunchierea lui recipient cand e combo protejat', () => {
+// CORECȚIE (2026-08-13, runda 6, "numele proprii sunt imuabile" — ex. real, raportat live:
+// numele expeditorului "Alexandru" aparea in versuri ca "Alexandr"): protectia "niciodata
+// trunchiat", care se aplica inainte DOAR la recipient in cazul "Amândoi" (combo), a fost extinsa
+// la TOATE numele (recipient SI sender, in toate cazurile) — cascada de scurtare nu mai contine
+// NICIUN pas care sa trunchieze `sender`/`recipient`, indiferent de recipientIsProtectedCombo.
+test('server.js: cascada de scurtare NU mai contine niciun pas care sa trunchieze sender/recipient — numele proprii nu se trunchiaza NICIODATA, in niciun caz (nu doar combo protejat)', () => {
   const server = read('server.js');
-  assert.ok(server.includes('() => { if (!recipientIsProtectedCombo) recipient = truncateSafely(recipient, 30); },'));
-  assert.ok(server.includes('() => { if (!recipientIsProtectedCombo) recipient = truncateSafely(recipient, 15); },'));
-  assert.ok(server.includes('() => { if (!recipientIsProtectedCombo) recipient = truncateSafely(recipient, 10); }'));
+  const idx = server.indexOf('const shrinkSteps = [');
+  const end = server.indexOf('];', idx);
+  const body = server.slice(idx, end);
+  assert.ok(!/truncateSafely\(sender,/.test(body), 'niciun pas din cascada nu trebuie sa trunchieze sender');
+  assert.ok(!/truncateSafely\(recipient,/.test(body), 'niciun pas din cascada nu trebuie sa trunchieze recipient');
+  // relatia (text liber, NU nume propriu) ramane STRICT supusa cascadei, ca inainte.
+  assert.ok(/truncateSafely\(relationship,/.test(body), 'relatia (text liber) trebuie sa ramana in cascada de scurtare');
 });

@@ -198,7 +198,9 @@ test('buildPrompt: separarea poveste 1/poveste 2 Premium ramane corecta cu noua 
 test('server.js: buildExactLyricsRequest trimite versurile editate VERBATIM (customMode:true, campul "prompt" = versurile), niciodata ca instructiune catre un model care le rescrie', () => {
   assert.match(server, /function buildExactLyricsRequest\(order, exactLyrics, genreOverride, voicePreference, feedback\) \{/);
   const idx = server.indexOf('function buildExactLyricsRequest');
-  const body = server.slice(idx, idx + 2600);
+  // fereastra marita (2026-08-13, runda 6): clauza noua de reproducere exacta in campul style
+  // a impins "return { style, title, lyrics };" dincolo de fereastra veche de 2600 caractere.
+  const body = server.slice(idx, idx + 3200);
   assert.ok(body.includes('return { style, title, lyrics };'), 'trebuie sa returneze versurile ca un camp separat, netrunchiat de bugetul de stil');
 });
 
@@ -540,6 +542,99 @@ test('buildPrompt: cel putin un semnal explicit anti-inventie ("invent nothing"/
   const prompt = buildPrompt(order, '', undefined);
   assert.match(prompt, /invent nothing|never invented|not invented|invented ones/i, `cel putin un semnal anti-inventie trebuie sa fie prezent, a produs: ${prompt}`);
   assert.ok(prompt.includes('Multumesc pentru tot sprijinul'), `inceputul povestii reale trebuie sa fie prezent, a produs: ${prompt}`);
+});
+
+// ---------------------------------------------------------------------------------------------
+// CERINTA (2026-08-13, runda 6, "numele proprii sunt imuabile" — ex. real, raportat live: numele
+// expeditorului "Alexandru" aparea in versurile Premium ca forma trunchiata "Alexandr"): cauza
+// gasita — cascada de scurtare a promptului trunchia `sender`/`recipient` la 30/15/8-10 caractere
+// cand bugetul fix era prea stramt; un nume real de 9 caractere ("Alexandru") era taiat exact la
+// pasul final ("sender", 8 caractere), pierzand ultima litera. Pasii care trunchiau sender/
+// recipient au fost eliminati COMPLET din cascada — numele proprii nu se mai trunchiaza NICIODATA,
+// indiferent de bugetul de prompt (relatia, text liber, ramane in continuare supusa cascadei).
+// ---------------------------------------------------------------------------------------------
+test('buildPrompt: numele expeditorului "Alexandru" ramane EXACT "Alexandru" (niciodata "Alexandr"), chiar si intr-un scenariu greu (bunicul Victor, voce duet, poveste lunga)', () => {
+  const order = {
+    occasion: 'bunici', recipientRole: 'grandfather', genre: 'suflet', lang: 'ro',
+    recipient: 'Victor', senderName: 'Alexandru', relationship: 'nepotul',
+    voicePreference: 'duet',
+    story: 'Bunicule, iti multumesc pentru tot ce ai facut pentru mine de-a lungul anilor, esti un exemplu pentru mine si te iubesc foarte mult, mereu ai fost alaturi de mine la bine si la greu.'
+  };
+  const prompt = buildPrompt(order, '', undefined);
+  assert.ok(prompt.includes('Alexandru'), `numele expeditorului trebuie sa apara EXACT "Alexandru", a produs: ${prompt}`);
+  assert.ok(!/Alexandr(?!u)/.test(prompt), `nu trebuie sa apara niciodata forma trunchiata "Alexandr", a produs: ${prompt}`);
+});
+
+test('buildPrompt: numele destinatarului si expeditorului raman COMPLETE chiar si in cel mai greu scenariu (nume foarte lungi, nunta, gen cu tag lung, voce duet) — doar relatia (text liber) mai poate fi scurtata', () => {
+  const order = {
+    occasion: 'nunta', weddingType: 'wedding', recipientRole: 'other', genre: 'manele_suflet', lang: 'ro',
+    recipient: 'Alexandru Ionut Popescu Georgescu', senderName: 'Familia Popescu Georgescu Ionescu',
+    relationship: 'cei mai buni prieteni din copilarie si colegii de facultate', voicePreference: 'duet',
+    story: 'O poveste foarte lunga cu multe detalii importante despre viata noastra impreuna, calatorii, momente grele si fericite, sprijin reciproc.'
+  };
+  const prompt = buildPrompt(order, '', undefined);
+  assert.ok(prompt.includes('Alexandru Ionut Popescu Georgescu'), `destinatarul trebuie sa ramana COMPLET, a produs: ${prompt}`);
+  assert.ok(prompt.includes('Familia Popescu Georgescu Ionescu'), `expeditorul trebuie sa ramana COMPLET, a produs: ${prompt}`);
+});
+
+// ---------------------------------------------------------------------------------------------
+// CERINTE (2026-08-13, runda 6, "audio-ul canta alte cuvinte decat versurile afisate"):
+// investigatie exhaustiva a traseului audio<->versuri — taskId (query param explicit la fiecare
+// apel HTTP), track.id (folosit atat pentru audio cat si pentru versuri, din ACELASI obiect
+// `track`), variantId (generat nou per varianta, niciodata reutilizat). Niciun punct din cod nu
+// asociaza rezultate DOAR dupa pozitia intr-un array — Promise.all pastreaza garantat ordinea
+// input-ului (taskId1/taskId2, r1/r2), indiferent de ordinea reala de rezolvare a promisiunilor.
+// Editarile concurente sunt deja blocate atomic (db.claimOrderForRegeneration, WHERE status NOT
+// IN ('generating', ...)), deci versurile trimise la dispatch nu pot fi suprascrise inainte de
+// finalizare. Verificarile de mai jos confirma static aceste garantii structurale.
+// ---------------------------------------------------------------------------------------------
+test('server.js: buildVariantFromTrack foloseste audioUrl SI lyrics din ACELASI parametru `track` — niciodata surse diferite pentru audio si versuri', () => {
+  const idx = server.indexOf('async function buildVariantFromTrack(orderId, variantId, track, taskId) {');
+  const end = server.indexOf('async function ', idx + 10);
+  assert.ok(idx !== -1);
+  const body = server.slice(idx, end);
+  assert.ok(body.includes('if (!track.audioUrl)'), 'audio-ul trebuie citit din track.audioUrl');
+  assert.ok(body.includes('downloadFile(track.audioUrl, tempFull)'), 'descarcarea trebuie sa foloseasca track.audioUrl');
+  assert.ok(body.includes('originalLyrics: track.lyrics || null,'), 'versurile trebuie citite din ACELASI track.lyrics, niciodata dintr-o alta sursa');
+});
+
+test('server.js: taskId1/taskId2 si r1/r2 (rezultatele Promise.all) raman index-aliniate cu genre1/genre2 si songSlot 1/2 — niciodata inversate, indiferent de ordinea reala de rezolvare', () => {
+  const idx = server.indexOf('async function waitForDualTaskAndFinalize');
+  const end = server.indexOf('async function ', idx + 10);
+  assert.ok(idx !== -1);
+  const body = server.slice(idx, end);
+  // Promise.all pastreaza GARANTAT ordinea array-ului de intrare in rezultat, indiferent de
+  // ordinea reala de rezolvare a promisiunilor — r1 corespunde STRICT taskId1, r2 STRICT taskId2.
+  assert.ok(body.includes('const [r1, r2] = await Promise.all(['), 'r1/r2 trebuie extrase din Promise.all, care garanteaza alinierea cu ordinea taskId1/taskId2');
+  assert.ok(body.includes('pollForResult(taskId1, orderId)'));
+  assert.ok(body.includes('pollForResult(taskId2, orderId)'));
+});
+
+test('server.js: pollForResult si extractSunoTracks sunt scopate STRICT pe taskId-ul primit ca parametru — fiecare apel HTTP catre Suno trimite explicit taskId in query string, niciodata o stare partajata/globala', () => {
+  const idx = server.indexOf('async function pollForResult(taskId, orderId');
+  const end = server.indexOf('async function downloadFile');
+  assert.ok(idx !== -1);
+  const body = server.slice(idx, end);
+  assert.ok(body.includes('record-info?taskId=${encodeURIComponent(taskId)}'), 'fiecare cerere de polling trebuie sa trimita explicit taskId-ul propriu, niciodata implicit');
+});
+
+test('server.js: editarile concurente sunt blocate atomic (db.claimOrderForRegeneration) — versurile trimise la dispatch nu pot fi suprascrise de o a doua editare inainte ca prima sa se finalizeze', () => {
+  const dbjs = read('db.js');
+  const idx = dbjs.indexOf('async function claimOrderForRegeneration');
+  assert.ok(idx !== -1);
+  const body = dbjs.slice(idx, idx + 700);
+  assert.ok(body.includes("status NOT IN ('generating', 'processing_provider_result', 'ready')"), 'rezervarea atomica trebuie sa respinga o a doua editare cat timp prima e in curs');
+});
+
+test('buildExactLyricsRequest: campul style contine acum o cerere explicita de reproducere exacta, cuvant cu cuvant, a versurilor — intareste promisiunea documentata a furnizorului (customMode:true), fara sa schimbe campul `lyrics`', () => {
+  const idx = server.indexOf('function buildExactLyricsRequest(order, exactLyrics, genreOverride, voicePreference, feedback) {');
+  const end = server.indexOf('return { style, title, lyrics };');
+  assert.ok(idx !== -1 && end !== -1);
+  const body = server.slice(idx, end);
+  assert.match(body, /Sing these exact lyrics precisely as written, word for word/i, `campul style trebuie sa contina cererea explicita de reproducere exacta, a produs: ${body}`);
+  // versurile insele (campul `lyrics`, trimis separat) raman STRICT `exactLyrics`, verbatim —
+  // clauza noua nu modifica deloc continutul cantat, doar intareste instructiunea de stil.
+  assert.ok(body.includes('const lyrics = String(exactLyrics || \'\').trim();'), 'campul lyrics trebuie sa ramana STRICT textul exact al clientului, neschimbat');
 });
 
 // ---------------------------------------------------------------------------------------------

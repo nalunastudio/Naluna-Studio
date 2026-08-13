@@ -6019,27 +6019,28 @@ function buildPrompt(order, feedback, genreOverride) {
   //   2. instructiunea de personalizare/intro -> forma scurta;
   //   3. instructiunea de voce -> forma scurta (NICIODATA eliminata complet daca s-a ales
   //      explicit o voce — vezi comentariul de la VOICE_INSTRUCTIONS_SHORT mai sus);
-  //   4. relatia, apoi expeditorul, apoi destinatarul — scurtate progresiv, NICIODATA
-  //      eliminate complet.
+  //   4. relatia (text liber, descriptiv, NU un nume propriu) — scurtata progresiv, NICIODATA
+  //      eliminata complet.
   // Povestea insasi nu e scurtata aici — bugetul ei se calculeaza separat mai jos, cu o
   // rezerva minima garantata (STORY_MIN_RESERVE, 160-180 caractere utile).
+  //
+  // CORECȚIE (2026-08-13, runda 6, "numele proprii sunt imuabile" — ex. real, raportat live:
+  // numele expeditorului "Alexandru" aparea in versuri ca "Alexandr"): pasii care trunchiau
+  // `sender`/`recipient` la 30/15/8-10 caractere AU FOST ELIMINAȚI COMPLET — un nume real de 9+
+  // caractere ("Alexandru") putea fi taiat exact la mijloc de pasul final ("sender", 8 caractere),
+  // pierzand ultima litera. NUMELE PROPRII (destinatar, expeditor) nu se mai trunchiaza NICIODATA
+  // in aceasta cascada — acelasi tratament ca recipientIsProtectedCombo ("Amândoi", deja protejat
+  // complet) extins acum la TOATE numele, in toate cazurile. In scenariile extreme (nume foarte
+  // lungi SI ocazie/gen cu descriere lunga), `head` poate depasi usor budgetForFixedPart — accepta
+  // deliberat, ca in orice alt caz extrem documentat mai sus: povestea primeste corespunzator mai
+  // putin spatiu, NICIODATA numele.
   const budgetForFixedPart = SUNO_PROMPT_MAX_LEN - STORY_MIN_RESERVE;
-  // recipientIsProtectedCombo (Nuntă/Botez, "Amândoi"): pasii care ar trunchia `recipient`
-  // devin no-op — ambele nume raman intotdeauna complete, cerinta stricta, mai importanta
-  // decat bugetul de prompt (in cazuri extreme, povestea primeste corespunzator mai putin
-  // spatiu, niciodata numele).
   const shrinkSteps = [
     () => { useShortOccasionInstruction = true; },
     () => { useShortInstruction = true; },
     () => { useShortVoiceInstruction = true; },
     () => { relationship = truncateSafely(relationship, 20); },
-    () => { sender = truncateSafely(sender, 30); },
-    () => { if (!recipientIsProtectedCombo) recipient = truncateSafely(recipient, 30); },
-    () => { relationship = truncateSafely(relationship, 10); },
-    () => { sender = truncateSafely(sender, 15); },
-    () => { if (!recipientIsProtectedCombo) recipient = truncateSafely(recipient, 15); },
-    () => { sender = truncateSafely(sender, 8); },
-    () => { if (!recipientIsProtectedCombo) recipient = truncateSafely(recipient, 10); }
+    () => { relationship = truncateSafely(relationship, 10); }
   ];
   for (const step of shrinkSteps) {
     if (head.length <= budgetForFixedPart) break;
@@ -6176,8 +6177,17 @@ function buildExactLyricsRequest(order, exactLyrics, genreOverride, voicePrefere
   // "instrumental" din text (vezi comentariul identic din buildPrompt) si adaugata o afirmare
   // explicita, pozitiva, ca melodia are voce pe tot parcursul — niciodata doar formularea
   // negativa/ambigua de dinainte.
+  // CORECȚIE (2026-08-13, runda 6, "audio-ul canta alte cuvinte decat versurile afisate"):
+  // investigat exhaustiv traseul audio<->versuri (taskId, track.id, variantId, extractSunoTracks,
+  // polling, callback, finalizeVariantsIfNeeded) — fiecare pas e corect scopat pe identificatori
+  // stabili, fara nicio asociere gresita gasita in codul propriu. Suno promite explicit ("The
+  // prompt will be strictly used as the lyrics and sung", docs.sunoapi.org) ca respecta exact
+  // versurile la customMode:true, dar promisiunea nu era intarita EXPLICIT in campul `style`
+  // (folosit doar pentru directie muzicala) — adaugata aici o cerere directa, ca semnal
+  // suplimentar catre furnizor, fara sa schimbe contractul (versurile raman STRICT in `lyrics`,
+  // niciodata duplicate/alterate aici).
   const feedbackText = feedback ? String(feedback).trim() : '';
-  let style = `${styleTags}. Sing entirely in ${lyricsLanguage}. Short natural intro, vocals starting around 8-10 seconds. Fully sung vocal performance throughout.${VOICE_STYLE_NOTE[effectiveVoice]}`;
+  let style = `${styleTags}. Sing entirely in ${lyricsLanguage}. Short natural intro, vocals starting around 8-10 seconds. Fully sung vocal performance throughout.${VOICE_STYLE_NOTE[effectiveVoice]} Sing these exact lyrics precisely as written, word for word — never paraphrase, alter, skip, or add words.`;
   if (feedbackText) style += ` ${feedbackText}`;
   style = truncateSafely(style, 1000);
 
