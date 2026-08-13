@@ -169,21 +169,21 @@ test('buildPrompt: clauza de relatie pentru "Amândoi" la bunici mentioneaza exp
 test('buildPrompt: bunici (rol individual) instruieste explicit sa NU se foloseasca doar prenumele', () => {
   const order = typicalOrder({ recipient: 'Maria', recipientRole: 'grandmother', recipientMode: 'single', recipientNames: null });
   const prompt = buildPrompt(order, '', undefined);
-  assert.ok(/never (bare|by first) name/i.test(prompt), `promptul trebuie sa interzica adresarea prin prenume gol, a produs: ${prompt}`);
+  assert.ok(/never (bare( first)?|by first) name/i.test(prompt), `promptul trebuie sa interzica adresarea prin prenume gol, a produs: ${prompt}`);
   assert.ok(prompt.includes('"grandmother"') || prompt.includes('grandmother'), 'promptul trebuie sa mentioneze relatia "grandmother"');
 });
 
 test('buildPrompt: parinti (Mamă/Tată) instruieste relatie+nume, nu doar prenume', () => {
   const order = typicalOrder({ occasion: 'parinti', recipient: 'Elena', recipientRole: 'mother', senderRole: 'daughter', recipientMode: 'single', recipientNames: null });
   const prompt = buildPrompt(order, '', undefined);
-  assert.ok(/never (bare|by first) name/i.test(prompt));
+  assert.ok(/never (bare( first)?|by first) name/i.test(prompt));
   assert.ok(prompt.includes('mother'));
 });
 
 test('buildPrompt: matusa-unchi (Mătușă/Unchi) instruieste relatie+nume, nu doar prenume', () => {
   const order = typicalOrder({ occasion: 'matusa-unchi', recipient: 'Ana', recipientRole: 'aunt', senderRole: 'niece', recipientMode: 'single', recipientNames: null });
   const prompt = buildPrompt(order, '', undefined);
-  assert.ok(/never (bare|by first) name/i.test(prompt));
+  assert.ok(/never (bare( first)?|by first) name/i.test(prompt));
   assert.ok(prompt.includes('aunt'));
 });
 
@@ -200,7 +200,7 @@ test('buildPrompt: socri (Soacră/Socru) foloseste forma romaneasca exacta "mama
 test('buildPrompt: Nuntă/Botez (in afara scopului acestei runde) ramane EXACT neschimbat — fara "never bare name"', () => {
   const order = worstCaseOrder({ occasion: 'nunta', weddingType: 'wedding', recipient: 'Maria', recipientRole: 'bride', senderRole: 'groom', recipientMode: 'single', recipientNames: null, lang: 'ro' });
   const prompt = buildPrompt(order, '', undefined);
-  assert.ok(!/never (bare|by first) name/i.test(prompt), 'Nuntă/Botez NU trebuie sa capete noua instructiune de adresare — comportament original neschimbat');
+  assert.ok(!/never (bare( first)?|by first) name/i.test(prompt), 'Nuntă/Botez NU trebuie sa capete noua instructiune de adresare — comportament original neschimbat');
   assert.ok(/Mention (naturally, once|once):/i.test(prompt), 'Nuntă/Botez trebuie sa pastreze formularea originala "Mention naturally/once"');
 });
 

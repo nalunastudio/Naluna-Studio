@@ -281,7 +281,7 @@ test('comanda.html: RECIPIENT_ROLE_OPTIONS pastreaza EXACT valorile existente pe
 test('buildPrompt: Nuntă/Botez si bunici (existente) raman EXACT neschimbate dupa adaugarea frati', () => {
   const orderNunta = worstCaseOrder({ occasion: 'nunta', weddingType: 'wedding', recipient: 'Maria', recipientRole: 'bride', senderRole: 'groom', recipientMode: 'single', recipientNames: null });
   const promptNunta = buildPrompt(orderNunta, '', undefined);
-  assert.ok(!/never (bare|by first) name/i.test(promptNunta), 'Nuntă/Botez nu trebuie sa capete instructiunea de adresare relatie+nume');
+  assert.ok(!/never (bare( first)?|by first) name/i.test(promptNunta), 'Nuntă/Botez nu trebuie sa capete instructiunea de adresare relatie+nume');
 
   const orderBunici = typicalOrder({ occasion: 'bunici', recipientRole: 'grandmother', senderRole: 'granddaughter', recipientMode: 'single', recipientNames: null, recipient: 'Maria' });
   const promptBunici = buildPrompt(orderBunici, '', undefined);

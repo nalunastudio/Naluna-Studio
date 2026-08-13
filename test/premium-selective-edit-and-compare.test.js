@@ -334,10 +334,10 @@ test('lib/entitlements.js: Video (fara selectedVariantId2) si Premium vechi rama
 // ---------------------------------------------------------------------------------------------
 // TEST 17: toate textele noi exista in cele 8 limbi, fara fallback vizibil in romana.
 // ---------------------------------------------------------------------------------------------
-test('melodia-mea.html: toate cele 10 chei noi de traducere Premium exista exact de 8 ori (o data per limba)', () => {
+test('melodia-mea.html: toate cele 9 chei noi de traducere Premium exista exact de 8 ori (o data per limba) — butonul final reutilizeaza t.confirm_yes existent, nu mai are o cheie separata', () => {
   const keys = [
     'premium_song1_label', 'premium_song2_label', 'premium_edit_title', 'premium_edit_subtitle',
-    'premium_edit_song1_check', 'premium_edit_song2_check', 'premium_edit_start_btn',
+    'premium_edit_song1_check', 'premium_edit_song2_check',
     'premium_edit_select_at_least_one', 'premium_compare_title', 'premium_compare_need_two'
   ];
   keys.forEach(key => {

@@ -519,9 +519,13 @@
             </div>
 
             <div class="field-error" id="premium-edit-step2-error" style="margin:10px 0;"></div>
-            <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:6px;">
+            <!-- CORECȚIE: reutilizeaza EXACT butonul portocaliu Standard (.btn-cta-orange,
+                 acelasi text — t.confirm_yes) — stivuit vertical, la fel ca #confirm-row din
+                 Standard (buton portocaliu deasupra, buton secundar dedesubt), nu unul plin
+                 generic langa "Înapoi". -->
+            <div style="display:flex; flex-direction:column; align-items:center; gap:12px; margin-top:6px;">
+              <button type="button" class="btn-cta-orange" id="premium-edit-start-btn"></button>
               <button type="button" class="btn btn-ghost" id="premium-edit-back-btn"></button>
-              <button type="button" class="btn btn-primary" id="premium-edit-start-btn" style="flex:1; justify-content:center;"></button>
             </div>
           </div>
 
@@ -891,7 +895,6 @@
       premium_edit_title: 'Ce vrei să editezi?',
       premium_edit_subtitle: 'Alege una sau ambele melodii. Editarea gratuită rămâne una singură, indiferent câte melodii editezi acum.',
       premium_edit_song1_check: 'Editez prima melodie', premium_edit_song2_check: 'Editez a doua melodie',
-      premium_edit_start_btn: 'Creează noile versiuni',
       premium_edit_select_at_least_one: 'Selectează cel puțin o melodie de editat.',
       premium_edit_step1_label: 'Editez prima melodie:', premium_edit_step2_label: 'Editez a doua melodie:',
       premium_edit_voice_label: 'Alege vocea',
@@ -964,7 +967,6 @@
       premium_edit_title: 'What do you want to edit?',
       premium_edit_subtitle: 'Choose one or both songs. Your free edit stays a single round, no matter how many songs you edit now.',
       premium_edit_song1_check: 'Edit the first song', premium_edit_song2_check: 'Edit the second song',
-      premium_edit_start_btn: 'Create the new versions',
       premium_edit_select_at_least_one: 'Select at least one song to edit.',
       premium_edit_step1_label: 'Editing the first song:', premium_edit_step2_label: 'Editing the second song:',
       premium_edit_voice_label: 'Choose the voice',
@@ -1037,7 +1039,6 @@
       premium_edit_title: 'Was möchtest du bearbeiten?',
       premium_edit_subtitle: 'Wähle eines oder beide Lieder. Deine kostenlose Bearbeitung bleibt eine einzige Runde, egal wie viele Lieder du jetzt bearbeitest.',
       premium_edit_song1_check: 'Erstes Lied bearbeiten', premium_edit_song2_check: 'Zweites Lied bearbeiten',
-      premium_edit_start_btn: 'Neue Versionen erstellen',
       premium_edit_select_at_least_one: 'Wähle mindestens ein Lied zum Bearbeiten aus.',
       premium_edit_step1_label: 'Ich bearbeite das erste Lied:', premium_edit_step2_label: 'Ich bearbeite das zweite Lied:',
       premium_edit_voice_label: 'Wähle die Stimme',
@@ -1110,7 +1111,6 @@
       premium_edit_title: '¿Qué quieres editar?',
       premium_edit_subtitle: 'Elige una o ambas canciones. Tu edición gratuita sigue siendo una sola ronda, sin importar cuántas canciones edites ahora.',
       premium_edit_song1_check: 'Editar la primera canción', premium_edit_song2_check: 'Editar la segunda canción',
-      premium_edit_start_btn: 'Crear las nuevas versiones',
       premium_edit_select_at_least_one: 'Selecciona al menos una canción para editar.',
       premium_edit_step1_label: 'Estoy editando la primera canción:', premium_edit_step2_label: 'Estoy editando la segunda canción:',
       premium_edit_voice_label: 'Elige la voz',
@@ -1183,7 +1183,6 @@
       premium_edit_title: 'Cosa vuoi modificare?',
       premium_edit_subtitle: 'Scegli una o entrambe le canzoni. La tua modifica gratuita resta un unico giro, indipendentemente da quante canzoni modifichi ora.',
       premium_edit_song1_check: 'Modifica la prima canzone', premium_edit_song2_check: 'Modifica la seconda canzone',
-      premium_edit_start_btn: 'Crea le nuove versioni',
       premium_edit_select_at_least_one: 'Seleziona almeno una canzone da modificare.',
       premium_edit_step1_label: 'Sto modificando la prima canzone:', premium_edit_step2_label: 'Sto modificando la seconda canzone:',
       premium_edit_voice_label: 'Scegli la voce',
@@ -1256,7 +1255,6 @@
       premium_edit_title: 'Que veux-tu modifier ?',
       premium_edit_subtitle: 'Choisis une ou les deux chansons. Ta modification gratuite reste unique, quel que soit le nombre de chansons modifiées maintenant.',
       premium_edit_song1_check: 'Modifier la première chanson', premium_edit_song2_check: 'Modifier la deuxième chanson',
-      premium_edit_start_btn: 'Créer les nouvelles versions',
       premium_edit_select_at_least_one: 'Sélectionne au moins une chanson à modifier.',
       premium_edit_step1_label: 'Je modifie la première chanson :', premium_edit_step2_label: 'Je modifie la deuxième chanson :',
       premium_edit_voice_label: 'Choisis la voix',
@@ -1329,7 +1327,6 @@
       premium_edit_title: 'Какво искаш да редактираш?',
       premium_edit_subtitle: 'Избери една или и двете песни. Безплатната ти редакция остава само една, независимо колко песни редактираш сега.',
       premium_edit_song1_check: 'Редактирай първата песен', premium_edit_song2_check: 'Редактирай втората песен',
-      premium_edit_start_btn: 'Създай новите версии',
       premium_edit_select_at_least_one: 'Избери поне една песен за редактиране.',
       premium_edit_step1_label: 'Редактирам първата песен:', premium_edit_step2_label: 'Редактирам втората песен:',
       premium_edit_voice_label: 'Избери гласа',
@@ -1402,7 +1399,6 @@
       premium_edit_title: 'Neyi düzenlemek istiyorsun?',
       premium_edit_subtitle: 'Bir veya her iki şarkıyı seç. Şimdi kaç şarkı düzenlersen düzenle, ücretsiz düzenlemen tek bir tur olarak kalır.',
       premium_edit_song1_check: 'İlk şarkıyı düzenle', premium_edit_song2_check: 'İkinci şarkıyı düzenle',
-      premium_edit_start_btn: 'Yeni versiyonları oluştur',
       premium_edit_select_at_least_one: 'Düzenlemek için en az bir şarkı seç.',
       premium_edit_step1_label: 'İlk şarkıyı düzenliyorum:', premium_edit_step2_label: 'İkinci şarkıyı düzenliyorum:',
       premium_edit_voice_label: 'Sesi seç',
@@ -3111,7 +3107,10 @@
 
     document.getElementById('premium-edit-step1-continue-btn').textContent = t.premium_edit_step1_continue_btn;
     document.getElementById('premium-edit-back-btn').textContent = t.premium_edit_back_btn;
-    document.getElementById('premium-edit-start-btn').textContent = t.premium_edit_start_btn;
+    // CORECȚIE: reutilizeaza EXACT textul (si cheia de traducere) butonului portocaliu
+    // Standard — t.confirm_yes ("Creează noua versiune"), deja tradus in 8 limbi — in loc de
+    // o cheie separata, cu text diferit ("Creează noile versiuni").
+    document.getElementById('premium-edit-start-btn').textContent = t.confirm_yes;
 
     function populateGenreOptions(selectEl, currentGenre) {
       selectEl.innerHTML = EDIT_GENRE_KEYS

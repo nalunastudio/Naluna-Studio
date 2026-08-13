@@ -91,11 +91,13 @@ test('melodia-mea.html: NU mai exista bife optionale de selectie a melodiei — 
   assert.ok(!melodia.includes('type="checkbox"') || !melodia.slice(melodia.indexOf('id="premium-edit-view"'), melodia.indexOf('id="premium-compare-view"')).includes('type="checkbox"'));
 });
 
-test('melodia-mea.html: butonul pasului 1 este "Continuă la a doua melodie" (premium_edit_step1_continue_btn), butonul final este "Creează noile versiuni" (premium_edit_start_btn)', () => {
+test('melodia-mea.html: butonul pasului 1 este "Continuă la a doua melodie" (premium_edit_step1_continue_btn); butonul final reutilizeaza EXACT butonul portocaliu Standard (t.confirm_yes, "Creează noua versiune")', () => {
   assert.match(melodia, /getElementById\('premium-edit-step1-continue-btn'\)\.textContent = t\.premium_edit_step1_continue_btn;/);
-  assert.match(melodia, /getElementById\('premium-edit-start-btn'\)\.textContent = t\.premium_edit_start_btn;/);
-  assert.match(melodia, /premium_edit_start_btn: 'Creează noile versiuni',/);
+  assert.match(melodia, /getElementById\('premium-edit-start-btn'\)\.textContent = t\.confirm_yes;/);
   assert.match(melodia, /premium_edit_step1_continue_btn: 'Continuă la a doua melodie',/);
+  // butonul final trebuie sa fie vizual identic cu CTA-ul portocaliu Standard.
+  const btnHtmlIdx = melodia.indexOf('id="premium-edit-start-btn"');
+  assert.ok(melodia.slice(btnHtmlIdx - 40, btnHtmlIdx).includes('class="btn-cta-orange"'), 'butonul final trebuie sa foloseasca clasa btn-cta-orange (portocaliu), nu btn-primary');
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -231,11 +233,15 @@ test('melodia-mea.html: toate cele 6 chei noi de traducere (runda 4) exista exac
   });
 });
 
-test('melodia-mea.html: valorile actualizate (premium_edit_start_btn, premium_compare_title) raman prezente exact de 8 ori fiecare, nicio limba omisa la actualizare', () => {
-  ['premium_edit_start_btn', 'premium_compare_title'].forEach(key => {
+test('melodia-mea.html: valoarea actualizata (premium_compare_title) ramane prezenta exact de 8 ori, nicio limba omisa la actualizare', () => {
+  ['premium_compare_title'].forEach(key => {
     const count = (melodia.match(new RegExp(key + ':', 'g')) || []).length;
     assert.equal(count, 8, `cheia ${key} trebuie sa ramana in toate cele 8 limbi dupa actualizarea textului`);
   });
+});
+
+test('melodia-mea.html: cheia premium_edit_start_btn a fost eliminata (butonul final reutilizeaza t.confirm_yes, deja tradus in 8 limbi) — fara text duplicat/nefolosit', () => {
+  assert.ok(!melodia.includes('premium_edit_start_btn'), 'cheia nu mai trebuie sa existe in fisier, dupa ce butonul a fost trecut pe t.confirm_yes');
 });
 
 // REGRESIE CONFIRMATA LA TESTAREA LIVE PE STAGING (hotfix, runda 4): renderPremiumEditView()

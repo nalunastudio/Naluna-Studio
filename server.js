@@ -5678,7 +5678,7 @@ function buildPrompt(order, feedback, genreOverride) {
           ? ` Address as ${roNoun}+name, never bare name (from their ${senderNoun}).`
           : ` Address as ${roNoun}+name, never bare name.`)
       : (senderNoun
-          ? ` Always address the recipient as ${roNoun} plus their name (never by first name alone); the song is from their ${senderNoun}.`
+          ? ` Always address the recipient as ${roNoun} plus their name (never bare first name); the song is from their ${senderNoun}.`
           : ` Always address the recipient as ${roNoun} plus their name, never by first name alone.`);
     if (isBoth) clause += ' Never omit either person.';
     return clause;
