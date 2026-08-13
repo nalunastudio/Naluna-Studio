@@ -137,28 +137,28 @@ test('comanda.html: alegerea "Amândoi" arata doua campuri de nume distincte si 
   assert.ok(html.includes("bothNamesField.style.display = 'block';"));
 });
 
-test('comanda.html: validateStep(1) blocheaza continuarea daca lipseste oricare din cele doua nume la "Amândoi"', () => {
+// REVIZUIT (2026-08-13, runda "Amândoi" fara campuri duplicate): validateStep(1) nu mai
+// blocheaza continuarea din cauza celor doua campuri de nume separate — numele (unul sau doua,
+// ex. "Maria și Victor") se introduc O SINGURA DATA pe pagina urmatoare, in campul existent
+// "Pentru cine e cântecul (nume)". Campurile name1/name2 raman in DOM (vestigial, neafisate) doar
+// pentru compatibilitate cu draft-uri vechi, dar nu mai sunt validate/cerute.
+test('comanda.html: validateStep(1) NU mai blocheaza continuarea din cauza numelor separate la "Amândoi"', () => {
   const html = read('public/comanda.html');
-  assert.ok(html.includes("if (recipientModeInput.value === 'both') {"));
-  assert.ok(html.includes('const nuntaName1 = name1Input.value.trim();'));
-  assert.ok(html.includes('const nuntaName2 = name2Input.value.trim();'));
-  assert.ok(html.includes("if (!nuntaName1 || !nuntaName2) ok = false;"));
+  assert.ok(!html.includes("if (!nuntaName1 || !nuntaName2) ok = false;"), 'validateStep(1) nu mai trebuie sa ceara doua nume separate pentru "Amândoi"');
 });
 
-test('comanda.html: numele NU sunt combinate intr-un singur camp de INTRODUCERE — doua input-uri separate, cu etichete distincte per grup', () => {
+test('comanda.html: campul "both-names-field" nu mai este afisat cand se selecteaza "Amândoi" — refreshRelationUI() il ascunde explicit', () => {
   const html = read('public/comanda.html');
-  assert.ok(html.includes('<input type="text" id="name1" maxlength="60">'));
-  assert.ok(html.includes('<input type="text" id="name2" maxlength="60">'));
-  assert.ok(html.includes("nunta_name_bride_label: 'Numele miresei', nunta_name_groom_label: 'Numele mirelui',"));
+  assert.ok(html.includes('id="both-names-field"'), 'markup-ul vechi poate ramane in DOM (neafisat), nu trebuie sters');
+  assert.ok(html.includes("bothNamesField.style.display = 'none';"), 'refreshRelationUI() trebuie sa ascunda explicit campul, in loc sa-l afiseze');
 });
 
-test('server.js: "Amândoi" cere ambele nume, validate ca stringuri nevide, salvate structurat in recipient_names', () => {
+test('server.js: "Amândoi" NU mai cere ambele nume separate — recipientNames ramane STRICT optional, numele vin din campul unic recipient', () => {
   const server = read('server.js');
-  assert.ok(server.includes("if (expectedMode === 'both') {"));
-  assert.ok(server.includes("if (!isValidString(name1, 1, 60) || !isValidString(name2, 1, 60)) {"));
-  assert.ok(server.includes('safeRecipientNames = { name1, name2 };'));
+  assert.ok(server.includes("if (expectedMode === 'both' && recipientNames && typeof recipientNames === 'object') {"), 'recipientNames trebuie folosit doar daca e prezent, niciodata cerut');
+  assert.ok(!/if \(!isValidString\(name1, 1, 60\) \|\| !isValidString\(name2, 1, 60\)\) \{\s*return res\.status\(400\)/.test(server), 'server.js nu mai trebuie sa respinga comanda pentru lipsa name1/name2 la nunta');
   const dbjs = read('db.js');
-  assert.ok(dbjs.includes('ALTER TABLE orders ADD COLUMN IF NOT EXISTS recipient_names JSONB;'));
+  assert.ok(dbjs.includes('ALTER TABLE orders ADD COLUMN IF NOT EXISTS recipient_names JSONB;'), 'coloana ramane in DB pentru compatibilitate cu comenzi vechi, fara migrare/stergere');
 });
 
 // -------------------------------------------------------------------------------------------
@@ -221,7 +221,10 @@ test('melodia-mea.html: renderContent() foloseste antetul personalizat DOAR cand
 // -------------------------------------------------------------------------------------------
 // 13: Payloadul generatorului contine relatiile si numele selectate.
 // -------------------------------------------------------------------------------------------
-test('comanda.html: collectPayload() trimite recipientRole/senderRole/recipientMode/recipientNames catre server', () => {
+// REVIZUIT (2026-08-13): recipientNames (name1/name2 separate) nu mai e construita din formular —
+// recipient (campul unic "Pentru cine e cântecul (nume)") ramane sursa canonica pentru orice mod,
+// inclusiv "Amândoi" (ex. "Maria și Victor" introdus direct de client).
+test('comanda.html: collectPayload() trimite recipientRole/senderRole/recipientMode catre server si recipientNames=null (numele vin din campul unic recipient)', () => {
   const html = read('public/comanda.html');
   const idx = html.indexOf('function collectPayload()');
   const endIdx = html.indexOf('function saveDraft()');
@@ -229,7 +232,7 @@ test('comanda.html: collectPayload() trimite recipientRole/senderRole/recipientM
   assert.ok(slice.includes('recipientRole: recipientRoleInput.value,'));
   assert.ok(slice.includes('senderRole: senderRoleInput.value,'));
   assert.ok(slice.includes('recipientMode: recipientModeInput.value,'));
-  assert.ok(slice.includes('? { name1: name1Input.value.trim(), name2: name2Input.value.trim() }'));
+  assert.ok(slice.includes('recipientNames: null,'));
 });
 
 test('server.js: GET /api/orders/:orderId expune occasion/recipientRole/senderRole (altfel antetul personalizat nu primeste niciodata datele)', () => {

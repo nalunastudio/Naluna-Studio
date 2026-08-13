@@ -81,14 +81,14 @@ test('comanda.html: "Nuntă/Botez" pastreaza NESCHIMBAT Miri/Fini/Nași, roluril
 });
 
 // NOTA: isSingleRole/isBothRole au primit in plus filtrarea dupa weddingType (Nuntă/Botez,
-// cerinta noua a acestei runde) — logica de baza (Amândoi -> recipientMode='both' + doua nume)
-// ramane neschimbata.
-test('server.js: validarea Miri/Fini/Nași si "Amândoi" pentru nunta ramane functional neschimbata (acum filtrata si dupa weddingType)', () => {
+// cerinta noua a acestei runde) — logica de baza (Amândoi -> recipientMode='both') ramane
+// neschimbata; DAR (2026-08-13, runda "Amândoi" fara campuri duplicate) recipientNames a devenit
+// STRICT optional — nu mai e cerut, numele vin din campul unic recipient.
+test('server.js: validarea Miri/Fini/Nași si "Amândoi" pentru nunta ramane functional neschimbata (acum filtrata si dupa weddingType), recipientNames optional', () => {
   const server = read('server.js');
   assert.ok(server.includes("const isSingleRole = WEDDING_RECIPIENT_ROLES_SINGLE.includes(recipientRole) && allowedRolesForType.includes(recipientRole);"));
   assert.ok(server.includes("const isBothRole = WEDDING_RECIPIENT_ROLES_BOTH.includes(recipientRole) && allowedRolesForType.includes(recipientRole);"));
-  assert.ok(server.includes("if (expectedMode === 'both') {"));
-  assert.ok(server.includes('safeRecipientNames = { name1, name2 };'));
+  assert.ok(server.includes("if (expectedMode === 'both' && recipientNames && typeof recipientNames === 'object') {"));
 });
 
 // 5. "Din partea cui este melodia?" nu mai apare si nu mai este obligatorie.
@@ -112,27 +112,26 @@ test('server.js: "Din partea cui este melodia?" nu mai e cerut/salvat pentru com
   assert.ok(nuntaBlock.includes('safeRecipientMode = expectedMode;'));
 });
 
-// 6-7. Alegerea "Amândoi" solicita exact doua nume; ambele salvate integral in backend.
-test('comanda.html: "Amândoi" solicita exact doua nume, validate ca obligatorii', () => {
+// 6-7 (REVIZUIT 2026-08-13, runda "Amândoi" fara campuri duplicate): "Amândoi" NU mai solicita
+// doua campuri de nume separate pe aceasta pagina — un singur nume (sau doua, ex.
+// "Maria și Ion") se introduce pe pagina urmatoare, in campul existent "recipient".
+test('comanda.html: "Amândoi" NU mai solicita doua campuri de nume separate pe aceasta pagina', () => {
   const html = read('public/comanda.html');
-  assert.ok(html.includes("if (recipientModeInput.value === 'both') {"));
-  assert.ok(html.includes('const nuntaName1 = name1Input.value.trim();'));
-  assert.ok(html.includes('const nuntaName2 = name2Input.value.trim();'));
-  assert.ok(html.includes('if (!nuntaName1 || !nuntaName2) ok = false;'));
+  assert.ok(!html.includes('if (!nuntaName1 || !nuntaName2) ok = false;'), 'validateStep(1) nu mai trebuie sa ceara doua nume separate la "Amândoi"');
 });
 
-test('server.js si db.js: ambele nume sunt salvate INTEGRAL, structurat, in recipient_names (JSONB)', () => {
+test('server.js si db.js: recipient_names (JSONB) ramane optional, folosit doar daca clientul il trimite — coloana pastrata pentru compatibilitate', () => {
   const server = read('server.js');
-  assert.ok(server.includes('if (!isValidString(name1, 1, 60) || !isValidString(name2, 1, 60)) {'));
-  assert.ok(server.includes('safeRecipientNames = { name1, name2 };'), 'numele salvate NU trebuie modificate/prescurtate fata de ce a trimis clientul');
+  assert.ok(!/if \(!isValidString\(name1, 1, 60\) \|\| !isValidString\(name2, 1, 60\)\) \{\s*return res\.status\(400\)/.test(server), 'server.js nu mai trebuie sa respinga comanda pentru lipsa name1/name2');
   const dbjs = read('db.js');
   assert.ok(dbjs.includes('order.recipientNames ? JSON.stringify(order.recipientNames) : null'));
 });
 
-// 8-9. Titlul si versurile contin ambele nume complete (vezi si test/nunta-both-names-no-truncation.test.js).
-test('comanda.html: collectPayload combina numele fara sa le prescurteze ("Alina și Andrei", nu "Alina și A.")', () => {
+// 8-9. Numele complete (recipient, campul unic) ajung intregi in prompt/antet — vezi
+// test/nunta-both-names-no-truncation.test.js pentru executia reala a buildPrompt.
+test('comanda.html: collectPayload trimite recipient exact cum l-a introdus clientul, fara nicio prescurtare (recipientNames=null, sursa unica e campul recipient)', () => {
   const html = read('public/comanda.html');
-  assert.ok(html.includes("`${name1Input.value.trim()} ${t('and_conjunction')} ${name2Input.value.trim()}`"), 'ambele nume trebuie folosite intregi, fara .slice/.charAt/.substring');
+  assert.ok(html.includes('recipientNames: null,'));
   assert.ok(!/name[12]Input\.value\.(slice|charAt|substring)/.test(html), 'nu trebuie sa existe nicio prescurtare a numelor in frontend');
 });
 

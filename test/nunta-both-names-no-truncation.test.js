@@ -117,11 +117,13 @@ test('buildPrompt: un rol individual de nunta (nu "Amândoi") ramane un nume nor
   assert.ok(!prompt.includes('M'.repeat(200)), 'numele individual foarte lung (200 caractere) trebuie totusi trunchiat de cascada, spre deosebire de combo-ul protejat "Amândoi"');
 });
 
-test('server.js: protectia "Amândoi" foloseste recipientMode STRICT === "both" (nu doar occasion="nunta")', () => {
+// REVIZUIT (2026-08-13, runda "Amândoi" fara campuri duplicate): recipientNames (structura
+// separata name1/name2) a devenit optionala si nu mai e colectata din formular — protectia
+// "Amândoi" foloseste acum EXCLUSIV recipientMode === 'both' ca semnal, fara sa mai depinda
+// de prezenta recipientNames.name1/name2 (care ar fi mereu null pentru comenzi noi).
+test('server.js: protectia "Amândoi" foloseste EXCLUSIV recipientMode STRICT === "both" (nu doar occasion="nunta", nu mai depinde de recipientNames)', () => {
   const server = read('server.js');
-  assert.ok(server.includes("const recipientIsProtectedCombo = order.recipientMode === 'both'"));
-  assert.ok(server.includes('typeof order.recipientNames.name1 === \'string\' && order.recipientNames.name1.trim()'));
-  assert.ok(server.includes('typeof order.recipientNames.name2 === \'string\' && order.recipientNames.name2.trim()'));
+  assert.ok(server.includes("const recipientIsProtectedCombo = order.recipientMode === 'both';"));
 });
 
 // CORECȚIE (2026-08-13, runda 6, "numele proprii sunt imuabile" — ex. real, raportat live:

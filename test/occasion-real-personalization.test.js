@@ -197,24 +197,23 @@ test('server.js: FAMILY_BOTH_ROLES contine grandparents/parents/aunt_uncle/paren
 });
 
 // -------------------------------------------------------------------------------------------
-// 9. "Amândoi" solicita exact doua nume.
+// 9 (REVIZUIT 2026-08-13, runda "Amândoi" fara campuri duplicate): "Amândoi" NU mai solicita
+// doua nume separate pe aceasta pagina — numele (unul sau doua, ex. "Maria și Ion") se introduc
+// O SINGURA DATA pe pagina urmatoare, in campul existent "Pentru cine e cântecul (nume)".
 // -------------------------------------------------------------------------------------------
-test('comanda.html: validateStep(1) cere ambele nume la "Amândoi" pentru ocaziile de familie', () => {
+test('comanda.html: validateStep(1) NU mai cere doua nume separate la "Amândoi" pentru ocaziile de familie', () => {
   const html = read('public/comanda.html');
   const idx = html.indexOf('if (FAMILY_OCCASIONS.includes(occasionVal)) {');
   const slice = html.slice(idx, idx + 1600);
-  assert.ok(slice.includes("if (recipientModeInput.value === 'both') {"));
-  assert.ok(slice.includes('const familyName1 = name1Input.value.trim();'));
-  assert.ok(slice.includes('const familyName2 = name2Input.value.trim();'));
-  assert.ok(slice.includes('if (!familyName1 || !familyName2) ok = false;'));
+  assert.ok(!slice.includes('if (!familyName1 || !familyName2) ok = false;'), 'validateStep(1) nu mai trebuie sa blocheze continuarea din cauza a doua nume separate');
 });
 
-test('server.js: "Amândoi" de familie cere si valideaza ambele nume, identic cu Nuntă/Botez (acelasi mecanism, nu paralel)', () => {
+test('server.js: "Amândoi" de familie NU mai cere ambele nume separate — recipientNames ramane STRICT optional (acelasi mecanism relaxat ca Nuntă/Botez)', () => {
   const server = read('server.js');
   const idx = server.indexOf('if (isFamilyBothRole) {');
   const slice = server.slice(idx, idx + 700);
-  assert.ok(slice.includes("if (!isValidString(name1, 1, 60) || !isValidString(name2, 1, 60)) {"));
-  assert.ok(slice.includes('safeRecipientNames = { name1, name2 };'));
+  assert.ok(!/if \(!isValidString\(name1, 1, 60\) \|\| !isValidString\(name2, 1, 60\)\) \{\s*return res\.status\(400\)/.test(slice), 'server.js nu mai trebuie sa respinga comanda pentru lipsa name1/name2 la ocaziile de familie');
+  assert.ok(slice.includes("if (recipientMode !== 'both') {"));
 });
 
 // -------------------------------------------------------------------------------------------
@@ -272,14 +271,16 @@ test('buildPrompt: relatia (recipientRole) SI numele complet ajung amandoua in p
 });
 
 // -------------------------------------------------------------------------------------------
-// 12. Trecerea de la "Amândoi" la o singura persoana elimina al doilea nume ascuns.
+// 12 (REVIZUIT 2026-08-13): campurile name1/name2 separate nu mai sunt afisate/citite in niciun
+// mod, deci nu mai e nevoie sa fie golite explicit la comutare — nu exista "nume ascuns" de
+// eliminat, pentru ca sursa canonica e acum campul unic de pe pagina urmatoare.
 // -------------------------------------------------------------------------------------------
-test('comanda.html: click pe un rol individual dupa "Amândoi" goleste ambele campuri de nume', () => {
+test('comanda.html: click pe un card de familie seteaza recipientMode corect si reface UI-ul via refreshRelationUI()', () => {
   const html = read('public/comanda.html');
   const idx = html.indexOf('familyRelationGrid.querySelectorAll(\'.family-relation-card\')');
   const slice = html.slice(idx, idx + 500);
   assert.ok(slice.includes("recipientModeInput.value = FAMILY_BOTH_ROLES.includes(c.dataset.role) ? 'both' : 'single';"));
-  assert.ok(slice.includes("if (recipientModeInput.value === 'single') { name1Input.value = ''; name2Input.value = ''; }"));
+  assert.ok(slice.includes('refreshRelationUI();'));
 });
 
 test('comanda.html: schimbarea grupului Nuntă/Botez sau a tipului goleste numele vechi (nu ramane ascuns un nume dintr-un grup anterior)', () => {

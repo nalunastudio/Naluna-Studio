@@ -340,12 +340,14 @@ test('buildPrompt: song2 "Amândoi" (grandparents) pastreaza AMBELE nume complet
   assert.ok(prompt2.includes('Never omit either person.'));
 });
 
-test('server.js: POST /api/orders cere recipientMode2="both" si ambele nume cand recipientRole2 e in FAMILY_BOTH_ROLES', () => {
+// REVIZUIT (2026-08-13, runda "Amândoi" fara campuri duplicate): recipientNames2 a devenit STRICT
+// optional — server.js nu mai cere name1_2/name2_2, numele vin exclusiv din campul unic recipient2.
+test('server.js: POST /api/orders cere recipientMode2="both" cand recipientRole2 e in FAMILY_BOTH_ROLES, dar recipientNames2 ramane optional', () => {
   const idx = server.indexOf("if (song2Target === 'other') {");
   const snippet = server.slice(idx, idx + 1600);
   assert.match(snippet, /const isFamilyBothRole2 = FAMILY_BOTH_ROLES\.includes\(recipientRole2\);/);
   assert.match(snippet, /if \(recipientMode2 !== 'both'\) \{/);
-  assert.match(snippet, /if \(!isValidString\(name1_2, 1, 60\) \|\| !isValidString\(name2_2, 1, 60\)\) \{/);
+  assert.ok(!/if \(!isValidString\(name1_2, 1, 60\) \|\| !isValidString\(name2_2, 1, 60\)\) \{\s*return res\.status\(400\)/.test(snippet), 'server.js nu mai trebuie sa respinga comanda pentru lipsa name1_2/name2_2');
 });
 
 test('db.js: recipient_names_2 e coloana JSONB, nullable, adaugata aditiv (ADD COLUMN IF NOT EXISTS)', () => {
@@ -360,11 +362,11 @@ test('comanda.html: butonul "Continuă..." incepe disabled si e controlat DOAR d
   assert.match(comanda, /function song2AllValid\(\) \{/);
 });
 
-// MODIFICARE (2026-08-13): campul numelui individual (cazul "not isBoth") s-a MUTAT pe mini-
-// pagina dedicata (pasul 8) — validitatea lui se verifica acum in song2DetailsAllValid(), NU
-// in song2AllValid() (pasul 7). "Amândoi" (name1/name2) ramane STRICT in song2AllValid(),
-// neschimbat — acele campuri nu s-au mutat.
-test('comanda.html: song2AllValid() (pasul 7) verifica genul (diferit de primul), alegerea same/other, SI (daca "other") ocazia, relatia/nunta si numele "Amândoi" — numele individual s-a mutat in song2DetailsAllValid()', () => {
+// MODIFICARE (2026-08-13, runda "Amândoi" fara campuri duplicate): numele (fie individual, fie
+// "Amândoi", ex. "Maria și Victor") se introduce acum O SINGURA DATA, pe mini-pagina dedicata
+// (pasul 8, song2-recipient-name) — song2AllValid() (pasul 7) NU mai valideaza niciun nume,
+// indiferent daca rolul e "both" sau individual.
+test('comanda.html: song2AllValid() (pasul 7) verifica genul (diferit de primul), alegerea same/other, SI (daca "other") ocazia si relatia/nunta — NU mai valideaza niciun nume (mutat integral in song2DetailsAllValid())', () => {
   const start = comanda.indexOf('function song2AllValid() {');
   const snippet = comanda.slice(start, start + 1400);
   assert.ok(snippet.includes("if (!genre2Input.value || genre2Input.value === genreInput.value) return false;"));
@@ -374,15 +376,15 @@ test('comanda.html: song2AllValid() (pasul 7) verifica genul (diferit de primul)
   assert.ok(snippet.includes("if (!song2NuntaGroup) return false;"));
   assert.ok(snippet.includes("if (!song2RecipientRoleInput.value) return false;"));
   assert.ok(snippet.includes("const needsSenderRole = !!SENDER_ROLE_OPTIONS[song2RecipientRoleInput.value];"));
-  assert.ok(snippet.includes("if (!song2Name1Input.value.trim() || !song2Name2Input.value.trim()) return false;"));
+  assert.ok(!snippet.includes("if (!song2Name1Input.value.trim() || !song2Name2Input.value.trim()) return false;"), 'validarea "Amândoi" (name1/name2) NU mai trebuie sa fie in song2AllValid()');
   assert.ok(!snippet.includes("} else if (!song2RecipientNameInput.value.trim()) {"), 'verificarea numelui individual NU mai trebuie sa fie in song2AllValid() — s-a mutat in song2DetailsAllValid()');
 });
 
-test('comanda.html: song2DetailsAllValid() (mini-pagina, pasul 8) verifica numele individual (cand nu e "Amândoi"), expeditorul, relatia si povestea — toate proprii melodiei 2', () => {
+test('comanda.html: song2DetailsAllValid() (mini-pagina, pasul 8) verifica numele (individual sau "Amândoi", necondiționat), expeditorul, relatia si povestea — toate proprii melodiei 2', () => {
   const start = comanda.indexOf('function song2DetailsAllValid() {');
   assert.ok(start !== -1);
   const snippet = comanda.slice(start, start + 700);
-  assert.ok(snippet.includes('if (!isBoth && !song2RecipientNameInput.value.trim()) return false;'));
+  assert.ok(snippet.includes('if (!song2RecipientNameInput.value.trim()) return false;'));
   assert.ok(snippet.includes('if (!song2SenderNameInput.value.trim()) return false;'));
   assert.ok(snippet.includes('if (!song2RelationshipInput.value.trim()) return false;'));
   assert.ok(snippet.includes('if (!song2StoryInput.value.trim()) return false;'));

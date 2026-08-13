@@ -1425,12 +1425,20 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
         if (recipientMode !== 'both') {
           return res.status(400).json({ error: missingFieldMessage('recipientRole', safeLang) });
         }
-        const name1 = recipientNames && typeof recipientNames.name1 === 'string' ? recipientNames.name1.trim() : '';
-        const name2 = recipientNames && typeof recipientNames.name2 === 'string' ? recipientNames.name2.trim() : '';
-        if (!isValidString(name1, 1, 60) || !isValidString(name2, 1, 60)) {
-          return res.status(400).json({ error: missingFieldMessage('recipientNames', safeLang) });
+        // CORECȚIE (2026-08-13, runda 8, "elimină câmpurile duplicate de nume la Amândoi"):
+        // recipientNames (doua nume separate, introduse pe pasul 1) NU mai e cerut — clientul
+        // introduce ambele nume O SINGURA DATA, in campul unic `recipient` (validat mai jos, la
+        // fel ca la orice alta comanda — isValidString(recipient, 1, 60)). Pastrat STRICT optional
+        // aici, pentru compatibilitate cu un draft vechi din localStorage care ar putea inca
+        // trimite acest camp — daca lipseste (comportamentul nou, asteptat), pur si simplu nu se
+        // seteaza, fara nicio eroare.
+        if (recipientNames && typeof recipientNames === 'object') {
+          const name1 = typeof recipientNames.name1 === 'string' ? recipientNames.name1.trim() : '';
+          const name2 = typeof recipientNames.name2 === 'string' ? recipientNames.name2.trim() : '';
+          if (isValidString(name1, 1, 60) && isValidString(name2, 1, 60)) {
+            safeRecipientNames = { name1, name2 };
+          }
         }
-        safeRecipientNames = { name1, name2 };
         safeRecipientMode = 'both';
       } else {
         safeRecipientMode = 'single';
@@ -1463,13 +1471,14 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
       if (recipientMode !== expectedMode) {
         return res.status(400).json({ error: missingFieldMessage('recipientRole', safeLang) });
       }
-      if (expectedMode === 'both') {
-        const name1 = recipientNames && typeof recipientNames.name1 === 'string' ? recipientNames.name1.trim() : '';
-        const name2 = recipientNames && typeof recipientNames.name2 === 'string' ? recipientNames.name2.trim() : '';
-        if (!isValidString(name1, 1, 60) || !isValidString(name2, 1, 60)) {
-          return res.status(400).json({ error: missingFieldMessage('recipientNames', safeLang) });
+      // CORECȚIE (2026-08-13, runda 8): vezi comentariul identic de la ramura de familie mai sus
+      // — recipientNames ramane STRICT optional, niciodata cerut.
+      if (expectedMode === 'both' && recipientNames && typeof recipientNames === 'object') {
+        const name1 = typeof recipientNames.name1 === 'string' ? recipientNames.name1.trim() : '';
+        const name2 = typeof recipientNames.name2 === 'string' ? recipientNames.name2.trim() : '';
+        if (isValidString(name1, 1, 60) && isValidString(name2, 1, 60)) {
+          safeRecipientNames = { name1, name2 };
         }
-        safeRecipientNames = { name1, name2 };
       }
       // CORECȚIE STRICTĂ (hotfix 2026-08-08, punctul 2): "Din partea cui este melodia?" a fost
       // ELIMINAT COMPLET pentru comenzile NOI Nuntă/Botez — senderRole NU mai e cerut si NU
@@ -1583,12 +1592,15 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
             if (recipientMode2 !== 'both') {
               return res.status(400).json({ error: missingFieldMessage('recipientRole', safeLang) });
             }
-            const name1_2 = recipientNames2 && typeof recipientNames2.name1 === 'string' ? recipientNames2.name1.trim() : '';
-            const name2_2 = recipientNames2 && typeof recipientNames2.name2 === 'string' ? recipientNames2.name2.trim() : '';
-            if (!isValidString(name1_2, 1, 60) || !isValidString(name2_2, 1, 60)) {
-              return res.status(400).json({ error: missingFieldMessage('recipientNames', safeLang) });
+            // CORECȚIE (2026-08-13, runda 8): vezi comentariul identic de la melodia 1 mai sus —
+            // recipientNames2 ramane STRICT optional, niciodata cerut (numele vin din recipient2).
+            if (recipientNames2 && typeof recipientNames2 === 'object') {
+              const name1_2 = typeof recipientNames2.name1 === 'string' ? recipientNames2.name1.trim() : '';
+              const name2_2 = typeof recipientNames2.name2 === 'string' ? recipientNames2.name2.trim() : '';
+              if (isValidString(name1_2, 1, 60) && isValidString(name2_2, 1, 60)) {
+                safeRecipientNames2 = { name1: name1_2, name2: name2_2 };
+              }
             }
-            safeRecipientNames2 = { name1: name1_2, name2: name2_2 };
             safeRecipientMode2 = 'both';
           } else {
             safeRecipientMode2 = 'single';
@@ -1608,13 +1620,13 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
           if (recipientMode2 !== expectedMode2) {
             return res.status(400).json({ error: missingFieldMessage('recipientRole', safeLang) });
           }
-          if (expectedMode2 === 'both') {
-            const name1_2 = recipientNames2 && typeof recipientNames2.name1 === 'string' ? recipientNames2.name1.trim() : '';
-            const name2_2 = recipientNames2 && typeof recipientNames2.name2 === 'string' ? recipientNames2.name2.trim() : '';
-            if (!isValidString(name1_2, 1, 60) || !isValidString(name2_2, 1, 60)) {
-              return res.status(400).json({ error: missingFieldMessage('recipientNames', safeLang) });
+          // CORECȚIE (2026-08-13, runda 8): vezi comentariul identic de mai sus.
+          if (expectedMode2 === 'both' && recipientNames2 && typeof recipientNames2 === 'object') {
+            const name1_2 = typeof recipientNames2.name1 === 'string' ? recipientNames2.name1.trim() : '';
+            const name2_2 = typeof recipientNames2.name2 === 'string' ? recipientNames2.name2.trim() : '';
+            if (isValidString(name1_2, 1, 60) && isValidString(name2_2, 1, 60)) {
+              safeRecipientNames2 = { name1: name1_2, name2: name2_2 };
             }
-            safeRecipientNames2 = { name1: name1_2, name2: name2_2 };
           }
           safeRecipientRole2 = recipientRole2;
           safeRecipientMode2 = expectedMode2;
@@ -5864,7 +5876,12 @@ function buildPrompt(order, feedback, genreOverride) {
     const roForm = RO_RELATION_NAME_FORMS[effectiveRecipientRole];
     const roNoun = (lyricsLanguage === 'Romanian' && roForm) ? `"${roForm}"` : `"${recipientNoun}"`;
     const bothKeys = FAMILY_BOTH_PAIR_KEYS[effectiveRecipientRole];
-    const isBoth = bothKeys && order.recipientNames && order.recipientNames.name1 && order.recipientNames.name2;
+    // CORECȚIE (2026-08-13, runda 8, "elimină câmpurile duplicate de nume la Amândoi"): NU mai
+    // depinde de order.recipientNames (doua nume separate) — clientul introduce acum ambele
+    // nume o singura data, in campul unic `recipient` (pasul 2/mini-pagina pasul 8) — semnalul
+    // "Amândoi" ramane STRICT recipientMode==='both', suficient si pentru comenzile vechi (care
+    // au si recipientNames, ignorat aici acum) si pentru cele noi (care nu il mai au deloc).
+    const isBoth = bothKeys && order.recipientMode === 'both';
     let clause = useShortOccasionInstruction
       ? (senderNoun
           ? ` Address as ${roNoun}+name, never bare name (from their ${senderNoun}).`
@@ -5884,17 +5901,16 @@ function buildPrompt(order, feedback, genreOverride) {
   const hasSender = typeof order.senderName === 'string' && order.senderName.trim().length > 0;
   const hasRelationship = hasSender && typeof order.relationship === 'string' && order.relationship.trim().length > 0;
 
-  // CORECȚIE STRICTĂ (hotfix 2026-08-08, punctul 3): pentru "Nuntă/Botez" cu "Amândoi",
-  // `recipient` e o combinatie a DOUA nume complete (ex. "Alina și Andrei", construita de
-  // frontend din recipientNames.name1/name2) — NICIODATA trunchiata mai jos, indiferent de
-  // buget. Fara aceasta protectie, cascada de scurtare (mai jos) putea reduce al doilea nume
-  // la o initiala ("Alina și A."), exact bug-ul raportat — recipient e tratat ca UN SINGUR
-  // nume normal (max 60 caractere) in toate celelalte cazuri, inclusiv rolurile individuale
-  // de nunta (Mireasă/Mire/Fin/Fină/Naș/Nașă), care raman supuse cascadei ca orice alt nume.
-  const recipientIsProtectedCombo = order.recipientMode === 'both'
-    && order.recipientNames
-    && typeof order.recipientNames.name1 === 'string' && order.recipientNames.name1.trim()
-    && typeof order.recipientNames.name2 === 'string' && order.recipientNames.name2.trim();
+  // CORECȚIE STRICTĂ (hotfix 2026-08-08, punctul 3): pentru "Nuntă/Botez" (si ocaziile de
+  // familie) cu "Amândoi", `recipient` poate contine DOUA nume complete (ex. "Alina și Andrei")
+  // — NICIODATA trunchiata mai jos, indiferent de buget. Fara aceasta protectie, cascada de
+  // scurtare (mai jos) putea reduce al doilea nume la o initiala ("Alina și A."), exact bug-ul
+  // raportat — recipient e tratat ca UN SINGUR nume normal (max 60 caractere) in toate celelalte
+  // cazuri, inclusiv rolurile individuale de nunta (Mireasă/Mire/Fin/Fină/Naș/Nașă), care raman
+  // supuse cascadei ca orice alt nume.
+  // CORECȚIE (2026-08-13, runda 8): NU mai depinde de order.recipientNames — vezi comentariul
+  // identic de la isBoth mai sus. recipientMode==='both' ramane singurul semnal necesar.
+  const recipientIsProtectedCombo = order.recipientMode === 'both';
 
   // Trunchiere defensiva — chiar daca validarea la creare limiteaza deja lungimea, aplicam
   // din nou aici, sigur, pe caractere Unicode complete. Pentru un combo protejat, plafonul e

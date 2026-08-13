@@ -100,42 +100,39 @@ test('comanda.html: cheile de traducere name_grandmother_label / name_grandfathe
 });
 
 // ---------------------------------------------------------------------------------------------
-// TEST 3: ambele campuri sunt obligatorii la "Amândoi" pentru bunici.
+// TEST 3 (REVIZUIT 2026-08-13, runda "Amândoi" fara campuri duplicate): "Amândoi" nu mai
+// afiseaza/cere doua campuri de nume separate pe aceasta pagina — numele (unul sau doua,
+// ex. "Maria și Victor") se introduc O SINGURA DATA pe pagina urmatoare, in campul existent
+// "Pentru cine e cântecul (nume)". validateStep(1) nu mai valideaza niciun nume pentru "both".
 // ---------------------------------------------------------------------------------------------
-test('comanda.html: validateStep(1) cere ambele nume cand recipientMode==="both" pentru orice ocazie de familie (deci si bunici)', () => {
-  assert.match(comanda, /if \(FAMILY_OCCASIONS\.includes\(occasionVal\)\) \{[\s\S]{0,1200}if \(recipientModeInput\.value === 'both'\) \{[\s\S]{0,400}if \(!familyName1 \|\| !familyName2\) ok = false;/);
+test('comanda.html: validateStep(1) NU mai cere/valideaza name1/name2 cand recipientMode==="both", pentru nicio ocazie de familie (deci nici bunici)', () => {
+  assert.ok(!/if \(!familyName1 \|\| !familyName2\) ok = false;/.test(comanda), 'validateStep(1) nu trebuie sa mai blocheze continuarea din cauza celor doua campuri de nume');
+  assert.ok(!/if \(!nuntaName1 \|\| !nuntaName2\) ok = false;/.test(comanda), 'validateStep(1) nu trebuie sa mai blocheze continuarea din cauza celor doua campuri de nume (nunta)');
 });
 
-test('server.js: POST /api/orders cere recipientNames.name1 SI name2 pentru orice ocazie de familie cu recipientMode==="both" (grandparents inclus)', () => {
+test('server.js: POST /api/orders NU mai cere recipientNames.name1/name2 pentru ocazii de familie cu recipientMode==="both" (grandparents inclus) — recipientNames e optional', () => {
   assert.match(server, /if \(FAMILY_OCCASIONS\.includes\(occasion\)\) \{[\s\S]{0,2200}if \(recipientMode !== 'both'\) \{/);
   assert.match(server, /const isFamilyBothRole = FAMILY_BOTH_ROLES\.includes\(recipientRole\);/);
-  assert.match(server, /if \(!isValidString\(name1, 1, 60\) \|\| !isValidString\(name2, 1, 60\)\) \{/);
+  // recipientNames ramane STRICT optional — folosit doar daca e prezent si valid, niciodata cerut.
+  assert.ok(!/if \(!isValidString\(name1, 1, 60\) \|\| !isValidString\(name2, 1, 60\)\) \{\s*return res\.status\(400\)/.test(server), 'server.js nu mai trebuie sa respinga comanda pentru lipsa name1/name2');
 });
 
 // ---------------------------------------------------------------------------------------------
-// TEST 4: selectia si numele persista dupa refresh (draft in localStorage).
+// TEST 4: selectia recipientRole/recipientMode persista dupa refresh (draft in localStorage).
+// name1/name2 raman salvate/restaurate in draft doar pentru compatibilitate cu draft-uri vechi
+// (campurile nu mai sunt afisate/citite in fluxul curent) — nu mai sunt parte din contractul activ.
 // ---------------------------------------------------------------------------------------------
-test('comanda.html: saveDraft/restoreDraft salveaza si restaureaza recipientRole/recipientMode/name1/name2 generic (nu hardcodat per ocazie)', () => {
+test('comanda.html: saveDraft/restoreDraft salveaza si restaureaza recipientRole/recipientMode generic (nu hardcodat per ocazie)', () => {
   assert.match(comanda, /recipientRole: recipientRoleInput\.value,[\s\S]{0,20}senderRole: senderRoleInput\.value,[\s\S]{0,20}recipientMode: recipientModeInput\.value,/);
-  assert.match(comanda, /name1: name1Input\.value,\s*name2: name2Input\.value/);
   assert.match(comanda, /if \(draft\.recipientRole\) recipientRoleInput\.value = draft\.recipientRole;/);
-  assert.match(comanda, /if \(draft\.name1\) name1Input\.value = draft\.name1;/);
-  assert.match(comanda, /if \(draft\.name2\) name2Input\.value = draft\.name2;/);
 });
 
 // ---------------------------------------------------------------------------------------------
-// TEST 5: daca revine la Bunică sau Bunic (un singur rol), numele ascuns ramas nu se transmite.
+// TEST 5 (REVIZUIT): recipientNames (structura veche cu doua nume separate) nu mai e construita
+// niciodata din formular — recipient (campul unic, de pe pagina urmatoare) e sursa canonica.
 // ---------------------------------------------------------------------------------------------
-test('comanda.html: collectPayload trimite recipientNames=null cand recipientMode NU e "both" (elimina orice nume ramas ascuns)', () => {
-  assert.match(comanda, /const isBothMode = recipientModeInput\.value === 'both';/);
-  assert.match(comanda, /recipientNames: isBothMode\s*\?\s*\{ name1: name1Input\.value\.trim\(\), name2: name2Input\.value\.trim\(\) \}\s*:\s*null,/);
-});
-
-test('comanda.html: comutarea catre un rol individual goleste explicit name1Input/name2Input (nu doar le ascunde)', () => {
-  // Verificam ca exista cel putin un loc unde trecerea la single goleste ambele campuri —
-  // mecanism generic, reutilizat automat si pentru "grandparents" -> "grandmother"/"grandfather".
-  const occurrences = (comanda.match(/if \(recipientModeInput\.value === 'single'\) \{ name1Input\.value = ''; name2Input\.value = ''; \}/g) || []).length;
-  assert.ok(occurrences >= 1, 'trebuie sa existe logica generica de golire a numelor la revenirea la un rol individual');
+test('comanda.html: collectPayload trimite intotdeauna recipientNames=null (numele vin exclusiv din campul unic "recipient")', () => {
+  assert.match(comanda, /recipientNames: null,/);
 });
 
 // ---------------------------------------------------------------------------------------------

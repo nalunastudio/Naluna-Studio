@@ -2392,15 +2392,11 @@
         const needsSenderRole = !!SENDER_ROLE_OPTIONS[recipientRoleInput.value];
         setFieldError('senderRole', (!needsSenderRole || senderRoleInput.value) ? '' : t('val_sender_role'));
         if (!recipientRoleInput.value || (needsSenderRole && !senderRoleInput.value)) ok = false;
-        // CONTINUARE — personalizarea reala a versurilor (hotfix 2026-08-08): "Amândoi" cere
-        // exact doua nume complete, acelasi tipar ca la Nuntă/Botez mai jos.
-        if (recipientModeInput.value === 'both') {
-          const familyName1 = name1Input.value.trim();
-          const familyName2 = name2Input.value.trim();
-          setFieldError('name1', familyName1 ? '' : t('val_nunta_names'));
-          setFieldError('name2', familyName2 ? '' : t('val_nunta_names'));
-          if (!familyName1 || !familyName2) ok = false;
-        }
+        // CORECȚIE (2026-08-13, runda 8, "elimină câmpurile duplicate de nume la Amândoi"):
+        // "Amândoi" nu mai cere doua nume aici — numele (unul sau ambele) se introduc pe pasul
+        // urmator, in campul unic #recipient (validat acolo, ca la orice alta comanda). Butonul
+        // ramane selectabil/evidentiat (recipientModeInput.value = 'both'), fara nicio validare
+        // suplimentara pe acest pas.
       }
 
       // "Nuntă/Botez" — tip (Nuntă/Botez, OBLIGATORIU), apoi Miri/Fini/Nași, apoi rol
@@ -2411,13 +2407,8 @@
         setFieldError('nuntaGroup', nuntaGroup ? '' : t('val_recipient_role'));
         setFieldError('recipientRole', (nuntaGroup && recipientRoleInput.value) ? '' : t('val_recipient_role'));
         if (!nuntaGroup || !recipientRoleInput.value) ok = false;
-        if (recipientModeInput.value === 'both') {
-          const nuntaName1 = name1Input.value.trim();
-          const nuntaName2 = name2Input.value.trim();
-          setFieldError('name1', nuntaName1 ? '' : t('val_nunta_names'));
-          setFieldError('name2', nuntaName2 ? '' : t('val_nunta_names'));
-          if (!nuntaName1 || !nuntaName2) ok = false;
-        }
+        // CORECȚIE (2026-08-13, runda 8): vezi comentariul identic de mai sus — "Amândoi" nu
+        // mai cere doua nume pe acest pas, indiferent de grup (Miri/Fini/Nași).
       }
     }
 
@@ -2607,7 +2598,6 @@
       c.addEventListener('click', () => {
         recipientRoleInput.value = c.dataset.role;
         recipientModeInput.value = NUNTA_BOTH_ROLES.includes(c.dataset.role) ? 'both' : 'single';
-        if (recipientModeInput.value === 'single') { name1Input.value = ''; name2Input.value = ''; }
         setFieldError('recipientRole', '');
         refreshRelationUI();
         saveDraft();
@@ -2636,18 +2626,17 @@
           recipientRoleInput.value = c.dataset.role;
           senderRoleInput.value = '';
           recipientModeInput.value = FAMILY_BOTH_ROLES.includes(c.dataset.role) ? 'both' : 'single';
-          if (recipientModeInput.value === 'single') { name1Input.value = ''; name2Input.value = ''; }
           setFieldError('recipientRoleFamily', '');
           refreshRelationUI();
           saveDraft();
         });
       });
       familyRelationPanel.style.display = 'block';
-      if (FAMILY_BOTH_ROLES.includes(recipientRoleInput.value)) {
-        renderBothNamesField(FAMILY_BOTH_NAME_LABEL_KEYS[recipientRoleInput.value], familyNamesSlot);
-      } else {
-        bothNamesField.style.display = 'none';
-      }
+      // CORECȚIE (2026-08-13, runda 8, "elimină câmpurile duplicate de nume la Amândoi"):
+      // bothNamesField (cele doua campuri separate de nume) nu mai e afisat NICIODATA — butonul
+      // "Amândoi" ramane selectabil/evidentiat (recipientModeInput.value = 'both', mai sus), dar
+      // numele se introduc o singura data pe pasul urmator, in campul unic existent #recipient.
+      bothNamesField.style.display = 'none';
       if (recipientRoleInput.value) renderSenderRoleGrid(recipientRoleInput.value, familySenderRoleSlot);
       else senderRoleSubfield.style.display = 'none';
     } else {
@@ -2671,11 +2660,9 @@
       if (nuntaType && nuntaGroup) {
         renderNuntaSubroles();
         nuntaSubroleField.style.display = 'block';
-        if (NUNTA_BOTH_ROLES.includes(recipientRoleInput.value)) {
-          renderBothNamesField(NUNTA_NAME_LABEL_KEYS[nuntaGroup], nuntaNamesSlot);
-        } else {
-          bothNamesField.style.display = 'none';
-        }
+        // CORECȚIE (2026-08-13, runda 8): vezi comentariul identic de mai sus, pentru ocaziile
+        // de familie — acelasi principiu se aplica la "Amândoi" pentru Nuntă/Botez (Miri/Fini/Nași).
+        bothNamesField.style.display = 'none';
       } else {
         nuntaSubroleField.style.display = 'none';
         bothNamesField.style.display = 'none';
@@ -2948,8 +2935,10 @@
       c.addEventListener('click', () => {
         song2RecipientRoleInput.value = c.dataset.role;
         song2RecipientModeInput.value = NUNTA_BOTH_ROLES.includes(c.dataset.role) ? 'both' : 'single';
-        if (song2RecipientModeInput.value === 'single') { song2Name1Input.value = ''; song2Name2Input.value = ''; }
-        else { song2RecipientNameInput.value = ''; }
+        // CORECȚIE (2026-08-13, runda 8): song2RecipientNameInput (mini-pagina, pasul 8) NU se
+        // mai goleste la comutarea intre "Amândoi" si un rol individual — e acum sursa canonica
+        // a numelui in AMBELE cazuri, deci golirea lui ar sterge din greseala ce a scris deja
+        // clientul.
         setFieldError('song2RecipientRole', '');
         refreshSong2OtherUI();
         saveDraft();
@@ -2983,19 +2972,16 @@
           song2RecipientRoleInput.value = c.dataset.role;
           song2SenderRoleInput.value = '';
           song2RecipientModeInput.value = FAMILY_BOTH_ROLES.includes(c.dataset.role) ? 'both' : 'single';
-          if (song2RecipientModeInput.value === 'single') { song2Name1Input.value = ''; song2Name2Input.value = ''; }
-          else { song2RecipientNameInput.value = ''; }
           setFieldError('song2RecipientRoleFamily', '');
           refreshSong2OtherUI();
           saveDraft();
         });
       });
       song2RelationPanel.style.display = 'block';
-      if (FAMILY_BOTH_ROLES.includes(song2RecipientRoleInput.value)) {
-        renderSong2BothNamesField(FAMILY_BOTH_NAME_LABEL_KEYS[song2RecipientRoleInput.value], song2FamilyNamesSlot);
-      } else {
-        song2BothNamesField.style.display = 'none';
-      }
+      // CORECȚIE (2026-08-13, runda 8, "elimină câmpurile duplicate de nume la Amândoi"):
+      // song2BothNamesField nu mai e afisat NICIODATA — numele se introduc o singura data, pe
+      // mini-pagina dedicata (pasul 8), in campul unic #song2-recipient-name (vezi mai jos).
+      song2BothNamesField.style.display = 'none';
       if (song2RecipientRoleInput.value) renderSong2SenderRoleGrid(song2RecipientRoleInput.value, song2FamilySenderRoleSlot);
       else song2SenderRoleSubfield.style.display = 'none';
     } else {
@@ -3019,11 +3005,8 @@
       if (song2NuntaType && song2NuntaGroup) {
         renderSong2NuntaSubroles();
         song2NuntaSubroleField.style.display = 'block';
-        if (NUNTA_BOTH_ROLES.includes(song2RecipientRoleInput.value)) {
-          renderSong2BothNamesField(NUNTA_NAME_LABEL_KEYS[song2NuntaGroup], song2NuntaNamesSlot);
-        } else {
-          song2BothNamesField.style.display = 'none';
-        }
+        // CORECȚIE (2026-08-13, runda 8): vezi comentariul identic de mai sus.
+        song2BothNamesField.style.display = 'none';
       } else {
         song2NuntaSubroleField.style.display = 'none';
         song2BothNamesField.style.display = 'none';
@@ -3032,12 +3015,11 @@
       song2NuntaPanel.style.display = 'none';
     }
 
-    // Numele destinatarului, cand NU e "Amândoi" — camp UNIVERSAL, mirrors #recipient de pe
-    // pasul 2: vizibil imediat pentru o ocazie generica (fara relatie structurata), sau abia
-    // dupa alegerea unui rol individual pentru o ocazie de familie/nunta.
+    // CORECȚIE (2026-08-13, runda 8): campul unic de nume (mini-pagina, pasul 8) devine acum
+    // sursa canonica pentru numele destinatarului INDIFERENT de recipientMode ("Amândoi" inclus)
+    // — nu mai e ascuns cand e ales "Amândoi" (isBothActive a fost eliminat din conditie).
     const isFamilyOrWedding = FAMILY_OCCASIONS.includes(occasion) || occasion === 'nunta';
-    const isBothActive = FAMILY_BOTH_ROLES.includes(song2RecipientRoleInput.value) || NUNTA_BOTH_ROLES.includes(song2RecipientRoleInput.value);
-    if (!occasion || isBothActive) {
+    if (!occasion) {
       song2SingleNameField.style.display = 'none';
     } else if (isFamilyOrWedding) {
       song2SingleNameField.style.display = song2RecipientRoleInput.value ? 'block' : 'none';
@@ -3167,13 +3149,9 @@
         const needsSenderRole = !!SENDER_ROLE_OPTIONS[song2RecipientRoleInput.value];
         if (needsSenderRole && !song2SenderRoleInput.value) return false;
       }
-      // CORECȚIE (2026-08-13): numele persoanei individuale (cazul "not isBoth") s-a MUTAT pe
-      // mini-pagina dedicata (pasul 8) — nu mai face parte din validarea pasului 7. "Amândoi"
-      // (name1/name2) ramane STRICT pe pasul 7, neschimbat — acele campuri nu s-au mutat.
-      const isBoth = FAMILY_BOTH_ROLES.includes(song2RecipientRoleInput.value) || NUNTA_BOTH_ROLES.includes(song2RecipientRoleInput.value);
-      if (isBoth) {
-        if (!song2Name1Input.value.trim() || !song2Name2Input.value.trim()) return false;
-      }
+      // CORECȚIE (2026-08-13, runda "Amândoi" fara campuri duplicate): numele — fie ca e o
+      // persoana individuala, fie "Amândoi" — se introduce O SINGURA DATA, pe mini-pagina
+      // dedicata (pasul 8, song2-recipient-name). Pasul 7 nu mai valideaza niciun nume.
     }
     return true;
   }
@@ -3185,8 +3163,9 @@
   // complet separata de song2AllValid() (pasul 7). Numele individual (cand nu e "Amândoi") s-a
   // mutat aici — acelasi camp/id, doar relocat — impreuna cu expeditorul/relatia/povestea, noi.
   function song2DetailsAllValid() {
-    const isBoth = FAMILY_BOTH_ROLES.includes(song2RecipientRoleInput.value) || NUNTA_BOTH_ROLES.includes(song2RecipientRoleInput.value);
-    if (!isBoth && !song2RecipientNameInput.value.trim()) return false;
+    // CORECȚIE (2026-08-13): campul de nume e acum obligatoriu necondiționat — el e sursa
+    // canonica atat pentru o persoana individuala, cat si pentru "Amândoi" (ex. "Maria și Victor").
+    if (!song2RecipientNameInput.value.trim()) return false;
     if (!song2SenderNameInput.value.trim()) return false;
     if (!song2RelationshipInput.value.trim()) return false;
     if (!song2StoryInput.value.trim()) return false;
@@ -3289,16 +3268,12 @@
   const DRAFT_KEY = 'nds_form_draft';
 
   function collectPayload() {
-    // "Amândoi" (Nuntă/Botez SI cele 3 ocazii de familie cu Amândoi): combina cele doua nume
-    // distincte intr-un string afisabil pentru campul EXISTENT `recipient` (niciodata combinate
-    // intr-un singur camp de introducere — clientul tot completeaza doua campuri separate; doar
-    // payload-ul le combina pentru restul fluxului, care asteapa un singur `recipient`, PASTRAND
-    // ambele nume complete, fara nicio prescurtare). Pentru orice alt caz, `recipient` ramane
-    // exact campul completat de client in pasul 2, neschimbat.
-    const isBothMode = recipientModeInput.value === 'both';
-    const recipientVal = isBothMode
-      ? `${name1Input.value.trim()} ${t('and_conjunction')} ${name2Input.value.trim()}`
-      : document.getElementById('recipient').value;
+    // CORECȚIE (2026-08-13, runda 8, "elimină câmpurile duplicate de nume la Amândoi"): "Amândoi"
+    // (Nuntă/Botez SI cele 3 ocazii de familie cu Amândoi) NU mai combina doua campuri separate —
+    // clientul introduce ambele nume O SINGURA DATA, direct in campul unic #recipient, pe pasul
+    // urmator (ex. "Maria și Victor"). `recipient` ramane deci STRICT campul completat de client
+    // pe pasul 2, in toate cazurile, indiferent de recipientMode.
+    const recipientVal = document.getElementById('recipient').value;
     return {
       occasion: document.getElementById('occasion').value,
       recipient: recipientVal,
@@ -3323,9 +3298,11 @@
       recipientRole: recipientRoleInput.value,
       senderRole: senderRoleInput.value,
       recipientMode: recipientModeInput.value,
-      recipientNames: isBothMode
-        ? { name1: name1Input.value.trim(), name2: name2Input.value.trim() }
-        : null,
+      // CORECȚIE (2026-08-13, runda 8): recipientNames (doua nume separate) nu mai e colectat —
+      // sursa canonica a numelor e acum STRICT `recipient` (campul unic de mai sus), pentru toate
+      // cazurile, inclusiv "Amândoi". Server-side ramane optional (compatibilitate cu comenzi
+      // vechi), niciodata cerut pentru comenzile noi.
+      recipientNames: null,
       // weddingType (Nuntă/Botez, hotfix 2026-08-08) — relevant DOAR pentru occasion='nunta'
       // (server-side il cere si il valideaza doar in acel caz); pentru orice alta ocazie,
       // campul e gol si serverul il ignora complet (salvat null).
@@ -3349,13 +3326,12 @@
       recipientMode2: (selectedPlan.id === 'premium' && song2TargetInput.value === 'other')
         ? song2RecipientModeInput.value
         : null,
-      recipientNames2: (selectedPlan.id === 'premium' && song2TargetInput.value === 'other' && song2RecipientModeInput.value === 'both')
-        ? { name1: song2Name1Input.value.trim(), name2: song2Name2Input.value.trim() }
-        : null,
+      // CORECȚIE (2026-08-13): numele (individual sau "Amândoi", ex. "Maria și Victor") se
+      // introduce O SINGURA DATA in song2-recipient-name (mini-pagina, pasul 8) — nu se mai
+      // combina din doua campuri separate. recipientNames2 (structura veche) nu se mai trimite.
+      recipientNames2: null,
       recipient2: (selectedPlan.id === 'premium' && song2TargetInput.value === 'other')
-        ? (song2RecipientModeInput.value === 'both'
-            ? `${song2Name1Input.value.trim()} ${t('and_conjunction')} ${song2Name2Input.value.trim()}`
-            : song2RecipientNameInput.value.trim())
+        ? song2RecipientNameInput.value.trim()
         : null,
       weddingType2: (selectedPlan.id === 'premium' && song2TargetInput.value === 'other')
         ? song2WeddingTypeInput.value
@@ -3645,15 +3621,10 @@
             return;
           }
         }
-        const isBothSong2 = FAMILY_BOTH_ROLES.includes(song2RecipientRoleInput.value) || NUNTA_BOTH_ROLES.includes(song2RecipientRoleInput.value);
-        if (isBothSong2) {
-          if (!song2Name1Input.value.trim() || !song2Name2Input.value.trim()) {
-            setFieldError('song2Name1', t('val_nunta_names'));
-            setFieldError('song2Name2', t('val_nunta_names'));
-            song2BothNamesField.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            return;
-          }
-        } else if (!song2RecipientNameInput.value.trim()) {
+        // CORECȚIE (2026-08-13): numele (individual sau "Amândoi") se valideaza acum o singura
+        // data, pe campul unic song2-recipient-name (mini-pagina, pasul 8) — nu mai exista
+        // ramura separata pentru "Amândoi" cu doua campuri.
+        if (!song2RecipientNameInput.value.trim()) {
           setFieldError('song2RecipientName', t('val_song2_recipient_name'));
           song2SingleNameField.scrollIntoView({ behavior: 'smooth', block: 'center' });
           return;
