@@ -266,6 +266,7 @@
   .memories-sub{ font-size:13px; color:var(--text-secondary); margin-bottom:14px; }
   .memories-meta{ font-size:12px; color:var(--text-secondary); margin:0 0 14px; line-height:1.6; }
   .memories-count{ font-size:12px; font-weight:600; margin-bottom:10px; }
+  .mem-batch-status{ font-size:12px; font-weight:600; color:var(--gold-deep); margin:2px 0 10px; min-height:15px; }
   .memories-count.ok{ color:var(--success); }
   .memories-count.warn{ color:var(--gold-deep); }
   .mem-list{ display:flex; flex-direction:column; gap:8px; margin-bottom:12px; }
@@ -665,6 +666,7 @@
           <p class="memories-meta" id="memories-meta"></p>
           <p class="memories-count" id="memories-count"></p>
           <div class="mem-list" id="mem-uploaded-list"></div>
+          <p class="mem-batch-status" id="mem-batch-status"></p>
           <div class="mem-list" id="mem-staged-list"></div>
           <!-- CORECȚIE (2026-08-14, "Articolele nu pot fi încărcate" pe iPhone): acceptul
                vechi enumera explicit fiecare MIME (inclusiv "image/x-adobe-dng", un tip
@@ -989,6 +991,11 @@
       memories_meta: (min, max) => `Între ${min} și ${max} materiale • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • orice combinație de poze și videoclipuri`,
       memories_count: (n, min, max, pending) => (n < min ? `${n} din minimum ${min} materiale` : n > max ? `Prea multe materiale (${n}/${max})` : `${n} materiale — gata de continuare`) + (pending > 0 ? ` (${pending} în curs de încărcare)` : ''),
       memories_uploading: 'Se încarcă...', memories_queued: 'În așteptare...', memories_uploaded: 'Încărcat', memories_remove: '✕', memories_retry: 'Reîncearcă',
+      memories_processing: 'Se procesează',
+      memories_uploading_pct: (pct) => `Se încarcă — ${pct}%`,
+      memories_batch_progress: (done, total, pct) => `Se încarcă ${done} din ${total} materiale — ${pct}%`,
+      memories_batch_done: (n) => `${n} materiale încărcate — poți continua`,
+      memories_auto_upload_hint: 'Materialele se încarcă automat. Nu mai trebuie să apeși.',
       memories_upload_timeout: 'Încărcarea durează prea mult — verifică conexiunea și încearcă din nou.',
       memories_no_files_selected: 'Nu am primit niciun fișier de la selector — încearcă din nou (verifică și dacă fotografiile sunt descărcate complet din iCloud).',
       preview_load_error: 'Nu am putut încărca previzualizarea. Atinge aici ca să încerci din nou.',
@@ -1063,6 +1070,11 @@
       memories_meta: (min, max) => `${min} to ${max} items • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • any mix of photos and videos`,
       memories_count: (n, min, max, pending) => (n < min ? `${n} of at least ${min} items` : n > max ? `Too many items (${n}/${max})` : `${n} items — ready to continue`) + (pending > 0 ? ` (${pending} uploading)` : ''),
       memories_uploading: 'Uploading...', memories_queued: 'Queued...', memories_uploaded: 'Uploaded', memories_remove: '✕', memories_retry: 'Retry',
+      memories_processing: 'Processing',
+      memories_uploading_pct: (pct) => `Uploading — ${pct}%`,
+      memories_batch_progress: (done, total, pct) => `Uploading ${done} of ${total} materials — ${pct}%`,
+      memories_batch_done: (n) => `${n} materials uploaded — you can continue`,
+      memories_auto_upload_hint: 'Materials are uploading automatically. No need to tap again.',
       memories_upload_timeout: 'This is taking too long — check your connection and try again.',
       memories_no_files_selected: "We didn't receive any file from the picker — please try again (also check the photos are fully downloaded from iCloud).",
       preview_load_error: "We couldn't load the preview. Tap here to try again.",
@@ -1137,6 +1149,11 @@
       memories_meta: (min, max) => `${min} bis ${max} Elemente • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • jede Mischung aus Fotos und Videos`,
       memories_count: (n, min, max, pending) => (n < min ? `${n} von mindestens ${min} Elementen` : n > max ? `Zu viele Elemente (${n}/${max})` : `${n} Elemente — bereit zum Fortfahren`) + (pending > 0 ? ` (${pending} werden hochgeladen)` : ''),
       memories_uploading: 'Wird hochgeladen...', memories_queued: 'In Warteschlange...', memories_uploaded: 'Hochgeladen', memories_remove: '✕', memories_retry: 'Erneut versuchen',
+      memories_processing: 'Wird verarbeitet',
+      memories_uploading_pct: (pct) => `Wird hochgeladen — ${pct}%`,
+      memories_batch_progress: (done, total, pct) => `${done} von ${total} Materialien werden hochgeladen — ${pct}%`,
+      memories_batch_done: (n) => `${n} Materialien hochgeladen — du kannst fortfahren`,
+      memories_auto_upload_hint: 'Die Materialien werden automatisch hochgeladen. Du musst nicht erneut tippen.',
       memories_upload_timeout: 'Das dauert zu lange — überprüfe deine Verbindung und versuche es erneut.',
       memories_no_files_selected: 'Wir haben keine Datei von der Auswahl erhalten — bitte versuche es erneut (prüfe auch, ob die Fotos vollständig aus iCloud heruntergeladen sind).',
       preview_load_error: 'Die Vorschau konnte nicht geladen werden. Tippe hier, um es erneut zu versuchen.',
@@ -1211,6 +1228,11 @@
       memories_meta: (min, max) => `Entre ${min} y ${max} elementos • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • cualquier combinación de fotos y videos`,
       memories_count: (n, min, max, pending) => (n < min ? `${n} de al menos ${min} elementos` : n > max ? `Demasiados elementos (${n}/${max})` : `${n} elementos — listo para continuar`) + (pending > 0 ? ` (${pending} subiendo)` : ''),
       memories_uploading: 'Subiendo...', memories_queued: 'En espera...', memories_uploaded: 'Subido', memories_remove: '✕', memories_retry: 'Reintentar',
+      memories_processing: 'Procesando',
+      memories_uploading_pct: (pct) => `Subiendo — ${pct}%`,
+      memories_batch_progress: (done, total, pct) => `Subiendo ${done} de ${total} materiales — ${pct}%`,
+      memories_batch_done: (n) => `${n} materiales subidos — puedes continuar`,
+      memories_auto_upload_hint: 'Los materiales se suben automáticamente. No hace falta que vuelvas a tocar.',
       memories_upload_timeout: 'Esto está tardando demasiado — comprueba tu conexión e inténtalo de nuevo.',
       memories_no_files_selected: 'No recibimos ningún archivo del selector — inténtalo de nuevo (comprueba también que las fotos estén completamente descargadas de iCloud).',
       preview_load_error: 'No pudimos cargar la previsualización. Toca aquí para intentarlo de nuevo.',
@@ -1285,6 +1307,11 @@
       memories_meta: (min, max) => `Da ${min} a ${max} elementi • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • qualsiasi combinazione di foto e video`,
       memories_count: (n, min, max, pending) => (n < min ? `${n} di almeno ${min} elementi` : n > max ? `Troppi elementi (${n}/${max})` : `${n} elementi — pronto per continuare`) + (pending > 0 ? ` (${pending} in caricamento)` : ''),
       memories_uploading: 'Caricamento...', memories_queued: 'In attesa...', memories_uploaded: 'Caricato', memories_remove: '✕', memories_retry: 'Riprova',
+      memories_processing: 'Elaborazione',
+      memories_uploading_pct: (pct) => `Caricamento — ${pct}%`,
+      memories_batch_progress: (done, total, pct) => `Caricamento di ${done} su ${total} materiali — ${pct}%`,
+      memories_batch_done: (n) => `${n} materiali caricati — puoi continuare`,
+      memories_auto_upload_hint: 'I materiali si caricano automaticamente. Non serve toccare di nuovo.',
       memories_upload_timeout: 'Sta impiegando troppo tempo — controlla la connessione e riprova.',
       memories_no_files_selected: 'Non abbiamo ricevuto alcun file dal selettore — riprova (controlla anche che le foto siano scaricate completamente da iCloud).',
       preview_load_error: "Non siamo riusciti a caricare l'anteprima. Tocca qui per riprovare.",
@@ -1359,6 +1386,11 @@
       memories_meta: (min, max) => `${min} à ${max} éléments • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • tout mélange de photos et vidéos`,
       memories_count: (n, min, max, pending) => (n < min ? `${n} sur au moins ${min} éléments` : n > max ? `Trop d'éléments (${n}/${max})` : `${n} éléments — prêt à continuer`) + (pending > 0 ? ` (${pending} en cours d'envoi)` : ''),
       memories_uploading: 'Envoi en cours...', memories_queued: 'En attente...', memories_uploaded: 'Envoyé', memories_remove: '✕', memories_retry: 'Réessayer',
+      memories_processing: 'Traitement en cours',
+      memories_uploading_pct: (pct) => `Envoi — ${pct}%`,
+      memories_batch_progress: (done, total, pct) => `Envoi de ${done} sur ${total} éléments — ${pct}%`,
+      memories_batch_done: (n) => `${n} éléments envoyés — vous pouvez continuer`,
+      memories_auto_upload_hint: "Les éléments s'envoient automatiquement. Inutile de retoucher l'écran.",
       memories_upload_timeout: "Cela prend trop de temps — vérifiez votre connexion et réessayez.",
       memories_no_files_selected: "Nous n'avons reçu aucun fichier du sélecteur — réessayez (vérifiez aussi que les photos sont bien téléchargées depuis iCloud).",
       preview_load_error: "Nous n'avons pas pu charger l'aperçu. Touchez ici pour réessayer.",
@@ -1433,6 +1465,11 @@
       memories_meta: (min, max) => `Между ${min} и ${max} материала • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • всякаква комбинация от снимки и видеа`,
       memories_count: (n, min, max, pending) => (n < min ? `${n} от поне ${min} материала` : n > max ? `Твърде много материали (${n}/${max})` : `${n} материала — готово за продължаване`) + (pending > 0 ? ` (${pending} се качват)` : ''),
       memories_uploading: 'Качване...', memories_queued: 'На изчакване...', memories_uploaded: 'Качено', memories_remove: '✕', memories_retry: 'Опитай отново',
+      memories_processing: 'Обработва се',
+      memories_uploading_pct: (pct) => `Качване — ${pct}%`,
+      memories_batch_progress: (done, total, pct) => `Качване на ${done} от ${total} материала — ${pct}%`,
+      memories_batch_done: (n) => `${n} материала качени — можеш да продължиш`,
+      memories_auto_upload_hint: 'Материалите се качват автоматично. Не е нужно да докосваш отново.',
       memories_upload_timeout: 'Това отнема твърде много време — провери връзката си и опитай отново.',
       memories_no_files_selected: 'Не получихме нито един файл от избора — опитай отново (провери също дали снимките са изтеглени напълно от iCloud).',
       preview_load_error: 'Не успяхме да заредим прегледа. Докосни тук, за да опиташ отново.',
@@ -1507,6 +1544,11 @@
       memories_meta: (min, max) => `${min} ile ${max} arası öğe • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • fotoğraf ve video karışımı kabul edilir`,
       memories_count: (n, min, max, pending) => (n < min ? `${n} / en az ${min} öğe` : n > max ? `Çok fazla öğe (${n}/${max})` : `${n} öğe — devam etmeye hazır`) + (pending > 0 ? ` (${pending} yükleniyor)` : ''),
       memories_uploading: 'Yükleniyor...', memories_queued: 'Sırada...', memories_uploaded: 'Yüklendi', memories_remove: '✕', memories_retry: 'Tekrar dene',
+      memories_processing: 'İşleniyor',
+      memories_uploading_pct: (pct) => `Yükleniyor — ${pct}%`,
+      memories_batch_progress: (done, total, pct) => `${total} dosyadan ${done} tanesi yükleniyor — ${pct}%`,
+      memories_batch_done: (n) => `${n} materyal yüklendi — devam edebilirsin`,
+      memories_auto_upload_hint: 'Materyaller otomatik olarak yükleniyor. Tekrar dokunmana gerek yok.',
       memories_upload_timeout: 'Bu çok uzun sürüyor — bağlantınızı kontrol edip tekrar deneyin.',
       memories_no_files_selected: "Seçiciden hiçbir dosya alamadık — lütfen tekrar deneyin (fotoğrafların iCloud'dan tamamen indirildiğinden de emin olun).",
       preview_load_error: 'Ön izlemeyi yükleyemedik. Tekrar denemek için buraya dokunun.',
@@ -2357,7 +2399,7 @@
   // ca numărul total vizibil (confirmate + în curs) să reflecte imediat întreaga selecție.
   function updateMemoriesCountAndGates(order) {
     const total = (order.uploadedMedia || []).length;
-    const pendingCount = uploadQueue.filter(q => q.status === 'uploading' || q.status === 'pending').length;
+    const pendingCount = uploadQueue.filter(q => q.status === 'uploading' || q.status === 'pending' || q.status === 'processing').length;
     const uploading = pendingCount > 0;
     const hasUnresolvedError = uploadQueue.some(q => q.status === 'error');
     const countEl = document.getElementById('memories-count');
@@ -2500,85 +2542,185 @@
     } catch (e) { /* urmatorul poll/refresh manual va corecta */ }
   }
 
-  // CORECȚIE (2026-08-14, "iPhone: bifa albastră din selector nu continua fluxul"): thumbnail-ul
-  // local pentru un VIDEOCLIP din coadă nu mai construiește niciodată un element <video> legat
-  // de blob-ul local — doar iconița statică. Un <video src="blob:..." preload="metadata"> obliga
-  // Safari/iOS să decodeze imediat metadata fiecărui videoclip local, pentru TOATE videoclipurile
-  // selectate deodată, chiar înainte ca vreun upload să înceapă — pentru materiale mari (normale
-  // pe un iPhone), acest decode simultan poate bloca vizibil firul principal exact în momentul
-  // confirmării selecției, dând senzația că "nu se întâmplă nimic". Fotografiile (<img>) rămân
-  // neschimbate — randarea unei imagini dintr-un blob e ieftină, fără nicio decodare de metadata.
+  // ==========================================================================================
+  // RELANSARE 2026-08-14 ("cardurile apar greu/inegal, unele goale, interfata raspunde greu"):
+  // dovada masurata — renderQueueList() (rebuild COMPLET, prin innerHTML, cu re-instalarea TUTUROR
+  // listenerelor) rula la FIECARE eveniment xhr.upload.onprogress, adica de zeci de ori pe secunda
+  // cu mai multe uploaduri simultane. Inlocuit cu: randare COMPLETA doar la schimbari STRUCTURALE
+  // (fisier adaugat/eliminat) — renderQueueList()/renderQueueRow(); actualizari de progres FAC
+  // DOAR un patch direct pe randul afectat (patchQueueRowProgress), throttled la un singur update
+  // pe frame prin requestAnimationFrame (scheduleProgressUpdate) — niciodata mai mult de o
+  // reconstructie vizuala per frame, indiferent de cate evenimente de progres sosesc intre timp.
+  // ==========================================================================================
+  function renderQueueRowInner(q) {
+    const pct = q.status === 'processing' ? 100 : q.progress;
+    return `
+      <span class="mem-thumb">${isVideoFile(q.file) ? '🎬' : (q.thumbUrl ? `<img src="${q.thumbUrl}" alt="" loading="lazy" decoding="async">` : '🖼️')}</span>
+      <div class="mem-info">
+        <span class="mem-name">${escapeHtml(q.file.name)}</span>
+        <span class="mem-meta ${q.status === 'error' ? 'err' : ''}">${
+          q.status === 'uploading' ? t.memories_uploading_pct(q.progress)
+          : q.status === 'processing' ? t.memories_processing
+          : q.status === 'pending' ? t.memories_queued
+          : q.status === 'error' ? (q.errorMsg || t.memories_upload_error)
+          : t.memories_uploaded
+        }</span>
+        ${(q.status === 'uploading' || q.status === 'processing') ? `<div class="mem-progress-track"><div class="mem-progress-fill" style="width:${pct}%"></div></div>` : ''}
+      </div>
+      <div class="mem-actions">
+        ${q.status === 'error' ? `<button type="button" class="mem-retry" data-retry-id="${q.localId}">${t.memories_retry}</button>` : ''}
+        <button type="button" class="mem-remove" data-queue-remove="${q.localId}" title="${t.memories_remove}" ${(q.status === 'uploading' || q.status === 'processing') ? 'disabled' : ''}>${t.memories_remove}</button>
+      </div>
+    `;
+  }
+
+  function wireQueueRow(row, entry) {
+    const retryBtn = row.querySelector('[data-retry-id]');
+    if (retryBtn) retryBtn.addEventListener('click', () => {
+      // Retry-ul reintra in coada cu CONCURENTA LIMITATA (nu porneste imediat, direct) —
+      // altfel reincercarea mai multor fisiere esuate deodata ar putea depasi din nou
+      // limita de uploaduri simultane, exact problema pe care coada o previne.
+      entry.status = 'pending';
+      entry.errorMsg = null;
+      renderQueueRow(entry);
+      processUploadQueue();
+    });
+    const removeBtn = row.querySelector('[data-queue-remove]');
+    if (removeBtn) removeBtn.addEventListener('click', () => {
+      const idx = uploadQueue.findIndex(q => q.localId === entry.localId);
+      if (idx === -1) return;
+      if (entry.xhr) { entry.abortRequested = true; entry.xhr.abort(); }
+      if (entry.thumbUrl) URL.revokeObjectURL(entry.thumbUrl);
+      uploadQueue.splice(idx, 1);
+      processUploadQueue();
+      renderQueueList();
+    });
+  }
+
+  // Randare COMPLETA — STRICT la schimbari structurale (lungimea cozii se schimba: fisier
+  // adaugat sau eliminat). NICIODATA apelata dintr-un tick de progres.
   function renderQueueList() {
     const el = document.getElementById('mem-staged-list');
-    el.innerHTML = uploadQueue.map(q => `
-      <div class="mem-item" data-queue-id="${q.localId}">
-        <span class="mem-thumb">${isVideoFile(q.file) ? '🎬' : (q.thumbUrl ? `<img src="${q.thumbUrl}" alt="">` : '🖼️')}</span>
-        <div class="mem-info">
-          <span class="mem-name">${escapeHtml(q.file.name)}</span>
-          <span class="mem-meta ${q.status === 'error' ? 'err' : ''}">${
-            q.status === 'uploading' ? t.memories_uploading
-            : q.status === 'pending' ? t.memories_queued
-            : q.status === 'error' ? (q.errorMsg || t.memories_upload_error)
-            : t.memories_uploaded
-          }</span>
-          ${q.status === 'uploading' ? `<div class="mem-progress-track"><div class="mem-progress-fill" style="width:${q.progress}%"></div></div>` : ''}
-        </div>
-        <div class="mem-actions">
-          ${q.status === 'error' ? `<button type="button" class="mem-retry" data-retry-id="${q.localId}">${t.memories_retry}</button>` : ''}
-          <button type="button" class="mem-remove" data-queue-remove="${q.localId}" title="${t.memories_remove}" ${q.status === 'uploading' ? 'disabled' : ''}>${t.memories_remove}</button>
-        </div>
-      </div>
-    `).join('');
+    el.innerHTML = uploadQueue.map(q => `<div class="mem-item" data-queue-id="${q.localId}">${renderQueueRowInner(q)}</div>`).join('');
+    el.querySelectorAll('[data-queue-id]').forEach(row => {
+      const entry = uploadQueue.find(q => q.localId === row.dataset.queueId);
+      if (entry) wireQueueRow(row, entry);
+    });
+    renderBatchStatus();
+    if (memOrderRef) updateMemoriesCountAndGates(memOrderRef);
+  }
 
-    el.querySelectorAll('[data-retry-id]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const entry = uploadQueue.find(q => q.localId === btn.dataset.retryId);
-        if (!entry) return;
-        // Retry-ul reintra in coada cu CONCURENTA LIMITATA (nu porneste imediat, direct) —
-        // altfel reincercarea mai multor fisiere esuate deodata ar putea depasi din nou
-        // limita de uploaduri simultane, exact problema pe care coada o previne.
-        entry.status = 'pending';
-        entry.errorMsg = null;
-        renderQueueList();
-        processUploadQueue();
+  // Rebuild al UNUI SINGUR rand (tranzitie de stare: pending->uploading, ->processing, ->error)
+  // — nu atinge restul cozii. Cade pe randarea completa doar daca randul nu mai exista (caz rar).
+  function renderQueueRow(entry) {
+    const row = document.querySelector(`#mem-staged-list [data-queue-id="${entry.localId}"]`);
+    if (!row) { renderQueueList(); return; }
+    row.innerHTML = renderQueueRowInner(entry);
+    wireQueueRow(row, entry);
+    renderBatchStatus();
+    if (memOrderRef) updateMemoriesCountAndGates(memOrderRef);
+  }
+
+  // Patch DIRECT — actualizeaza STRICT bara si textul de procent ale unui singur material,
+  // fara sa reconstruiasca vreun element (fara innerHTML, fara re-instalare de listenere).
+  // Daca elementele nu exista inca (primul tick dupa 'pending'), cade o SINGURA data pe
+  // renderQueueRow() (rebuild al unui singur rand, nu al listei intregi).
+  function patchQueueRowProgress(entry) {
+    const row = document.querySelector(`#mem-staged-list [data-queue-id="${entry.localId}"]`);
+    if (!row) return;
+    const fill = row.querySelector('.mem-progress-fill');
+    const meta = row.querySelector('.mem-meta');
+    if (!fill || !meta) { renderQueueRow(entry); return; }
+    fill.style.width = (entry.status === 'processing' ? 100 : entry.progress) + '%';
+    meta.textContent = entry.status === 'processing' ? t.memories_processing : t.memories_uploading_pct(entry.progress);
+    meta.classList.remove('err');
+  }
+
+  let progressRafScheduled = false;
+  const pendingProgressIds = new Set();
+  function scheduleProgressUpdate(entry) {
+    pendingProgressIds.add(entry.localId);
+    if (progressRafScheduled) return;
+    progressRafScheduled = true;
+    requestAnimationFrame(() => {
+      progressRafScheduled = false;
+      const ids = Array.from(pendingProgressIds);
+      pendingProgressIds.clear();
+      ids.forEach(id => {
+        const e = uploadQueue.find(q => q.localId === id);
+        if (e) patchQueueRowProgress(e);
       });
+      renderBatchStatus();
     });
-    el.querySelectorAll('[data-queue-remove]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const idx = uploadQueue.findIndex(q => q.localId === btn.dataset.queueRemove);
-        if (idx === -1) return;
-        const entry = uploadQueue[idx];
-        if (entry.xhr) entry.xhr.abort();
-        if (entry.thumbUrl) URL.revokeObjectURL(entry.thumbUrl);
-        uploadQueue.splice(idx, 1);
-        processUploadQueue();
-        renderQueueList();
-        if (memOrderRef) updateMemoriesCountAndGates(memOrderRef);
-      });
-    });
+  }
+
+  // Progres GLOBAL, discret, deasupra listei — "Se încarcă 3 din 8 materiale — 42%", apoi
+  // "8 materiale încărcate — poți continua" STRICT dupa ce serverul a confirmat fiecare
+  // material (memBatchDoneCount creste NUMAI la succesul confirmat de server, niciodata la
+  // selectia locala) — vezi startSingleUpload()/startChunkedUpload().
+  let memBatchTotal = 0;
+  let memBatchDoneCount = 0;
+  function renderBatchStatus() {
+    const el = document.getElementById('mem-batch-status');
+    if (!el) return;
+    const active = uploadQueue.filter(q => q.status !== 'error');
+    if (memBatchTotal === 0) { el.textContent = ''; return; }
+    if (active.length === 0) {
+      el.textContent = memBatchDoneCount > 0 ? t.memories_batch_done(memBatchDoneCount) : '';
+      return;
+    }
+    const inFlightSum = active.reduce((s, q) => s + (q.status === 'processing' ? 100 : (q.progress || 0)), 0);
+    const overallPct = Math.min(100, Math.round(((memBatchDoneCount * 100) + inFlightSum) / memBatchTotal));
+    el.textContent = t.memories_batch_progress(memBatchDoneCount, memBatchTotal, overallPct);
+  }
+
+  // ==========================================================================================
+  // RELANSARE 2026-08-14 ("nu reincarca toata comanda dupa fiecare fisier"): dovada masurata —
+  // xhr.onload apela `await refreshOrderMedia()` dupa FIECARE fisier reusit individual; pentru
+  // 8 materiale, asta insemna 8 cereri + 8 re-randari ale listei de materiale existente, in timp
+  // ce alte uploaduri erau inca active. Inlocuit cu o SINGURA sincronizare, debounced (700ms) si
+  // "single-flight" — daca o sincronizare e deja in curs cand mai termina un fisier, NU pornim
+  // una noua in paralel, doar marcam ca mai e nevoie de inca una, care porneste STRICT dupa ce
+  // cea curenta se termina (niciodata doua simultan, niciodata un raspuns mai vechi suprascriind
+  // unul mai nou — cererile raman strict secventiale).
+  // ==========================================================================================
+  let memSyncTimer = null;
+  let memSyncInFlight = false;
+  let memSyncAgainNeeded = false;
+  function scheduleMemSync() {
+    memSyncAgainNeeded = true;
+    if (memSyncTimer || memSyncInFlight) return;
+    memSyncTimer = setTimeout(runMemSync, 700);
+  }
+  async function runMemSync() {
+    memSyncTimer = null;
+    if (memSyncInFlight || !memSyncAgainNeeded) return;
+    memSyncAgainNeeded = false;
+    memSyncInFlight = true;
+    try {
+      await refreshOrderMedia();
+    } finally {
+      memSyncInFlight = false;
+      if (memSyncAgainNeeded) memSyncTimer = setTimeout(runMemSync, 700);
+    }
   }
 
   // ==========================================================================================
   // HOTFIX 2026-08-07: uploadurile de pe iPhone (Safari iOS) esuau COMPLET (0 din 6 materiale
   // salvate) — cauza radacina confirmata: fiecare fisier ales pornea propriul XMLHttpRequest
-  // IMEDIAT, in paralel, fara nicio limita de concurenta. Pentru 6 fotografii/videoclipuri
-  // mari, trimise simultan de pe un telefon (posibil si materializate lazy din iCloud de
-  // catre iOS in acelasi timp), asta putea satura reteaua/memoria telefonului si esua toate
-  // cererile deodata, fara niciun mesaj clar (fiecare xhr esua independent, iar interfata nu
-  // distingea "prea multe deodata" de o eroare reala de fisier). Coada de mai jos limiteaza
-  // explicit la MAX_CONCURRENT_UPLOADS incarcari simultane — restul asteapta in starea
-  // 'pending' ("In asteptare...") pana se elibereaza un loc.
+  // IMEDIAT, in paralel, fara nicio limita de concurenta. Coada de mai jos limiteaza explicit
+  // la MAX_CONCURRENT_UPLOADS incarcari simultane — restul asteapta in starea 'pending' pana
+  // se elibereaza un loc.
   // ==========================================================================================
   const MAX_CONCURRENT_UPLOADS = 2;
-  // CORECȚIE (2026-08-14, "elimină plafonul artificial de 150MB"): marit de la 2 la 15 minute —
-  // dupa ridicarea limitei de dimensiune (ORDER_MEDIA_MAX_BYTES, server.js, acum 700MB implicit),
-  // un videoclip mare pe o conexiune mobila mai slaba are nevoie realist de mult mai mult timp
-  // decat 2 minute ca sa ajunga la server; 2 minute ar fi declansat o eroare de timeout falsa,
-  // exact pentru materialele normale pe care limita mai mare acum le permite.
   const UPLOAD_TIMEOUT_MS = 900000;
+  // Prag peste care un videoclip foloseste uploadul FRAGMENTAT (vezi startChunkedUpload) in loc
+  // de un singur POST — identic cu ORDER_MEDIA_CHUNK_THRESHOLD_BYTES din server.js.
+  const MEM_CHUNK_THRESHOLD_BYTES = 20 * 1024 * 1024;
+  const MEM_CHUNK_RETRY_LIMIT = 5;
 
   function processUploadQueue() {
-    const active = uploadQueue.filter(q => q.status === 'uploading').length;
+    const active = uploadQueue.filter(q => q.status === 'uploading' || q.status === 'processing').length;
     let slots = MAX_CONCURRENT_UPLOADS - active;
     if (slots <= 0) return;
     for (const entry of uploadQueue) {
@@ -2591,10 +2733,19 @@
   }
 
   function startUpload(entry) {
+    entry.abortRequested = false;
+    if (isVideoFile(entry.file) && entry.file.size > MEM_CHUNK_THRESHOLD_BYTES) {
+      startChunkedUpload(entry);
+    } else {
+      startSingleUpload(entry);
+    }
+  }
+
+  function startSingleUpload(entry) {
     entry.status = 'uploading';
     entry.progress = 0;
     entry.errorMsg = null;
-    renderQueueList();
+    renderQueueRow(entry);
 
     const formData = new FormData();
     formData.append('media', entry.file);
@@ -2607,11 +2758,13 @@
     xhr.timeout = UPLOAD_TIMEOUT_MS;
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable) {
-        entry.progress = Math.round((e.loaded / e.total) * 100);
-        renderQueueList();
+        const pct = Math.round((e.loaded / e.total) * 100);
+        entry.progress = pct;
+        if (pct >= 100 && entry.status === 'uploading') entry.status = 'processing';
+        scheduleProgressUpdate(entry);
       }
     };
-    xhr.onload = async () => {
+    xhr.onload = () => {
       let data = null;
       try { data = JSON.parse(xhr.responseText); } catch (e) { /* raspuns invalid */ }
       const failedEntry = data && Array.isArray(data.failed) ? data.failed[0] : null;
@@ -2619,23 +2772,22 @@
       if (xhr.status >= 200 && xhr.status < 300 && succeeded) {
         if (entry.thumbUrl) URL.revokeObjectURL(entry.thumbUrl);
         uploadQueue = uploadQueue.filter(q => q.localId !== entry.localId);
+        memBatchDoneCount++;
         renderQueueList();
         processUploadQueue();
-        await refreshOrderMedia();
+        scheduleMemSync();
       } else {
         entry.status = 'error';
         entry.errorMsg = (failedEntry && failedEntry.reason) || (data && data.error) || t.memories_upload_error;
-        renderQueueList();
+        renderQueueRow(entry);
         processUploadQueue();
-        if (memOrderRef) updateMemoriesCountAndGates(memOrderRef);
       }
     };
     xhr.onerror = () => {
       entry.status = 'error';
       entry.errorMsg = t.memories_upload_error;
-      renderQueueList();
+      renderQueueRow(entry);
       processUploadQueue();
-      if (memOrderRef) updateMemoriesCountAndGates(memOrderRef);
     };
     // Fara acest handler, un raspuns care nu ajunge niciodata (retea instabila, proxy care
     // taie conexiunea tacit) lasa fisierul blocat la nesfarsit in starea "Se incarca..." —
@@ -2644,18 +2796,143 @@
     xhr.ontimeout = () => {
       entry.status = 'error';
       entry.errorMsg = t.memories_upload_timeout;
-      renderQueueList();
+      renderQueueRow(entry);
       processUploadQueue();
-      if (memOrderRef) updateMemoriesCountAndGates(memOrderRef);
     };
     xhr.onabort = () => { processUploadQueue(); /* eliminat explicit de client — doar eliberam locul din coada */ };
     xhr.send(formData);
   }
 
+  // ==========================================================================================
+  // Upload FRAGMENTAT (chunked), rezervat videoclipurilor mari — vezi comentariul din server.js
+  // (POST/PUT/POST .../media/chunked/...). Fiecare fragment e trimis SECVENTIAL (nu simultan cu
+  // celelalte fragmente ale ACELUIASI fisier — asta ar contrazice limita de concurenta), cu
+  // reincercare AUTOMATA, per fragment, fara sa retrimita fragmentele deja confirmate de server
+  // (offset-ul avanseaza STRICT pe baza lui receivedBytes intors de server, nu pe o presupunere
+  // locala). Daca sesiunea nu mai exista pe server (ex. restart), reincercarea manuala (butonul
+  // "Reincearca") reia curat, cu o sesiune noua — vezi comentariul din server.js pentru limita
+  // onesta a acestei reluari (in memoria procesului, nu persistenta peste un restart).
+  // ==========================================================================================
+  function uploadChunkWithRetry(entry, blob, offset, totalBytes) {
+    return new Promise((resolve, reject) => {
+      let attempt = 0;
+      const tryOnce = () => {
+        if (entry.abortRequested) { reject(new Error('aborted')); return; }
+        const xhr = new XMLHttpRequest();
+        entry.xhr = xhr;
+        xhr.open('PUT', `/api/orders/${orderId}/media/chunked/${entry.chunkSessionId}/chunk?offset=${offset}`);
+        xhr.setRequestHeader('X-Access-Token', accessToken);
+        xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+        xhr.timeout = UPLOAD_TIMEOUT_MS;
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            const sent = offset + e.loaded;
+            entry.progress = Math.min(99, Math.round((sent / totalBytes) * 100));
+            scheduleProgressUpdate(entry);
+          }
+        };
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              const data = JSON.parse(xhr.responseText);
+              resolve(typeof data.receivedBytes === 'number' ? data.receivedBytes : offset + blob.size);
+            } catch (e) { retryOrFail(); }
+          } else { retryOrFail(); }
+        };
+        xhr.onerror = retryOrFail;
+        xhr.ontimeout = retryOrFail;
+        xhr.onabort = () => reject(new Error('aborted'));
+        xhr.send(blob);
+      };
+      const retryOrFail = () => {
+        attempt++;
+        if (entry.abortRequested) { reject(new Error('aborted')); return; }
+        if (attempt > MEM_CHUNK_RETRY_LIMIT) { reject(new Error('chunk failed')); return; }
+        setTimeout(tryOnce, Math.min(1000 * attempt, 5000));
+      };
+      tryOnce();
+    });
+  }
+
+  async function startChunkedUpload(entry) {
+    entry.status = 'uploading';
+    entry.progress = 0;
+    entry.errorMsg = null;
+    renderQueueRow(entry);
+    try {
+      const initRes = await fetch(`/api/orders/${orderId}/media/chunked/init`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Access-Token': accessToken },
+        body: JSON.stringify({ filename: entry.file.name, size: entry.file.size, mimeType: entry.file.type || '', section: entry.section || '' })
+      });
+      const initData = await initRes.json().catch(() => ({}));
+      if (!initRes.ok || !initData.sessionId) throw new Error(initData.error || 'init failed');
+      entry.chunkSessionId = initData.sessionId;
+      const chunkSize = initData.chunkSize || (6 * 1024 * 1024);
+      const totalBytes = entry.file.size;
+      let offset = 0;
+      while (offset < totalBytes) {
+        if (entry.abortRequested) return;
+        const slice = entry.file.slice(offset, Math.min(offset + chunkSize, totalBytes));
+        offset = await uploadChunkWithRetry(entry, slice, offset, totalBytes);
+      }
+      if (entry.abortRequested) return;
+      entry.status = 'processing';
+      scheduleProgressUpdate(entry);
+      const completeRes = await fetch(`/api/orders/${orderId}/media/chunked/${entry.chunkSessionId}/complete`, {
+        method: 'POST',
+        headers: { 'X-Access-Token': accessToken }
+      });
+      const data = await completeRes.json().catch(() => ({}));
+      const succeeded = data && Array.isArray(data.uploaded) && data.uploaded.length > 0;
+      if (completeRes.ok && succeeded) {
+        uploadQueue = uploadQueue.filter(q => q.localId !== entry.localId);
+        memBatchDoneCount++;
+        renderQueueList();
+        processUploadQueue();
+        scheduleMemSync();
+      } else {
+        const failedEntry = data && Array.isArray(data.failed) ? data.failed[0] : null;
+        entry.status = 'error';
+        entry.errorMsg = (failedEntry && failedEntry.reason) || (data && data.error) || t.memories_upload_error;
+        renderQueueRow(entry);
+        processUploadQueue();
+      }
+    } catch (err) {
+      if (entry.abortRequested) return;
+      entry.status = 'error';
+      entry.errorMsg = t.memories_upload_error;
+      renderQueueRow(entry);
+      processUploadQueue();
+    }
+  }
+
   const memFileInput = document.getElementById('mem-file-input');
   const memStatusEl = document.getElementById('mem-status');
 
+  // RELANSARE 2026-08-14 ("previne cele 100 de apasari"): un singur mecanism deschide
+  // selectorul — prima apasare blocheaza imediat apasarile duplicate (preventDefault opreste
+  // efectiv deschiderea nativa a doua oara), eliberat STRICT la 'change', 'cancel', sau (daca
+  // niciunul din ele nu vine, ex. eroare nativa iOS inainte de revenirea la pagina) un timeout
+  // de siguranta — selectorul nu ramane blocat la nesfarsit.
+  let pickerLocked = false;
+  let pickerLockTimeoutId = null;
+  memFileInput.addEventListener('click', (e) => {
+    if (pickerLocked) { e.preventDefault(); return; }
+    pickerLocked = true;
+    clearTimeout(pickerLockTimeoutId);
+    pickerLockTimeoutId = setTimeout(() => { pickerLocked = false; }, 20000);
+  });
+  memFileInput.addEventListener('cancel', () => {
+    pickerLocked = false;
+    clearTimeout(pickerLockTimeoutId);
+  });
+
+  let memStatusHintToken = 0;
+
   memFileInput.addEventListener('change', () => {
+    pickerLocked = false;
+    clearTimeout(pickerLockTimeoutId);
     const files = Array.from(memFileInput.files);
     memFileInput.value = '';
     // INCIDENT 2026-08-07 (Cadou video, iPhone): un client a raportat ca a selectat si
@@ -2663,27 +2940,30 @@
     // server (nicio cerere POST /media nu a ajuns niciodata). Reprodus cu codul curent (fisiere
     // reale, exact acest flux) fara nicio eroare, deci nu am putut demonstra o cauza de cod —
     // dar handler-ul de mai jos nu dadea NICIUN semnal vizibil daca FileList-ul intors de
-    // selector era gol (posibil daca browser-ul/OS-ul intampina o problema inainte sa predea
-    // fisierele paginii, ex. fotografii inca in curs de descarcare din iCloud) — utilizatorul
-    // vedea doar ca "nu s-a intamplat nimic", exact simptomul raportat. Adaugam un mesaj vizibil
-    // explicit pentru acest caz, ca diagnostic minim si feedback real, fara sa presupunem sau sa
-    // "reparam" o cauza pe care nu am putut-o demonstra.
+    // selector era gol — adaugam un mesaj vizibil explicit pentru acest caz.
     if (files.length === 0) {
       memStatusEl.textContent = t.memories_no_files_selected;
       memStatusEl.className = 'mem-status err';
       return;
     }
-    memStatusEl.textContent = '';
+    // RELANSARE 2026-08-14 ("aratǎ clar: materialele se incarca automat, nu mai trebuie sa
+    // apesi"): mesaj tranzitoriu (4s), inlocuit de progresul global (memories-batch-status)
+    // imediat ce acesta are ceva de aratat — un token previne ca acest timeout intarziat sa
+    // stearga un mesaj de eroare mai nou aparut intre timp.
+    memStatusEl.textContent = t.memories_auto_upload_hint;
     memStatusEl.className = 'mem-status';
+    const hintToken = ++memStatusHintToken;
+    setTimeout(() => { if (memStatusHintToken === hintToken) memStatusEl.textContent = ''; }, 4000);
+
+    memBatchTotal += files.length;
+
     // CORECȚIE (2026-08-14, "iPhone: bifa albastră din selector nu continua fluxul"): fiecare
     // fișier e adăugat în coadă independent, izolat cu try/catch — dacă UN SINGUR fișier din
     // selecție ridică o excepție la construirea intrării (ex. URL.createObjectURL eșuează pentru
     // un blob particular), restul fișierelor selectate NU mai trebuie pierdute tăcut, iar
-    // renderQueueList()/processUploadQueue() de mai jos tot trebuie să ruleze — înainte, o
-    // excepție neprinsă aici oprea ÎNTREG handler-ul înainte să ajungă la acele apeluri, exact
-    // simptomul raportat ("selectez materiale, apăs confirmarea, nu se întâmplă nimic vizibil").
-    // thumbUrl se creează STRICT pentru fotografii — vezi comentariul din renderQueueList() pentru
-    // videoclipuri (niciun <video src="blob:..."> local, deci nicio nevoie de object URL aici).
+    // renderQueueList()/processUploadQueue() de mai jos tot trebuie să ruleze. thumbUrl se
+    // creează STRICT pentru fotografii — un singur URL.createObjectURL() per fișier, refolosit
+    // intre randari (patchQueueRowProgress nu il recreeaza niciodata), revocat doar la eliminare.
     files.forEach(file => {
       try {
         const entry = {
@@ -2694,7 +2974,9 @@
           progress: 0,
           errorMsg: null,
           thumbUrl: /^image\//.test(file.type) ? URL.createObjectURL(file) : null,
-          xhr: null
+          xhr: null,
+          chunkSessionId: null,
+          abortRequested: false
         };
         uploadQueue.push(entry);
       } catch (err) {
@@ -2706,13 +2988,16 @@
           progress: 0,
           errorMsg: t.memories_upload_error,
           thumbUrl: null,
-          xhr: null
+          xhr: null,
+          chunkSessionId: null,
+          abortRequested: false
         });
       }
     });
+    // Toate cardurile intra IMEDIAT in interfata (randare completa, o singura data, sincron —
+    // nu asteapta thumbnailuri/metadate/raspunsul serverului), apoi uploadul porneste automat.
     renderQueueList();
     processUploadQueue();
-    if (memOrderRef) updateMemoriesCountAndGates(memOrderRef);
   });
 
   // ==========================================================================================

@@ -51,16 +51,26 @@ for (const [name, html] of Object.entries(PAGES)) {
     assert.ok(html.includes('function startUpload(entry)'));
   });
 
-  test(`${name}: startUpload() trimite UN SINGUR fisier per request (formData.append('media', entry.file), nicio bucla peste un lot)`, () => {
-    const src = extractFunction(html, 'function startUpload(entry) {');
+  // RELANSARE (2026-08-14, "cardurile apar greu/inegal, interfata raspunde greu"): startUpload()
+  // a devenit un simplu DISPATCHER (fisiere video mari -> startChunkedUpload, restul ->
+  // startSingleUpload) — logica XHR/FormData per-fisier a fost mutata in startSingleUpload().
+  test(`${name}: startSingleUpload() trimite UN SINGUR fisier per request (formData.append('media', entry.file), nicio bucla peste un lot)`, () => {
+    const src = extractFunction(html, 'function startSingleUpload(entry) {');
     assert.ok(src.includes("formData.append('media', entry.file);"));
     assert.ok(!/forEach\(\s*sf\s*=>\s*formData\.append/.test(src), 'nu mai trebuie sa existe un forEach care adauga mai multe fisiere in acelasi FormData');
   });
 
   test(`${name}: fiecare fisier foloseste propriul XMLHttpRequest (nu fetch cu un FormData combinat)`, () => {
-    const src = extractFunction(html, 'function startUpload(entry) {');
+    const src = extractFunction(html, 'function startSingleUpload(entry) {');
     assert.ok(src.includes('new XMLHttpRequest()'));
     assert.ok(src.includes('xhr.send(formData)'));
+  });
+
+  test(`${name}: startUpload() e un dispatcher intre upload simplu si upload fragmentat (videoclipuri mari)`, () => {
+    const src = extractFunction(html, 'function startUpload(entry) {');
+    assert.ok(src.includes('startChunkedUpload(entry)'));
+    assert.ok(src.includes('startSingleUpload(entry)'));
+    assert.ok(src.includes('MEM_CHUNK_THRESHOLD_BYTES'));
   });
 
   // -----------------------------------------------------------------------------------------
@@ -68,13 +78,13 @@ for (const [name, html] of Object.entries(PAGES)) {
   //    ('entry.status = "error"'), fara sa goleasca sau sa resetaze uploadQueue.
   // -----------------------------------------------------------------------------------------
   test(`${name}: eroarea unui fisier (onerror/ontimeout) marcheaza DOAR intrarea proprie, restul cozii ramane intact`, () => {
-    const src = extractFunction(html, 'function startUpload(entry) {');
+    const src = extractFunction(html, 'function startSingleUpload(entry) {');
     assert.ok(src.includes("entry.status = 'error';"));
     assert.ok(!/uploadQueue\s*=\s*\[\]/.test(src), 'nicio eroare nu trebuie sa goleasca intreaga coada');
   });
 
   test(`${name}: succesul unui fisier elimina STRICT propria intrare din coada (filter dupa localId), nu toata coada`, () => {
-    const src = extractFunction(html, 'function startUpload(entry) {');
+    const src = extractFunction(html, 'function startSingleUpload(entry) {');
     assert.ok(src.includes('uploadQueue = uploadQueue.filter(q => q.localId !== entry.localId);'));
   });
 
@@ -82,12 +92,14 @@ for (const [name, html] of Object.entries(PAGES)) {
   // 3. Retry-ul unui fisier esuat NU creeaza o intrare noua/duplicat — doar schimba starea
   //    intrarii existente inapoi la 'pending' si reintra in coada cu concurenta limitata.
   // -----------------------------------------------------------------------------------------
+  // RELANSARE 2026-08-14: butoanele de retry/eliminare nu mai sunt legate printr-un
+  // querySelectorAll global (rulat la fiecare randare completa) — sunt legate STRICT per rand,
+  // in wireQueueRow(row, entry), apelat o singura data la crearea/rebuild-ul acelui rand.
   test(`${name}: butonul de retry reactiveaza intrarea existenta (fara push nou, deci fara duplicat)`, () => {
-    const idx = html.indexOf("el.querySelectorAll('[data-retry-id]')");
-    assert.notEqual(idx, -1);
-    const snippet = html.slice(idx, idx + 500);
-    assert.ok(snippet.includes("entry.status = 'pending';"));
-    assert.ok(!snippet.includes('uploadQueue.push('), 'retry nu trebuie sa adauge o intrare noua in coada');
+    const src = extractFunction(html, 'function wireQueueRow(row, entry) {');
+    assert.ok(src.includes("row.querySelector('[data-retry-id]')"));
+    assert.ok(src.includes("entry.status = 'pending';"));
+    assert.ok(!src.includes('uploadQueue.push('), 'retry nu trebuie sa adauge o intrare noua in coada');
   });
 
   // -----------------------------------------------------------------------------------------
@@ -99,7 +111,7 @@ for (const [name, html] of Object.entries(PAGES)) {
     assert.notEqual(idx, -1, 'handler-ul trebuie sa ramana sincron');
     const filesIdx = html.indexOf('const files = Array.from(fileInput.files);', idx);
     const resetIdx = html.indexOf("fileInput.value = '';", idx);
-    assert.ok(filesIdx > idx && filesIdx - idx < 150);
+    assert.ok(filesIdx > idx && filesIdx - idx < 250);
     assert.ok(resetIdx > filesIdx && resetIdx - filesIdx < 60, 'resetarea trebuie sa vina imediat DUPA copiere, nu inainte');
   });
 
@@ -126,11 +138,10 @@ for (const [name, html] of Object.entries(PAGES)) {
   // 5. Eliminarea unei intrari din coada (butonul ✕) sterge STRICT intrarea proprie.
   // -----------------------------------------------------------------------------------------
   test(`${name}: butonul de eliminare dintr-o intrare a cozii sterge DOAR acea intrare (splice pe index gasit prin localId)`, () => {
-    const idx = html.indexOf("el.querySelectorAll('[data-queue-remove]')");
-    assert.notEqual(idx, -1);
-    const snippet = html.slice(idx, idx + 400);
-    assert.ok(snippet.includes('uploadQueue.splice(idx, 1);'));
-    assert.ok(!/uploadQueue\s*=\s*\[\]/.test(snippet));
+    const src = extractFunction(html, 'function wireQueueRow(row, entry) {');
+    assert.ok(src.includes("row.querySelector('[data-queue-remove]')"));
+    assert.ok(src.includes('uploadQueue.splice(idx, 1);'));
+    assert.ok(!/uploadQueue\s*=\s*\[\]/.test(src));
   });
 
   // -----------------------------------------------------------------------------------------
@@ -151,13 +162,13 @@ for (const [name, html] of Object.entries(PAGES)) {
   // 7. Nicio iconita locala de tip <video src="blob:..."> pentru materialele din coada — doar
   //    iconita statica (decodarea simultana a metadatelor bloca vizibil iPhone-ul).
   // -----------------------------------------------------------------------------------------
-  test(`${name}: renderQueueList() nu construieste niciodata un <video src="blob:..."> pentru materialele din coada`, () => {
-    const src = extractFunction(html, 'function renderQueueList() {');
+  test(`${name}: renderQueueRowInner() nu construieste niciodata un <video src="blob:..."> pentru materialele din coada`, () => {
+    const src = extractFunction(html, 'function renderQueueRowInner(q) {');
     assert.ok(!src.includes('<video'));
   });
 
-  test(`${name}: renderQueueList() foloseste isVideoFile() (nu file.type.startsWith direct)`, () => {
-    const src = extractFunction(html, 'function renderQueueList() {');
+  test(`${name}: renderQueueRowInner() foloseste isVideoFile() (nu file.type.startsWith direct)`, () => {
+    const src = extractFunction(html, 'function renderQueueRowInner(q) {');
     assert.ok(src.includes('isVideoFile(q.file)'));
   });
 
@@ -188,10 +199,31 @@ for (const [name, html] of Object.entries(PAGES)) {
   //    doar pe iOS, doar dupa revenirea la pagina fara "change".
   // -----------------------------------------------------------------------------------------
   test(`${name}: exista o detectie a cazului "picker deschis, dar niciun change" (click -> asteptare -> verificare la focus/visibilitychange)`, () => {
-    assert.ok(html.includes("fileInput.addEventListener('click', () => {"));
+    assert.ok(html.includes("fileInput.addEventListener('click', (e) => {"));
     assert.ok(html.includes('pickerAwaitingChange = true;'));
     assert.ok(html.includes("document.addEventListener('visibilitychange'"));
     assert.ok(html.includes("window.addEventListener('focus', checkPickerDelivery);"));
+  });
+
+  // RELANSARE 2026-08-14 ("previne cele 100 de apasari"): prima apasare pe input blocheaza
+  // imediat apasarile duplicate (preventDefault opreste efectiv a doua deschidere nativa),
+  // eliberat STRICT la 'change'/'cancel'/timeout de siguranta.
+  test(`${name}: prima apasare pe selector blocheaza apasarile duplicate (pickerLocked + preventDefault)`, () => {
+    const idx = html.indexOf("fileInput.addEventListener('click', (e) => {");
+    assert.notEqual(idx, -1);
+    const snippet = html.slice(idx, idx + 300);
+    assert.ok(snippet.includes('if (pickerLocked) { e.preventDefault(); return; }'));
+    assert.ok(snippet.includes('pickerLocked = true;'));
+  });
+
+  test(`${name}: blocarea selectorului e eliberata la 'cancel' si la 'change', niciodata permanenta`, () => {
+    const idx = html.indexOf("fileInput.addEventListener('cancel', () => {");
+    assert.notEqual(idx, -1);
+    const cancelSnippet = html.slice(idx, idx + 150);
+    assert.ok(cancelSnippet.includes('pickerLocked = false;'));
+    const changeIdx = html.indexOf("fileInput.addEventListener('change', () => {");
+    const changeSnippet = html.slice(changeIdx, changeIdx + 150);
+    assert.ok(changeSnippet.includes('pickerLocked = false;'));
   });
 
   test(`${name}: mesajul de recuperare iOS e afisat STRICT cand memIsIOS e adevarat, niciodata neconditionat`, () => {
@@ -203,7 +235,7 @@ for (const [name, html] of Object.entries(PAGES)) {
 
   test(`${name}: "change" reseteaza flagul de asteptare a picker-ului (pickerAwaitingChange = false), ca sa nu declanseze fals mesajul de recuperare dupa o selectie reusita`, () => {
     const idx = html.indexOf("fileInput.addEventListener('change', () => {");
-    const snippet = html.slice(idx, idx + 150);
+    const snippet = html.slice(idx, idx + 250);
     assert.ok(snippet.includes('pickerAwaitingChange = false;'));
   });
 

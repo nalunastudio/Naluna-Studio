@@ -2808,6 +2808,188 @@ app.post('/api/orders/:orderId/media', requireOrderToken, handleOrderMediaUpload
   }
 });
 
+// ==========================================================================================
+// UPLOAD FRAGMENTAT (chunked), REZUMABIL — Cadou video, RELANSARE 2026-08-14 ("nu declara
+// uploadul fragmentat sau reluabil daca pagina continua sa trimita intregul fisier intr-un
+// singur FormData"). Rezervat STRICT videoclipurilor mari (peste ORDER_MEDIA_CHUNK_THRESHOLD_BYTES
+// — vezi constanta de mai jos; fotografiile si videoclipurile mici raman pe ruta simpla de mai
+// sus, deja izolata per fisier). Clientul taie fisierul in fragmente cu Blob.slice() si le trimite
+// secvential; serverul le scrie la offset-ul exact intr-un fisier temporar (TEMP_DIR, acelasi
+// spatiu de lucru folosit deja de restul pipeline-ului), fara sa citeasca vreodata fisierul
+// intreg in memorie. La reluare dupa o intrerupere (retea instabila, tab in fundal), clientul
+// afla exact cate bytes are deja serverul (raspunsul PUT include receivedBytes) si retrimite
+// STRICT diferenta — niciodata fragmentele deja confirmate.
+//
+// LIMITA ONESTA: sesiunile sunt tinute STRICT in memoria procesului (Map), nu in baza de date —
+// un restart de server (deploy, crash) pierde sesiunile in curs; clientul detecteaza asta (sesiune
+// negasita) si reia acel fisier de la inceput, curat, fara sa creeze vreun fisier orfan in R2 (nimic
+// nu ajunge in R2 decat la finalizare reusita). NU este deci un upload rezumabil peste un restart de
+// server sau peste zile — este rezumabil real peste intreruperi de retea si reveniri in aceeasi
+// sesiune de pagina, ceea ce acopera scenariul real raportat (conexiune mobila instabila pe un
+// videoclip mare, in aceeasi vizita a paginii).
+// ==========================================================================================
+const ORDER_MEDIA_CHUNK_THRESHOLD_BYTES = 20 * 1024 * 1024; // 20MB — sub asta, un singur POST e suficient de rapid/fiabil
+const ORDER_MEDIA_CHUNK_MAX_BYTES = 6 * 1024 * 1024; // 6MB per fragment — rezonabil pe o conexiune mobila
+const CHUNK_SESSION_IDLE_MS = 30 * 60 * 1000; // sesiuni abandonate (tab inchis, pagina parasita) curatate dupa 30 min
+const chunkSessions = new Map(); // sessionId -> { orderId, tempPath, totalBytes, receivedBytes, mimetype, originalname, section, completed, result, lastActivityAt }
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [sessionId, session] of chunkSessions.entries()) {
+    if (now - session.lastActivityAt > CHUNK_SESSION_IDLE_MS) {
+      try { fs.unlinkSync(session.tempPath); } catch (e) { /* best-effort */ }
+      chunkSessions.delete(sessionId);
+    }
+  }
+}, 5 * 60 * 1000).unref();
+
+app.post('/api/orders/:orderId/media/chunked/init', requireOrderToken, async (req, res, next) => {
+  try {
+    const order = req.order;
+    if (order.plan !== 'video') return res.status(400).json({ error: 'Doar pachetul video acceptă fotografii/videoclipuri.' });
+    if (!ORDER_MEDIA_UPLOADABLE_STATUSES.includes(order.status)) {
+      return res.status(403).json({ error: 'Nu poți încărca materiale în acest moment — melodia se generează chiar acum.' });
+    }
+    const { filename, size, mimeType, section } = req.body || {};
+    const totalBytes = Number(size);
+    if (!Number.isInteger(totalBytes) || totalBytes <= 0 || totalBytes > ORDER_MEDIA_MAX_BYTES) {
+      return res.status(400).json({ error: `Dimensiune invalidă (maximum ${Math.round(ORDER_MEDIA_MAX_BYTES / (1024 * 1024))}MB).` });
+    }
+    if (totalBytes < ORDER_MEDIA_CHUNK_THRESHOLD_BYTES) {
+      return res.status(400).json({ error: 'Acest fișier nu necesită upload fragmentat — folosește ruta standard.' });
+    }
+    // uploadul fragmentat e rezervat videoclipurilor — fotografiile nu ating niciodata acest prag
+    const inferredForInit = inferMediaType(filename, mimeType, ORDER_MEDIA_MIME_TYPES.photo, ORDER_MEDIA_MIME_TYPES.video);
+    if (!inferredForInit || inferredForInit.type !== 'video') {
+      return res.status(400).json({ error: 'Upload fragmentat disponibil doar pentru videoclipuri.' });
+    }
+    const sessionId = randomUUID();
+    const ext = path.extname(String(filename || '')).toLowerCase() || '.mp4';
+    const tempPath = path.join(TEMP_DIR, `chunked-${sessionId}${ext}`);
+    fs.closeSync(fs.openSync(tempPath, 'w')); // creeaza fisierul gol — scrierile pe fragmente folosesc 'r+' la offset exact
+    chunkSessions.set(sessionId, {
+      orderId: order.id,
+      tempPath,
+      totalBytes,
+      receivedBytes: 0,
+      mimetype: mimeType || 'video/mp4',
+      originalname: filename || 'video',
+      section: (typeof section === 'string' && section.trim()) ? section.trim() : null,
+      completed: false,
+      result: null,
+      lastActivityAt: Date.now()
+    });
+    res.json({ sessionId, chunkSize: ORDER_MEDIA_CHUNK_MAX_BYTES });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.put('/api/orders/:orderId/media/chunked/:sessionId/chunk', requireOrderToken,
+  express.raw({ type: 'application/octet-stream', limit: ORDER_MEDIA_CHUNK_MAX_BYTES + 65536 }),
+  async (req, res, next) => {
+    try {
+      const order = req.order;
+      const session = chunkSessions.get(req.params.sessionId);
+      if (!session || session.orderId !== order.id) {
+        return res.status(404).json({ error: 'Sesiune de upload inexistentă sau expirată — reia fișierul de la început.' });
+      }
+      if (session.completed) return res.status(409).json({ error: 'Această sesiune a fost deja finalizată.' });
+      const offset = Number(req.query.offset);
+      const buf = req.body;
+      if (!Buffer.isBuffer(buf) || buf.length === 0) return res.status(400).json({ error: 'Fragment gol sau invalid.' });
+      if (!Number.isInteger(offset) || offset < 0 || offset + buf.length > session.totalBytes) {
+        return res.status(400).json({ error: 'Poziție de fragment invalidă.' });
+      }
+      const fh = await fs.promises.open(session.tempPath, 'r+');
+      try {
+        await fh.write(buf, 0, buf.length, offset);
+      } finally {
+        await fh.close();
+      }
+      // idempotent: retrimiterea aceluiasi fragment (sau a unuia anterior, la o reincercare)
+      // nu poate SCADEA receivedBytes — clientul stie mereu exact de unde sa continue.
+      session.receivedBytes = Math.max(session.receivedBytes, offset + buf.length);
+      session.lastActivityAt = Date.now();
+      res.json({ receivedBytes: session.receivedBytes });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+app.post('/api/orders/:orderId/media/chunked/:sessionId/complete', requireOrderToken, async (req, res, next) => {
+  const order = req.order;
+  const session = chunkSessions.get(req.params.sessionId);
+  if (!session || session.orderId !== order.id) {
+    return res.status(404).json({ error: 'Sesiune de upload inexistentă sau expirată — reia fișierul de la început.' });
+  }
+  // Finalizare IDEMPOTENTA: o a doua cerere de finalizare pentru aceeasi sesiune (retry de
+  // retea dupa un raspuns pierdut) NU re-urca, NU re-persista — intoarce STRICT acelasi
+  // rezultat calculat prima data, garantand ca un refresh/reincercare nu poate crea un al
+  // doilea fisier in R2 pentru acelasi videoclip.
+  if (session.completed) return res.json(session.result);
+  const label = session.originalname;
+  try {
+    if (session.receivedBytes !== session.totalBytes) {
+      return res.status(409).json({ error: `Upload incomplet (${session.receivedBytes}/${session.totalBytes} bytes primiți).` });
+    }
+    const header = await readFileHeader(session.tempPath, 16);
+    if (!bufferMatchesDeclaredType(header, session.mimetype)) {
+      session.completed = true;
+      session.result = { uploaded: [], failed: [{ filename: label, reason: 'Conținutul fișierului nu corespunde tipului declarat.' }], total: (order.uploadedMedia || []).length };
+      try { fs.unlinkSync(session.tempPath); } catch (e) { /* best-effort */ }
+      return res.json(session.result);
+    }
+    const decodable = await verifyMediaDecodable(session.tempPath, session.mimetype, 'video');
+    if (!decodable.ok) {
+      session.completed = true;
+      session.result = { uploaded: [], failed: [{ filename: label, reason: `Fișierul nu poate fi procesat (${decodable.reason}). Încearcă alt fișier sau alt format.` }], total: (order.uploadedMedia || []).length };
+      try { fs.unlinkSync(session.tempPath); } catch (e) { /* best-effort */ }
+      return res.json(session.result);
+    }
+    const ext = path.extname(session.originalname).toLowerCase() || '.mp4';
+    const key = `orders/memories/${order.id}/${randomUUID()}${ext}`;
+    try {
+      await storage.uploadPrivateFile(session.tempPath, key, session.mimetype);
+    } catch (err) {
+      session.completed = true;
+      session.result = { uploaded: [], failed: [{ filename: label, reason: 'Eroare la salvare — te rugăm încearcă din nou.' }], total: (order.uploadedMedia || []).length };
+      try { fs.unlinkSync(session.tempPath); } catch (e) { /* best-effort */ }
+      return res.json(session.result);
+    }
+    try { fs.unlinkSync(session.tempPath); } catch (e) { /* best-effort */ }
+
+    const mutation = await db.mutateOrderMediaAtomically(order.id, (current) => {
+      const existing = current.uploadedMedia || [];
+      if (existing.length >= ORDER_MEDIA_MAX_ITEMS) return null;
+      return { uploadedMedia: [...existing, { key, type: 'video', section: session.section, filename: label }] };
+    });
+
+    session.completed = true;
+    if (!mutation.ok) {
+      await storage.deletePrivateFile(key).catch(() => {});
+      session.result = { uploaded: [], failed: [{ filename: label, reason: `Ai atins limita de ${ORDER_MEDIA_MAX_ITEMS} materiale.` }], total: (order.uploadedMedia || []).length };
+      return res.json(session.result);
+    }
+    perfLog(order.id, 'media_upload_chunked', `reusit, bytes=${session.totalBytes}`);
+    session.result = { uploaded: [{ type: 'video', filename: label, section: session.section }], failed: [], total: mutation.order.uploadedMedia.length };
+    res.json(session.result);
+  } catch (err) {
+    try { fs.unlinkSync(session.tempPath); } catch (e) { /* best-effort */ }
+    chunkSessions.delete(req.params.sessionId);
+    next(err);
+  }
+});
+
+app.delete('/api/orders/:orderId/media/chunked/:sessionId', requireOrderToken, (req, res) => {
+  const session = chunkSessions.get(req.params.sessionId);
+  if (session && session.orderId === req.order.id) {
+    try { fs.unlinkSync(session.tempPath); } catch (e) { /* best-effort */ }
+    chunkSessions.delete(req.params.sessionId);
+  }
+  res.json({ ok: true });
+});
+
 // URL semnat, de scurta durata (5 minute), pentru PREVIZUALIZAREA unui material deja
 // incarcat (thumbnail poza / player video) — materialele raman intotdeauna in bucket-ul
 // PRIVAT (amintiri personale ale clientului), deci un preview real necesita un URL semnat

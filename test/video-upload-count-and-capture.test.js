@@ -105,7 +105,7 @@ test('melodia-mea.html: updateMemoriesCountAndGates() calculeaza si transmite nu
   const idx = melodiaMea.indexOf('function updateMemoriesCountAndGates(order) {');
   const end = melodiaMea.indexOf('\n  }', idx);
   const snippet = melodiaMea.slice(idx, end);
-  assert.ok(snippet.includes("const pendingCount = uploadQueue.filter(q => q.status === 'uploading' || q.status === 'pending').length;"));
+  assert.ok(snippet.includes("const pendingCount = uploadQueue.filter(q => q.status === 'uploading' || q.status === 'pending' || q.status === 'processing').length;"));
   assert.ok(snippet.includes('t.memories_count(total, MEM_MIN, MEM_MAX, pendingCount)'));
 });
 
@@ -146,8 +146,9 @@ test('isVideoFile(): fisier cu MIME explicit "image/heic" ramane fotografie, ind
   assert.equal(isVideoFile({ type: 'image/heic', name: 'poza.heic' }), false);
 });
 
-test('melodia-mea.html: renderQueueList() foloseste isVideoFile() (nu file.type.startsWith direct) pentru iconita din coada', () => {
-  const idx = melodiaMea.indexOf('function renderQueueList() {');
+test('melodia-mea.html: renderQueueRowInner() foloseste isVideoFile() (nu file.type.startsWith direct) pentru iconita din coada', () => {
+  const idx = melodiaMea.indexOf('function renderQueueRowInner(q) {');
+  assert.notEqual(idx, -1);
   const snippet = melodiaMea.slice(idx, idx + 500);
   assert.ok(snippet.includes('isVideoFile(q.file)'));
   assert.ok(!snippet.includes("q.file.type.startsWith('video')"));
@@ -169,7 +170,7 @@ test('melodia-mea.html: handler-ul de change NU filtreaza dupa tip (photo/video)
 test('melodia-mea.html: FileList e copiat SINCRON intr-un array stabil (Array.from), inainte de orice alta operatie — nicio referinta pastrata la FileList-ul original peste operatii asincrone', () => {
   const idx = melodiaMea.indexOf("memFileInput.addEventListener('change', () => {");
   assert.notEqual(idx, -1, 'handler-ul trebuie sa ramana sincron (nu async), garantand ca Array.from ruleaza imediat, in acelasi tick cu evenimentul');
-  const snippet = melodiaMea.slice(idx, idx + 100);
+  const snippet = melodiaMea.slice(idx, idx + 250);
   assert.ok(snippet.includes('const files = Array.from(memFileInput.files);'));
 });
 

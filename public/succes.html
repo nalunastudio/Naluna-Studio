@@ -85,6 +85,7 @@
     display:block; width:100%; font-size:13px; margin-bottom:12px;
     font-family:'Sora',sans-serif; color:var(--text-secondary);
   }
+  .mem-batch-status{ font-size:12px; font-weight:600; color:var(--gold-deep); margin:2px 0 10px; min-height:15px; }
   .mem-status{ font-size:13px; margin-top:10px; }
 </style>
 </head>
@@ -118,6 +119,11 @@
         memories_creating: 'Se creează videoclipul tău cu amintiri... poate dura câteva minute',
         memories_remove: '✕',
         memories_queued: 'În așteptare...', memories_uploaded: 'Încărcat', memories_retry: 'Reîncearcă',
+        memories_processing: 'Se procesează',
+        memories_uploading_pct: (pct) => `Se încarcă — ${pct}%`,
+        memories_batch_progress: (done, total, pct) => `Se încarcă ${done} din ${total} materiale — ${pct}%`,
+        memories_batch_done: (n) => `${n} materiale încărcate — poți continua`,
+        memories_auto_upload_hint: 'Materialele se încarcă automat. Nu mai trebuie să apeși.',
         memories_upload_timeout: 'Încărcarea durează prea mult — verifică conexiunea și încearcă din nou.',
         memories_no_files_selected: 'Nu am primit niciun fișier de la selector — încearcă din nou (verifică și dacă fotografiile sunt descărcate complet din iCloud).',
         memories_ios_recovery: 'iPhone-ul nu a trimis materialele către site. Deschide pagina direct în Safari și asigură-te că fotografiile sau videoclipurile sunt descărcate pe telefon.',
@@ -145,6 +151,11 @@
         memories_creating: 'Creating your memory video... this can take a few minutes',
         memories_remove: '✕',
         memories_queued: 'Queued...', memories_uploaded: 'Uploaded', memories_retry: 'Retry',
+        memories_processing: 'Processing',
+        memories_uploading_pct: (pct) => `Uploading — ${pct}%`,
+        memories_batch_progress: (done, total, pct) => `Uploading ${done} of ${total} materials — ${pct}%`,
+        memories_batch_done: (n) => `${n} materials uploaded — you can continue`,
+        memories_auto_upload_hint: 'Materials are uploading automatically. No need to tap again.',
         memories_upload_timeout: 'This is taking too long — check your connection and try again.',
         memories_no_files_selected: "We didn't receive any file from the picker — please try again (also check the photos are fully downloaded from iCloud).",
         memories_ios_recovery: "Your iPhone didn't send the files to the site. Open this page directly in Safari and make sure the photos or videos are fully downloaded on your phone.",
@@ -172,6 +183,11 @@
         memories_creating: 'Dein Erinnerungsvideo wird erstellt... das kann einige Minuten dauern',
         memories_remove: '✕',
         memories_queued: 'In Warteschlange...', memories_uploaded: 'Hochgeladen', memories_retry: 'Erneut versuchen',
+        memories_processing: 'Wird verarbeitet',
+        memories_uploading_pct: (pct) => `Wird hochgeladen — ${pct}%`,
+        memories_batch_progress: (done, total, pct) => `${done} von ${total} Materialien werden hochgeladen — ${pct}%`,
+        memories_batch_done: (n) => `${n} Materialien hochgeladen — du kannst fortfahren`,
+        memories_auto_upload_hint: 'Die Materialien werden automatisch hochgeladen. Du musst nicht erneut tippen.',
         memories_upload_timeout: 'Das dauert zu lange — überprüfe deine Verbindung und versuche es erneut.',
         memories_no_files_selected: 'Wir haben keine Datei von der Auswahl erhalten — bitte versuche es erneut (prüfe auch, ob die Fotos vollständig aus iCloud heruntergeladen sind).',
         memories_ios_recovery: 'Dein iPhone hat die Dateien nicht an die Seite gesendet. Öffne diese Seite direkt in Safari und stelle sicher, dass die Fotos oder Videos vollständig auf dein Telefon heruntergeladen sind.',
@@ -199,6 +215,11 @@
         memories_creating: 'Creando tu video de recuerdos... puede tardar unos minutos',
         memories_remove: '✕',
         memories_queued: 'En espera...', memories_uploaded: 'Subido', memories_retry: 'Reintentar',
+        memories_processing: 'Procesando',
+        memories_uploading_pct: (pct) => `Subiendo — ${pct}%`,
+        memories_batch_progress: (done, total, pct) => `Subiendo ${done} de ${total} materiales — ${pct}%`,
+        memories_batch_done: (n) => `${n} materiales subidos — puedes continuar`,
+        memories_auto_upload_hint: 'Los materiales se suben automáticamente. No hace falta que vuelvas a tocar.',
         memories_upload_timeout: 'Esto está tardando demasiado — comprueba tu conexión e inténtalo de nuevo.',
         memories_no_files_selected: 'No recibimos ningún archivo del selector — inténtalo de nuevo (comprueba también que las fotos estén completamente descargadas de iCloud).',
         memories_ios_recovery: 'Tu iPhone no envió los archivos al sitio. Abre esta página directamente en Safari y asegúrate de que las fotos o videos estén completamente descargados en tu teléfono.',
@@ -226,6 +247,11 @@
         memories_creating: 'Creazione del video con i ricordi... può richiedere qualche minuto',
         memories_remove: '✕',
         memories_queued: 'In attesa...', memories_uploaded: 'Caricato', memories_retry: 'Riprova',
+        memories_processing: 'Elaborazione',
+        memories_uploading_pct: (pct) => `Caricamento — ${pct}%`,
+        memories_batch_progress: (done, total, pct) => `Caricamento di ${done} su ${total} materiali — ${pct}%`,
+        memories_batch_done: (n) => `${n} materiali caricati — puoi continuare`,
+        memories_auto_upload_hint: 'I materiali si caricano automaticamente. Non serve toccare di nuovo.',
         memories_upload_timeout: 'Sta impiegando troppo tempo — controlla la connessione e riprova.',
         memories_no_files_selected: 'Non abbiamo ricevuto alcun file dal selettore — riprova (controlla anche che le foto siano scaricate completamente da iCloud).',
         memories_ios_recovery: 'Il tuo iPhone non ha inviato i file al sito. Apri questa pagina direttamente in Safari e assicurati che le foto o i video siano completamente scaricati sul telefono.',
@@ -253,6 +279,11 @@
         memories_creating: 'Création de votre vidéo souvenir... cela peut prendre quelques minutes',
         memories_remove: '✕',
         memories_queued: 'En attente...', memories_uploaded: 'Envoyé', memories_retry: 'Réessayer',
+        memories_processing: 'Traitement en cours',
+        memories_uploading_pct: (pct) => `Envoi — ${pct}%`,
+        memories_batch_progress: (done, total, pct) => `Envoi de ${done} sur ${total} éléments — ${pct}%`,
+        memories_batch_done: (n) => `${n} éléments envoyés — vous pouvez continuer`,
+        memories_auto_upload_hint: "Les éléments s'envoient automatiquement. Inutile de retoucher l'écran.",
         memories_upload_timeout: "Cela prend trop de temps — vérifiez votre connexion et réessayez.",
         memories_no_files_selected: "Nous n'avons reçu aucun fichier du sélecteur — réessayez (vérifiez aussi que les photos sont bien téléchargées depuis iCloud).",
         memories_ios_recovery: "Votre iPhone n'a pas envoyé les fichiers au site. Ouvrez cette page directement dans Safari et assurez-vous que les photos ou vidéos sont bien téléchargées sur votre téléphone.",
@@ -280,6 +311,11 @@
         memories_creating: 'Създаваме твоето видео със спомени... може да отнеме няколко минути',
         memories_remove: '✕',
         memories_queued: 'На изчакване...', memories_uploaded: 'Качено', memories_retry: 'Опитай отново',
+        memories_processing: 'Обработва се',
+        memories_uploading_pct: (pct) => `Качване — ${pct}%`,
+        memories_batch_progress: (done, total, pct) => `Качване на ${done} от ${total} материала — ${pct}%`,
+        memories_batch_done: (n) => `${n} материала качени — можеш да продължиш`,
+        memories_auto_upload_hint: 'Материалите се качват автоматично. Не е нужно да докосваш отново.',
         memories_upload_timeout: 'Това отнема твърде много време — провери връзката си и опитай отново.',
         memories_no_files_selected: 'Не получихме нито един файл от избора — опитай отново (провери също дали снимките са изтеглени напълно от iCloud).',
         memories_ios_recovery: 'Твоят iPhone не изпрати файловете към сайта. Отвори тази страница директно в Safari и се увери, че снимките или видеата са напълно изтеглени на телефона.',
@@ -307,6 +343,11 @@
         memories_creating: 'Anı videonuz oluşturuluyor... bu birkaç dakika sürebilir',
         memories_remove: '✕',
         memories_queued: 'Sırada...', memories_uploaded: 'Yüklendi', memories_retry: 'Tekrar dene',
+        memories_processing: 'İşleniyor',
+        memories_uploading_pct: (pct) => `Yükleniyor — ${pct}%`,
+        memories_batch_progress: (done, total, pct) => `${total} dosyadan ${done} tanesi yükleniyor — ${pct}%`,
+        memories_batch_done: (n) => `${n} materyal yüklendi — devam edebilirsin`,
+        memories_auto_upload_hint: 'Materyaller otomatik olarak yükleniyor. Tekrar dokunmana gerek yok.',
         memories_upload_timeout: 'Bu çok uzun sürüyor — bağlantınızı kontrol edip tekrar deneyin.',
         memories_no_files_selected: "Seçiciden hiçbir dosya alamadık — lütfen tekrar deneyin (fotoğrafların iCloud'dan tamamen indirildiğinden de emin olun).",
         memories_ios_recovery: "iPhone'unuz dosyaları siteye göndermedi. Bu sayfayı doğrudan Safari'de açın ve fotoğrafların veya videoların telefonunuzda tamamen indirildiğinden emin olun.",
@@ -402,20 +443,12 @@
     function renderMemories(data, variant) {
       if (data.plan !== 'video' || variant.hasVideo) return '';
       memDataRef = data;
-      const uploaded = data.uploadedMedia || [];
-
-      const uploadedHtml = uploaded.map((m, i) => `
-        <div class="mem-item">
-          <span class="mem-name">${m.type === 'photo' ? '🖼️' : '🎬'}</span>
-          <button type="button" class="mem-remove" data-remove-index="${i}" title="${t.memories_remove}">${t.memories_remove}</button>
-        </div>
-      `).join('');
-
       return `
         <div class="memories" id="memories">
           <h2>${t.memories_title}</h2>
           <p class="memories-sub">${t.memories_sub}</p>
-          <div class="mem-list" id="mem-uploaded-list">${uploadedHtml}</div>
+          <div class="mem-list" id="mem-uploaded-list"></div>
+          <p class="mem-batch-status" id="mem-batch-status"></p>
           <div class="mem-list" id="mem-staged-list"></div>
           <!-- CORECȚIE (2026-08-14, "Articolele nu pot fi încărcate" pe iPhone) — vezi comentariul
                identic din melodia-mea.html: acceptul explicit, cu "image/x-adobe-dng" (MIME
@@ -426,66 +459,198 @@
           <input type="file" id="mem-file-input" multiple accept="image/*,video/*">
           <p class="memories-hint">${t.memories_hint}</p>
           <div class="mem-page-actions">
-            <button type="button" class="btn ${uploaded.length > 0 ? '' : 'btn-secondary'}" id="mem-create-btn">${uploaded.length > 0 ? t.memories_create_btn : t.memories_create_btn_skip}</button>
+            <button type="button" class="btn ${(data.uploadedMedia || []).length > 0 ? '' : 'btn-secondary'}" id="mem-create-btn">${(data.uploadedMedia || []).length > 0 ? t.memories_create_btn : t.memories_create_btn_skip}</button>
           </div>
           <p class="mem-status" id="mem-status"></p>
         </div>
       `;
     }
 
-    // Echivalentul renderQueueList() din melodia-mea.html/comanda-mea.html — vezi comentariul
-    // identic acolo (fara <video src="blob:...">, doar iconita statica pentru videoclipuri).
+    // Extras intr-o functie separata (RELANSARE, "nu reincarca toata comanda dupa fiecare
+    // fisier") — randata atat la afisarea initiala CAT si de refreshOrderMediaOnly(), fara sa
+    // mai fie nevoie de renderReadyCard() (rebuild complet al cardului) doar pentru atat.
+    function renderExistingMediaList(data) {
+      const el = document.getElementById('mem-uploaded-list');
+      if (!el) return;
+      const uploaded = data.uploadedMedia || [];
+      el.innerHTML = uploaded.map((m, i) => `
+        <div class="mem-item">
+          <span class="mem-name">${m.type === 'photo' ? '🖼️' : '🎬'}</span>
+          <button type="button" class="mem-remove" data-remove-index="${i}" title="${t.memories_remove}">${t.memories_remove}</button>
+        </div>
+      `).join('');
+      el.querySelectorAll('button[data-remove-index]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          btn.disabled = true;
+          try {
+            await fetch(`/api/orders/${orderId}/media/${btn.dataset.removeIndex}`, {
+              method: 'DELETE',
+              headers: { 'X-Access-Token': accessToken || '' }
+            });
+            await refreshOrderMediaOnly();
+          } catch (e) {
+            btn.disabled = false;
+          }
+        });
+      });
+      const createBtn = document.getElementById('mem-create-btn');
+      if (createBtn) {
+        createBtn.className = 'btn ' + (uploaded.length > 0 ? '' : 'btn-secondary');
+        createBtn.textContent = uploaded.length > 0 ? t.memories_create_btn : t.memories_create_btn_skip;
+      }
+    }
+
+    // Sincronizare USOARA — reia STRICT comanda (acelasi fetchOrder() folosit deja de
+    // refreshCard()), dar NU mai reconstruieste tot cardul (renderReadyCard rebuild-uieste
+    // playerul audio/video, badge-ul de pachet etc.) — doar lista de materiale existente.
+    async function refreshOrderMediaOnly() {
+      try {
+        const data = await fetchOrder();
+        if (memDataRef) memDataRef.uploadedMedia = data.uploadedMedia;
+        renderExistingMediaList(memDataRef || data);
+        updateMemActionGates();
+      } catch (e) { /* urmatoarea sincronizare va corecta */ }
+    }
+
+    // ==========================================================================================
+    // RELANSARE 2026-08-14 ("cardurile apar greu/inegal, unele goale, interfata raspunde greu"):
+    // vezi comentariul identic, mai detaliat, din melodia-mea.html/comanda-mea.html. Randare
+    // COMPLETA doar la schimbari structurale; progresul foloseste patch direct, throttled.
+    // ==========================================================================================
+    function renderQueueRowInner(q) {
+      const pct = q.status === 'processing' ? 100 : q.progress;
+      return `
+        <div class="mem-info">
+          <span class="mem-name">${isVideoFile(q.file) ? '🎬' : '🖼️'} ${escapeHtml(q.file.name)}</span>
+          <span class="mem-meta ${q.status === 'error' ? 'err' : ''}">${
+            q.status === 'uploading' ? t.memories_uploading_pct(q.progress)
+            : q.status === 'processing' ? t.memories_processing
+            : q.status === 'pending' ? t.memories_queued
+            : q.status === 'error' ? (q.errorMsg || t.memories_upload_error)
+            : t.memories_uploaded
+          }</span>
+          ${(q.status === 'uploading' || q.status === 'processing') ? `<div class="mem-progress-track"><div class="mem-progress-fill" style="width:${pct}%"></div></div>` : ''}
+        </div>
+        <div class="mem-actions">
+          ${q.status === 'error' ? `<button type="button" class="mem-retry" data-retry-id="${q.localId}">${t.memories_retry}</button>` : ''}
+          <button type="button" class="mem-remove" data-queue-remove="${q.localId}" title="${t.memories_remove}" ${(q.status === 'uploading' || q.status === 'processing') ? 'disabled' : ''}>${t.memories_remove}</button>
+        </div>
+      `;
+    }
+
+    function wireQueueRow(row, entry) {
+      const retryBtn = row.querySelector('[data-retry-id]');
+      if (retryBtn) retryBtn.addEventListener('click', () => {
+        entry.status = 'pending';
+        entry.errorMsg = null;
+        renderQueueRow(entry);
+        processUploadQueue();
+      });
+      const removeBtn = row.querySelector('[data-queue-remove]');
+      if (removeBtn) removeBtn.addEventListener('click', () => {
+        const idx = uploadQueue.findIndex(q => q.localId === entry.localId);
+        if (idx === -1) return;
+        if (entry.xhr) { entry.abortRequested = true; entry.xhr.abort(); }
+        uploadQueue.splice(idx, 1);
+        processUploadQueue();
+        renderQueueList();
+      });
+    }
+
     function renderQueueList() {
       const el = document.getElementById('mem-staged-list');
       if (!el) return;
-      el.innerHTML = uploadQueue.map(q => `
-        <div class="mem-item" data-queue-id="${q.localId}">
-          <div class="mem-info">
-            <span class="mem-name">${isVideoFile(q.file) ? '🎬' : '🖼️'} ${escapeHtml(q.file.name)}</span>
-            <span class="mem-meta ${q.status === 'error' ? 'err' : ''}">${
-              q.status === 'uploading' ? t.memories_uploading
-              : q.status === 'pending' ? t.memories_queued
-              : q.status === 'error' ? (q.errorMsg || t.memories_upload_error)
-              : t.memories_uploaded
-            }</span>
-            ${q.status === 'uploading' ? `<div class="mem-progress-track"><div class="mem-progress-fill" style="width:${q.progress}%"></div></div>` : ''}
-          </div>
-          <div class="mem-actions">
-            ${q.status === 'error' ? `<button type="button" class="mem-retry" data-retry-id="${q.localId}">${t.memories_retry}</button>` : ''}
-            <button type="button" class="mem-remove" data-queue-remove="${q.localId}" title="${t.memories_remove}" ${q.status === 'uploading' ? 'disabled' : ''}>${t.memories_remove}</button>
-          </div>
-        </div>
-      `).join('');
+      el.innerHTML = uploadQueue.map(q => `<div class="mem-item" data-queue-id="${q.localId}">${renderQueueRowInner(q)}</div>`).join('');
+      el.querySelectorAll('[data-queue-id]').forEach(row => {
+        const entry = uploadQueue.find(q => q.localId === row.dataset.queueId);
+        if (entry) wireQueueRow(row, entry);
+      });
+      renderBatchStatus();
+      updateMemActionGates();
+    }
 
-      el.querySelectorAll('[data-retry-id]').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const entry = uploadQueue.find(q => q.localId === btn.dataset.retryId);
-          if (!entry) return;
-          entry.status = 'pending';
-          entry.errorMsg = null;
-          renderQueueList();
-          processUploadQueue();
+    function renderQueueRow(entry) {
+      const row = document.querySelector(`#mem-staged-list [data-queue-id="${entry.localId}"]`);
+      if (!row) { renderQueueList(); return; }
+      row.innerHTML = renderQueueRowInner(entry);
+      wireQueueRow(row, entry);
+      renderBatchStatus();
+      updateMemActionGates();
+    }
+
+    function patchQueueRowProgress(entry) {
+      const row = document.querySelector(`#mem-staged-list [data-queue-id="${entry.localId}"]`);
+      if (!row) return;
+      const fill = row.querySelector('.mem-progress-fill');
+      const meta = row.querySelector('.mem-meta');
+      if (!fill || !meta) { renderQueueRow(entry); return; }
+      fill.style.width = (entry.status === 'processing' ? 100 : entry.progress) + '%';
+      meta.textContent = entry.status === 'processing' ? t.memories_processing : t.memories_uploading_pct(entry.progress);
+      meta.classList.remove('err');
+    }
+
+    let progressRafScheduled = false;
+    const pendingProgressIds = new Set();
+    function scheduleProgressUpdate(entry) {
+      pendingProgressIds.add(entry.localId);
+      if (progressRafScheduled) return;
+      progressRafScheduled = true;
+      requestAnimationFrame(() => {
+        progressRafScheduled = false;
+        const ids = Array.from(pendingProgressIds);
+        pendingProgressIds.clear();
+        ids.forEach(id => {
+          const e = uploadQueue.find(q => q.localId === id);
+          if (e) patchQueueRowProgress(e);
         });
+        renderBatchStatus();
       });
-      el.querySelectorAll('[data-queue-remove]').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const idx = uploadQueue.findIndex(q => q.localId === btn.dataset.queueRemove);
-          if (idx === -1) return;
-          const entry = uploadQueue[idx];
-          if (entry.xhr) entry.xhr.abort();
-          uploadQueue.splice(idx, 1);
-          processUploadQueue();
-          renderQueueList();
-          updateMemActionGates();
-        });
-      });
+    }
+
+    let memBatchTotal = 0;
+    let memBatchDoneCount = 0;
+    function renderBatchStatus() {
+      const el = document.getElementById('mem-batch-status');
+      if (!el) return;
+      const active = uploadQueue.filter(q => q.status !== 'error');
+      if (memBatchTotal === 0) { el.textContent = ''; return; }
+      if (active.length === 0) {
+        el.textContent = memBatchDoneCount > 0 ? t.memories_batch_done(memBatchDoneCount) : '';
+        return;
+      }
+      const inFlightSum = active.reduce((s, q) => s + (q.status === 'processing' ? 100 : (q.progress || 0)), 0);
+      const overallPct = Math.min(100, Math.round(((memBatchDoneCount * 100) + inFlightSum) / memBatchTotal));
+      el.textContent = t.memories_batch_progress(memBatchDoneCount, memBatchTotal, overallPct);
+    }
+
+    let memSyncTimer = null;
+    let memSyncInFlight = false;
+    let memSyncAgainNeeded = false;
+    function scheduleMemSync() {
+      memSyncAgainNeeded = true;
+      if (memSyncTimer || memSyncInFlight) return;
+      memSyncTimer = setTimeout(runMemSync, 700);
+    }
+    async function runMemSync() {
+      memSyncTimer = null;
+      if (memSyncInFlight || !memSyncAgainNeeded) return;
+      memSyncAgainNeeded = false;
+      memSyncInFlight = true;
+      try {
+        await refreshOrderMediaOnly();
+      } finally {
+        memSyncInFlight = false;
+        if (memSyncAgainNeeded) memSyncTimer = setTimeout(runMemSync, 700);
+      }
     }
 
     const MEM_MAX_CONCURRENT_UPLOADS = 2;
     const MEM_UPLOAD_TIMEOUT_MS = 900000;
+    const MEM_CHUNK_THRESHOLD_BYTES = 20 * 1024 * 1024;
+    const MEM_CHUNK_RETRY_LIMIT = 5;
 
     function processUploadQueue() {
-      const active = uploadQueue.filter(q => q.status === 'uploading').length;
+      const active = uploadQueue.filter(q => q.status === 'uploading' || q.status === 'processing').length;
       let slots = MEM_MAX_CONCURRENT_UPLOADS - active;
       if (slots <= 0) return;
       for (const entry of uploadQueue) {
@@ -498,10 +663,19 @@
     }
 
     function startUpload(entry) {
+      entry.abortRequested = false;
+      if (isVideoFile(entry.file) && entry.file.size > MEM_CHUNK_THRESHOLD_BYTES) {
+        startChunkedUpload(entry);
+      } else {
+        startSingleUpload(entry);
+      }
+    }
+
+    function startSingleUpload(entry) {
       entry.status = 'uploading';
       entry.progress = 0;
       entry.errorMsg = null;
-      renderQueueList();
+      renderQueueRow(entry);
 
       const formData = new FormData();
       formData.append('media', entry.file);
@@ -514,11 +688,13 @@
       xhr.timeout = MEM_UPLOAD_TIMEOUT_MS;
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) {
-          entry.progress = Math.round((e.loaded / e.total) * 100);
-          renderQueueList();
+          const pct = Math.round((e.loaded / e.total) * 100);
+          entry.progress = pct;
+          if (pct >= 100 && entry.status === 'uploading') entry.status = 'processing';
+          scheduleProgressUpdate(entry);
         }
       };
-      xhr.onload = async () => {
+      xhr.onload = () => {
         let data = null;
         try { data = JSON.parse(xhr.responseText); } catch (e) { /* raspuns invalid */ }
         const failedEntry = data && Array.isArray(data.failed) ? data.failed[0] : null;
@@ -526,39 +702,133 @@
         memLog('upload_response', { status: xhr.status, receivedOk: !!succeeded });
         if (xhr.status >= 200 && xhr.status < 300 && succeeded) {
           uploadQueue = uploadQueue.filter(q => q.localId !== entry.localId);
+          memBatchDoneCount++;
           renderQueueList();
           processUploadQueue();
-          await refreshCard();
+          scheduleMemSync();
         } else {
           entry.status = 'error';
           entry.errorMsg = (failedEntry && failedEntry.reason) || (data && data.error) || t.memories_upload_error;
-          renderQueueList();
+          renderQueueRow(entry);
           processUploadQueue();
-          updateMemActionGates();
         }
       };
       xhr.onerror = () => {
         entry.status = 'error';
         entry.errorMsg = t.memories_upload_error;
-        renderQueueList();
+        renderQueueRow(entry);
         processUploadQueue();
-        updateMemActionGates();
       };
       xhr.ontimeout = () => {
         entry.status = 'error';
         entry.errorMsg = t.memories_upload_timeout;
-        renderQueueList();
+        renderQueueRow(entry);
         processUploadQueue();
-        updateMemActionGates();
       };
       xhr.onabort = () => { processUploadQueue(); };
       xhr.send(formData);
     }
 
+    // Upload FRAGMENTAT (chunked) — vezi comentariul identic, mai detaliat, din melodia-mea.html
+    // si din server.js. Rezervat videoclipurilor mari.
+    function uploadChunkWithRetry(entry, blob, offset, totalBytes) {
+      return new Promise((resolve, reject) => {
+        let attempt = 0;
+        const tryOnce = () => {
+          if (entry.abortRequested) { reject(new Error('aborted')); return; }
+          const xhr = new XMLHttpRequest();
+          entry.xhr = xhr;
+          xhr.open('PUT', `/api/orders/${orderId}/media/chunked/${entry.chunkSessionId}/chunk?offset=${offset}`);
+          xhr.setRequestHeader('X-Access-Token', accessToken || '');
+          xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+          xhr.timeout = MEM_UPLOAD_TIMEOUT_MS;
+          xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable) {
+              const sent = offset + e.loaded;
+              entry.progress = Math.min(99, Math.round((sent / totalBytes) * 100));
+              scheduleProgressUpdate(entry);
+            }
+          };
+          xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              try {
+                const data = JSON.parse(xhr.responseText);
+                resolve(typeof data.receivedBytes === 'number' ? data.receivedBytes : offset + blob.size);
+              } catch (e) { retryOrFail(); }
+            } else { retryOrFail(); }
+          };
+          xhr.onerror = retryOrFail;
+          xhr.ontimeout = retryOrFail;
+          xhr.onabort = () => reject(new Error('aborted'));
+          xhr.send(blob);
+        };
+        const retryOrFail = () => {
+          attempt++;
+          if (entry.abortRequested) { reject(new Error('aborted')); return; }
+          if (attempt > MEM_CHUNK_RETRY_LIMIT) { reject(new Error('chunk failed')); return; }
+          setTimeout(tryOnce, Math.min(1000 * attempt, 5000));
+        };
+        tryOnce();
+      });
+    }
+
+    async function startChunkedUpload(entry) {
+      entry.status = 'uploading';
+      entry.progress = 0;
+      entry.errorMsg = null;
+      renderQueueRow(entry);
+      try {
+        const initRes = await fetch(`/api/orders/${orderId}/media/chunked/init`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Access-Token': accessToken || '' },
+          body: JSON.stringify({ filename: entry.file.name, size: entry.file.size, mimeType: entry.file.type || '', section: '' })
+        });
+        const initData = await initRes.json().catch(() => ({}));
+        if (!initRes.ok || !initData.sessionId) throw new Error(initData.error || 'init failed');
+        entry.chunkSessionId = initData.sessionId;
+        const chunkSize = initData.chunkSize || (6 * 1024 * 1024);
+        const totalBytes = entry.file.size;
+        let offset = 0;
+        while (offset < totalBytes) {
+          if (entry.abortRequested) return;
+          const slice = entry.file.slice(offset, Math.min(offset + chunkSize, totalBytes));
+          offset = await uploadChunkWithRetry(entry, slice, offset, totalBytes);
+        }
+        if (entry.abortRequested) return;
+        entry.status = 'processing';
+        scheduleProgressUpdate(entry);
+        const completeRes = await fetch(`/api/orders/${orderId}/media/chunked/${entry.chunkSessionId}/complete`, {
+          method: 'POST',
+          headers: { 'X-Access-Token': accessToken || '' }
+        });
+        const data = await completeRes.json().catch(() => ({}));
+        const succeeded = data && Array.isArray(data.uploaded) && data.uploaded.length > 0;
+        if (completeRes.ok && succeeded) {
+          uploadQueue = uploadQueue.filter(q => q.localId !== entry.localId);
+          memBatchDoneCount++;
+          renderQueueList();
+          processUploadQueue();
+          scheduleMemSync();
+        } else {
+          const failedEntry = data && Array.isArray(data.failed) ? data.failed[0] : null;
+          entry.status = 'error';
+          entry.errorMsg = (failedEntry && failedEntry.reason) || (data && data.error) || t.memories_upload_error;
+          renderQueueRow(entry);
+          processUploadQueue();
+        }
+      } catch (err) {
+        if (entry.abortRequested) return;
+        entry.status = 'error';
+        entry.errorMsg = t.memories_upload_error;
+        renderQueueRow(entry);
+        processUploadQueue();
+      }
+    }
+
     function updateMemActionGates() {
       const createBtn = document.getElementById('mem-create-btn');
       if (!createBtn) return;
-      const busy = uploadQueue.some(q => q.status === 'uploading' || q.status === 'pending');
+      const busy = uploadQueue.some(q => q.status === 'uploading' || q.status === 'pending' || q.status === 'processing');
       createBtn.disabled = busy;
     }
 
@@ -568,37 +838,29 @@
       const statusEl = document.getElementById('mem-status');
       if (!fileInput) return;
 
+      renderExistingMediaList(memDataRef);
       renderQueueList();
       updateMemActionGates();
 
-      document.querySelectorAll('#mem-uploaded-list button[data-remove-index]').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          btn.disabled = true;
-          try {
-            await fetch(`/api/orders/${orderId}/media/${btn.dataset.removeIndex}`, {
-              method: 'DELETE',
-              headers: { 'X-Access-Token': accessToken || '' }
-            });
-            await refreshCard();
-          } catch (e) {
-            btn.disabled = false;
-          }
-        });
-      });
-
-      // Detectie best-effort a cazului in care iOS NU preda niciodata fisierele paginii — vezi
-      // comentariul identic din comanda-mea.html. NU este un fix de cod (mesajul nativ iOS nu
-      // poate fi interceptat sau controlat de site) — doar un semnal vizibil plus recomandarea
-      // de a deschide direct in Safari (acelasi URL, cu order/token, functioneaza identic acolo).
+      // RELANSARE 2026-08-14 ("previne cele 100 de apasari") — vezi comentariul identic din
+      // comanda-mea.html.
+      let pickerLocked = false;
+      let pickerLockTimeoutId = null;
       let pickerAwaitingChange = false;
       let pickerOpenToken = 0;
-      fileInput.addEventListener('click', () => {
+      fileInput.addEventListener('click', (e) => {
+        if (pickerLocked) { e.preventDefault(); return; }
+        pickerLocked = true;
+        clearTimeout(pickerLockTimeoutId);
+        pickerLockTimeoutId = setTimeout(() => { pickerLocked = false; }, 20000);
         memUploadAttemptId = 'a' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
         pickerAwaitingChange = true;
         pickerOpenToken++;
         memLog('picker_open', { ios: memIsIOS, inAppBrowser: memIsInAppBrowser });
       });
       fileInput.addEventListener('cancel', () => {
+        pickerLocked = false;
+        clearTimeout(pickerLockTimeoutId);
         pickerAwaitingChange = false;
         memLog('picker_cancel', {});
       });
@@ -607,6 +869,7 @@
         const openToken = pickerOpenToken;
         setTimeout(() => {
           if (pickerAwaitingChange && pickerOpenToken === openToken) {
+            pickerLocked = false;
             pickerAwaitingChange = false;
             memLog('picker_no_change_after_focus_return', { ios: memIsIOS });
             if (memIsIOS) {
@@ -621,7 +884,11 @@
       });
       window.addEventListener('focus', checkPickerDelivery);
 
+      let memStatusHintToken = 0;
+
       fileInput.addEventListener('change', () => {
+        pickerLocked = false;
+        clearTimeout(pickerLockTimeoutId);
         pickerAwaitingChange = false;
         const files = Array.from(fileInput.files);
         fileInput.value = '';
@@ -634,8 +901,13 @@
           statusEl.classList.add('err');
           return;
         }
-        statusEl.textContent = '';
+        statusEl.textContent = t.memories_auto_upload_hint;
         statusEl.classList.remove('err');
+        const hintToken = ++memStatusHintToken;
+        setTimeout(() => { if (memStatusHintToken === hintToken) statusEl.textContent = ''; }, 4000);
+
+        memBatchTotal += files.length;
+
         files.forEach(file => {
           try {
             uploadQueue.push({
@@ -645,7 +917,9 @@
               progress: 0,
               errorMsg: null,
               thumbUrl: null,
-              xhr: null
+              xhr: null,
+              chunkSessionId: null,
+              abortRequested: false
             });
           } catch (err) {
             uploadQueue.push({
@@ -655,14 +929,15 @@
               progress: 0,
               errorMsg: t.memories_upload_error,
               thumbUrl: null,
-              xhr: null
+              xhr: null,
+              chunkSessionId: null,
+              abortRequested: false
             });
           }
         });
         memLog('staged', { queueLength: uploadQueue.length });
         renderQueueList();
         processUploadQueue();
-        updateMemActionGates();
       });
 
       createBtn.addEventListener('click', async () => {

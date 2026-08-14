@@ -77,19 +77,25 @@ test('melodia-mea.html: nicio schimbare a textelor proprii pachetului Standard (
 // 2. Selectorul foto/video pe iPhone: elimina decodarea locala de metadata video (cauza reala)
 //    si protejeaza fiecare fisier izolat, ca o singura exceptie sa nu blocheze tot batch-ul.
 // ---------------------------------------------------------------------------------------------
-test('melodia-mea.html: renderQueueList() NU mai construieste niciun element <video> local (blob) pentru videoclipurile din coada de asteptare', () => {
-  const idx = melodiaMea.indexOf('function renderQueueList() {');
-  const end = melodiaMea.indexOf('el.querySelectorAll', idx);
+// RELANSARE (2026-08-14, "cardurile apar greu/inegal"): continutul per-material (iconita,
+// nume, stare) a fost extras din renderQueueList() (acum STRICT rebuild complet, la schimbari
+// structurale) intr-o functie dedicata renderQueueRowInner(q), refolosita si de patch-ul direct
+// de progres — vezi test/video-comanda-succes-upload-queue.test.js pentru acoperirea completa
+// a noii arhitecturi (throttling, single-flight sync, upload fragmentat).
+test('melodia-mea.html: renderQueueRowInner() NU mai construieste niciun element <video> local (blob) pentru videoclipurile din coada de asteptare', () => {
+  const idx = melodiaMea.indexOf('function renderQueueRowInner(q) {');
+  assert.notEqual(idx, -1);
+  const end = melodiaMea.indexOf('\n  }', idx);
   const snippet = melodiaMea.slice(idx, end);
   assert.ok(!snippet.includes('<video'), 'coada de asteptare (inainte de upload) nu mai trebuie sa randeze niciun <video src="blob:...">');
   assert.ok(snippet.includes("isVideoFile(q.file) ? '🎬'"), 'videoclipurile din coada trebuie sa foloseasca STRICT iconita statica (isVideoFile — vezi test/video-media-limits.test.js pentru fallback-ul pe extensie cand MIME e gol)');
 });
 
 test('melodia-mea.html: fotografiile din coada de asteptare raman randate ca <img> din blob local, neschimbat', () => {
-  const idx = melodiaMea.indexOf('function renderQueueList() {');
-  const end = melodiaMea.indexOf('el.querySelectorAll', idx);
+  const idx = melodiaMea.indexOf('function renderQueueRowInner(q) {');
+  const end = melodiaMea.indexOf('\n  }', idx);
   const snippet = melodiaMea.slice(idx, end);
-  assert.ok(snippet.includes('<img src="${q.thumbUrl}" alt="">'));
+  assert.ok(snippet.includes('<img src="${q.thumbUrl}" alt="" loading="lazy" decoding="async">'));
 });
 
 test('melodia-mea.html: thumbUrl se creeaza STRICT pentru fotografii — niciun URL.createObjectURL nu mai e legat de un videoclip din coada', () => {
@@ -113,19 +119,26 @@ test('melodia-mea.html: fiecare fisier din selectie e adaugat in coada intr-un t
 
 test('melodia-mea.html: renderQueueList() si processUploadQueue() se apeleaza necondiționat dupa forEach, indiferent daca vreun fisier a esuat la construire', () => {
   const idx = melodiaMea.indexOf("memFileInput.addEventListener('change'");
-  const forEachEnd = melodiaMea.indexOf('});\n    renderQueueList();', idx);
-  assert.notEqual(forEachEnd, -1, 'renderQueueList() trebuie apelat imediat dupa inchiderea forEach, in afara oricarui try/catch per-fisier');
+  const forEachStart = melodiaMea.indexOf('files.forEach(file => {', idx);
+  assert.notEqual(forEachStart, -1);
+  const forEachEnd = melodiaMea.indexOf('});', forEachStart) + 3;
   const snippet = melodiaMea.slice(forEachEnd, forEachEnd + 300);
-  assert.ok(snippet.includes('renderQueueList();'));
+  assert.ok(snippet.includes('renderQueueList();'), 'renderQueueList() trebuie apelat neconditionat dupa forEach, in afara oricarui try/catch per-fisier');
   assert.ok(snippet.includes('processUploadQueue();'));
-  assert.ok(snippet.includes('updateMemoriesCountAndGates(memOrderRef)'));
+  // updateMemoriesCountAndGates() nu mai e apelat separat aici — RELANSARE 2026-08-14, mutat
+  // ca parte STRUCTURALA a renderQueueList() insusi (se apeleaza de fiecare data cand coada e
+  // rebuilduita complet, deci si aici, si de la orice alt apel al renderQueueList()).
+  const renderQueueListIdx = melodiaMea.indexOf('function renderQueueList() {');
+  const renderQueueListEnd = melodiaMea.indexOf('\n  }', renderQueueListIdx);
+  assert.ok(melodiaMea.slice(renderQueueListIdx, renderQueueListEnd).includes('updateMemoriesCountAndGates(memOrderRef)'));
 });
 
 test('melodia-mea.html: FileList e citit SINCRON, imediat la inceputul handler-ului de change (niciun await inainte) — previne pierderea selectiei pe iOS', () => {
   const idx = melodiaMea.indexOf("memFileInput.addEventListener('change', () => {");
   assert.notEqual(idx, -1, 'handler-ul trebuie sa ramana sincron (fara async), ca Array.from(...) sa citeasca FileList-ul imediat');
-  const snippet = melodiaMea.slice(idx, idx + 120);
+  const snippet = melodiaMea.slice(idx, idx + 250);
   assert.ok(snippet.includes('const files = Array.from(memFileInput.files);'));
+  assert.ok(!/\basync\s*\(\s*\)\s*=>/.test(melodiaMea.slice(idx, idx + 55)), 'handler-ul nu trebuie sa devina async');
 });
 
 test('melodia-mea.html: mesajul existent memories_no_files_selected ramane reutilizat (niciun mesaj/modal nou adaugat)', () => {
