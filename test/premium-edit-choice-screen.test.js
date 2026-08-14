@@ -24,7 +24,7 @@ const server = read('server.js');
 test('server.js: GET /api/orders/:orderId (safeVariants) expune campul relationship per varianta — necesar ca melodia-mea.html sa afiseze persoana CORECTA a fiecarei melodii, nu mereu persoana melodiei 1', () => {
   const idx = server.indexOf('const safeVariants = (order.variants || []).map(v => ({');
   assert.ok(idx !== -1);
-  const body = server.slice(idx, idx + 2600);
+  const body = server.slice(idx, idx + 3000);
   assert.ok(body.includes('relationship: v.relationship || order.relationship || null'), 'relationship trebuie inclus explicit in whitelist-ul trimis catre client');
 });
 

@@ -313,14 +313,22 @@
   .video-status-msg.ready{ background:rgba(95,143,110,.1); color:var(--success); }
   .video-status-msg.failed, .video-status-msg.stale{ background:rgba(179,87,74,.08); color:var(--error); }
 
-  /* Coperta statica "blocat" pentru videoclipul cadou inainte de plata — fara <video>, fara
-     nicio cerere de retea catre fisierul real. */
+  /* RELANSARE (2026-08-14, "previzualizare gratuita de 30s"): cardul intunecat existent
+     (fundal/culori neschimbate) gazduieste ACUM un player <video> real (previzualizarea),
+     nu doar un mesaj cu lacat — folosit STRICT dupa ce previzualizarea exista (videoStatus
+     'ready'). Videoclipul COMPLET ramane blocat pana la plata, neschimbat. */
   .gift-video-locked{
     background:linear-gradient(135deg, #2b2b2b, #1a1a1a); border-radius:16px;
-    padding:48px 24px; text-align:center; color:#f4f0e8;
+    padding:24px; text-align:center; color:#f4f0e8;
   }
   .gift-video-lock-icon{ font-size:32px; display:block; margin-bottom:12px; }
   .gift-video-locked p{ font-size:14px; color:#d8d2c4; margin:0; line-height:1.5; }
+  .gift-video-preview-badge{
+    display:inline-block; font-size:11px; font-weight:600; letter-spacing:.03em; text-transform:uppercase;
+    background:rgba(244,240,232,.14); color:#f4f0e8; border-radius:999px; padding:4px 10px; margin-bottom:10px;
+  }
+  .gift-video-preview-video-wrap{ margin-top:14px; }
+  .gift-video-preview-video-wrap video{ width:100%; border-radius:12px; display:block; background:#000; }
 
   #status-msg{ margin-top:14px; font-size:13px; text-align:center; }
   .status-ok{ color:var(--success); }
@@ -390,17 +398,21 @@
           </div>
         </div>
 
-        <!-- DECIZIE FINALA (hotfix 2026-08-08): videoclipul se genereaza inainte de plata, dar
-             NU e redabil inainte de plata — nicio previzualizare video, niciun fisier/URL
-             semnat/fragment trimis browserului (vezi server.js, /media/video/:orderId, blocat
-             strict la status='ready'). Afisam DOAR o coperta statica cu lacat si un mesaj —
-             niciun element <video>, nicio cerere de retea catre acea ruta. Ramane ascuns pentru
+        <!-- RELANSARE (2026-08-14, "previzualizare gratuita de 30s"): videoclipul COMPLET tot NU
+             e redabil inainte de plata (neschimbat — nicio cerere catre /media/video/:orderId,
+             blocat strict la status='ready', vezi acea ruta) — dar clientul trebuie sa poata
+             vedea o previzualizare REALA de maximum 30s inainte sa plateasca. Acest card
+             (afisat STRICT cand videoStatus==='ready', adica ambele fisiere — video complet SI
+             previzualizare — exista deja) contine acum un player <video> real, sursa fiind un
+             URL semnat, expirare scurta (10 min), obtinut STRICT prin accessToken-ul comenzii
+             (GET /media/video-preview-url) — niciodata videoclipul complet. Ramane ascuns pentru
              Standard/Premium. -->
         <div id="gift-video-section" style="display:none; margin-bottom:20px;">
-          <h2 id="gift-video-title" style="font-family:'Fraunces',serif; font-weight:400; font-size:19px; margin:0 0 10px;"></h2>
           <div class="gift-video-locked">
-            <span class="gift-video-lock-icon">🔒</span>
+            <span class="gift-video-preview-badge" id="gift-video-preview-badge"></span>
+            <h2 id="gift-video-title" style="font-family:'Fraunces',serif; font-weight:400; font-size:19px; margin:0 0 6px;"></h2>
             <p id="gift-video-locked-msg"></p>
+            <div class="gift-video-preview-video-wrap" id="gift-video-preview-video-wrap"></div>
           </div>
         </div>
 
@@ -641,8 +653,15 @@
             <button type="button" class="btn btn-ghost" id="regenerate-btn">Editează cântecul</button>
             <button type="button" class="btn btn-primary" id="checkout-btn" style="flex:1; justify-content:center;">Finalizează cadoul — varianta <span id="selected-variant-label">1</span> (<span id="checkout-price">£15</span>) →</button>
           </div>
-          <div id="edits-info-msg" style="font-size:13px; color:var(--text-secondary); margin-top:10px;"></div>
         </div>
+
+        <!-- RELANSARE (2026-08-14, "meniul de editare trebuie sa ramana concentrat STRICT pe
+             editare"): mutat AFARA din #edit-menu-fields — cat timp era inauntru, era ascuns
+             ATUNCI CAND ar fi trebuit sa fie vizibil (meniul inchis) si vizibil EXACT cand ar fi
+             trebuit sa fie ascuns (meniul deschis), pentru ca ambele elemente impartaseau
+             acelasi container/hidden. Vizibilitatea lui e acum gestionata explicit, independent,
+             in updateStandardEditMenuVisibility(). -->
+        <div id="edits-info-msg" style="font-size:13px; color:var(--text-secondary); margin-top:10px;"></div>
 
         <!-- RELANSARE (2026-08-14, "materialele se incarca DUPA ce melodia finala e stabilita"):
              pachetul "Cadou video" nu mai cere materiale inainte de generarea melodiei — acest
@@ -675,6 +694,16 @@
                ramane acceptat, identificat prin fallback pe extensie (inferMediaType). -->
           <input type="file" id="mem-file-input" multiple accept="image/*,video/*">
           <p class="mem-status" id="mem-status"></p>
+        </div>
+
+        <!-- RELANSARE (2026-08-14, "butonul pentru crearea videoclipului"): apare STRICT cand
+             toate conditiile sunt indeplinite simultan (vezi updateVideoStatusUI) — versiunea
+             finala stabilita, minimum 3 materiale confirmate, niciun upload in curs, nicio
+             eroare nerezolvata, SI niciun job video pornit inca (videoStatus==='none'). O
+             singura apasare -> POST /create-video (deja idempotent server-side). -->
+        <div id="gift-video-create" style="display:none; text-align:center; margin-top:16px;">
+          <button type="button" class="btn-cta-orange" id="gift-video-create-btn" style="max-width:none; width:100%; justify-content:center;"></button>
+          <p id="gift-video-create-sub" style="font-size:13px; color:var(--text-secondary); margin-top:10px;"></p>
         </div>
 
         <div id="video-status-msg" class="video-status-msg" style="display:none;"></div>
@@ -929,7 +958,7 @@
       variant_main_label: 'Varianta principală', variant_gift_label: '🎁 A doua melodie, cadou pentru tine',
       variant_gift_note: 'După plată vei putea descărca ambele melodii complete.',
       genre_emotional: 'Emoțional', genre_suflet: 'De suflet', genre_acustic: 'Acustic / Folk', genre_petrecere: 'Muzică de petrecere', genre_balada: 'Baladă', genre_manele: 'Manele de jale', genre_copii: 'Pentru copii', genre_populara: 'Populară', genre_rock: 'Rock', genre_colind: 'Colind', genre_modern: 'Modern', genre_hiphop: 'Hip-hop', genre_manele_suflet: 'Manele de suflet', genre_motivational: 'Motivațional', genre_pop: 'Pop',
-      variant_second_label: 'A doua melodie', gift_video_title: 'Videoclipul tău cadou', video_song_label: 'Melodia din videoclip', video_gift_song_label: 'Melodia cadou', gift_video_locked_msg: 'Videoclipul tău este gata și va fi deblocat după plată.', edit_genre_label: '🎵 Schimbă genul muzical', edit_genre_explain: 'Alege genul în care vrei să creăm noua versiune.', edit_genre_same_error: 'Alege un gen diferit de celălalt cântec.', variant_original_label: 'Versiunea inițială', variant_edited_label: 'Versiunea editată', regen_failed_recovered_msg: 'Ultima editare nu a reușit, dar poți asculta și alege în continuare varianta existentă.', standard_choice_eyebrow: 'PASUL URMĂTOR', standard_choice_title: 'Ce versiune vrei să primești?', standard_choice_subtitle: 'Ascultă ambele melodii, apoi alege una pentru a continua la plată.', choose_variant_btn: (genre, isEdited, sameGenre, isChosen) => { const v = isEdited ? 'versiunea nouă' : 'versiunea inițială'; if (isChosen) return sameGenre ? `${v} — ${genre} — Aleasă ✓` : `${genre} — Aleasă ✓`; return sameGenre ? `${v} — ${genre}` : `${genre} — ${v}`; },
+      variant_second_label: 'A doua melodie', video_song_label: 'Melodia din videoclip', video_gift_song_label: 'Melodia cadou', gift_video_create_btn: 'Creează videoclipul meu cadou', gift_video_create_sub: 'Vom transforma amintirile tale într-un videoclip sincronizat cu melodia aleasă.', gift_video_processing_title: 'Îți pregătim videoclipul cadou', gift_video_processing_text: 'Transformăm amintirile tale într-un videoclip sincronizat cu melodia aleasă.', gift_video_state_waiting: 'În așteptare', gift_video_state_creating: 'Se creează videoclipul', gift_video_state_failed: 'Nu am putut crea previzualizarea — Reîncearcă', gift_video_preview_title: 'Previzualizarea videoclipului tău cadou', gift_video_preview_badge: '30 de secunde gratuite', gift_video_preview_text: 'Privește începutul videoclipului creat din amintirile și melodia ta.', edit_genre_label: '🎵 Schimbă genul muzical', edit_genre_explain: 'Alege genul în care vrei să creăm noua versiune.', edit_genre_same_error: 'Alege un gen diferit de celălalt cântec.', variant_original_label: 'Versiunea inițială', variant_edited_label: 'Versiunea editată', regen_failed_recovered_msg: 'Ultima editare nu a reușit, dar poți asculta și alege în continuare varianta existentă.', standard_choice_eyebrow: 'PASUL URMĂTOR', standard_choice_title: 'Ce versiune vrei să primești?', standard_choice_subtitle: 'Ascultă ambele melodii, apoi alege una pentru a continua la plată.', choose_variant_btn: (genre, isEdited, sameGenre, isChosen) => { const v = isEdited ? 'versiunea nouă' : 'versiunea inițială'; if (isChosen) return sameGenre ? `${v} — ${genre} — Aleasă ✓` : `${genre} — Aleasă ✓`; return sameGenre ? `${v} — ${genre}` : `${genre} — ${v}`; },
       listened: (t, d) => `Ai ascultat ${t} din ${d}`,
       lyrics_empty: 'Versurile nu sunt încă disponibile pentru afișare.',
       lyrics_edited_tag: 'Versuri editate de tine',
@@ -1007,7 +1036,7 @@
       variant_main_label: 'Main version', variant_gift_label: '🎁 Your second song, a gift for you',
       variant_gift_note: 'After payment you\'ll be able to download both complete songs.',
       genre_emotional: 'Emotional', genre_suflet: 'Soulful', genre_acustic: 'Acoustic / Folk', genre_petrecere: 'Party music', genre_balada: 'Ballad', genre_manele: 'Mournful manele', genre_copii: 'For kids', genre_populara: 'Folk-pop', genre_rock: 'Rock', genre_colind: 'Christmas carol', genre_modern: 'Modern', genre_hiphop: 'Hip-hop', genre_manele_suflet: 'Soulful manele', genre_motivational: 'Motivational', genre_pop: 'Pop',
-      variant_second_label: 'Second song', gift_video_title: 'Your gift video', video_song_label: 'The song in the video', video_gift_song_label: 'The gift song', gift_video_locked_msg: 'Your video is ready and will unlock after payment.', edit_genre_label: '🎵 Change the musical genre', edit_genre_explain: 'Choose the genre for the new version.', edit_genre_same_error: 'Choose a genre different from the other song.', variant_original_label: 'Original version', variant_edited_label: 'Edited version', regen_failed_recovered_msg: 'Your last edit attempt failed, but you can still listen to and choose the existing version.', standard_choice_eyebrow: 'NEXT STEP', standard_choice_title: 'Which version do you want?', standard_choice_subtitle: 'Listen to both songs, then choose one to continue to payment.', choose_variant_btn: (genre, isEdited, sameGenre, isChosen) => { const v = isEdited ? 'the new version' : 'the original version'; if (isChosen) return sameGenre ? `${v} — ${genre} — Chosen ✓` : `${genre} — Chosen ✓`; return sameGenre ? `${v} — ${genre}` : `${genre} — ${v}`; },
+      variant_second_label: 'Second song', video_song_label: 'The song in the video', video_gift_song_label: 'The gift song', gift_video_create_btn: 'Create my gift video', gift_video_create_sub: "We'll turn your memories into a video synced to the song you chose.", gift_video_processing_title: "We're preparing your gift video", gift_video_processing_text: "We're turning your memories into a video synced to the song you chose.", gift_video_state_waiting: 'Waiting', gift_video_state_creating: 'Creating your video', gift_video_state_failed: "We couldn't create the preview — Retry", gift_video_preview_title: 'Your gift video preview', gift_video_preview_badge: '30 seconds free', gift_video_preview_text: 'Watch the beginning of the video made from your memories and song.', edit_genre_label: '🎵 Change the musical genre', edit_genre_explain: 'Choose the genre for the new version.', edit_genre_same_error: 'Choose a genre different from the other song.', variant_original_label: 'Original version', variant_edited_label: 'Edited version', regen_failed_recovered_msg: 'Your last edit attempt failed, but you can still listen to and choose the existing version.', standard_choice_eyebrow: 'NEXT STEP', standard_choice_title: 'Which version do you want?', standard_choice_subtitle: 'Listen to both songs, then choose one to continue to payment.', choose_variant_btn: (genre, isEdited, sameGenre, isChosen) => { const v = isEdited ? 'the new version' : 'the original version'; if (isChosen) return sameGenre ? `${v} — ${genre} — Chosen ✓` : `${genre} — Chosen ✓`; return sameGenre ? `${v} — ${genre}` : `${genre} — ${v}`; },
       listened: (t, d) => `You've listened to ${t} of ${d}`,
       lyrics_empty: 'Lyrics are not available to display yet.',
       lyrics_edited_tag: 'Lyrics edited by you',
@@ -1085,7 +1114,7 @@
       variant_main_label: 'Hauptversion', variant_gift_label: '🎁 Dein zweites Lied, ein Geschenk für dich',
       variant_gift_note: 'Nach der Zahlung kannst du beide vollständigen Lieder herunterladen.',
       genre_emotional: 'Emotional', genre_suflet: 'Gefühlvoll', genre_acustic: 'Akustik / Folk', genre_petrecere: 'Partymusik', genre_balada: 'Ballade', genre_manele: 'Manele der Trauer', genre_copii: 'Für Kinder', genre_populara: 'Volkstümlich', genre_rock: 'Rock', genre_colind: 'Weihnachtslied', genre_modern: 'Modern', genre_hiphop: 'Hip-Hop', genre_manele_suflet: 'Manele mit Seele', genre_motivational: 'Motivierend', genre_pop: 'Pop',
-      variant_second_label: 'Zweites Lied', gift_video_title: 'Dein Geschenkvideo', video_song_label: 'Das Lied im Video', video_gift_song_label: 'Das Geschenklied', gift_video_locked_msg: 'Dein Video ist fertig und wird nach der Zahlung freigeschaltet.', edit_genre_label: '🎵 Musikrichtung ändern', edit_genre_explain: 'Wähle das Genre für die neue Version.', edit_genre_same_error: 'Wähle ein Genre, das sich vom anderen Lied unterscheidet.', variant_original_label: 'Ursprüngliche Version', variant_edited_label: 'Bearbeitete Version', regen_failed_recovered_msg: 'Deine letzte Bearbeitung ist fehlgeschlagen, aber du kannst die vorhandene Version weiterhin anhören und auswählen.', standard_choice_eyebrow: 'NÄCHSTER SCHRITT', standard_choice_title: 'Welche Version möchtest du erhalten?', standard_choice_subtitle: 'Höre dir beide Lieder an und wähle dann eines aus, um mit der Zahlung fortzufahren.', choose_variant_btn: (genre, isEdited, sameGenre, isChosen) => { const v = isEdited ? 'die neue Version' : 'die ursprüngliche Version'; if (isChosen) return sameGenre ? `${v} — ${genre} — Ausgewählt ✓` : `${genre} — Ausgewählt ✓`; return sameGenre ? `${v} — ${genre}` : `${genre} — ${v}`; },
+      variant_second_label: 'Zweites Lied', video_song_label: 'Das Lied im Video', video_gift_song_label: 'Das Geschenklied', gift_video_create_btn: 'Mein Geschenkvideo erstellen', gift_video_create_sub: 'Wir verwandeln deine Erinnerungen in ein Video, das auf dein gewähltes Lied abgestimmt ist.', gift_video_processing_title: 'Wir bereiten dein Geschenkvideo vor', gift_video_processing_text: 'Wir verwandeln deine Erinnerungen in ein Video, das auf dein gewähltes Lied abgestimmt ist.', gift_video_state_waiting: 'Wartet', gift_video_state_creating: 'Video wird erstellt', gift_video_state_failed: 'Die Vorschau konnte nicht erstellt werden — Erneut versuchen', gift_video_preview_title: 'Vorschau deines Geschenkvideos', gift_video_preview_badge: '30 Sekunden gratis', gift_video_preview_text: 'Sieh dir den Anfang des Videos an, das aus deinen Erinnerungen und deinem Lied entstanden ist.', edit_genre_label: '🎵 Musikrichtung ändern', edit_genre_explain: 'Wähle das Genre für die neue Version.', edit_genre_same_error: 'Wähle ein Genre, das sich vom anderen Lied unterscheidet.', variant_original_label: 'Ursprüngliche Version', variant_edited_label: 'Bearbeitete Version', regen_failed_recovered_msg: 'Deine letzte Bearbeitung ist fehlgeschlagen, aber du kannst die vorhandene Version weiterhin anhören und auswählen.', standard_choice_eyebrow: 'NÄCHSTER SCHRITT', standard_choice_title: 'Welche Version möchtest du erhalten?', standard_choice_subtitle: 'Höre dir beide Lieder an und wähle dann eines aus, um mit der Zahlung fortzufahren.', choose_variant_btn: (genre, isEdited, sameGenre, isChosen) => { const v = isEdited ? 'die neue Version' : 'die ursprüngliche Version'; if (isChosen) return sameGenre ? `${v} — ${genre} — Ausgewählt ✓` : `${genre} — Ausgewählt ✓`; return sameGenre ? `${v} — ${genre}` : `${genre} — ${v}`; },
       listened: (t, d) => `Du hast ${t} von ${d} gehört`,
       lyrics_empty: 'Der Text steht noch nicht zur Anzeige zur Verfügung.',
       lyrics_edited_tag: 'Von dir bearbeiteter Text',
@@ -1163,7 +1192,7 @@
       variant_main_label: 'Versión principal', variant_gift_label: '🎁 Tu segunda canción, un regalo para ti',
       variant_gift_note: 'Después del pago podrás descargar ambas canciones completas.',
       genre_emotional: 'Emotivo', genre_suflet: 'Con alma', genre_acustic: 'Acústico / Folk', genre_petrecere: 'Música de fiesta', genre_balada: 'Balada', genre_manele: 'Manele de duelo', genre_copii: 'Para niños', genre_populara: 'Popular', genre_rock: 'Rock', genre_colind: 'Villancico', genre_modern: 'Moderno', genre_hiphop: 'Hip-hop', genre_manele_suflet: 'Manele con sentimiento', genre_motivational: 'Motivacional', genre_pop: 'Pop',
-      variant_second_label: 'Segunda canción', gift_video_title: 'Tu video de regalo', video_song_label: 'La canción del video', video_gift_song_label: 'La canción de regalo', gift_video_locked_msg: 'Tu video está listo y se desbloqueará después del pago.', edit_genre_label: '🎵 Cambiar el género musical', edit_genre_explain: 'Elige el género para la nueva versión.', edit_genre_same_error: 'Elige un género diferente al de la otra canción.', variant_original_label: 'Versión inicial', variant_edited_label: 'Versión editada', regen_failed_recovered_msg: 'Tu último intento de edición falló, pero aún puedes escuchar y elegir la versión existente.', standard_choice_eyebrow: 'SIGUIENTE PASO', standard_choice_title: '¿Qué versión quieres recibir?', standard_choice_subtitle: 'Escucha ambas canciones y luego elige una para continuar con el pago.', choose_variant_btn: (genre, isEdited, sameGenre, isChosen) => { const v = isEdited ? 'la versión nueva' : 'la versión inicial'; if (isChosen) return sameGenre ? `${v} — ${genre} — Elegida ✓` : `${genre} — Elegida ✓`; return sameGenre ? `${v} — ${genre}` : `${genre} — ${v}`; },
+      variant_second_label: 'Segunda canción', video_song_label: 'La canción del video', video_gift_song_label: 'La canción de regalo', gift_video_create_btn: 'Crear mi video de regalo', gift_video_create_sub: 'Convertiremos tus recuerdos en un video sincronizado con la canción elegida.', gift_video_processing_title: 'Estamos preparando tu video de regalo', gift_video_processing_text: 'Estamos convirtiendo tus recuerdos en un video sincronizado con la canción elegida.', gift_video_state_waiting: 'En espera', gift_video_state_creating: 'Creando tu video', gift_video_state_failed: 'No pudimos crear la previsualización — Reintentar', gift_video_preview_title: 'Previsualización de tu video de regalo', gift_video_preview_badge: '30 segundos gratis', gift_video_preview_text: 'Mira el comienzo del video hecho con tus recuerdos y tu canción.', edit_genre_label: '🎵 Cambiar el género musical', edit_genre_explain: 'Elige el género para la nueva versión.', edit_genre_same_error: 'Elige un género diferente al de la otra canción.', variant_original_label: 'Versión inicial', variant_edited_label: 'Versión editada', regen_failed_recovered_msg: 'Tu último intento de edición falló, pero aún puedes escuchar y elegir la versión existente.', standard_choice_eyebrow: 'SIGUIENTE PASO', standard_choice_title: '¿Qué versión quieres recibir?', standard_choice_subtitle: 'Escucha ambas canciones y luego elige una para continuar con el pago.', choose_variant_btn: (genre, isEdited, sameGenre, isChosen) => { const v = isEdited ? 'la versión nueva' : 'la versión inicial'; if (isChosen) return sameGenre ? `${v} — ${genre} — Elegida ✓` : `${genre} — Elegida ✓`; return sameGenre ? `${v} — ${genre}` : `${genre} — ${v}`; },
       listened: (t, d) => `Has escuchado ${t} de ${d}`,
       lyrics_empty: 'La letra todavía no está disponible para mostrar.',
       lyrics_edited_tag: 'Letra editada por ti',
@@ -1241,7 +1270,7 @@
       variant_main_label: 'Versione principale', variant_gift_label: '🎁 La tua seconda canzone, un regalo per te',
       variant_gift_note: 'Dopo il pagamento potrai scaricare entrambe le canzoni complete.',
       genre_emotional: 'Emozionante', genre_suflet: 'Con anima', genre_acustic: 'Acustico / Folk', genre_petrecere: 'Musica da festa', genre_balada: 'Ballata', genre_manele: 'Manele di lutto', genre_copii: 'Per bambini', genre_populara: 'Popolare', genre_rock: 'Rock', genre_colind: 'Canto natalizio', genre_modern: 'Moderno', genre_hiphop: 'Hip-hop', genre_manele_suflet: 'Manele con anima', genre_motivational: 'Motivazionale', genre_pop: 'Pop',
-      variant_second_label: 'Seconda canzone', gift_video_title: 'Il tuo video regalo', video_song_label: 'La canzone nel video', video_gift_song_label: 'La canzone regalo', gift_video_locked_msg: 'Il tuo video è pronto e si sbloccherà dopo il pagamento.', edit_genre_label: '🎵 Cambia il genere musicale', edit_genre_explain: 'Scegli il genere per la nuova versione.', edit_genre_same_error: "Scegli un genere diverso dall'altra canzone.", variant_original_label: 'Versione iniziale', variant_edited_label: 'Versione modificata', regen_failed_recovered_msg: "L'ultimo tentativo di modifica non è riuscito, ma puoi ancora ascoltare e scegliere la versione esistente.", standard_choice_eyebrow: 'PROSSIMO PASSO', standard_choice_title: 'Quale versione vuoi ricevere?', standard_choice_subtitle: 'Ascolta entrambe le canzoni, poi scegline una per continuare al pagamento.', choose_variant_btn: (genre, isEdited, sameGenre, isChosen) => { const v = isEdited ? 'la versione nuova' : 'la versione iniziale'; if (isChosen) return sameGenre ? `${v} — ${genre} — Scelta ✓` : `${genre} — Scelta ✓`; return sameGenre ? `${v} — ${genre}` : `${genre} — ${v}`; },
+      variant_second_label: 'Seconda canzone', video_song_label: 'La canzone nel video', video_gift_song_label: 'La canzone regalo', gift_video_create_btn: 'Crea il mio video regalo', gift_video_create_sub: 'Trasformeremo i tuoi ricordi in un video sincronizzato con la canzone scelta.', gift_video_processing_title: 'Stiamo preparando il tuo video regalo', gift_video_processing_text: 'Stiamo trasformando i tuoi ricordi in un video sincronizzato con la canzone scelta.', gift_video_state_waiting: 'In attesa', gift_video_state_creating: 'Creazione del video in corso', gift_video_state_failed: "Non siamo riusciti a creare l'anteprima — Riprova", gift_video_preview_title: 'Anteprima del tuo video regalo', gift_video_preview_badge: '30 secondi gratis', gift_video_preview_text: "Guarda l'inizio del video creato dai tuoi ricordi e dalla tua canzone.", edit_genre_label: '🎵 Cambia il genere musicale', edit_genre_explain: 'Scegli il genere per la nuova versione.', edit_genre_same_error: "Scegli un genere diverso dall'altra canzone.", variant_original_label: 'Versione iniziale', variant_edited_label: 'Versione modificata', regen_failed_recovered_msg: "L'ultimo tentativo di modifica non è riuscito, ma puoi ancora ascoltare e scegliere la versione esistente.", standard_choice_eyebrow: 'PROSSIMO PASSO', standard_choice_title: 'Quale versione vuoi ricevere?', standard_choice_subtitle: 'Ascolta entrambe le canzoni, poi scegline una per continuare al pagamento.', choose_variant_btn: (genre, isEdited, sameGenre, isChosen) => { const v = isEdited ? 'la versione nuova' : 'la versione iniziale'; if (isChosen) return sameGenre ? `${v} — ${genre} — Scelta ✓` : `${genre} — Scelta ✓`; return sameGenre ? `${v} — ${genre}` : `${genre} — ${v}`; },
       listened: (t, d) => `Hai ascoltato ${t} di ${d}`,
       lyrics_empty: 'Il testo non è ancora disponibile per la visualizzazione.',
       lyrics_edited_tag: 'Testo modificato da te',
@@ -1319,7 +1348,7 @@
       variant_main_label: 'Version principale', variant_gift_label: '🎁 Votre deuxième chanson, un cadeau pour vous',
       variant_gift_note: 'Après le paiement, vous pourrez télécharger les deux chansons complètes.',
       genre_emotional: 'Émouvant', genre_suflet: 'Avec âme', genre_acustic: 'Acoustique / Folk', genre_petrecere: 'Musique de fête', genre_balada: 'Ballade', genre_manele: 'Manele de deuil', genre_copii: 'Pour enfants', genre_populara: 'Populaire', genre_rock: 'Rock', genre_colind: 'Chant de Noël', genre_modern: 'Moderne', genre_hiphop: 'Hip-hop', genre_manele_suflet: 'Manele avec âme', genre_motivational: 'Motivant', genre_pop: 'Pop',
-      variant_second_label: 'Deuxième chanson', gift_video_title: 'Ta vidéo cadeau', video_song_label: 'La chanson de la vidéo', video_gift_song_label: 'La chanson cadeau', gift_video_locked_msg: "Ta vidéo est prête et sera débloquée après le paiement.", edit_genre_label: '🎵 Changer le genre musical', edit_genre_explain: 'Choisis le genre pour la nouvelle version.', edit_genre_same_error: "Choisissez un genre différent de l'autre chanson.", variant_original_label: 'Version initiale', variant_edited_label: 'Version modifiée', regen_failed_recovered_msg: "Votre dernière tentative de modification a échoué, mais vous pouvez toujours écouter et choisir la version existante.", standard_choice_eyebrow: 'ÉTAPE SUIVANTE', standard_choice_title: 'Quelle version veux-tu recevoir ?', standard_choice_subtitle: 'Écoute les deux chansons, puis choisis-en une pour continuer vers le paiement.', choose_variant_btn: (genre, isEdited, sameGenre, isChosen) => { const v = isEdited ? 'la nouvelle version' : 'la version initiale'; if (isChosen) return sameGenre ? `${v} — ${genre} — Choisie ✓` : `${genre} — Choisie ✓`; return sameGenre ? `${v} — ${genre}` : `${genre} — ${v}`; },
+      variant_second_label: 'Deuxième chanson', video_song_label: 'La chanson de la vidéo', video_gift_song_label: 'La chanson cadeau', gift_video_create_btn: 'Créer ma vidéo cadeau', gift_video_create_sub: 'Nous transformerons tes souvenirs en une vidéo synchronisée avec la chanson choisie.', gift_video_processing_title: 'Nous préparons ta vidéo cadeau', gift_video_processing_text: 'Nous transformons tes souvenirs en une vidéo synchronisée avec la chanson choisie.', gift_video_state_waiting: 'En attente', gift_video_state_creating: 'Création de la vidéo en cours', gift_video_state_failed: "Nous n'avons pas pu créer l'aperçu — Réessayer", gift_video_preview_title: 'Aperçu de ta vidéo cadeau', gift_video_preview_badge: '30 secondes gratuites', gift_video_preview_text: 'Regarde le début de la vidéo créée à partir de tes souvenirs et de ta chanson.', edit_genre_label: '🎵 Changer le genre musical', edit_genre_explain: 'Choisis le genre pour la nouvelle version.', edit_genre_same_error: "Choisissez un genre différent de l'autre chanson.", variant_original_label: 'Version initiale', variant_edited_label: 'Version modifiée', regen_failed_recovered_msg: "Votre dernière tentative de modification a échoué, mais vous pouvez toujours écouter et choisir la version existante.", standard_choice_eyebrow: 'ÉTAPE SUIVANTE', standard_choice_title: 'Quelle version veux-tu recevoir ?', standard_choice_subtitle: 'Écoute les deux chansons, puis choisis-en une pour continuer vers le paiement.', choose_variant_btn: (genre, isEdited, sameGenre, isChosen) => { const v = isEdited ? 'la nouvelle version' : 'la version initiale'; if (isChosen) return sameGenre ? `${v} — ${genre} — Choisie ✓` : `${genre} — Choisie ✓`; return sameGenre ? `${v} — ${genre}` : `${genre} — ${v}`; },
       listened: (t, d) => `Vous avez écouté ${t} sur ${d}`,
       lyrics_empty: "Les paroles ne sont pas encore disponibles à l'affichage.",
       lyrics_edited_tag: 'Paroles modifiées par vous',
@@ -1397,7 +1426,7 @@
       variant_main_label: 'Основна версия', variant_gift_label: '🎁 Втората ти песен, подарък за теб',
       variant_gift_note: 'След плащането ще можеш да изтеглиш и двете пълни песни.',
       genre_emotional: 'Емоционално', genre_suflet: 'Душевно', genre_acustic: 'Акустика / Фолк', genre_petrecere: 'Парти музика', genre_balada: 'Балада', genre_manele: 'Тъжни манеле', genre_copii: 'За деца', genre_populara: 'Народна', genre_rock: 'Рок', genre_colind: 'Коледна песен', genre_modern: 'Модерна', genre_hiphop: 'Хип-хоп', genre_manele_suflet: 'Задушевни манеле', genre_motivational: 'Мотивационна', genre_pop: 'Pop',
-      variant_second_label: 'Втора песен', gift_video_title: 'Твоето видео подарък', video_song_label: 'Песента във видеото', video_gift_song_label: 'Песента подарък', gift_video_locked_msg: 'Видеото ти е готово и ще се отключи след плащането.', edit_genre_label: '🎵 Смени музикалния жанр', edit_genre_explain: 'Избери жанра за новата версия.', edit_genre_same_error: 'Избери жанр, различен от другата песен.', variant_original_label: 'Оригинална версия', variant_edited_label: 'Редактирана версия', regen_failed_recovered_msg: 'Последният опит за редакция не успя, но все още можеш да чуеш и избереш съществуващата версия.', standard_choice_eyebrow: 'СЛЕДВАЩА СТЪПКА', standard_choice_title: 'Коя версия искаш да получиш?', standard_choice_subtitle: 'Чуй и двете песни, после избери една, за да продължиш към плащане.', choose_variant_btn: (genre, isEdited, sameGenre, isChosen) => { const v = isEdited ? 'новата версия' : 'оригиналната версия'; if (isChosen) return sameGenre ? `${v} — ${genre} — Избрана ✓` : `${genre} — Избрана ✓`; return sameGenre ? `${v} — ${genre}` : `${genre} — ${v}`; },
+      variant_second_label: 'Втора песен', video_song_label: 'Песента във видеото', video_gift_song_label: 'Песента подарък', gift_video_create_btn: 'Създай моето видео подарък', gift_video_create_sub: 'Ще превърнем спомените ти във видео, синхронизирано с избраната песен.', gift_video_processing_title: 'Подготвяме твоето видео подарък', gift_video_processing_text: 'Превръщаме спомените ти във видео, синхронизирано с избраната песен.', gift_video_state_waiting: 'В изчакване', gift_video_state_creating: 'Създава се видеото', gift_video_state_failed: 'Не успяхме да създадем прегледа — Опитай отново', gift_video_preview_title: 'Преглед на твоето видео подарък', gift_video_preview_badge: '30 безплатни секунди', gift_video_preview_text: 'Виж началото на видеото, създадено от спомените и песента ти.', edit_genre_label: '🎵 Смени музикалния жанр', edit_genre_explain: 'Избери жанра за новата версия.', edit_genre_same_error: 'Избери жанр, различен от другата песен.', variant_original_label: 'Оригинална версия', variant_edited_label: 'Редактирана версия', regen_failed_recovered_msg: 'Последният опит за редакция не успя, но все още можеш да чуеш и избереш съществуващата версия.', standard_choice_eyebrow: 'СЛЕДВАЩА СТЪПКА', standard_choice_title: 'Коя версия искаш да получиш?', standard_choice_subtitle: 'Чуй и двете песни, после избери една, за да продължиш към плащане.', choose_variant_btn: (genre, isEdited, sameGenre, isChosen) => { const v = isEdited ? 'новата версия' : 'оригиналната версия'; if (isChosen) return sameGenre ? `${v} — ${genre} — Избрана ✓` : `${genre} — Избрана ✓`; return sameGenre ? `${v} — ${genre}` : `${genre} — ${v}`; },
       listened: (t, d) => `Изслуша ${t} от ${d}`,
       lyrics_empty: 'Текстът все още не е наличен за показване.',
       lyrics_edited_tag: 'Текст, редактиран от теб',
@@ -1475,7 +1504,7 @@
       variant_main_label: 'Ana versiyon', variant_gift_label: '🎁 İkinci şarkınız, size bir hediye',
       variant_gift_note: 'Ödemeden sonra her iki tam şarkıyı da indirebileceksiniz.',
       genre_emotional: 'Duygusal', genre_suflet: 'İçten', genre_acustic: 'Akustik / Folk', genre_petrecere: 'Parti müziği', genre_balada: 'Balad', genre_manele: 'Hüzünlü manele', genre_copii: 'Çocuklar için', genre_populara: 'Popüler', genre_rock: 'Rock', genre_colind: 'Noel ilahisi', genre_modern: 'Modern', genre_hiphop: 'Hip-hop', genre_manele_suflet: 'Duygusal manele', genre_motivational: 'Motivasyonel', genre_pop: 'Pop',
-      variant_second_label: 'İkinci şarkı', gift_video_title: 'Hediye videon', video_song_label: 'Videodaki şarkı', video_gift_song_label: 'Hediye şarkı', gift_video_locked_msg: 'Videon hazır ve ödemeden sonra kilidi açılacak.', edit_genre_label: '🎵 Müzik türünü değiştir', edit_genre_explain: 'Yeni versiyon için türü seçin.', edit_genre_same_error: 'Diğer şarkıdan farklı bir tür seçin.', variant_original_label: 'Orijinal versiyon', variant_edited_label: 'Düzenlenmiş versiyon', regen_failed_recovered_msg: 'Son düzenleme denemeniz başarısız oldu, ancak mevcut versiyonu dinlemeye ve seçmeye devam edebilirsiniz.', standard_choice_eyebrow: 'SONRAKI ADIM', standard_choice_title: 'Hangi versiyonu almak istiyorsunuz?', standard_choice_subtitle: 'Her iki şarkıyı da dinleyin, ardından ödemeye devam etmek için birini seçin.', choose_variant_btn: (genre, isEdited, sameGenre, isChosen) => { const v = isEdited ? 'yeni versiyonu' : 'orijinal versiyonu'; if (isChosen) return sameGenre ? `${v} — ${genre} — Seçildi ✓` : `${genre} — Seçildi ✓`; return sameGenre ? `${v} — ${genre}` : `${genre} — ${v}`; },
+      variant_second_label: 'İkinci şarkı', video_song_label: 'Videodaki şarkı', video_gift_song_label: 'Hediye şarkı', gift_video_create_btn: 'Hediye videomu oluştur', gift_video_create_sub: 'Anılarınızı seçtiğiniz şarkıyla senkronize bir videoya dönüştüreceğiz.', gift_video_processing_title: 'Hediye videonuzu hazırlıyoruz', gift_video_processing_text: 'Anılarınızı seçtiğiniz şarkıyla senkronize bir videoya dönüştürüyoruz.', gift_video_state_waiting: 'Bekleniyor', gift_video_state_creating: 'Video oluşturuluyor', gift_video_state_failed: 'Önizleme oluşturulamadı — Tekrar dene', gift_video_preview_title: 'Hediye videonuzun önizlemesi', gift_video_preview_badge: '30 saniye ücretsiz', gift_video_preview_text: 'Anılarınızdan ve şarkınızdan oluşturulan videonun başlangıcını izleyin.', edit_genre_label: '🎵 Müzik türünü değiştir', edit_genre_explain: 'Yeni versiyon için türü seçin.', edit_genre_same_error: 'Diğer şarkıdan farklı bir tür seçin.', variant_original_label: 'Orijinal versiyon', variant_edited_label: 'Düzenlenmiş versiyon', regen_failed_recovered_msg: 'Son düzenleme denemeniz başarısız oldu, ancak mevcut versiyonu dinlemeye ve seçmeye devam edebilirsiniz.', standard_choice_eyebrow: 'SONRAKI ADIM', standard_choice_title: 'Hangi versiyonu almak istiyorsunuz?', standard_choice_subtitle: 'Her iki şarkıyı da dinleyin, ardından ödemeye devam etmek için birini seçin.', choose_variant_btn: (genre, isEdited, sameGenre, isChosen) => { const v = isEdited ? 'yeni versiyonu' : 'orijinal versiyonu'; if (isChosen) return sameGenre ? `${v} — ${genre} — Seçildi ✓` : `${genre} — Seçildi ✓`; return sameGenre ? `${v} — ${genre}` : `${genre} — ${v}`; },
       listened: (t, d) => `${d} şarkının ${t} kadarını dinlediniz`,
       lyrics_empty: 'Sözler henüz görüntülenmeye hazır değil.',
       lyrics_edited_tag: 'Sizin tarafınızdan düzenlenen sözler',
@@ -1587,6 +1616,8 @@
     document.getElementById('voice-change-hint').textContent = t.voice_change_hint;
     document.getElementById('memories-cta-btn').textContent = t.memories_cta_title;
     document.getElementById('memories-cta-sub').textContent = t.memories_cta_sub;
+    document.getElementById('gift-video-create-btn').textContent = t.gift_video_create_btn;
+    document.getElementById('gift-video-create-sub').textContent = t.gift_video_create_sub;
   }
 
   // -------- afiseaza si permite schimbarea preferintei de voce (Partea 4) — schimbarea
@@ -2169,8 +2200,13 @@
   });
 
   confirmCancelBtn.addEventListener('click', () => {
-    if (currentOrder && currentOrder.plan === 'standard') {
-      // ULTIMUL FINISAJ: Standard — "Renunță" inchide meniul pliabil SI anuleaza orice
+    // RELANSARE (2026-08-14, "daca utilizatorul inchide editarea fara sa creeze o versiune
+    // noua, afiseaza din nou sectiunea media — melodia initiala ramane versiunea aleasa"):
+    // Video foloseste ACUM acelasi meniu pliabil ca Standard (vezi standardDirectEditMode) —
+    // "Renunță" trebuie sa inchida meniul SI sa reafiseze sectiunea media pentru ambele
+    // pachete identic, nu doar pentru Standard.
+    if (currentOrder && (currentOrder.plan === 'standard' || currentOrder.plan === 'video')) {
+      // ULTIMUL FINISAJ: Standard/Video — "Renunță" inchide meniul pliabil SI anuleaza orice
       // modificare nesalvata (voce/gen/instructiuni), revenind la valorile reale ale comenzii.
       editGenreError.style.display = 'none';
       feedbackEl.value = '';
@@ -2467,14 +2503,33 @@
       </div>
     `).join('');
 
+    // RELANSARE (2026-08-14, "daca un thumbnail nu poate fi generat pe iPhone, afiseaza
+    // pictograma corespunzatoare — nu lasa un card gol"): elementul porneste DEJA cu iconita
+    // (🖼️/🎬, mai sus) — inlocuita cu thumbnail-ul real STRICT daca URL-ul semnat exista SI
+    // media chiar reuseste sa se incarce (onerror pastreaza explicit iconita initiala, nu un
+    // card gol/spart). Materialul ramane oricum vizibil in aceasta lista STRICT dupa ce
+    // serverul l-a confirmat (renderExistingList porneste DOAR din order.uploadedMedia, deja
+    // salvat) — nu exista nicio cale prin care un card de aici sa reprezinte un upload doar
+    // "local", neconfirmat.
     uploadedList.querySelectorAll('[data-thumb-index]').forEach(async (el) => {
       const idx = Number(el.dataset.thumbIndex);
       const item = uploaded[idx];
+      const fallbackIcon = item.type === 'photo' ? '🖼️' : '🎬';
       const url = await fetchThumbUrl(idx);
-      if (!url) return;
-      el.innerHTML = item.type === 'photo'
-        ? `<img src="${url}" alt="" loading="lazy">`
-        : `<video src="${url}" muted playsinline preload="metadata"></video>`;
+      if (!url) { el.textContent = fallbackIcon; return; }
+      const mediaEl = document.createElement(item.type === 'photo' ? 'img' : 'video');
+      mediaEl.src = url;
+      if (item.type === 'photo') {
+        mediaEl.alt = '';
+        mediaEl.loading = 'lazy';
+      } else {
+        mediaEl.muted = true;
+        mediaEl.playsInline = true;
+        mediaEl.preload = 'metadata';
+      }
+      mediaEl.addEventListener('error', () => { el.textContent = fallbackIcon; });
+      el.innerHTML = '';
+      el.appendChild(mediaEl);
     });
 
     uploadedList.querySelectorAll('button[data-remove-index]').forEach(btn => {
@@ -3107,52 +3162,132 @@
   }
 
   // ==========================================================================================
-  // Starea videoclipului (pachetul "video") — gateaza explicit plata pe partea de client,
-  // reflectand EXACT aceleasi conditii pe care serverul le verifica oricum in /checkout (nu e
-  // singura protectie, doar UX: evita un client care apasa plata si primeste direct o eroare).
-  //
-  // DECIZIE FINALA (hotfix 2026-08-08): videoclipul NU e redabil inainte de plata — nicio
-  // cerere de retea catre /media/video/:orderId, niciun element <video>, niciun URL semnat
-  // expus clientului pre-plata. Afisam STRICT o coperta statica cu lacat. Incercarea anterioara
-  // (mountGiftVideo, eliminata) construia un <video> real, cu redirect cross-origin catre R2 —
-  // suspectata direct de client ca substrat al unui blocaj grav de pagina ("Page Unresponsive").
+  // RELANSARE (2026-08-14, "cauza reala pentru care previzualizarea nu devenea disponibila"):
+  // TRASAT tot traseul real (melodie selectata -> materiale confirmate -> creare job video ->
+  // procesare -> fisier preview -> player preview -> plata -> videoclip complet). Cauza gasita:
+  // triggerVideoGeneration() (server.js) e apelat FARA "await" chiar inainte ca raspunsul HTTP
+  // sa fie trimis (POST /media/confirm SAU /create-video) — corpul lui asincron incepe sa
+  // ruleze, dar executia cedeaza controlul la PRIMUL "await" (o interogare reala catre
+  // Postgres), inainte ca db.claimVideoRender sa apuce sa scrie video_render_claimed_at. Daca
+  // frontend-ul verifica starea comenzii imediat dupa ce raspunsul cererii soseste (exact ce
+  // facea maybeAutoConfirmMedia -> refreshVideoStatusOnly), exista o fereastra reala in care
+  // job-ul CHIAR a pornit pe server, dar starea citita inca arata 'none' (niciun lock, nicio
+  // cheie, niciun motiv de esec inca scrise). Bucla de reincercare de mai jos (linia
+  // "if ((order.videoStatus === 'generating' ...") se re-programa STRICT cand starea era deja
+  // 'generating'/'stale' — o citire care prindea 'none' in acea fereastra nu mai re-programa
+  // NICIODATA verificarea, iar clientul ramanea blocat vizual pe "Videoclipul tău nu este încă
+  // gata." la nesfarsit, desi job-ul chiar rula (sau chiar se terminase) in fundal — exact
+  // simptomul raportat. Rezolvat STRUCTURAL, nu doar cosmetic: crearea jobului nu mai e
+  // niciodata implicita/silentioasa (vezi POST /media/confirm, care nu mai declanseaza automat
+  // PRIMA randare) — e STRICT rezultatul apasarii explicite a butonului de mai jos, iar acel
+  // handler porneste el insusi bucla de verificare IMEDIAT (videoCreationInFlight), fara sa
+  // astepte sau sa aiba incredere ca o citire imediata va reflecta deja starea corecta.
   // ==========================================================================================
-  function showLockedGiftVideo() {
+  let videoPollTimer = null;
+  let videoCreationInFlight = false;
+  let giftVideoPreviewMountedForVariant = null;
+
+  // Previzualizarea GRATUITA de 30s (cerinta "Cadou video") — player <video> REAL, sursa fiind
+  // un URL semnat obtinut STRICT prin accessToken-ul comenzii (nu videoclipul complet, blocat
+  // in continuare la /media/video/:orderId pana la plata). Remontat STRICT o singura data per
+  // varianta (giftVideoPreviewMountedForVariant) — pollingul de mai jos re-verifica starea la
+  // fiecare 5s cat timp genereaza, dar nu trebuie sa reincarce/intrerupa playerul deja montat.
+  async function showGiftVideoPreview(order) {
     const section = document.getElementById('gift-video-section');
-    document.getElementById('gift-video-title').textContent = t.gift_video_title;
-    document.getElementById('gift-video-locked-msg').textContent = t.gift_video_locked_msg;
+    const wrap = document.getElementById('gift-video-preview-video-wrap');
+    document.getElementById('gift-video-preview-badge').textContent = t.gift_video_preview_badge;
+    document.getElementById('gift-video-title').textContent = t.gift_video_preview_title;
+    document.getElementById('gift-video-locked-msg').textContent = t.gift_video_preview_text;
     section.style.display = 'block';
+
+    if (giftVideoPreviewMountedForVariant === order.selectedVariantId && wrap.querySelector('video')) return;
+
+    wrap.innerHTML = '';
+    try {
+      const res = await fetch(`/api/orders/${orderId}/media/video-preview-url`, {
+        headers: { 'X-Access-Token': accessToken }
+      });
+      if (!res.ok) return; // 202 (inca proceseaza, tranzitoriu) sau alta eroare — urmatorul tick reincearca
+      const data = await res.json();
+      if (!data.url) return;
+      const videoEl = document.createElement('video');
+      videoEl.controls = true;
+      videoEl.playsInline = true;
+      videoEl.preload = 'metadata';
+      wrap.appendChild(videoEl);
+      videoEl.src = data.url;
+      videoEl.load();
+      giftVideoPreviewMountedForVariant = order.selectedVariantId;
+    } catch (e) { /* urmatorul tick (sau urmatoarea incarcare a paginii) reincearca */ }
   }
 
-  function updateVideoStatusUI(order) {
+  function updateVideoStatusUI(order, pendingVariantChoice) {
     const el = document.getElementById('video-status-msg');
+    const createWrap = document.getElementById('gift-video-create');
     if (order.plan !== 'video') {
       el.style.display = 'none';
+      createWrap.style.display = 'none';
       document.getElementById('gift-video-section').style.display = 'none';
       return;
     }
 
-    const messages = {
-      generating: t.video_status_generating,
-      stale: t.video_status_stale,
-      failed: t.video_status_failed,
-      none: t.video_status_none
-    };
-
     if (order.videoStatus === 'ready') {
       el.style.display = 'none';
+      createWrap.style.display = 'none';
       checkoutBtn.disabled = false;
-      showLockedGiftVideo();
+      videoCreationInFlight = false;
+      showGiftVideoPreview(order);
       return;
     }
     document.getElementById('gift-video-section').style.display = 'none';
-
-    el.className = 'video-status-msg ' + order.videoStatus;
-    el.textContent = messages[order.videoStatus] || messages.none;
-    el.style.display = 'block';
     checkoutBtn.disabled = true;
 
+    // Un job e "activ sau in curs de pornire" fie pentru ca serverul confirma deja unul
+    // (generating/stale/failed), fie pentru ca tocmai am cerut unul (videoCreationInFlight) —
+    // vezi comentariul de mai sus despre fereastra reala dintre cerere si scrierea lock-ului.
+    const jobActiveOrPending = order.videoStatus === 'generating' || order.videoStatus === 'stale' || order.videoStatus === 'failed' || videoCreationInFlight;
+
+    if (!jobActiveOrPending) {
+      // Niciun job, niciunul cerut inca — butonul de creare apare STRICT dupa stabilirea
+      // versiunii finale, cu materialele confirmate de server (order.mediaConfirmedAt —
+      // resetat la null de server la ORICE modificare reala a materialelor, vezi
+      // mutateOrderMediaAtomically in db.js) SI fara uploaduri active/erori nerezolvate in
+      // coada LOCALA chiar acum.
+      el.style.display = 'none';
+      const mediaReady = !pendingVariantChoice && !!order.mediaConfirmedAt && uploadQueue.length === 0;
+      createWrap.style.display = mediaReady ? 'block' : 'none';
+      return;
+    }
+    createWrap.style.display = 'none';
+
+    const messages = {
+      generating: { title: t.gift_video_processing_title, text: t.gift_video_processing_text, state: t.gift_video_state_creating },
+      stale: { title: t.gift_video_processing_title, text: t.gift_video_processing_text, state: t.gift_video_state_creating },
+      failed: { title: t.gift_video_processing_title, text: t.gift_video_processing_text, state: t.gift_video_state_failed },
+      none: { title: t.gift_video_processing_title, text: t.gift_video_processing_text, state: t.gift_video_state_waiting }
+    };
+    // videoCreationInFlight+'none' inseamna EXACT fereastra descrisa mai sus (job pornit,
+    // starea inca nu reflecta lock-ul) — afisam "În așteptare", niciodata o eroare.
+    const msg = messages[order.videoStatus] || messages.none;
+
+    el.className = 'video-status-msg ' + order.videoStatus;
+    el.innerHTML = '';
+    const titleEl = document.createElement('p');
+    titleEl.style.cssText = 'font-weight:600; margin:0 0 4px;';
+    titleEl.textContent = msg.title;
+    const textEl = document.createElement('p');
+    textEl.style.cssText = 'margin:0 0 8px;';
+    textEl.textContent = msg.text;
+    const stateEl = document.createElement('p');
+    stateEl.style.cssText = 'margin:0; font-weight:600;';
+    stateEl.textContent = msg.state;
+    el.appendChild(titleEl);
+    el.appendChild(textEl);
+    el.appendChild(stateEl);
+    el.style.display = 'block';
+
     if (order.videoStatus === 'failed') {
+      videoCreationInFlight = false;
       const retryBtn = document.createElement('button');
       retryBtn.type = 'button';
       retryBtn.className = 'btn btn-ghost btn-small';
@@ -3161,19 +3296,21 @@
       retryBtn.textContent = t.memories_retry;
       retryBtn.addEventListener('click', async () => {
         retryBtn.disabled = true;
+        videoCreationInFlight = true;
         try {
           await fetch(`/api/orders/${orderId}/create-video`, {
             method: 'POST',
             headers: { 'X-Access-Token': accessToken }
           });
-        } catch (e) { /* pollVideoStatus de mai jos reflecta oricum starea reala */ }
-        setTimeout(loadOrder, 1500);
+        } catch (e) { /* bucla de mai jos reflecta oricum starea reala */ }
+        armVideoPoll(0);
       });
       el.appendChild(retryBtn);
     }
 
-    // Cat timp videoclipul se creeaza/regenereaza, reincarcam periodic DOAR starea video —
-    // clientul vede automat cand devine gata, fara sa dea refresh manual.
+    // Cat timp videoclipul se creeaza/regenereaza (SAU tocmai a fost cerut, vezi
+    // videoCreationInFlight mai sus), reincarcam periodic DOAR starea video — clientul vede
+    // automat cand devine gata, fara sa dea refresh manual.
     //
     // HOTFIX 2026-08-08 (gasit direct din raportul clientului: playerele ramaneau la 0:00,
     // pagina ajungea "Page Unresponsive"): acest poll apela INAINTE loadOrder() complet, care
@@ -3188,11 +3325,15 @@
     // 15s neanulat (vezi mountAudio) — acumularea lor pe durata a mai multor minute e o cauza
     // plauzibila si a blocarii intregii pagini. Folosim acum un refresh USOR, care verifica
     // DOAR starea video (fara sa atinga deloc variantele/playerele audio deja montate).
-    if ((order.videoStatus === 'generating' || order.videoStatus === 'stale') && !videoPollTimer) {
-      videoPollTimer = setTimeout(() => { videoPollTimer = null; refreshVideoStatusOnly(); }, 5000);
+    if ((order.videoStatus === 'generating' || order.videoStatus === 'stale' || (videoCreationInFlight && order.videoStatus === 'none')) && !videoPollTimer) {
+      armVideoPoll();
     }
   }
-  let videoPollTimer = null;
+
+  function armVideoPoll(delayMs) {
+    if (videoPollTimer) return;
+    videoPollTimer = setTimeout(() => { videoPollTimer = null; refreshVideoStatusOnly(); }, delayMs === undefined ? 5000 : delayMs);
+  }
 
   // Refresh USOR — verifica DOAR starea video (nu re-randeaza variantele/playerele audio, nu
   // reface nimic altceva). Folosit exclusiv de bucla de mai sus, cat timp videoclipul inca
@@ -3204,9 +3345,37 @@
       const order = await res.json();
       if (order.status !== 'preview_ready') { loadOrder(); return; } // stare schimbata real -> refresh complet
       currentOrder = order;
-      updateVideoStatusUI(order);
+      const pendingVariantChoiceNow = !order.selectedVariantId && (order.variants || []).length > 1;
+      updateVideoStatusUI(order, pendingVariantChoiceNow);
     } catch (e) { /* urmatorul tick reincearca oricum */ }
   }
+
+  // O SINGURA apasare = un SINGUR job video (cerinta explicita) — butonul se dezactiveaza
+  // IMEDIAT, sincron, la primul click, inainte de orice cerere de retea; POST /create-video e
+  // oricum idempotent server-side (isVideoLockActive/videoKey+videoPreviewKey), dar dublu-tapul
+  // NU trebuie sa depinda STRICT de acea garda — previne si cererea a doua sa mai plece deloc.
+  let giftVideoCreateRequested = false;
+  document.getElementById('gift-video-create-btn').addEventListener('click', async () => {
+    if (giftVideoCreateRequested) return;
+    giftVideoCreateRequested = true;
+    const btn = document.getElementById('gift-video-create-btn');
+    btn.disabled = true;
+    videoCreationInFlight = true;
+    // Afisam STAREA de procesare IMEDIAT, local — nu asteptam un raspuns de retea care ar
+    // putea (vezi comentariul de mai sus) sa nu reflecte inca lock-ul real din baza de date.
+    // Acest apel armeaza deja bucla de verificare (armVideoPoll, in interiorul
+    // updateVideoStatusUI, cat timp videoCreationInFlight e adevarat) — cererea POST de mai
+    // jos nu mai trebuie sa o re-armeze ea insasi.
+    document.getElementById('gift-video-create').style.display = 'none';
+    if (currentOrder) updateVideoStatusUI({ ...currentOrder, videoStatus: 'none' }, false);
+    try {
+      await fetch(`/api/orders/${orderId}/create-video`, {
+        method: 'POST',
+        headers: { 'X-Access-Token': accessToken }
+      });
+    } catch (e) { /* bucla de polling arma deja mai sus reflecta oricum starea reala */ }
+    giftVideoCreateRequested = false;
+  });
 
   // ULTIMUL FINISAJ (hotfix 2026-08-08): centralizeaza TOATA logica de vizibilitate legata de
   // fluxul de editare Standard (meniul pliabil INAINTE de editare + ecranul de alegere DUPA
@@ -3233,6 +3402,9 @@
       standardPreeditCheckoutSlotCollapsed.style.display = 'none';
       standardPreeditCheckoutSlotExpanded.style.display = 'none';
       editMenuFields.hidden = true;
+      // Editarea gratuita a fost deja folosita — mesajul "ai dreptul la o singura editare
+      // gratuita" nu mai e relevant pe acest ecran.
+      document.getElementById('edits-info-msg').style.display = 'none';
       confirmRow.style.display = 'none';
       regenerateRow.style.display = 'flex';
       standardChoiceSection.style.display = 'block';
@@ -3245,6 +3417,10 @@
       renderStandardChoiceButtons(order);
       checkoutBtn.classList.add('btn-cta-wide');
       checkoutBtn.style.flex = 'none';
+      // RELANSARE (2026-08-14, "nu afisa sectiunea media pana cand clientul nu alege
+      // versiunea finala"): pe acest ecran de comparare, sectiunea de materiale ramane
+      // gatata STRICT de aceeasi conditie ca oriunde altundeva — pendingVariantChoice.
+      if (order.plan === 'video') updateMemoriesCta(order, pendingVariantChoice);
       return;
     }
 
@@ -3257,6 +3433,7 @@
       standardPreeditCheckoutSlotCollapsed.style.display = 'none';
       standardPreeditCheckoutSlotExpanded.style.display = 'none';
       editMenuFields.hidden = false;
+      document.getElementById('edits-info-msg').style.display = '';
       regenerateRow.appendChild(checkoutBtn);
       checkoutBtn.classList.remove('btn-cta-wide');
       checkoutBtn.style.flex = '1';
@@ -3315,6 +3492,23 @@
         confirmMsgEl.style.display = '';
       } else {
         confirmMsgEl.style.display = 'none';
+      }
+    }
+
+    // RELANSARE (2026-08-14, "cand meniul de editare e deschis, ascunde complet sectiunea
+    // media si mesajul despre editarea gratuita"): STRICT pachetul video (Standard nu are
+    // sectiune media). Meniul DESCHIS ascunde ambele — materialele deja selectate NU sunt
+    // sterse (memOrderRef/uploadQueue raman neatinse), doar sectiunea vizuala se ascunde;
+    // uploadurile in desfasurare continua nestingherite in fundal (vezi processUploadQueue,
+    // neschimbat). Meniul INCHIS (fara editare, sau dupa "Renunță") reafiseaza sectiunea
+    // media EXACT ca inainte de editare — melodia initiala ramane versiunea aleasa.
+    if (order.plan === 'video') {
+      document.getElementById('edits-info-msg').style.display = menuExpanded ? 'none' : '';
+      if (menuExpanded) {
+        document.getElementById('memories-cta').style.display = 'none';
+        document.getElementById('memories-section').style.display = 'none';
+      } else {
+        updateMemoriesCta(order, pendingVariantChoice);
       }
     }
   }
@@ -4120,7 +4314,7 @@
     }
 
     if (order.plan === 'video') {
-      updateVideoStatusUI(order);
+      updateVideoStatusUI(order, pendingVariantChoice);
       updateMemoriesCta(order, pendingVariantChoice);
     } else {
       document.getElementById('memories-cta').style.display = 'none';

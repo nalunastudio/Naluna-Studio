@@ -131,7 +131,12 @@ test('melodia-mea.html: confirmarea materialelor foloseste STRICT endpointul exi
 
 test('server.js: triggerVideoGeneration foloseste STRICT order.selectedVariantId (varianta finala aleasa) — asocierea video-melodie ramane neschimbata', () => {
   assert.ok(server.includes('async function triggerVideoGeneration(orderId, variantId) {'));
-  assert.ok(server.includes('if (result.order.status === \'preview_ready\' && result.order.selectedVariantId) {'));
+  // RELANSARE (2026-08-14, "o singura apasare trebuie sa creeze exact un singur job video"):
+  // POST /media/confirm nu mai declanseaza automat PRIMA randare (acum STRICT rezultatul
+  // apasarii explicite a butonului "Creează videoclipul meu cadou", vezi POST /create-video) —
+  // reconfirmarea AUTOMATA ramane STRICT pentru cazul in care un videoclip exista deja.
+  assert.ok(server.includes('if (result.order.status === \'preview_ready\' && result.order.selectedVariantId && confirmedVariant && confirmedVariant.videoKey) {'));
+  assert.ok(server.includes('triggerVideoGeneration(order.id, order.selectedVariantId)'), '/create-video trebuie sa ramana capabil sa declanseze prima randare, explicit');
 });
 
 // ---------------------------------------------------------------------------------------------

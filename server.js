@@ -113,6 +113,10 @@ const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 const PORT = process.env.PORT || 3000;
 const DOMAIN = process.env.DOMAIN;
 const PREVIEW_SECONDS = 40;
+// Previzualizarea GRATUITĂ a videoclipului cadou (pachetul "video"), disponibilă ÎNAINTE de
+// plată — vezi generateLyricVideo() mai jos, care taie acest fragment (stream copy, fără
+// reencodare) din videoclipul complet deja randat, exact ca la începutul lui.
+const VIDEO_PREVIEW_SECONDS = 30;
 const FREE_EDITS = 1; // prima melodie generata NU consuma nicio editare (vezi /generate, care
                        // nu atinge editsUsed) — clientul are apoi exact O SINGURA regenerare
                        // gratuita; a doua tentativa e blocata
@@ -2357,6 +2361,9 @@ app.get('/api/orders/:orderId', async (req, res, next) => {
       // daca extrasul de pachet (WAV/video, vezi generatePremiumExtras) e deja gata.
       hasWav: !!v.wavKey,
       hasVideo: !!v.videoKey,
+      // Previzualizarea gratuita de 30s (cerinta "Cadou video"), disponibila INAINTE de plata —
+      // separata de hasVideo (videoclipul COMPLET, deblocat STRICT dupa plata, vezi /media/video).
+      hasVideoPreview: !!v.videoPreviewKey,
       videoFailedReason: v.videoFailedReason || null,
       // Standard, fluxul de editare cu alegere (Partea 2, hotfix 2026-08-08) — fara acest
       // camp, melodia-mea.html nu poate distinge "Versiunea inițială" de "Versiunea editată"
@@ -2390,7 +2397,11 @@ app.get('/api/orders/:orderId', async (req, res, next) => {
     if (order.plan === 'video') {
       if (isVideoLockActive(order)) videoStatus = 'generating';
       else if (order.videoStaleReason) videoStatus = 'stale';
-      else if (currentVariant && currentVariant.videoKey) videoStatus = 'ready';
+      // RELANSARE (2026-08-14, "previzualizarea gratuita de 30s"): 'ready' cere acum AMBELE
+      // fisiere — videoclipul complet SI previzualizarea (create in acelasi job, vezi
+      // generateLyricVideo) — o comanda veche cu doar videoKey (dinainte ca previzualizarea
+      // sa existe) nu trebuie sa arate "gata" cat timp nu exista inca nimic redabil pre-plata.
+      else if (currentVariant && currentVariant.videoKey && currentVariant.videoPreviewKey) videoStatus = 'ready';
       else if (currentVariant && currentVariant.videoFailedReason) videoStatus = 'failed';
       else if (order.videoRenderClaimedAt) videoStatus = 'failed'; // lock expirat fara rezultat -> recuperabil, nu "generating" etern
     }
@@ -3102,12 +3113,14 @@ app.post('/api/orders/:orderId/media/confirm', requireOrderToken, async (req, re
       return res.status(400).json({ error: `Ai nevoie de între ${ORDER_MEDIA_MIN_ITEMS} și ${ORDER_MEDIA_MAX_ITEMS} materiale pentru a continua (ai ${count}).` });
     }
 
-    // Cerinta B3: reconfirmarea materialelor, cand melodia e DEJA generata (comanda nu mai e
-    // 'draft'), trebuie sa declanseze regenerarea videoclipului pentru selectia noua — clientul
-    // a modificat materialele DUPA ce videoclipul initial exista deja, apoi a reconfirmat.
-    // Daca melodia inca nu exista (status 'draft'), nu e nimic de declansat aici — /generate
-    // porneste totul, imediat ce clientul apasa "Continua si creeaza cadoul".
-    if (result.order.status === 'preview_ready' && result.order.selectedVariantId) {
+    // RELANSARE (2026-08-14, "o singura apasare trebuie sa creeze exact un singur job video"):
+    // confirmarea materialelor NU mai porneste automat PRIMA randare — acum e STRICT declansata
+    // de apasarea explicita a butonului "Creează videoclipul meu cadou" (POST /create-video,
+    // deja idempotent). Reconfirmarea AUTOMATA ramane DOAR pentru cazul in care un videoclip
+    // exista deja (varianta curenta are deja videoKey) si clientul a modificat materialele DUPA
+    // aceea — regenerarea automata pentru selectia noua ramane un comportament dorit acolo.
+    const confirmedVariant = (result.order.variants || []).find(v => v.id === result.order.selectedVariantId);
+    if (result.order.status === 'preview_ready' && result.order.selectedVariantId && confirmedVariant && confirmedVariant.videoKey) {
       triggerVideoGeneration(result.order.id, result.order.selectedVariantId).catch(err => {
         console.error('Regenerarea videoclipului dupa reconfirmarea materialelor a esuat pentru comanda', order.id, err.message);
       });
@@ -3147,8 +3160,13 @@ app.post('/api/orders/:orderId/create-video', requireOrderToken, async (req, res
       return res.status(400).json({ error: `Încarcă și confirmă cel puțin ${ORDER_MEDIA_MIN_ITEMS} materiale înainte de a crea videoclipul.` });
     }
 
+    // RELANSARE (2026-08-14, "previzualizarea gratuita de 30s"): "deja gata" inseamna acum
+    // STRICT ambele fisiere disponibile — videoclipul complet SI previzualizarea. O comanda
+    // veche cu doar videoKey (creata inainte ca previzualizarea sa existe) trebuie sa mai
+    // porneasca INCA un job (idempotent — vezi generatePremiumExtras), ca sa capete si
+    // previzualizarea, in loc sa raspunda fals "alreadyReady".
     const variant = (order.variants || []).find(v => v.id === order.selectedVariantId);
-    if (variant && variant.videoKey && !order.videoStaleReason) {
+    if (variant && variant.videoKey && variant.videoPreviewKey && !order.videoStaleReason) {
       return res.json({ started: false, alreadyReady: true });
     }
     if (isVideoLockActive(order)) {
@@ -3159,6 +3177,29 @@ app.post('/api/orders/:orderId/create-video', requireOrderToken, async (req, res
     triggerVideoGeneration(order.id, order.selectedVariantId).catch(err => {
       console.error('Crearea videoclipului cu memorii a esuat pentru comanda', order.id, err.message);
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ==========================================================================================
+// Previzualizarea GRATUITA de 30s a videoclipului cadou — cerinta "Cadou video": clientul
+// trebuie sa poata vedea inceputul videoclipului INAINTE de plata. Spre deosebire de
+// /media/video/:orderId (videoclipul COMPLET, STRICT dupa plata — vezi decizia finala din acea
+// ruta), aceasta ruta e autorizata STRICT prin accessToken-ul comenzii (requireOrderToken), NU
+// prin order.status==='ready'. Raspunde cu un URL semnat, expirare scurta (10 minute) — clientul
+// il seteaza direct pe elementul <video>, fara ca Railway sa retransmita vreodata bytes video
+// (acelasi principiu ca la uploadul multipart direct catre R2).
+app.get('/api/orders/:orderId/media/video-preview-url', requireOrderToken, async (req, res, next) => {
+  try {
+    const order = req.order;
+    if (order.plan !== 'video') return res.status(400).json({ error: 'Doar pachetul video are o previzualizare video.' });
+    const variant = (order.variants || []).find(v => v.id === order.selectedVariantId);
+    if (!variant || !variant.videoPreviewKey) {
+      return res.status(202).json({ status: 'processing' });
+    }
+    const url = await storage.getSignedDownloadUrl(variant.videoPreviewKey, 600);
+    res.json({ url, variantId: variant.id });
   } catch (err) {
     next(err);
   }
@@ -3221,7 +3262,7 @@ async function triggerVideoGeneration(orderId, variantId) {
     const current = await db.getOrderById(orderId);
     if (current && current.plan === 'video' && current.selectedVariantId && current.mediaConfirmedAt) {
       const currentVariant = (current.variants || []).find(v => v.id === current.selectedVariantId);
-      if (!currentVariant || !currentVariant.videoKey) {
+      if (!currentVariant || !currentVariant.videoKey || !currentVariant.videoPreviewKey) {
         triggerVideoGeneration(orderId, current.selectedVariantId).catch(err => {
           console.error(`Comanda ${orderId}: re-randare dupa schimbare de versiune a esuat:`, err.message);
         });
@@ -4909,10 +4950,15 @@ async function generatePremiumExtras(orderId, options = {}) {
       }
     }
 
-    if (order.plan === 'video' && forceVideo && !variant.videoKey) {
+    // RELANSARE (2026-08-14, "previzualizarea gratuita de 30s"): re-randam si pentru o
+    // comanda VECHE care are deja videoKey dar nu si videoPreviewKey (creata inainte ca
+    // aceasta previzualizare sa existe) — un singur job, produce ambele fisiere (vezi
+    // generateLyricVideo).
+    if (order.plan === 'video' && forceVideo && (!variant.videoKey || !variant.videoPreviewKey)) {
       try {
         const videoResult = await generateLyricVideo(order, variant, tempFull);
         patch.videoKey = videoResult.videoKey;
+        patch.videoPreviewKey = videoResult.videoPreviewKey;
         patch.sectionTimings = videoResult.sectionTimings;
         patch.videoFailedReason = null;
         perfLog(orderId, 'video_ready', `varianta=${variant.id}`);
@@ -4936,7 +4982,7 @@ async function generatePremiumExtras(orderId, options = {}) {
           console.warn(`Comanda ${orderId}: rezultatul video pentru varianta ${forVariantId}/revizia ${forMediaRevision} a fost aruncat — versiunea nu mai e cea curenta.`);
         }
       }
-      const videoOnlyKeys = ['videoKey', 'sectionTimings', 'videoFailedReason'];
+      const videoOnlyKeys = ['videoKey', 'videoPreviewKey', 'sectionTimings', 'videoFailedReason'];
       const finalPatch = allowVideoWrite ? patch : Object.fromEntries(Object.entries(patch).filter(([k]) => !videoOnlyKeys.includes(k)));
 
       if (Object.keys(finalPatch).length > 0) {
@@ -5376,8 +5422,31 @@ async function generateLyricVideo(order, variant, tempFullMp3Path) {
 
   const videoKey = `orders/full-video/${order.id}-${variant.id}.mp4`;
   await storage.uploadPrivateFile(tempVideo, videoKey, 'video/mp4');
+
+  // Previzualizarea gratuita de 30s (cerinta 5/7, "Cadou video"): taiem STRICT primele
+  // VIDEO_PREVIEW_SECONDS din videoclipul complet DEJA randat mai sus — reprezinta exact
+  // "inceputul videoclipului cadou", foloseste aceeasi melodie/materiale/montaj (niciun
+  // pipeline nou), si costa practic nimic in plus (`-c copy`, fara reencodare — primul
+  // cadru al unui encode H.264 e intotdeauna un keyframe, deci taierea de la pozitia 0 e
+  // curata, fara artefacte). Daca videoclipul complet e deja mai scurt de 30s, `-t` nu are
+  // niciun efect (ffmpeg copiaza tot ce exista).
+  const tempVideoPreview = path.join(TEMP_DIR, `${order.id}-${variant.id}-video-preview.mp4`);
+  let videoPreviewKey = null;
+  try {
+    await execFfmpeg(['-y', '-i', tempVideo, '-t', String(VIDEO_PREVIEW_SECONDS), '-c', 'copy', tempVideoPreview], { timeout: 60000 });
+    videoPreviewKey = `orders/preview-video/${order.id}-${variant.id}.mp4`;
+    await storage.uploadPrivateFile(tempVideoPreview, videoPreviewKey, 'video/mp4');
+  } catch (err) {
+    // Previzualizarea e un adaos — un esec la taiere/upload NU trebuie sa piarda videoclipul
+    // complet, deja randat si urcat cu succes mai sus. triggerVideoGeneration ramane
+    // reincercabil (vezi verificarea videoPreviewKey lipsa in POST /create-video).
+    console.error(`Comanda ${order.id}: taierea previzualizarii video de ${VIDEO_PREVIEW_SECONDS}s a esuat:`, err.message);
+  } finally {
+    try { if (fs.existsSync(tempVideoPreview)) fs.unlinkSync(tempVideoPreview); } catch (e) { /* best-effort */ }
+  }
+
   try { fs.unlinkSync(tempVideo); } catch (e) { /* best-effort */ }
-  return { videoKey, sectionTimings };
+  return { videoKey, videoPreviewKey, sectionTimings };
 }
 
 // Citeste raspunsul unei cereri esuate ca text simplu, trunchiat, pentru loguri utile —

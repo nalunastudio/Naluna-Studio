@@ -466,8 +466,11 @@ test('melodia-mea.html: "Renunță" e vizibil DOAR cand meniul e deschis, si inc
     'Renunță trebuie sa fie vizibil DOAR cat timp meniul e deschis — are acum un pas de reveal real de anulat'
   );
   const idx = html.indexOf("confirmCancelBtn.addEventListener('click'");
-  const block = html.slice(idx, idx + 700);
-  assert.ok(block.includes("currentOrder.plan === 'standard'"), 'handler-ul trebuie sa distinga explicit Standard de Premium/Video');
+  const block = html.slice(idx, idx + 1100);
+  // RELANSARE (2026-08-14, "Cadou video reutilizeaza EXACT formatul Standard"): "Renunță"
+  // trebuie sa trateze acum Standard SI Video identic (ambele folosesc meniul pliabil) —
+  // handler-ul distinge explicit doar Premium (care nu ajunge niciodata pe aceasta ramura).
+  assert.ok(block.includes("currentOrder.plan === 'standard' || currentOrder.plan === 'video'"), 'handler-ul trebuie sa trateze Standard SI Video identic, distingand explicit de Premium');
   assert.ok(block.includes('feedbackEl.value = \'\';'), 'textul de feedback nesalvat trebuie golit la Renunță');
   assert.ok(block.includes('populateGenreSelect(currentOrder);'), 'selectorul de gen trebuie resetat la valoarea reala a comenzii');
   assert.ok(block.includes('menuExpanded = false;'), 'Renunță trebuie sa inchida meniul');

@@ -160,9 +160,13 @@ test('melodia-mea.html: validare client-side ca cele doua genuri raman diferite 
   assert.ok(html.includes("otherVariant.genre === requestedGenre"), 'validarea trebuie sa compare cu genul CELEILALTE variante');
 });
 
-test('traduceri: cheile noi (edit_genre_label, edit_genre_same_error, gift_video_locked_msg) exista in toate cele 8 limbi', () => {
+test('traduceri: cheile noi (edit_genre_label, edit_genre_same_error, video_song_label) exista in toate cele 8 limbi', () => {
   const html = read('public/melodia-mea.html');
-  ['edit_genre_label', 'edit_genre_same_error', 'gift_video_locked_msg', 'gift_video_title', 'video_song_label', 'video_gift_song_label'].forEach(key => {
+  // RELANSARE (2026-08-14, "previzualizare gratuita de 30s"): gift_video_title/
+  // gift_video_locked_msg (cardul "blocat", fara player) au fost inlocuite de
+  // gift_video_preview_title/gift_video_preview_text (cardul cu playerul real) — vezi
+  // testul dedicat din video-gift-preview-and-creation.test.js.
+  ['edit_genre_label', 'edit_genre_same_error', 'video_song_label', 'video_gift_song_label'].forEach(key => {
     const count = (html.match(new RegExp(key + ':', 'g')) || []).length;
     assert.equal(count, 8, `cheia "${key}" trebuie sa apara exact 8 ori (cate una per limba), gasita de ${count} ori`);
   });
