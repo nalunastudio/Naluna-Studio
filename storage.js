@@ -95,14 +95,14 @@ const PUBLIC_BUCKET = process.env.S3_PUBLIC_BUCKET;
 
 let s3Client = null;
 let PutObjectCommand, GetObjectCommand, DeleteObjectCommand, getSignedUrl;
-let CreateMultipartUploadCommand, UploadPartCommand, CompleteMultipartUploadCommand, AbortMultipartUploadCommand, PutBucketCorsCommand;
+let CreateMultipartUploadCommand, UploadPartCommand, CompleteMultipartUploadCommand, AbortMultipartUploadCommand, GetBucketCorsCommand;
 
 if (CLOUD_ENABLED) {
   const {
     S3Client, PutObjectCommand: POC, GetObjectCommand: GOC, DeleteObjectCommand: DOC,
     CreateMultipartUploadCommand: CMU, UploadPartCommand: UPC,
     CompleteMultipartUploadCommand: CMPU, AbortMultipartUploadCommand: AMU,
-    PutBucketCorsCommand: PBC
+    GetBucketCorsCommand: GBC
   } = require('@aws-sdk/client-s3');
   ({ getSignedUrl } = require('@aws-sdk/s3-request-presigner'));
   PutObjectCommand = POC;
@@ -112,7 +112,7 @@ if (CLOUD_ENABLED) {
   UploadPartCommand = UPC;
   CompleteMultipartUploadCommand = CMPU;
   AbortMultipartUploadCommand = AMU;
-  PutBucketCorsCommand = PBC;
+  GetBucketCorsCommand = GBC;
 
   s3Client = new S3Client({
     region: process.env.S3_REGION || 'auto',
@@ -302,28 +302,37 @@ async function abortPrivateMultipartUpload(key, uploadId) {
   }
 }
 
-// Configureaza CORS pe bucket-ul PRIVAT, STRICT pentru originile date, STRICT pentru PUT
-// (fragmentele de upload) — necesar ca browserul sa poata trimite direct catre R2. Fara asta,
-// orice PUT direct din browser catre R2 esueaza silentios (blocat de browser, preflight CORS
-// respins). Apelat o singura data la pornirea serverului (best-effort, nefatal — un token R2
-// cu permisiuni STRICT "Object Read & Write" poate sa NU aiba voie sa modifice configurarea
-// bucket-ului; in acel caz raportam explicit blocajul, nu il ascundem).
-async function ensureUploadCors(origins) {
+// VERIFICA (STRICT citire, NICIODATA scriere) daca bucket-ul PRIVAT are deja CORS configurat
+// pentru PUT direct din browser catre R2, cu header-ul ETag expus — necesar ca uploadul
+// multipart (fragmentele de upload) sa functioneze. Apelat o singura data la pornirea
+// serverului, best-effort, nefatal.
+//
+// CORECȚIE (2026-08-14, "am actualizat si salvat regula CORS existenta manual"): initial,
+// aceasta functie folosea PutBucketCorsCommand pentru a configura CORS automat — dupa ce
+// clientul a configurat manual regula corecta (PUT adaugat, GET/HEAD pastrate, ExposeHeaders
+// cu ETag), am descoperit ca PutBucketCors INLOCUIESTE intreaga configurare CORS a bucket-ului
+// (nu adauga reguli) — daca aceasta functie ar mai fi rulat vreodata cu succes (ex. daca
+// permisiunile token-ului R2 s-ar schimba ulterior), ar fi STERS silentios regulile GET/HEAD
+// configurate manual de client, inlocuindu-le cu o regula STRICT PUT. Pentru a nu risca
+// niciodata sa suprascrie o configurare facuta manual, aceasta functie acum DOAR CITESTE
+// configurarea existenta si verifica daca e suficienta — nu scrie niciodata in ea.
+async function checkUploadCors(origins) {
   if (!CLOUD_ENABLED) return { ok: false, reason: 'stocare cloud dezactivata' };
   try {
-    await s3Client.send(new PutBucketCorsCommand({
-      Bucket: PRIVATE_BUCKET,
-      CORSConfiguration: {
-        CORSRules: [{
-          AllowedOrigins: origins,
-          AllowedMethods: ['PUT'],
-          AllowedHeaders: ['*'],
-          ExposeHeaders: ['ETag'],
-          MaxAgeSeconds: 3600
-        }]
-      }
-    }));
-    return { ok: true };
+    const res = await s3Client.send(new GetBucketCorsCommand({ Bucket: PRIVATE_BUCKET }));
+    const rules = res.CORSRules || [];
+    const sufficient = rules.some(rule => {
+      const allowedOrigins = rule.AllowedOrigins || [];
+      const allowedMethods = rule.AllowedMethods || [];
+      const exposeHeaders = (rule.ExposeHeaders || []).map(h => h.toLowerCase());
+      const originOk = allowedOrigins.includes('*') || origins.some(o => allowedOrigins.includes(o));
+      const putOk = allowedMethods.includes('PUT');
+      const etagOk = exposeHeaders.includes('etag');
+      return originOk && putOk && etagOk;
+    });
+    return sufficient
+      ? { ok: true }
+      : { ok: false, reason: 'bucket-ul are CORS configurat, dar nicio regula nu permite PUT + expune ETag pentru originea site-ului' };
   } catch (err) {
     return { ok: false, reason: err.message || String(err) };
   }
@@ -365,5 +374,5 @@ module.exports = {
   getSignedUploadPartUrl,
   completePrivateMultipartUpload,
   abortPrivateMultipartUpload,
-  ensureUploadCors
+  checkUploadCors
 };

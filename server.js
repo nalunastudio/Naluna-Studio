@@ -2831,10 +2831,9 @@ app.post('/api/orders/:orderId/media', requireOrderToken, handleOrderMediaUpload
 // LIMITA ONESTA: sesiunile sunt tinute STRICT in memoria procesului (Map), nu in baza de date —
 // un restart de server (deploy, crash) pierde sesiunile in curs; clientul detecteaza asta (sesiune
 // negasita la cererea URL-ului urmatorului fragment) si reia acel fisier de la inceput, curat.
-// Necesita CORS configurat pe bucket-ul R2 privat pentru originea site-ului (vezi ensureUploadCors
-// mai jos, apelat o singura data la pornirea serverului) — daca API-token-ul R2 configurat nu are
-// voie sa modifice CORS-ul bucket-ului, acest server incearca, esueaza vizibil in log (nu ascunde
-// eroarea) si uploadul direct nu va functiona pana la o configurare manuala in dashboard R2/Cloudflare.
+// Necesita CORS configurat MANUAL pe bucket-ul R2 privat pentru originea site-ului (verificat,
+// STRICT citire, la pornirea serverului — vezi checkUploadCorsAtBoot mai jos) — fara acea
+// configurare (PUT permis + header-ul ETag expus), uploadul direct nu functioneaza.
 // ==========================================================================================
 const ORDER_MEDIA_MULTIPART_THRESHOLD_BYTES = 20 * 1024 * 1024; // 20MB — sub asta, un singur POST e suficient de rapid/fiabil
 const ORDER_MEDIA_MULTIPART_PART_BYTES = 10 * 1024 * 1024; // 10MB per fragment (in intervalul 8-16MB cerut, peste minimul R2 de 5MB/parte)
@@ -6667,25 +6666,31 @@ async function checkHeifConvertAvailability() {
 // RELANSARE (2026-08-14, upload multipart direct catre R2): fara CORS configurat pe bucket-ul
 // PRIVAT pentru originea site-ului, orice PUT direct din browser catre R2 (fragmentele de
 // upload) e blocat silentios de browser (preflight CORS respins) — necesar ca uploadul de
-// videoclipuri mari sa functioneze cu adevarat "direct", nu doar in cod. Incercam o singura
-// data, la pornire, folosind acelasi API-token R2 deja configurat (Object Read & Write) —
-// fire-and-forget, nefatal: daca token-ul nu are voie sa modifice configurarea bucket-ului,
-// raportam explicit in log, nu ascundem eroarea si nu blocam pornirea serverului pentru atat.
-function ensureUploadCorsAtBoot() {
+// videoclipuri mari sa functioneze cu adevarat "direct", nu doar in cod.
+//
+// CORECȚIE (2026-08-14, "am actualizat si salvat regula CORS existenta manual"): initial,
+// aceasta functie INCERCA sa configureze CORS automat (PutBucketCors) la fiecare pornire —
+// dupa ce clientul a configurat manual regula corecta direct in Cloudflare, am descoperit ca
+// PutBucketCors INLOCUIESTE intreaga configurare CORS (nu adauga reguli); daca ar mai fi rulat
+// vreodata cu succes, ar fi sters silentios regulile GET/HEAD adaugate manual. Acum DOAR
+// verifica (citire, niciodata scriere) daca bucket-ul are deja o regula suficienta — fire-and-
+// forget, nefatal, raporteaza explicit in log daca lipseste, dar nu mai modifica NICIODATA
+// configurarea CORS a bucket-ului din cod.
+function checkUploadCorsAtBoot() {
   if (!storage.CLOUD_ENABLED) return;
   const origins = [DOMAIN].filter(Boolean);
-  storage.ensureUploadCors(origins).then(result => {
+  storage.checkUploadCors(origins).then(result => {
     if (result.ok) {
-      console.log(`Storage: CORS configurat pe bucket-ul privat pentru upload direct (origini: ${origins.join(', ')}).`);
+      console.log(`Storage: CORS pe bucket-ul privat permite deja upload direct pentru originea ${origins.join(', ')}.`);
     } else {
       console.error(
-        `Storage: NU am putut configura CORS pe bucket-ul privat pentru upload direct — ${result.reason}. ` +
+        `Storage: CORS pe bucket-ul privat NU permite (inca) upload direct — ${result.reason}. ` +
         `Uploadul multipart direct catre R2 (videoclipuri mari, Cadou video) nu va functiona pana la o ` +
         `configurare manuala CORS pe bucket-ul privat (dashboard R2/Cloudflare), permitand PUT de la ${origins.join(', ')} si expunand header-ul ETag.`
       );
     }
   }).catch(err => {
-    console.error('Storage: verificarea/configurarea CORS a esuat neasteptat:', err.message);
+    console.error('Storage: verificarea CORS a esuat neasteptat:', err.message);
   });
 }
 
@@ -6695,7 +6700,7 @@ db.initDb()
     checkFfmpegAvailability(); // fire-and-forget — nu blocheaza si nu conditioneaza pornirea
     checkExiftoolAvailability(); // fire-and-forget, acelasi motiv
     checkHeifConvertAvailability(); // fire-and-forget, acelasi motiv
-    ensureUploadCorsAtBoot(); // fire-and-forget, acelasi motiv
+    checkUploadCorsAtBoot(); // fire-and-forget, acelasi motiv
     app.listen(PORT, () => {
       console.log(`NALUNA ruleaza pe ${DOMAIN}`);
     });

@@ -135,8 +135,8 @@ for (const [name, html] of Object.entries(PAGES)) {
 // 5. storage.js: functiile multipart si CORS exista si folosesc SDK-ul deja existent
 //    (@aws-sdk/client-s3) — niciun storage/serviciu nou.
 // -------------------------------------------------------------------------------------------
-test('storage.js: expune createPrivateMultipartUpload/getSignedUploadPartUrl/completePrivateMultipartUpload/abortPrivateMultipartUpload/ensureUploadCors', () => {
-  for (const fn of ['createPrivateMultipartUpload', 'getSignedUploadPartUrl', 'completePrivateMultipartUpload', 'abortPrivateMultipartUpload', 'ensureUploadCors']) {
+test('storage.js: expune createPrivateMultipartUpload/getSignedUploadPartUrl/completePrivateMultipartUpload/abortPrivateMultipartUpload/checkUploadCors', () => {
+  for (const fn of ['createPrivateMultipartUpload', 'getSignedUploadPartUrl', 'completePrivateMultipartUpload', 'abortPrivateMultipartUpload', 'checkUploadCors']) {
     assert.ok(storage.includes(`async function ${fn}(`), `storage.js trebuie sa defineasca ${fn}()`);
     assert.ok(new RegExp(`\\b${fn}\\b`).test(storage.slice(storage.indexOf('module.exports'))), `${fn} trebuie exportat din storage.js`);
   }
@@ -147,17 +147,26 @@ test('storage.js: foloseste STRICT comenzile @aws-sdk/client-s3 deja folosite de
   assert.ok(storage.includes('UploadPartCommand'));
   assert.ok(storage.includes('CompleteMultipartUploadCommand'));
   assert.ok(storage.includes('AbortMultipartUploadCommand'));
-  assert.ok(storage.includes('PutBucketCorsCommand'));
+  assert.ok(storage.includes('GetBucketCorsCommand'));
   assert.ok(storage.includes("require('@aws-sdk/client-s3')"));
   assert.ok(!/require\(['"](?!@aws-sdk|fs|path)/.test(storage), 'niciun alt pachet de storage nou nu trebuie introdus');
 });
 
-test('storage.js: ensureUploadCors() expune STRICT PUT si header-ul ETag, pentru originile date — niciodata credentiale R2 trimise catre browser', () => {
-  const src = extractFunction(storage, 'async function ensureUploadCors(origins) {');
-  assert.ok(src.includes("AllowedMethods: ['PUT']"));
-  assert.ok(src.includes("ExposeHeaders: ['ETag']"));
-  assert.ok(src.includes('AllowedOrigins: origins'));
-  assert.ok(!/S3_SECRET_ACCESS_KEY|accessKeyId|secretAccessKey/.test(src), 'nicio credentiala nu trebuie expusa in configurarea CORS trimisa catre R2 (asta ramane server-side)');
+// CORECȚIE (2026-08-14, "am actualizat si salvat regula CORS existenta manual"): PutBucketCors
+// INLOCUIESTE intreaga configurare CORS a bucket-ului — o functie care l-ar mai apela ar risca
+// sa stearga silentios regulile GET/HEAD adaugate manual de client. checkUploadCors() foloseste
+// acum STRICT GetBucketCorsCommand (citire) — niciodata PutBucketCorsCommand.
+test('storage.js: checkUploadCors() DOAR citeste configurarea CORS existenta (GetBucketCorsCommand) — nu o modifica niciodata (niciun PutBucketCorsCommand ramas in fisier)', () => {
+  const src = extractFunction(storage, 'async function checkUploadCors(origins) {');
+  assert.ok(src.includes('new GetBucketCorsCommand('));
+  assert.ok(!storage.includes('new PutBucketCorsCommand('), 'storage.js nu mai trebuie sa instantieze PutBucketCorsCommand — risc de suprascriere a unei configurari facute manual (comentariile care documenteaza istoricul acestei decizii pot mentiona numele, codul activ nu)');
+});
+
+test('storage.js: checkUploadCors() verifica ca exista o regula cu PUT permis, originea site-ului si ETag expus, fara sa presupuna forma exacta a regulii (client a putut adauga PUT la o regula GET/HEAD existenta)', () => {
+  const src = extractFunction(storage, 'async function checkUploadCors(origins) {');
+  assert.ok(src.includes("allowedMethods.includes('PUT')"));
+  assert.ok(src.includes("exposeHeaders.includes('etag')"));
+  assert.ok(!/S3_SECRET_ACCESS_KEY|accessKeyId|secretAccessKey/.test(src), 'nicio credentiala nu trebuie expusa in verificarea CORS');
 });
 
 test('storage.js: getSignedUploadPartUrl() semneaza STRICT un UploadPartCommand — clientul nu primeste niciodata cheile R2, doar un URL temporar per fragment', () => {
@@ -228,10 +237,10 @@ test('server.js: eroarea la finalizare (ex. ETag invalid) abandoneaza explicit s
   assert.ok(src.includes('storage.abortPrivateMultipartUpload(session.key, session.uploadId)'));
 });
 
-test('server.js: la pornire, se incearca (best-effort, nefatal) configurarea CORS pe bucket-ul privat pentru originea DOMAIN — succesul/esecul se raporteaza explicit in log', () => {
-  assert.ok(server.includes('function ensureUploadCorsAtBoot()'));
-  assert.ok(server.includes('storage.ensureUploadCors(origins)'));
-  assert.ok(server.includes('ensureUploadCorsAtBoot();'), 'trebuie apelata efectiv la pornirea serverului');
+test('server.js: la pornire, se verifica (best-effort, nefatal, STRICT citire) daca bucket-ul privat are deja CORS suficient pentru originea DOMAIN — succesul/esecul se raporteaza explicit in log, fara sa modifice vreodata configurarea', () => {
+  assert.ok(server.includes('function checkUploadCorsAtBoot()'));
+  assert.ok(server.includes('storage.checkUploadCors(origins)'));
+  assert.ok(server.includes('checkUploadCorsAtBoot();'), 'trebuie apelata efectiv la pornirea serverului');
 });
 
 test('server.js: nicio ruta multipart nu ocoleste requireOrderToken si nicio cheie R2 nu e trimisa catre client (doar URL-uri semnate, temporare)', () => {
