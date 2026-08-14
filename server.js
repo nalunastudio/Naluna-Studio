@@ -558,13 +558,21 @@ function handleOrderMediaUpload(req, res, next) {
 // ==========================================================================================
 // Primeste direct CALEA fisierului de pe disc (scris deja de multer.diskStorage) — nu mai
 // scrie el insusi un fisier temporar suplimentar din buffer, cum facea inainte.
-async function verifyMediaDecodable(filePath, mimetype, type) {
+//
+// RELANSARE (2026-08-14, upload multipart direct catre R2): `filePath` poate fi acum si un URL
+// http(s) semnat (ffprobe accepta un URL ca argument, identic cu o cale locala) — folosit STRICT
+// la finalizarea unui upload multipart, ca sa verificam decodabilitatea fara sa mai descarcam
+// noi insine fisierul intreg prin Railway (contrazice exact cerinta "Railway ramane doar pentru
+// autorizare/initiere/finalizare", nu pentru continut). timeoutMs implicit ramane 20s (calea
+// locala, neschimbata); apelantul multipart foloseste un timeout mai generos, pentru variabilitatea
+// retelei la citirea directa dintr-un URL R2.
+async function verifyMediaDecodable(filePath, mimetype, type, timeoutMs = 20000) {
   try {
     const { stdout } = await execFileAsync('ffprobe', [
       '-v', 'error', '-print_format', 'json',
       '-show_entries', 'stream=codec_type,codec_name', '-show_entries', 'format=duration',
       filePath
-    ], { timeout: 20000 });
+    ], { timeout: timeoutMs });
     let parsed;
     try { parsed = JSON.parse(stdout); } catch (e) { return { ok: false, reason: 'raspuns ffprobe invalid' }; }
     const streams = Array.isArray(parsed.streams) ? parsed.streams : [];
@@ -2809,183 +2817,172 @@ app.post('/api/orders/:orderId/media', requireOrderToken, handleOrderMediaUpload
 });
 
 // ==========================================================================================
-// UPLOAD FRAGMENTAT (chunked), REZUMABIL — Cadou video, RELANSARE 2026-08-14 ("nu declara
-// uploadul fragmentat sau reluabil daca pagina continua sa trimita intregul fisier intr-un
-// singur FormData"). Rezervat STRICT videoclipurilor mari (peste ORDER_MEDIA_CHUNK_THRESHOLD_BYTES
-// — vezi constanta de mai jos; fotografiile si videoclipurile mici raman pe ruta simpla de mai
-// sus, deja izolata per fisier). Clientul taie fisierul in fragmente cu Blob.slice() si le trimite
-// secvential; serverul le scrie la offset-ul exact intr-un fisier temporar (TEMP_DIR, acelasi
-// spatiu de lucru folosit deja de restul pipeline-ului), fara sa citeasca vreodata fisierul
-// intreg in memorie. La reluare dupa o intrerupere (retea instabila, tab in fundal), clientul
-// afla exact cate bytes are deja serverul (raspunsul PUT include receivedBytes) si retrimite
-// STRICT diferenta — niciodata fragmentele deja confirmate.
+// UPLOAD MULTIPART DIRECT DIN BROWSER CATRE R2 — Cadou video, RELANSARE 2026-08-14 ("codul live
+// nu demonstreaza un upload multipart direct din browser catre R2 — pentru un videoclip de
+// 500MB rezulta ~84 de cereri succesive [prin Railway]"). CORECT: mecanismul anterior (upload
+// "fragmentat", vezi istoricul din git) inca retransmitea INTREGUL continut video prin acest
+// server, doar in bucati mai mici, secvential — exact problema semnalata. Inlocuit complet:
+// browserul trimite fragmentele DIRECT catre R2, prin URL-uri semnate (multipart upload S3,
+// suportat nativ de R2). Railway ramane STRICT pentru autorizare (validare comanda/token/tip/
+// dimensiune), initierea sesiunii multipart la R2, si finalizarea ei — bytes video NU mai trec
+// niciodata prin acest server. Fotografiile si videoclipurile mici raman pe ruta simpla de mai
+// sus (un singur POST, deja izolata per fisier) — pragul de mai jos desparte cele doua rute.
 //
 // LIMITA ONESTA: sesiunile sunt tinute STRICT in memoria procesului (Map), nu in baza de date —
 // un restart de server (deploy, crash) pierde sesiunile in curs; clientul detecteaza asta (sesiune
-// negasita) si reia acel fisier de la inceput, curat, fara sa creeze vreun fisier orfan in R2 (nimic
-// nu ajunge in R2 decat la finalizare reusita). NU este deci un upload rezumabil peste un restart de
-// server sau peste zile — este rezumabil real peste intreruperi de retea si reveniri in aceeasi
-// sesiune de pagina, ceea ce acopera scenariul real raportat (conexiune mobila instabila pe un
-// videoclip mare, in aceeasi vizita a paginii).
+// negasita la cererea URL-ului urmatorului fragment) si reia acel fisier de la inceput, curat.
+// Necesita CORS configurat pe bucket-ul R2 privat pentru originea site-ului (vezi ensureUploadCors
+// mai jos, apelat o singura data la pornirea serverului) — daca API-token-ul R2 configurat nu are
+// voie sa modifice CORS-ul bucket-ului, acest server incearca, esueaza vizibil in log (nu ascunde
+// eroarea) si uploadul direct nu va functiona pana la o configurare manuala in dashboard R2/Cloudflare.
 // ==========================================================================================
-const ORDER_MEDIA_CHUNK_THRESHOLD_BYTES = 20 * 1024 * 1024; // 20MB — sub asta, un singur POST e suficient de rapid/fiabil
-const ORDER_MEDIA_CHUNK_MAX_BYTES = 6 * 1024 * 1024; // 6MB per fragment — rezonabil pe o conexiune mobila
-const CHUNK_SESSION_IDLE_MS = 30 * 60 * 1000; // sesiuni abandonate (tab inchis, pagina parasita) curatate dupa 30 min
-const chunkSessions = new Map(); // sessionId -> { orderId, tempPath, totalBytes, receivedBytes, mimetype, originalname, section, completed, result, lastActivityAt }
+const ORDER_MEDIA_MULTIPART_THRESHOLD_BYTES = 20 * 1024 * 1024; // 20MB — sub asta, un singur POST e suficient de rapid/fiabil
+const ORDER_MEDIA_MULTIPART_PART_BYTES = 10 * 1024 * 1024; // 10MB per fragment (in intervalul 8-16MB cerut, peste minimul R2 de 5MB/parte)
+const MULTIPART_SESSION_IDLE_MS = 30 * 60 * 1000; // sesiuni abandonate (tab inchis, pagina parasita) curatate dupa 30 min
+const multipartSessions = new Map(); // sessionId -> { orderId, key, uploadId, totalBytes, mimetype, originalname, section, completed, result, lastActivityAt }
 
 setInterval(() => {
   const now = Date.now();
-  for (const [sessionId, session] of chunkSessions.entries()) {
-    if (now - session.lastActivityAt > CHUNK_SESSION_IDLE_MS) {
-      try { fs.unlinkSync(session.tempPath); } catch (e) { /* best-effort */ }
-      chunkSessions.delete(sessionId);
+  for (const [sessionId, session] of multipartSessions.entries()) {
+    if (now - session.lastActivityAt > MULTIPART_SESSION_IDLE_MS) {
+      storage.abortPrivateMultipartUpload(session.key, session.uploadId).catch(() => {});
+      multipartSessions.delete(sessionId);
     }
   }
 }, 5 * 60 * 1000).unref();
 
-app.post('/api/orders/:orderId/media/chunked/init', requireOrderToken, async (req, res, next) => {
+app.post('/api/orders/:orderId/media/multipart/init', requireOrderToken, async (req, res, next) => {
   try {
     const order = req.order;
     if (order.plan !== 'video') return res.status(400).json({ error: 'Doar pachetul video acceptă fotografii/videoclipuri.' });
     if (!ORDER_MEDIA_UPLOADABLE_STATUSES.includes(order.status)) {
       return res.status(403).json({ error: 'Nu poți încărca materiale în acest moment — melodia se generează chiar acum.' });
     }
+    if (!storage.CLOUD_ENABLED) {
+      return res.status(503).json({ error: 'Upload direct necesită stocare cloud activată.' });
+    }
     const { filename, size, mimeType, section } = req.body || {};
     const totalBytes = Number(size);
     if (!Number.isInteger(totalBytes) || totalBytes <= 0 || totalBytes > ORDER_MEDIA_MAX_BYTES) {
       return res.status(400).json({ error: `Dimensiune invalidă (maximum ${Math.round(ORDER_MEDIA_MAX_BYTES / (1024 * 1024))}MB).` });
     }
-    if (totalBytes < ORDER_MEDIA_CHUNK_THRESHOLD_BYTES) {
-      return res.status(400).json({ error: 'Acest fișier nu necesită upload fragmentat — folosește ruta standard.' });
+    if (totalBytes < ORDER_MEDIA_MULTIPART_THRESHOLD_BYTES) {
+      return res.status(400).json({ error: 'Acest fișier nu necesită upload multipart — folosește ruta standard.' });
     }
-    // uploadul fragmentat e rezervat videoclipurilor — fotografiile nu ating niciodata acest prag
+    // uploadul multipart e rezervat videoclipurilor — fotografiile nu ating niciodata acest prag
     const inferredForInit = inferMediaType(filename, mimeType, ORDER_MEDIA_MIME_TYPES.photo, ORDER_MEDIA_MIME_TYPES.video);
     if (!inferredForInit || inferredForInit.type !== 'video') {
-      return res.status(400).json({ error: 'Upload fragmentat disponibil doar pentru videoclipuri.' });
+      return res.status(400).json({ error: 'Upload multipart disponibil doar pentru videoclipuri.' });
     }
-    const sessionId = randomUUID();
     const ext = path.extname(String(filename || '')).toLowerCase() || '.mp4';
-    const tempPath = path.join(TEMP_DIR, `chunked-${sessionId}${ext}`);
-    fs.closeSync(fs.openSync(tempPath, 'w')); // creeaza fisierul gol — scrierile pe fragmente folosesc 'r+' la offset exact
-    chunkSessions.set(sessionId, {
+    const key = `orders/memories/${order.id}/${randomUUID()}${ext}`;
+    const uploadId = await storage.createPrivateMultipartUpload(key, inferredForInit.mimetype);
+    const sessionId = randomUUID();
+    multipartSessions.set(sessionId, {
       orderId: order.id,
-      tempPath,
+      key,
+      uploadId,
       totalBytes,
-      receivedBytes: 0,
-      mimetype: mimeType || 'video/mp4',
+      mimetype: inferredForInit.mimetype,
       originalname: filename || 'video',
       section: (typeof section === 'string' && section.trim()) ? section.trim() : null,
       completed: false,
       result: null,
       lastActivityAt: Date.now()
     });
-    res.json({ sessionId, chunkSize: ORDER_MEDIA_CHUNK_MAX_BYTES });
+    res.json({ sessionId, partSize: ORDER_MEDIA_MULTIPART_PART_BYTES, totalParts: Math.ceil(totalBytes / ORDER_MEDIA_MULTIPART_PART_BYTES) });
   } catch (err) {
     next(err);
   }
 });
 
-app.put('/api/orders/:orderId/media/chunked/:sessionId/chunk', requireOrderToken,
-  express.raw({ type: 'application/octet-stream', limit: ORDER_MEDIA_CHUNK_MAX_BYTES + 65536 }),
-  async (req, res, next) => {
-    try {
-      const order = req.order;
-      const session = chunkSessions.get(req.params.sessionId);
-      if (!session || session.orderId !== order.id) {
-        return res.status(404).json({ error: 'Sesiune de upload inexistentă sau expirată — reia fișierul de la început.' });
-      }
-      if (session.completed) return res.status(409).json({ error: 'Această sesiune a fost deja finalizată.' });
-      const offset = Number(req.query.offset);
-      const buf = req.body;
-      if (!Buffer.isBuffer(buf) || buf.length === 0) return res.status(400).json({ error: 'Fragment gol sau invalid.' });
-      if (!Number.isInteger(offset) || offset < 0 || offset + buf.length > session.totalBytes) {
-        return res.status(400).json({ error: 'Poziție de fragment invalidă.' });
-      }
-      const fh = await fs.promises.open(session.tempPath, 'r+');
-      try {
-        await fh.write(buf, 0, buf.length, offset);
-      } finally {
-        await fh.close();
-      }
-      // idempotent: retrimiterea aceluiasi fragment (sau a unuia anterior, la o reincercare)
-      // nu poate SCADEA receivedBytes — clientul stie mereu exact de unde sa continue.
-      session.receivedBytes = Math.max(session.receivedBytes, offset + buf.length);
-      session.lastActivityAt = Date.now();
-      res.json({ receivedBytes: session.receivedBytes });
-    } catch (err) {
-      next(err);
+// URL semnat, per fragment — clientul cere unul chiar inainte sa-l trimita (nu toate deodata),
+// ca sa ramana valid (expira in 15 minute). Railway NU vede niciodata continutul fragmentului —
+// doar autorizeaza cererea si intoarce un URL catre care browserul face PUT direct.
+app.post('/api/orders/:orderId/media/multipart/:sessionId/part-url', requireOrderToken, async (req, res, next) => {
+  try {
+    const session = multipartSessions.get(req.params.sessionId);
+    if (!session || session.orderId !== req.order.id) {
+      return res.status(404).json({ error: 'Sesiune de upload inexistentă sau expirată — reia fișierul de la început.' });
     }
-  });
+    if (session.completed) return res.status(409).json({ error: 'Această sesiune a fost deja finalizată.' });
+    const partNumber = Number(req.body?.partNumber);
+    if (!Number.isInteger(partNumber) || partNumber < 1 || partNumber > 10000) {
+      return res.status(400).json({ error: 'Număr de fragment invalid.' });
+    }
+    const url = await storage.getSignedUploadPartUrl(session.key, session.uploadId, partNumber, 900);
+    session.lastActivityAt = Date.now();
+    res.json({ url });
+  } catch (err) {
+    next(err);
+  }
+});
 
-app.post('/api/orders/:orderId/media/chunked/:sessionId/complete', requireOrderToken, async (req, res, next) => {
+app.post('/api/orders/:orderId/media/multipart/:sessionId/complete', requireOrderToken, async (req, res, next) => {
   const order = req.order;
-  const session = chunkSessions.get(req.params.sessionId);
+  const session = multipartSessions.get(req.params.sessionId);
   if (!session || session.orderId !== order.id) {
     return res.status(404).json({ error: 'Sesiune de upload inexistentă sau expirată — reia fișierul de la început.' });
   }
   // Finalizare IDEMPOTENTA: o a doua cerere de finalizare pentru aceeasi sesiune (retry de
-  // retea dupa un raspuns pierdut) NU re-urca, NU re-persista — intoarce STRICT acelasi
-  // rezultat calculat prima data, garantand ca un refresh/reincercare nu poate crea un al
-  // doilea fisier in R2 pentru acelasi videoclip.
+  // retea dupa un raspuns pierdut) NU re-finalizeaza la R2, NU re-persista — intoarce STRICT
+  // acelasi rezultat calculat prima data.
   if (session.completed) return res.json(session.result);
   const label = session.originalname;
+  const parts = Array.isArray(req.body?.parts) ? req.body.parts : [];
+  if (parts.length === 0) return res.status(400).json({ error: 'Niciun fragment confirmat.' });
+
+  let completedAtR2 = false;
   try {
-    if (session.receivedBytes !== session.totalBytes) {
-      return res.status(409).json({ error: `Upload incomplet (${session.receivedBytes}/${session.totalBytes} bytes primiți).` });
-    }
-    const header = await readFileHeader(session.tempPath, 16);
-    if (!bufferMatchesDeclaredType(header, session.mimetype)) {
-      session.completed = true;
-      session.result = { uploaded: [], failed: [{ filename: label, reason: 'Conținutul fișierului nu corespunde tipului declarat.' }], total: (order.uploadedMedia || []).length };
-      try { fs.unlinkSync(session.tempPath); } catch (e) { /* best-effort */ }
-      return res.json(session.result);
-    }
-    const decodable = await verifyMediaDecodable(session.tempPath, session.mimetype, 'video');
+    await storage.completePrivateMultipartUpload(session.key, session.uploadId, parts);
+    completedAtR2 = true;
+
+    // Verificare de decodabilitate DIRECT din R2 (ffprobe citeste dintr-un URL semnat) — Railway
+    // NU descarca aici fisierul intreg pentru sine, doar cere ffprobe-ului sa-l citeasca de la
+    // sursa; consistent cu cerinta ca acest server sa nu mai retransmita continutul video.
+    const signedUrl = await storage.getSignedDownloadUrl(session.key, 600);
+    const decodable = await verifyMediaDecodable(signedUrl, session.mimetype, 'video', 60000);
     if (!decodable.ok) {
       session.completed = true;
+      await storage.deletePrivateFile(session.key).catch(() => {});
       session.result = { uploaded: [], failed: [{ filename: label, reason: `Fișierul nu poate fi procesat (${decodable.reason}). Încearcă alt fișier sau alt format.` }], total: (order.uploadedMedia || []).length };
-      try { fs.unlinkSync(session.tempPath); } catch (e) { /* best-effort */ }
       return res.json(session.result);
     }
-    const ext = path.extname(session.originalname).toLowerCase() || '.mp4';
-    const key = `orders/memories/${order.id}/${randomUUID()}${ext}`;
-    try {
-      await storage.uploadPrivateFile(session.tempPath, key, session.mimetype);
-    } catch (err) {
-      session.completed = true;
-      session.result = { uploaded: [], failed: [{ filename: label, reason: 'Eroare la salvare — te rugăm încearcă din nou.' }], total: (order.uploadedMedia || []).length };
-      try { fs.unlinkSync(session.tempPath); } catch (e) { /* best-effort */ }
-      return res.json(session.result);
-    }
-    try { fs.unlinkSync(session.tempPath); } catch (e) { /* best-effort */ }
 
     const mutation = await db.mutateOrderMediaAtomically(order.id, (current) => {
       const existing = current.uploadedMedia || [];
       if (existing.length >= ORDER_MEDIA_MAX_ITEMS) return null;
-      return { uploadedMedia: [...existing, { key, type: 'video', section: session.section, filename: label }] };
+      return { uploadedMedia: [...existing, { key: session.key, type: 'video', section: session.section, filename: label }] };
     });
 
     session.completed = true;
     if (!mutation.ok) {
-      await storage.deletePrivateFile(key).catch(() => {});
+      await storage.deletePrivateFile(session.key).catch(() => {});
       session.result = { uploaded: [], failed: [{ filename: label, reason: `Ai atins limita de ${ORDER_MEDIA_MAX_ITEMS} materiale.` }], total: (order.uploadedMedia || []).length };
       return res.json(session.result);
     }
-    perfLog(order.id, 'media_upload_chunked', `reusit, bytes=${session.totalBytes}`);
+    perfLog(order.id, 'media_upload_multipart', `reusit, bytes=${session.totalBytes}, parti=${parts.length}`);
     session.result = { uploaded: [{ type: 'video', filename: label, section: session.section }], failed: [], total: mutation.order.uploadedMedia.length };
     res.json(session.result);
   } catch (err) {
-    try { fs.unlinkSync(session.tempPath); } catch (e) { /* best-effort */ }
-    chunkSessions.delete(req.params.sessionId);
-    next(err);
+    session.completed = true;
+    if (!completedAtR2) {
+      // finalizarea la R2 insasi a esuat (ex. un ETag lipsa/gresit) — sesiunea multipart ramane
+      // orfana la R2 daca nu o abandonam explicit aici.
+      await storage.abortPrivateMultipartUpload(session.key, session.uploadId).catch(() => {});
+    } else {
+      await storage.deletePrivateFile(session.key).catch(() => {});
+    }
+    session.result = { uploaded: [], failed: [{ filename: label, reason: 'Eroare la finalizarea uploadului — te rugăm încearcă din nou.' }], total: (order.uploadedMedia || []).length };
+    res.json(session.result);
   }
 });
 
-app.delete('/api/orders/:orderId/media/chunked/:sessionId', requireOrderToken, (req, res) => {
-  const session = chunkSessions.get(req.params.sessionId);
+app.delete('/api/orders/:orderId/media/multipart/:sessionId', requireOrderToken, async (req, res) => {
+  const session = multipartSessions.get(req.params.sessionId);
   if (session && session.orderId === req.order.id) {
-    try { fs.unlinkSync(session.tempPath); } catch (e) { /* best-effort */ }
-    chunkSessions.delete(req.params.sessionId);
+    await storage.abortPrivateMultipartUpload(session.key, session.uploadId).catch(() => {});
+    multipartSessions.delete(req.params.sessionId);
   }
   res.json({ ok: true });
 });
@@ -6667,12 +6664,38 @@ async function checkHeifConvertAvailability() {
   }
 }
 
+// RELANSARE (2026-08-14, upload multipart direct catre R2): fara CORS configurat pe bucket-ul
+// PRIVAT pentru originea site-ului, orice PUT direct din browser catre R2 (fragmentele de
+// upload) e blocat silentios de browser (preflight CORS respins) — necesar ca uploadul de
+// videoclipuri mari sa functioneze cu adevarat "direct", nu doar in cod. Incercam o singura
+// data, la pornire, folosind acelasi API-token R2 deja configurat (Object Read & Write) —
+// fire-and-forget, nefatal: daca token-ul nu are voie sa modifice configurarea bucket-ului,
+// raportam explicit in log, nu ascundem eroarea si nu blocam pornirea serverului pentru atat.
+function ensureUploadCorsAtBoot() {
+  if (!storage.CLOUD_ENABLED) return;
+  const origins = [DOMAIN].filter(Boolean);
+  storage.ensureUploadCors(origins).then(result => {
+    if (result.ok) {
+      console.log(`Storage: CORS configurat pe bucket-ul privat pentru upload direct (origini: ${origins.join(', ')}).`);
+    } else {
+      console.error(
+        `Storage: NU am putut configura CORS pe bucket-ul privat pentru upload direct — ${result.reason}. ` +
+        `Uploadul multipart direct catre R2 (videoclipuri mari, Cadou video) nu va functiona pana la o ` +
+        `configurare manuala CORS pe bucket-ul privat (dashboard R2/Cloudflare), permitand PUT de la ${origins.join(', ')} si expunand header-ul ETag.`
+      );
+    }
+  }).catch(err => {
+    console.error('Storage: verificarea/configurarea CORS a esuat neasteptat:', err.message);
+  });
+}
+
 // -------- pornire: verificam intai conexiunea la baza de date --------
 db.initDb()
   .then(() => {
     checkFfmpegAvailability(); // fire-and-forget — nu blocheaza si nu conditioneaza pornirea
     checkExiftoolAvailability(); // fire-and-forget, acelasi motiv
     checkHeifConvertAvailability(); // fire-and-forget, acelasi motiv
+    ensureUploadCorsAtBoot(); // fire-and-forget, acelasi motiv
     app.listen(PORT, () => {
       console.log(`NALUNA ruleaza pe ${DOMAIN}`);
     });

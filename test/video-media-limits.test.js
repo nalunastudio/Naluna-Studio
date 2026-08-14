@@ -149,8 +149,13 @@ test('melodia-mea.html: selectia clientului NU e niciodata transformata in base6
   assert.ok(melodiaMea.includes("formData.append('media', entry.file);"), 'fisierul RAW (nu o copie transformata) trebuie trimis direct');
 });
 
-test('server.js: UPLOAD_TIMEOUT_MS-ul functional pentru validare (ffprobe) ramane rezonabil de scurt (probe de metadata, nu decodare completa — nu creste odata cu dimensiunea fisierului)', () => {
-  assert.ok(server.includes("], { timeout: 20000 });"), 'verifyMediaDecodable trebuie sa ramana cu un timeout scurt — ffprobe citeste doar metadata, nu intregul fisier');
+test('server.js: UPLOAD_TIMEOUT_MS-ul functional pentru validare (ffprobe) ramane rezonabil de scurt implicit (probe de metadata, nu decodare completa — nu creste odata cu dimensiunea fisierului)', () => {
+  // RELANSARE (2026-08-14, upload multipart direct catre R2): verifyMediaDecodable() accepta
+  // acum un al 4-lea parametru opțional (timeoutMs), implicit 20000ms — neschimbat pentru
+  // calea locala (fisiere mici, single-POST); apelul de la finalizarea unui upload multipart
+  // (verificare direct dintr-un URL R2, peste retea) foloseste explicit un timeout mai generos.
+  assert.match(server, /async function verifyMediaDecodable\(filePath, mimetype, type, timeoutMs = 20000\) \{/);
+  assert.ok(server.includes('], { timeout: timeoutMs });'));
 });
 
 test('melodia-mea.html: UPLOAD_TIMEOUT_MS (client, XHR per fisier) marit generos, pentru fisiere mari pe conexiuni mobile mai lente', () => {

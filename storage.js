@@ -95,13 +95,24 @@ const PUBLIC_BUCKET = process.env.S3_PUBLIC_BUCKET;
 
 let s3Client = null;
 let PutObjectCommand, GetObjectCommand, DeleteObjectCommand, getSignedUrl;
+let CreateMultipartUploadCommand, UploadPartCommand, CompleteMultipartUploadCommand, AbortMultipartUploadCommand, PutBucketCorsCommand;
 
 if (CLOUD_ENABLED) {
-  const { S3Client, PutObjectCommand: POC, GetObjectCommand: GOC, DeleteObjectCommand: DOC } = require('@aws-sdk/client-s3');
+  const {
+    S3Client, PutObjectCommand: POC, GetObjectCommand: GOC, DeleteObjectCommand: DOC,
+    CreateMultipartUploadCommand: CMU, UploadPartCommand: UPC,
+    CompleteMultipartUploadCommand: CMPU, AbortMultipartUploadCommand: AMU,
+    PutBucketCorsCommand: PBC
+  } = require('@aws-sdk/client-s3');
   ({ getSignedUrl } = require('@aws-sdk/s3-request-presigner'));
   PutObjectCommand = POC;
   GetObjectCommand = GOC;
   DeleteObjectCommand = DOC;
+  CreateMultipartUploadCommand = CMU;
+  UploadPartCommand = UPC;
+  CompleteMultipartUploadCommand = CMPU;
+  AbortMultipartUploadCommand = AMU;
+  PutBucketCorsCommand = PBC;
 
   s3Client = new S3Client({
     region: process.env.S3_REGION || 'auto',
@@ -233,6 +244,92 @@ async function getSignedDownloadUrl(key, expirySeconds = 600) {
 }
 
 // ============================================================================
+// UPLOAD MULTIPART DIRECT DIN BROWSER (2026-08-14) — Cadou video, videoclipuri mari.
+//
+// De ce: relansarea anterioara (upload "fragmentat" prin server, vezi comentariul istoric din
+// server.js) tot retransmitea INTREGUL continut video prin Railway — doar in bucati mai mici,
+// secvential. Pentru un videoclip de 500MB, asta insemna ~84 cereri succesive prin acelasi
+// server, exact tiparul lent semnalat live. Aici browserul trimite fragmentele DIRECT catre R2
+// (prin URL-uri semnate, cate unul per fragment) — Railway nu mai vede niciodata bytes video,
+// doar autorizeaza, initiaza sesiunea multipart si o finalizeaza la final.
+// ============================================================================
+
+async function createPrivateMultipartUpload(key, contentType) {
+  if (!CLOUD_ENABLED) {
+    throw new Error('createPrivateMultipartUpload() necesita stocare cloud activata.');
+  }
+  const res = await s3Client.send(new CreateMultipartUploadCommand({
+    Bucket: PRIVATE_BUCKET, Key: key, ContentType: contentType
+  }));
+  return res.UploadId;
+}
+
+// URL semnat, de scurta durata, pentru UN SINGUR fragment (PUT direct din browser catre R2) —
+// clientul primeste cate unul per fragment, chiar inainte sa-l trimita (nu toate deodata),
+// ca sa ramana valid (expira in expirySeconds).
+async function getSignedUploadPartUrl(key, uploadId, partNumber, expirySeconds = 900) {
+  if (!CLOUD_ENABLED) {
+    throw new Error('getSignedUploadPartUrl() necesita stocare cloud activata.');
+  }
+  const command = new UploadPartCommand({ Bucket: PRIVATE_BUCKET, Key: key, UploadId: uploadId, PartNumber: partNumber });
+  return getSignedUrl(s3Client, command, { expiresIn: expirySeconds });
+}
+
+// parts: [{ partNumber, etag }, ...] — ETag-ul e cel intors de R2 la fiecare PUT direct de
+// fragment (header de raspuns, citit de client), necesar EXACT in aceasta forma pentru ca R2
+// sa poata reasambla obiectul final. Idempotent la nivelul apelantului (server.js) — vezi
+// session.completed acolo.
+async function completePrivateMultipartUpload(key, uploadId, parts) {
+  if (!CLOUD_ENABLED) {
+    throw new Error('completePrivateMultipartUpload() necesita stocare cloud activata.');
+  }
+  return s3Client.send(new CompleteMultipartUploadCommand({
+    Bucket: PRIVATE_BUCKET, Key: key, UploadId: uploadId,
+    MultipartUpload: { Parts: parts.map(p => ({ PartNumber: p.partNumber, ETag: p.etag })) }
+  }));
+}
+
+// Abandoneaza o sesiune multipart neterminata — R2 (ca orice S3) NU elibereaza automat
+// fragmentele deja urcate pentru un upload multipart abandonat; fara acest apel explicit,
+// fragmentele orfane ar ramane facturate la nesfarsit. Apelat atat la anulare explicita din
+// client, cat si de curatarea periodica a sesiunilor abandonate (server.js).
+async function abortPrivateMultipartUpload(key, uploadId) {
+  if (!CLOUD_ENABLED) return;
+  try {
+    await s3Client.send(new AbortMultipartUploadCommand({ Bucket: PRIVATE_BUCKET, Key: key, UploadId: uploadId }));
+  } catch (err) {
+    // best-effort — o sesiune deja finalizata/expirata la R2 arunca eroare aici, ignorata intentionat
+  }
+}
+
+// Configureaza CORS pe bucket-ul PRIVAT, STRICT pentru originile date, STRICT pentru PUT
+// (fragmentele de upload) — necesar ca browserul sa poata trimite direct catre R2. Fara asta,
+// orice PUT direct din browser catre R2 esueaza silentios (blocat de browser, preflight CORS
+// respins). Apelat o singura data la pornirea serverului (best-effort, nefatal — un token R2
+// cu permisiuni STRICT "Object Read & Write" poate sa NU aiba voie sa modifice configurarea
+// bucket-ului; in acel caz raportam explicit blocajul, nu il ascundem).
+async function ensureUploadCors(origins) {
+  if (!CLOUD_ENABLED) return { ok: false, reason: 'stocare cloud dezactivata' };
+  try {
+    await s3Client.send(new PutBucketCorsCommand({
+      Bucket: PRIVATE_BUCKET,
+      CORSConfiguration: {
+        CORSRules: [{
+          AllowedOrigins: origins,
+          AllowedMethods: ['PUT'],
+          AllowedHeaders: ['*'],
+          ExposeHeaders: ['ETag'],
+          MaxAgeSeconds: 3600
+        }]
+      }
+    }));
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, reason: err.message || String(err) };
+  }
+}
+
+// ============================================================================
 // STERGERE — tot cu API separat privat/public
 // ============================================================================
 
@@ -263,5 +360,10 @@ module.exports = {
   getPublicUrl,
   getSignedDownloadUrl,
   deletePrivateFile,
-  deletePublicFile
+  deletePublicFile,
+  createPrivateMultipartUpload,
+  getSignedUploadPartUrl,
+  completePrivateMultipartUpload,
+  abortPrivateMultipartUpload,
+  ensureUploadCors
 };

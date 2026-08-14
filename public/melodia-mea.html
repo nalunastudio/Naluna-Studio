@@ -2589,7 +2589,18 @@
     if (removeBtn) removeBtn.addEventListener('click', () => {
       const idx = uploadQueue.findIndex(q => q.localId === entry.localId);
       if (idx === -1) return;
-      if (entry.xhr) { entry.abortRequested = true; entry.xhr.abort(); }
+      entry.abortRequested = true;
+      if (entry.xhr) entry.xhr.abort();
+      // Un upload multipart activ are potential mai multe PUT-uri directe catre R2 in zbor
+      // simultan (pana la MEM_MAX_PARALLEL_PARTS) — toate trebuie oprite, nu doar unul.
+      if (entry.activePartXhrs) Object.values(entry.activePartXhrs).forEach(xhr => { try { xhr.abort(); } catch (e) {} });
+      // Abandoneaza explicit sesiunea multipart la R2 — fara asta, fragmentele deja urcate
+      // ar ramane facturate la nesfarsit ca un upload multipart niciodata finalizat.
+      if (entry.multipartSessionId) {
+        fetch(`/api/orders/${orderId}/media/multipart/${entry.multipartSessionId}`, {
+          method: 'DELETE', headers: { 'X-Access-Token': accessToken }
+        }).catch(() => {});
+      }
       if (entry.thumbUrl) URL.revokeObjectURL(entry.thumbUrl);
       uploadQueue.splice(idx, 1);
       processUploadQueue();
@@ -2657,7 +2668,7 @@
   // Progres GLOBAL, discret, deasupra listei — "Se încarcă 3 din 8 materiale — 42%", apoi
   // "8 materiale încărcate — poți continua" STRICT dupa ce serverul a confirmat fiecare
   // material (memBatchDoneCount creste NUMAI la succesul confirmat de server, niciodata la
-  // selectia locala) — vezi startSingleUpload()/startChunkedUpload().
+  // selectia locala) — vezi startSingleUpload()/startMultipartUpload().
   let memBatchTotal = 0;
   let memBatchDoneCount = 0;
   function renderBatchStatus() {
@@ -2714,10 +2725,12 @@
   // ==========================================================================================
   const MAX_CONCURRENT_UPLOADS = 2;
   const UPLOAD_TIMEOUT_MS = 900000;
-  // Prag peste care un videoclip foloseste uploadul FRAGMENTAT (vezi startChunkedUpload) in loc
-  // de un singur POST — identic cu ORDER_MEDIA_CHUNK_THRESHOLD_BYTES din server.js.
-  const MEM_CHUNK_THRESHOLD_BYTES = 20 * 1024 * 1024;
-  const MEM_CHUNK_RETRY_LIMIT = 5;
+  // Prag peste care un videoclip foloseste uploadul MULTIPART DIRECT catre R2 (vezi
+  // startMultipartUpload) in loc de un singur POST — identic cu
+  // ORDER_MEDIA_MULTIPART_THRESHOLD_BYTES din server.js.
+  const MEM_MULTIPART_THRESHOLD_BYTES = 20 * 1024 * 1024;
+  const MEM_PART_RETRY_LIMIT = 5;
+  const MEM_MAX_PARALLEL_PARTS = 2;
 
   function processUploadQueue() {
     const active = uploadQueue.filter(q => q.status === 'uploading' || q.status === 'processing').length;
@@ -2734,8 +2747,8 @@
 
   function startUpload(entry) {
     entry.abortRequested = false;
-    if (isVideoFile(entry.file) && entry.file.size > MEM_CHUNK_THRESHOLD_BYTES) {
-      startChunkedUpload(entry);
+    if (isVideoFile(entry.file) && entry.file.size > MEM_MULTIPART_THRESHOLD_BYTES) {
+      startMultipartUpload(entry);
     } else {
       startSingleUpload(entry);
     }
@@ -2804,84 +2817,121 @@
   }
 
   // ==========================================================================================
-  // Upload FRAGMENTAT (chunked), rezervat videoclipurilor mari — vezi comentariul din server.js
-  // (POST/PUT/POST .../media/chunked/...). Fiecare fragment e trimis SECVENTIAL (nu simultan cu
-  // celelalte fragmente ale ACELUIASI fisier — asta ar contrazice limita de concurenta), cu
-  // reincercare AUTOMATA, per fragment, fara sa retrimita fragmentele deja confirmate de server
-  // (offset-ul avanseaza STRICT pe baza lui receivedBytes intors de server, nu pe o presupunere
-  // locala). Daca sesiunea nu mai exista pe server (ex. restart), reincercarea manuala (butonul
-  // "Reincearca") reia curat, cu o sesiune noua — vezi comentariul din server.js pentru limita
-  // onesta a acestei reluari (in memoria procesului, nu persistenta peste un restart).
+  // RELANSARE 2026-08-14 ("codul live nu demonstreaza un upload multipart direct din browser
+  // catre R2 — pentru un videoclip de 500MB rezulta ~84 de cereri succesive [prin Railway]"):
+  // inlocuit complet mecanismul anterior (fragmente relansate PRIN acest server) cu upload
+  // multipart DIRECT catre R2 — fiecare fragment e trimis printr-un PUT direct catre un URL
+  // semnat (Railway autorizeaza si intoarce URL-ul, dar nu vede niciodata continutul), cu
+  // maximum MEM_MAX_PARALLEL_PARTS fragmente simultane. Retry STRICT per fragment (niciodata
+  // de la inceputul fisierului). Vezi server.js pentru detaliile complete si limita onesta.
   // ==========================================================================================
-  function uploadChunkWithRetry(entry, blob, offset, totalBytes) {
+  function uploadOnePart(entry, partNumber, blob, onProgress) {
     return new Promise((resolve, reject) => {
       let attempt = 0;
-      const tryOnce = () => {
+      const tryOnce = async () => {
         if (entry.abortRequested) { reject(new Error('aborted')); return; }
-        const xhr = new XMLHttpRequest();
-        entry.xhr = xhr;
-        xhr.open('PUT', `/api/orders/${orderId}/media/chunked/${entry.chunkSessionId}/chunk?offset=${offset}`);
-        xhr.setRequestHeader('X-Access-Token', accessToken);
-        xhr.setRequestHeader('Content-Type', 'application/octet-stream');
-        xhr.timeout = UPLOAD_TIMEOUT_MS;
-        xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable) {
-            const sent = offset + e.loaded;
-            entry.progress = Math.min(99, Math.round((sent / totalBytes) * 100));
-            scheduleProgressUpdate(entry);
-          }
-        };
-        xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            try {
-              const data = JSON.parse(xhr.responseText);
-              resolve(typeof data.receivedBytes === 'number' ? data.receivedBytes : offset + blob.size);
-            } catch (e) { retryOrFail(); }
-          } else { retryOrFail(); }
-        };
-        xhr.onerror = retryOrFail;
-        xhr.ontimeout = retryOrFail;
-        xhr.onabort = () => reject(new Error('aborted'));
-        xhr.send(blob);
+        try {
+          const urlRes = await fetch(`/api/orders/${orderId}/media/multipart/${entry.multipartSessionId}/part-url`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Access-Token': accessToken },
+            body: JSON.stringify({ partNumber })
+          });
+          const urlData = await urlRes.json().catch(() => ({}));
+          if (!urlRes.ok || !urlData.url) { retryOrFail(); return; }
+          const xhr = new XMLHttpRequest();
+          entry.activePartXhrs = entry.activePartXhrs || {};
+          entry.activePartXhrs[partNumber] = xhr;
+          // PUT DIRECT catre R2 — niciun header al aplicatiei (X-Access-Token etc.) nu se
+          // trimite aici, autentificarea e STRICT prin semnatura din URL.
+          xhr.open('PUT', urlData.url);
+          xhr.timeout = UPLOAD_TIMEOUT_MS;
+          xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded); };
+          xhr.onload = () => {
+            delete entry.activePartXhrs[partNumber];
+            if (xhr.status >= 200 && xhr.status < 300) {
+              const etag = xhr.getResponseHeader('ETag');
+              if (!etag) { retryOrFail(); return; }
+              onProgress(blob.size);
+              resolve(etag);
+            } else { retryOrFail(); }
+          };
+          xhr.onerror = () => { delete entry.activePartXhrs[partNumber]; retryOrFail(); };
+          xhr.ontimeout = () => { delete entry.activePartXhrs[partNumber]; retryOrFail(); };
+          xhr.onabort = () => { delete entry.activePartXhrs[partNumber]; reject(new Error('aborted')); };
+          xhr.send(blob);
+        } catch (err) {
+          retryOrFail();
+        }
       };
       const retryOrFail = () => {
         attempt++;
         if (entry.abortRequested) { reject(new Error('aborted')); return; }
-        if (attempt > MEM_CHUNK_RETRY_LIMIT) { reject(new Error('chunk failed')); return; }
+        if (attempt > MEM_PART_RETRY_LIMIT) { reject(new Error('part failed')); return; }
+        onProgress(0);
         setTimeout(tryOnce, Math.min(1000 * attempt, 5000));
       };
       tryOnce();
     });
   }
 
-  async function startChunkedUpload(entry) {
+  async function startMultipartUpload(entry) {
     entry.status = 'uploading';
     entry.progress = 0;
     entry.errorMsg = null;
     renderQueueRow(entry);
     try {
-      const initRes = await fetch(`/api/orders/${orderId}/media/chunked/init`, {
+      const initRes = await fetch(`/api/orders/${orderId}/media/multipart/init`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Access-Token': accessToken },
         body: JSON.stringify({ filename: entry.file.name, size: entry.file.size, mimeType: entry.file.type || '', section: entry.section || '' })
       });
       const initData = await initRes.json().catch(() => ({}));
       if (!initRes.ok || !initData.sessionId) throw new Error(initData.error || 'init failed');
-      entry.chunkSessionId = initData.sessionId;
-      const chunkSize = initData.chunkSize || (6 * 1024 * 1024);
+      entry.multipartSessionId = initData.sessionId;
+      const partSize = initData.partSize || (10 * 1024 * 1024);
       const totalBytes = entry.file.size;
-      let offset = 0;
-      while (offset < totalBytes) {
-        if (entry.abortRequested) return;
-        const slice = entry.file.slice(offset, Math.min(offset + chunkSize, totalBytes));
-        offset = await uploadChunkWithRetry(entry, slice, offset, totalBytes);
+      const totalParts = Math.max(1, Math.ceil(totalBytes / partSize));
+
+      const partBytesSent = new Array(totalParts + 1).fill(0);
+      function reportProgress() {
+        const sum = partBytesSent.reduce((a, b) => a + b, 0);
+        entry.progress = Math.min(99, Math.round((sum / totalBytes) * 100));
+        scheduleProgressUpdate(entry);
       }
+
+      // Coada interna cu maximum MEM_MAX_PARALLEL_PARTS fragmente active simultan — un
+      // fragment care esueaza definitiv (dupa reincercari) opreste doar acest fisier, nu
+      // afecteaza celelalte materiale din coada principala.
+      const completedParts = await new Promise((resolveAll, rejectAll) => {
+        const results = [];
+        let nextPartNumber = 1;
+        let active = 0;
+        let firstError = null;
+        function pump() {
+          if (firstError) { rejectAll(firstError); return; }
+          if (results.length === totalParts) { resolveAll(results); return; }
+          while (active < MEM_MAX_PARALLEL_PARTS && nextPartNumber <= totalParts) {
+            const partNumber = nextPartNumber++;
+            const start = (partNumber - 1) * partSize;
+            const end = Math.min(start + partSize, totalBytes);
+            const blob = entry.file.slice(start, end);
+            active++;
+            uploadOnePart(entry, partNumber, blob, (loaded) => { partBytesSent[partNumber] = loaded; reportProgress(); })
+              .then(etag => { active--; results.push({ partNumber, etag }); pump(); })
+              .catch(err => { active--; firstError = firstError || err; pump(); });
+          }
+        }
+        pump();
+      });
+
       if (entry.abortRequested) return;
       entry.status = 'processing';
       scheduleProgressUpdate(entry);
-      const completeRes = await fetch(`/api/orders/${orderId}/media/chunked/${entry.chunkSessionId}/complete`, {
+      completedParts.sort((a, b) => a.partNumber - b.partNumber);
+      const completeRes = await fetch(`/api/orders/${orderId}/media/multipart/${entry.multipartSessionId}/complete`, {
         method: 'POST',
-        headers: { 'X-Access-Token': accessToken }
+        headers: { 'Content-Type': 'application/json', 'X-Access-Token': accessToken },
+        body: JSON.stringify({ parts: completedParts })
       });
       const data = await completeRes.json().catch(() => ({}));
       const succeeded = data && Array.isArray(data.uploaded) && data.uploaded.length > 0;
@@ -2975,7 +3025,7 @@
           errorMsg: null,
           thumbUrl: /^image\//.test(file.type) ? URL.createObjectURL(file) : null,
           xhr: null,
-          chunkSessionId: null,
+          multipartSessionId: null,
           abortRequested: false
         };
         uploadQueue.push(entry);
@@ -2989,7 +3039,7 @@
           errorMsg: t.memories_upload_error,
           thumbUrl: null,
           xhr: null,
-          chunkSessionId: null,
+          multipartSessionId: null,
           abortRequested: false
         });
       }

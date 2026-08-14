@@ -66,11 +66,15 @@ for (const [name, html] of Object.entries(PAGES)) {
     assert.ok(src.includes('xhr.send(formData)'));
   });
 
-  test(`${name}: startUpload() e un dispatcher intre upload simplu si upload fragmentat (videoclipuri mari)`, () => {
+  // RELANSARE 2026-08-14 ("codul live nu demonstreaza un upload multipart direct din browser
+  // catre R2"): startChunkedUpload() (fragmente relansate PRIN acest server) inlocuit cu
+  // startMultipartUpload() (fragmente trimise DIRECT catre R2) — vezi
+  // test/video-multipart-direct-to-r2.test.js pentru acoperirea completa a noii arhitecturi.
+  test(`${name}: startUpload() e un dispatcher intre upload simplu si upload multipart direct (videoclipuri mari)`, () => {
     const src = extractFunction(html, 'function startUpload(entry) {');
-    assert.ok(src.includes('startChunkedUpload(entry)'));
+    assert.ok(src.includes('startMultipartUpload(entry)'));
     assert.ok(src.includes('startSingleUpload(entry)'));
-    assert.ok(src.includes('MEM_CHUNK_THRESHOLD_BYTES'));
+    assert.ok(src.includes('MEM_MULTIPART_THRESHOLD_BYTES'));
   });
 
   // -----------------------------------------------------------------------------------------
