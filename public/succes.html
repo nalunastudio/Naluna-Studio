@@ -61,20 +61,30 @@
     background:var(--surface); border:1px solid var(--line); border-radius:10px;
     padding:8px 10px; font-size:13px;
   }
-  .mem-item .mem-name{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; }
+  .mem-item .mem-name{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:block; }
+  .mem-info{ flex:1; min-width:0; }
+  .mem-item .mem-meta{ font-size:11px; color:var(--text-secondary); margin-top:2px; }
+  .mem-item .mem-meta.err{ color:var(--error); }
+  .mem-progress-track{ background:var(--line); border-radius:999px; height:4px; overflow:hidden; margin-top:5px; }
+  .mem-progress-fill{ background:var(--gold); height:100%; border-radius:999px; transition:width .2s ease; }
   .mem-item select{
     font-family:'Sora',sans-serif; font-size:12px; border:1px solid var(--line); border-radius:6px;
     padding:4px 6px; background:var(--bg); color:var(--text);
   }
-  .mem-item .mem-remove{
-    background:none; border:none; color:var(--error); font-size:16px; cursor:pointer; line-height:1;
-    padding:2px 4px;
+  .mem-page-actions{ display:flex; flex-wrap:wrap; gap:10px; margin-top:6px; }
+  .mem-actions{ display:flex; align-items:center; gap:2px; flex-shrink:0; }
+  .mem-actions button{
+    background:none; border:none; cursor:pointer; line-height:1; padding:4px 6px;
+    color:var(--text-secondary); font-size:14px; border-radius:6px;
   }
+  .mem-actions button:hover{ background:rgba(43,43,43,.06); }
+  .mem-actions button:disabled{ opacity:.35; cursor:default; }
+  .mem-actions .mem-remove{ color:var(--error); font-size:16px; }
+  .mem-actions .mem-retry{ color:var(--gold-deep); font-size:12px; font-weight:600; }
   #mem-file-input{
     display:block; width:100%; font-size:13px; margin-bottom:12px;
     font-family:'Sora',sans-serif; color:var(--text-secondary);
   }
-  .mem-actions{ display:flex; flex-wrap:wrap; gap:10px; margin-top:6px; }
   .mem-status{ font-size:13px; margin-top:10px; }
 </style>
 </head>
@@ -107,6 +117,10 @@
         memories_create_btn_skip: 'Creează fără poze',
         memories_creating: 'Se creează videoclipul tău cu amintiri... poate dura câteva minute',
         memories_remove: '✕',
+        memories_queued: 'În așteptare...', memories_uploaded: 'Încărcat', memories_retry: 'Reîncearcă',
+        memories_upload_timeout: 'Încărcarea durează prea mult — verifică conexiunea și încearcă din nou.',
+        memories_no_files_selected: 'Nu am primit niciun fișier de la selector — încearcă din nou (verifică și dacă fotografiile sunt descărcate complet din iCloud).',
+        memories_ios_recovery: 'iPhone-ul nu a trimis materialele către site. Deschide pagina direct în Safari și asigură-te că fotografiile sau videoclipurile sunt descărcate pe telefon.',
         memories_upload_error: 'Încărcarea a eșuat. Încearcă din nou', media_load_error: 'Nu s-a putut încărca — atinge pentru a reîncerca.',
         memories_create_error: 'Crearea videoclipului a eșuat. Încearcă din nou',
         plan_standard: '🎵 Pachet Standard', plan_premium: '💿 Pachet Premium', plan_video: '🎬 Cadou video'
@@ -130,6 +144,10 @@
         memories_create_btn_skip: 'Create without photos',
         memories_creating: 'Creating your memory video... this can take a few minutes',
         memories_remove: '✕',
+        memories_queued: 'Queued...', memories_uploaded: 'Uploaded', memories_retry: 'Retry',
+        memories_upload_timeout: 'This is taking too long — check your connection and try again.',
+        memories_no_files_selected: "We didn't receive any file from the picker — please try again (also check the photos are fully downloaded from iCloud).",
+        memories_ios_recovery: "Your iPhone didn't send the files to the site. Open this page directly in Safari and make sure the photos or videos are fully downloaded on your phone.",
         memories_upload_error: 'Upload failed. Please try again.', media_load_error: 'Could not load — tap to retry.',
         memories_create_error: 'Creating the video failed. Please try again.',
         plan_standard: '🎵 Standard package', plan_premium: '💿 Premium package', plan_video: '🎬 Video gift'
@@ -153,6 +171,10 @@
         memories_create_btn_skip: 'Ohne Fotos erstellen',
         memories_creating: 'Dein Erinnerungsvideo wird erstellt... das kann einige Minuten dauern',
         memories_remove: '✕',
+        memories_queued: 'In Warteschlange...', memories_uploaded: 'Hochgeladen', memories_retry: 'Erneut versuchen',
+        memories_upload_timeout: 'Das dauert zu lange — überprüfe deine Verbindung und versuche es erneut.',
+        memories_no_files_selected: 'Wir haben keine Datei von der Auswahl erhalten — bitte versuche es erneut (prüfe auch, ob die Fotos vollständig aus iCloud heruntergeladen sind).',
+        memories_ios_recovery: 'Dein iPhone hat die Dateien nicht an die Seite gesendet. Öffne diese Seite direkt in Safari und stelle sicher, dass die Fotos oder Videos vollständig auf dein Telefon heruntergeladen sind.',
         memories_upload_error: 'Hochladen fehlgeschlagen. Bitte versuche es erneut.', media_load_error: 'Konnte nicht geladen werden — zum Wiederholen tippen.',
         memories_create_error: 'Videoerstellung fehlgeschlagen. Bitte versuche es erneut.',
         plan_standard: '🎵 Standard-Paket', plan_premium: '💿 Premium-Paket', plan_video: '🎬 Video-Geschenk'
@@ -176,6 +198,10 @@
         memories_create_btn_skip: 'Crear sin fotos',
         memories_creating: 'Creando tu video de recuerdos... puede tardar unos minutos',
         memories_remove: '✕',
+        memories_queued: 'En espera...', memories_uploaded: 'Subido', memories_retry: 'Reintentar',
+        memories_upload_timeout: 'Esto está tardando demasiado — comprueba tu conexión e inténtalo de nuevo.',
+        memories_no_files_selected: 'No recibimos ningún archivo del selector — inténtalo de nuevo (comprueba también que las fotos estén completamente descargadas de iCloud).',
+        memories_ios_recovery: 'Tu iPhone no envió los archivos al sitio. Abre esta página directamente en Safari y asegúrate de que las fotos o videos estén completamente descargados en tu teléfono.',
         memories_upload_error: 'Error al subir. Inténtalo de nuevo.', media_load_error: 'No se pudo cargar — toca para reintentar.',
         memories_create_error: 'Error al crear el video. Inténtalo de nuevo.',
         plan_standard: '🎵 Paquete Estándar', plan_premium: '💿 Paquete Premium', plan_video: '🎬 Regalo en video'
@@ -199,6 +225,10 @@
         memories_create_btn_skip: 'Crea senza foto',
         memories_creating: 'Creazione del video con i ricordi... può richiedere qualche minuto',
         memories_remove: '✕',
+        memories_queued: 'In attesa...', memories_uploaded: 'Caricato', memories_retry: 'Riprova',
+        memories_upload_timeout: 'Sta impiegando troppo tempo — controlla la connessione e riprova.',
+        memories_no_files_selected: 'Non abbiamo ricevuto alcun file dal selettore — riprova (controlla anche che le foto siano scaricate completamente da iCloud).',
+        memories_ios_recovery: 'Il tuo iPhone non ha inviato i file al sito. Apri questa pagina direttamente in Safari e assicurati che le foto o i video siano completamente scaricati sul telefono.',
         memories_upload_error: 'Caricamento non riuscito. Riprova.', media_load_error: 'Impossibile caricare — tocca per riprovare.',
         memories_create_error: 'Creazione del video non riuscita. Riprova.',
         plan_standard: '🎵 Pacchetto Standard', plan_premium: '💿 Pacchetto Premium', plan_video: '🎬 Regalo video'
@@ -222,6 +252,10 @@
         memories_create_btn_skip: 'Créer sans photos',
         memories_creating: 'Création de votre vidéo souvenir... cela peut prendre quelques minutes',
         memories_remove: '✕',
+        memories_queued: 'En attente...', memories_uploaded: 'Envoyé', memories_retry: 'Réessayer',
+        memories_upload_timeout: "Cela prend trop de temps — vérifiez votre connexion et réessayez.",
+        memories_no_files_selected: "Nous n'avons reçu aucun fichier du sélecteur — réessayez (vérifiez aussi que les photos sont bien téléchargées depuis iCloud).",
+        memories_ios_recovery: "Votre iPhone n'a pas envoyé les fichiers au site. Ouvrez cette page directement dans Safari et assurez-vous que les photos ou vidéos sont bien téléchargées sur votre téléphone.",
         memories_upload_error: 'Échec de l\'envoi. Veuillez réessayer.', media_load_error: 'Échec du chargement — touchez pour réessayer.',
         memories_create_error: 'Échec de la création de la vidéo. Veuillez réessayer.',
         plan_standard: '🎵 Pack Standard', plan_premium: '💿 Pack Premium', plan_video: '🎬 Cadeau vidéo'
@@ -245,6 +279,10 @@
         memories_create_btn_skip: 'Създай без снимки',
         memories_creating: 'Създаваме твоето видео със спомени... може да отнеме няколко минути',
         memories_remove: '✕',
+        memories_queued: 'На изчакване...', memories_uploaded: 'Качено', memories_retry: 'Опитай отново',
+        memories_upload_timeout: 'Това отнема твърде много време — провери връзката си и опитай отново.',
+        memories_no_files_selected: 'Не получихме нито един файл от избора — опитай отново (провери също дали снимките са изтеглени напълно от iCloud).',
+        memories_ios_recovery: 'Твоят iPhone не изпрати файловете към сайта. Отвори тази страница директно в Safari и се увери, че снимките или видеата са напълно изтеглени на телефона.',
         memories_upload_error: 'Качването не бе успешно. Опитай отново.', media_load_error: 'Неуспешно зареждане — докосни за повторен опит.',
         memories_create_error: 'Създаването на видеото не бе успешно. Опитай отново.',
         plan_standard: '🎵 Пакет Стандарт', plan_premium: '💿 Пакет Премиум', plan_video: '🎬 Видео подарък'
@@ -268,6 +306,10 @@
         memories_create_btn_skip: 'Fotoğrafsız oluştur',
         memories_creating: 'Anı videonuz oluşturuluyor... bu birkaç dakika sürebilir',
         memories_remove: '✕',
+        memories_queued: 'Sırada...', memories_uploaded: 'Yüklendi', memories_retry: 'Tekrar dene',
+        memories_upload_timeout: 'Bu çok uzun sürüyor — bağlantınızı kontrol edip tekrar deneyin.',
+        memories_no_files_selected: "Seçiciden hiçbir dosya alamadık — lütfen tekrar deneyin (fotoğrafların iCloud'dan tamamen indirildiğinden de emin olun).",
+        memories_ios_recovery: "iPhone'unuz dosyaları siteye göndermedi. Bu sayfayı doğrudan Safari'de açın ve fotoğrafların veya videoların telefonunuzda tamamen indirildiğinden emin olun.",
         memories_upload_error: 'Yükleme başarısız oldu. Lütfen tekrar deneyin.', media_load_error: 'Yüklenemedi — tekrar denemek için dokun.',
         memories_create_error: 'Video oluşturma başarısız oldu. Lütfen tekrar deneyin.',
         plan_standard: '🎵 Standart Paket', plan_premium: '💿 Premium Paket', plan_video: '🎬 Video Hediye'
@@ -328,13 +370,38 @@
       el.load();
     }
 
-    // fisiere alese local, nu inca incarcate — { file, section }
-    let stagedFiles = [];
+    // RELANSARE (2026-08-14) — vezi comentariul identic din comanda-mea.html: inlocuit
+    // stagedFiles + un buton "Incarca" manual (un singur FormData cu toate fisierele intr-un
+    // singur POST — o cerere esuata pierdea tot lotul) cu coada per-fisier deja verificata live
+    // in melodia-mea.html: fiecare fisier are propriul XMLHttpRequest, propriul progres, propria
+    // stare si retry individual.
+    let uploadQueue = []; // { localId, file, status, progress, errorMsg, thumbUrl, xhr }
+    let memDataRef = null;
+
+    const VIDEO_EXTENSIONS = ['.mp4', '.m4v', '.mov', '.webm'];
+    function isVideoFile(file) {
+      if (file.type.startsWith('video')) return true;
+      if (file.type) return false;
+      const match = String(file.name || '').match(/\.[^./\\]+$/);
+      return !!match && VIDEO_EXTENSIONS.includes(match[0].toLowerCase());
+    }
+
+    // Diagnostic minim, fara nume de fisier/continut — vezi comentariul identic din
+    // comanda-mea.html.
+    function memLog(event, data) {
+      try {
+        console.debug('[naluna-media]', { orderId, uploadAttemptId: memUploadAttemptId, event, ...(data || {}) });
+      } catch (e) { /* diagnosticul nu trebuie sa opreasca fluxul real */ }
+    }
+    let memUploadAttemptId = null;
+    const memIsIOS = /iP(hone|od|ad)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const memIsInAppBrowser = /FBAN|FBAV|Instagram|Line\/|Twitter|WhatsApp|Telegram/i.test(navigator.userAgent);
 
     // CORECȚIE (2026-08-14, "poziționare complet automată"): dropdown-ul de preferință de
     // sectiune a fost eliminat — pozitionarea materialelor in montaj e acum STRICT automata.
     function renderMemories(data, variant) {
       if (data.plan !== 'video' || variant.hasVideo) return '';
+      memDataRef = data;
       const uploaded = data.uploadedMedia || [];
 
       const uploadedHtml = uploaded.map((m, i) => `
@@ -354,11 +421,11 @@
                identic din melodia-mea.html: acceptul explicit, cu "image/x-adobe-dng" (MIME
                nestandard) si ".dng" redundant, putea face Safari/iOS sa esueze la initializarea
                selectorului nativ pentru INTREAGA selectie. Validarea reala ramane STRICT
-               server-side (POST /media), neschimbata. -->
+               server-side (POST /media), neschimbata. NU s-a mai modificat de atunci — HTML
+               valid, confirmat exact asa in productie. -->
           <input type="file" id="mem-file-input" multiple accept="image/*,video/*">
           <p class="memories-hint">${t.memories_hint}</p>
-          <div class="mem-actions">
-            <button type="button" class="btn" id="mem-upload-btn" style="display:none;">${t.memories_upload_btn}</button>
+          <div class="mem-page-actions">
             <button type="button" class="btn ${uploaded.length > 0 ? '' : 'btn-secondary'}" id="mem-create-btn">${uploaded.length > 0 ? t.memories_create_btn : t.memories_create_btn_skip}</button>
           </div>
           <p class="mem-status" id="mem-status"></p>
@@ -366,32 +433,143 @@
       `;
     }
 
-    function renderStagedList() {
+    // Echivalentul renderQueueList() din melodia-mea.html/comanda-mea.html — vezi comentariul
+    // identic acolo (fara <video src="blob:...">, doar iconita statica pentru videoclipuri).
+    function renderQueueList() {
       const el = document.getElementById('mem-staged-list');
-      const uploadBtn = document.getElementById('mem-upload-btn');
-      if (!el || !uploadBtn) return;
-      el.innerHTML = stagedFiles.map((sf, i) => `
-        <div class="mem-item">
-          <span class="mem-name">${sf.file.type.startsWith('video') ? '🎬' : '🖼️'} ${escapeHtml(sf.file.name)}</span>
-          <button type="button" class="mem-remove" data-staged-remove="${i}" title="${t.memories_remove}">${t.memories_remove}</button>
+      if (!el) return;
+      el.innerHTML = uploadQueue.map(q => `
+        <div class="mem-item" data-queue-id="${q.localId}">
+          <div class="mem-info">
+            <span class="mem-name">${isVideoFile(q.file) ? '🎬' : '🖼️'} ${escapeHtml(q.file.name)}</span>
+            <span class="mem-meta ${q.status === 'error' ? 'err' : ''}">${
+              q.status === 'uploading' ? t.memories_uploading
+              : q.status === 'pending' ? t.memories_queued
+              : q.status === 'error' ? (q.errorMsg || t.memories_upload_error)
+              : t.memories_uploaded
+            }</span>
+            ${q.status === 'uploading' ? `<div class="mem-progress-track"><div class="mem-progress-fill" style="width:${q.progress}%"></div></div>` : ''}
+          </div>
+          <div class="mem-actions">
+            ${q.status === 'error' ? `<button type="button" class="mem-retry" data-retry-id="${q.localId}">${t.memories_retry}</button>` : ''}
+            <button type="button" class="mem-remove" data-queue-remove="${q.localId}" title="${t.memories_remove}" ${q.status === 'uploading' ? 'disabled' : ''}>${t.memories_remove}</button>
+          </div>
         </div>
       `).join('');
-      uploadBtn.style.display = stagedFiles.length > 0 ? 'inline-block' : 'none';
 
-      el.querySelectorAll('button[data-staged-remove]').forEach(btn => {
+      el.querySelectorAll('[data-retry-id]').forEach(btn => {
         btn.addEventListener('click', () => {
-          stagedFiles.splice(Number(btn.dataset.stagedRemove), 1);
-          renderStagedList();
+          const entry = uploadQueue.find(q => q.localId === btn.dataset.retryId);
+          if (!entry) return;
+          entry.status = 'pending';
+          entry.errorMsg = null;
+          renderQueueList();
+          processUploadQueue();
+        });
+      });
+      el.querySelectorAll('[data-queue-remove]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const idx = uploadQueue.findIndex(q => q.localId === btn.dataset.queueRemove);
+          if (idx === -1) return;
+          const entry = uploadQueue[idx];
+          if (entry.xhr) entry.xhr.abort();
+          uploadQueue.splice(idx, 1);
+          processUploadQueue();
+          renderQueueList();
+          updateMemActionGates();
         });
       });
     }
 
+    const MEM_MAX_CONCURRENT_UPLOADS = 2;
+    const MEM_UPLOAD_TIMEOUT_MS = 900000;
+
+    function processUploadQueue() {
+      const active = uploadQueue.filter(q => q.status === 'uploading').length;
+      let slots = MEM_MAX_CONCURRENT_UPLOADS - active;
+      if (slots <= 0) return;
+      for (const entry of uploadQueue) {
+        if (slots <= 0) break;
+        if (entry.status === 'pending') {
+          startUpload(entry);
+          slots--;
+        }
+      }
+    }
+
+    function startUpload(entry) {
+      entry.status = 'uploading';
+      entry.progress = 0;
+      entry.errorMsg = null;
+      renderQueueList();
+
+      const formData = new FormData();
+      formData.append('media', entry.file);
+      formData.append('sections', JSON.stringify(['']));
+
+      const xhr = new XMLHttpRequest();
+      entry.xhr = xhr;
+      xhr.open('POST', `/api/orders/${orderId}/media`);
+      xhr.setRequestHeader('X-Access-Token', accessToken || '');
+      xhr.timeout = MEM_UPLOAD_TIMEOUT_MS;
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          entry.progress = Math.round((e.loaded / e.total) * 100);
+          renderQueueList();
+        }
+      };
+      xhr.onload = async () => {
+        let data = null;
+        try { data = JSON.parse(xhr.responseText); } catch (e) { /* raspuns invalid */ }
+        const failedEntry = data && Array.isArray(data.failed) ? data.failed[0] : null;
+        const succeeded = data && Array.isArray(data.uploaded) && data.uploaded.length > 0;
+        memLog('upload_response', { status: xhr.status, receivedOk: !!succeeded });
+        if (xhr.status >= 200 && xhr.status < 300 && succeeded) {
+          uploadQueue = uploadQueue.filter(q => q.localId !== entry.localId);
+          renderQueueList();
+          processUploadQueue();
+          await refreshCard();
+        } else {
+          entry.status = 'error';
+          entry.errorMsg = (failedEntry && failedEntry.reason) || (data && data.error) || t.memories_upload_error;
+          renderQueueList();
+          processUploadQueue();
+          updateMemActionGates();
+        }
+      };
+      xhr.onerror = () => {
+        entry.status = 'error';
+        entry.errorMsg = t.memories_upload_error;
+        renderQueueList();
+        processUploadQueue();
+        updateMemActionGates();
+      };
+      xhr.ontimeout = () => {
+        entry.status = 'error';
+        entry.errorMsg = t.memories_upload_timeout;
+        renderQueueList();
+        processUploadQueue();
+        updateMemActionGates();
+      };
+      xhr.onabort = () => { processUploadQueue(); };
+      xhr.send(formData);
+    }
+
+    function updateMemActionGates() {
+      const createBtn = document.getElementById('mem-create-btn');
+      if (!createBtn) return;
+      const busy = uploadQueue.some(q => q.status === 'uploading' || q.status === 'pending');
+      createBtn.disabled = busy;
+    }
+
     function wireMemoriesEvents() {
       const fileInput = document.getElementById('mem-file-input');
-      const uploadBtn = document.getElementById('mem-upload-btn');
       const createBtn = document.getElementById('mem-create-btn');
       const statusEl = document.getElementById('mem-status');
       if (!fileInput) return;
+
+      renderQueueList();
+      updateMemActionGates();
 
       document.querySelectorAll('#mem-uploaded-list button[data-remove-index]').forEach(btn => {
         btn.addEventListener('click', async () => {
@@ -408,36 +586,83 @@
         });
       });
 
-      fileInput.addEventListener('change', () => {
-        stagedFiles = stagedFiles.concat(Array.from(fileInput.files).map(file => ({ file, section: null })));
-        fileInput.value = '';
-        renderStagedList();
+      // Detectie best-effort a cazului in care iOS NU preda niciodata fisierele paginii — vezi
+      // comentariul identic din comanda-mea.html. NU este un fix de cod (mesajul nativ iOS nu
+      // poate fi interceptat sau controlat de site) — doar un semnal vizibil plus recomandarea
+      // de a deschide direct in Safari (acelasi URL, cu order/token, functioneaza identic acolo).
+      let pickerAwaitingChange = false;
+      let pickerOpenToken = 0;
+      fileInput.addEventListener('click', () => {
+        memUploadAttemptId = 'a' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+        pickerAwaitingChange = true;
+        pickerOpenToken++;
+        memLog('picker_open', { ios: memIsIOS, inAppBrowser: memIsInAppBrowser });
       });
+      fileInput.addEventListener('cancel', () => {
+        pickerAwaitingChange = false;
+        memLog('picker_cancel', {});
+      });
+      function checkPickerDelivery() {
+        if (!pickerAwaitingChange) return;
+        const openToken = pickerOpenToken;
+        setTimeout(() => {
+          if (pickerAwaitingChange && pickerOpenToken === openToken) {
+            pickerAwaitingChange = false;
+            memLog('picker_no_change_after_focus_return', { ios: memIsIOS });
+            if (memIsIOS) {
+              statusEl.textContent = t.memories_ios_recovery;
+              statusEl.classList.add('err');
+            }
+          }
+        }, 1200);
+      }
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') checkPickerDelivery();
+      });
+      window.addEventListener('focus', checkPickerDelivery);
 
-      uploadBtn.addEventListener('click', async () => {
-        if (stagedFiles.length === 0) return;
-        uploadBtn.disabled = true;
-        uploadBtn.textContent = t.memories_uploading;
+      fileInput.addEventListener('change', () => {
+        pickerAwaitingChange = false;
+        const files = Array.from(fileInput.files);
+        fileInput.value = '';
+        memLog('change', {
+          filesLength: files.length,
+          items: files.map(f => ({ type: (f.type || '').split('/')[0] || 'unknown', sizeMb: Math.round((f.size || 0) / 1024 / 1024) }))
+        });
+        if (files.length === 0) {
+          statusEl.textContent = t.memories_no_files_selected;
+          statusEl.classList.add('err');
+          return;
+        }
         statusEl.textContent = '';
         statusEl.classList.remove('err');
-        try {
-          const formData = new FormData();
-          stagedFiles.forEach(sf => formData.append('media', sf.file));
-          formData.append('sections', JSON.stringify(stagedFiles.map(sf => sf.section || '')));
-          const res = await fetch(`/api/orders/${orderId}/media`, {
-            method: 'POST',
-            headers: { 'X-Access-Token': accessToken || '' },
-            body: formData
-          });
-          if (!res.ok) throw new Error('upload failed');
-          stagedFiles = [];
-          await refreshCard();
-        } catch (e) {
-          statusEl.textContent = t.memories_upload_error;
-          statusEl.classList.add('err');
-          uploadBtn.disabled = false;
-          uploadBtn.textContent = t.memories_upload_btn;
-        }
+        files.forEach(file => {
+          try {
+            uploadQueue.push({
+              localId: 'q' + Math.random().toString(36).slice(2),
+              file,
+              status: 'pending',
+              progress: 0,
+              errorMsg: null,
+              thumbUrl: null,
+              xhr: null
+            });
+          } catch (err) {
+            uploadQueue.push({
+              localId: 'q' + Math.random().toString(36).slice(2),
+              file,
+              status: 'error',
+              progress: 0,
+              errorMsg: t.memories_upload_error,
+              thumbUrl: null,
+              xhr: null
+            });
+          }
+        });
+        memLog('staged', { queueLength: uploadQueue.length });
+        renderQueueList();
+        processUploadQueue();
+        updateMemActionGates();
       });
 
       createBtn.addEventListener('click', async () => {
