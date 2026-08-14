@@ -316,8 +316,15 @@ async function abortPrivateMultipartUpload(key, uploadId) {
 // configurate manual de client, inlocuindu-le cu o regula STRICT PUT. Pentru a nu risca
 // niciodata sa suprascrie o configurare facuta manual, aceasta functie acum DOAR CITESTE
 // configurarea existenta si verifica daca e suficienta — nu scrie niciodata in ea.
+// Intoarce { ok: true } daca a putut confirma o regula suficienta, { ok: false, verified: true,
+// reason } daca a putut citi configurarea dar aceasta NU e suficienta, sau { ok: false,
+// verified: false, reason } daca citirea insasi a esuat (token-ul R2 "Object Read & Write" poate
+// sa NU aiba voie sa citeasca nici macar configurarea bucket-ului, un permisiune STRICT
+// administrativa, separata de operatiile pe obiecte) — in acest ultim caz NU inseamna ca
+// uploadul e stricat, doar ca acest server nu poate verifica singur; apelantul trebuie sa
+// distinga explicit cele doua cazuri, nu sa presupuna "esec la citire" == "CORS insuficient".
 async function checkUploadCors(origins) {
-  if (!CLOUD_ENABLED) return { ok: false, reason: 'stocare cloud dezactivata' };
+  if (!CLOUD_ENABLED) return { ok: false, verified: true, reason: 'stocare cloud dezactivata' };
   try {
     const res = await s3Client.send(new GetBucketCorsCommand({ Bucket: PRIVATE_BUCKET }));
     const rules = res.CORSRules || [];
@@ -332,9 +339,9 @@ async function checkUploadCors(origins) {
     });
     return sufficient
       ? { ok: true }
-      : { ok: false, reason: 'bucket-ul are CORS configurat, dar nicio regula nu permite PUT + expune ETag pentru originea site-ului' };
+      : { ok: false, verified: true, reason: 'bucket-ul are CORS configurat, dar nicio regula nu permite PUT + expune ETag pentru originea site-ului' };
   } catch (err) {
-    return { ok: false, reason: err.message || String(err) };
+    return { ok: false, verified: false, reason: err.message || String(err) };
   }
 }
 

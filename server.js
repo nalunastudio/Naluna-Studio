@@ -6682,6 +6682,16 @@ function checkUploadCorsAtBoot() {
   storage.checkUploadCors(origins).then(result => {
     if (result.ok) {
       console.log(`Storage: CORS pe bucket-ul privat permite deja upload direct pentru originea ${origins.join(', ')}.`);
+    } else if (result.verified === false) {
+      // NU inseamna ca uploadul e stricat — doar ca token-ul R2 "Object Read & Write" nu are
+      // voie sa CITEASCA nici macar configurarea bucket-ului (o permisiune administrativa,
+      // separata de operatiile pe obiecte). Verificarea reala a functionarii se face manual/
+      // printr-un upload real, nu prin acest log.
+      console.warn(
+        `Storage: nu am putut CITI configurarea CORS a bucket-ului privat, ca sa o verific automat — ${result.reason}. ` +
+        `Asta nu inseamna ca uploadul direct e nefunctional (token-ul poate avea totusi voie sa faca operatii pe obiecte, ` +
+        `doar nu sa citeasca setarile bucket-ului) — verifica printr-un upload real daca ai dubii.`
+      );
     } else {
       console.error(
         `Storage: CORS pe bucket-ul privat NU permite (inca) upload direct — ${result.reason}. ` +
