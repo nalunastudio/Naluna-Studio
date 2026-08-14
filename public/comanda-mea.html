@@ -3,10 +3,6 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<!-- Placeholder inlocuit server-side cu commitul curent — vezi middleware-ul dedicat din
-     server.js, folosit STRICT de modul diagnostic (?mediaDebug=1), ca sa poata identifica
-     un build vechi servit dintr-un cache, fara sa introduca vreo ruta noua. -->
-<meta name="naluna-build" content="__NALUNA_BUILD__">
 <title>Comanda mea — NALUNA</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;1,9..144,400&family=Sora:wght@400;500;600&display=swap" rel="stylesheet">
@@ -129,7 +125,6 @@
       memories_title: 'Adaugă pozele și videoclipurile tale',
       memories_sub: 'Adaugă între 3 și 10 poze sau clipuri video, iar noi le vom transforma într-un videoclip cu versuri, cu tranziții cinematice.',
       memories_hint: 'Poți sări acest pas — videoclipul va folosi un fundal simplu, elegant.',
-      memories_ios_wait_hint: 'După ce apeși bifa albastră, iPhone poate avea nevoie de puțin timp pentru a pregăti videoclipurile mari sau păstrate în iCloud. Nu apăsa din nou și nu închide fereastra — încărcarea începe automat.',
       memories_upload_btn: 'Încarcă', memories_uploading: 'Se încarcă...',
       memories_create_btn: 'Creează videoclipul', memories_create_btn_skip: 'Creează fără poze',
       memories_creating: 'Se creează videoclipul tău cu amintiri... poate dura câteva minute',
@@ -143,7 +138,6 @@
       memories_upload_timeout: 'Încărcarea durează prea mult — verifică conexiunea și încearcă din nou.',
       memories_no_files_selected: 'Nu am primit niciun fișier de la selector — încearcă din nou (verifică și dacă fotografiile sunt descărcate complet din iCloud).',
       memories_ios_recovery: 'iPhone-ul nu a trimis materialele către site. Deschide pagina direct în Safari și asigură-te că fotografiile sau videoclipurile sunt descărcate pe telefon.',
-      memories_ios_preparing: 'iPhone pregătește videoclipurile selectate. Poate dura puțin pentru fișierele mari sau păstrate în iCloud. Nu apăsa din nou.',
       memories_create_error: 'Crearea videoclipului a eșuat. Încearcă din nou',
       plan_standard: '🎵 Pachet Standard', plan_premium: '💿 Pachet Premium', plan_video: '🎬 Cadou video'
     },
@@ -157,7 +151,6 @@
       memories_title: 'Add your photos & videos',
       memories_sub: 'Add 3 to 10 photos or video clips and we\'ll weave them into a lyric video with cinematic transitions.',
       memories_hint: 'You can skip this — the video will use a simple, elegant background instead.',
-      memories_ios_wait_hint: "After you tap the blue checkmark, your iPhone may need a moment to prepare large videos or ones stored in iCloud. Don't tap again and don't close the window — the upload starts automatically.",
       memories_upload_btn: 'Upload', memories_uploading: 'Uploading...',
       memories_create_btn: 'Create my video', memories_create_btn_skip: 'Create without photos',
       memories_creating: 'Creating your memory video... this can take a few minutes',
@@ -171,7 +164,6 @@
       memories_upload_timeout: 'This is taking too long — check your connection and try again.',
       memories_no_files_selected: "We didn't receive any file from the picker — please try again (also check the photos are fully downloaded from iCloud).",
       memories_ios_recovery: "Your iPhone didn't send the files to the site. Open this page directly in Safari and make sure the photos or videos are fully downloaded on your phone.",
-      memories_ios_preparing: "Your iPhone is preparing the selected videos. This can take a moment for large files or ones stored in iCloud. Don't tap again.",
       memories_create_error: 'Creating the video failed. Please try again.',
       plan_standard: '🎵 Standard package', plan_premium: '💿 Premium package', plan_video: '🎬 Video gift'
     },
@@ -185,7 +177,6 @@
       memories_title: 'Füge deine Fotos & Videos hinzu',
       memories_sub: 'Füge 3 bis 10 Fotos oder Videoclips hinzu — wir verweben sie zu einem Lyric-Video mit filmischen Übergängen.',
       memories_hint: 'Du kannst diesen Schritt überspringen — das Video verwendet dann einen einfachen, eleganten Hintergrund.',
-      memories_ios_wait_hint: 'Nachdem du auf das blaue Häkchen getippt hast, braucht dein iPhone eventuell etwas Zeit, um große oder in iCloud gespeicherte Videos vorzubereiten. Tippe nicht erneut und schließe das Fenster nicht — der Upload startet automatisch.',
       memories_upload_btn: 'Hochladen', memories_uploading: 'Wird hochgeladen...',
       memories_create_btn: 'Video erstellen', memories_create_btn_skip: 'Ohne Fotos erstellen',
       memories_creating: 'Dein Erinnerungsvideo wird erstellt... das kann einige Minuten dauern',
@@ -199,7 +190,6 @@
       memories_upload_timeout: 'Das dauert zu lange — überprüfe deine Verbindung und versuche es erneut.',
       memories_no_files_selected: 'Wir haben keine Datei von der Auswahl erhalten — bitte versuche es erneut (prüfe auch, ob die Fotos vollständig aus iCloud heruntergeladen sind).',
       memories_ios_recovery: 'Dein iPhone hat die Dateien nicht an die Seite gesendet. Öffne diese Seite direkt in Safari und stelle sicher, dass die Fotos oder Videos vollständig auf dein Telefon heruntergeladen sind.',
-      memories_ios_preparing: 'Dein iPhone bereitet die ausgewählten Videos vor. Das kann bei großen oder in iCloud gespeicherten Dateien etwas dauern. Bitte nicht erneut tippen.',
       memories_create_error: 'Videoerstellung fehlgeschlagen. Bitte versuche es erneut.',
       plan_standard: '🎵 Standard-Paket', plan_premium: '💿 Premium-Paket', plan_video: '🎬 Video-Geschenk'
     },
@@ -213,7 +203,6 @@
       memories_title: 'Añade tus fotos y videos',
       memories_sub: 'Añade entre 3 y 10 fotos o clips de video y los combinaremos en un video lírico con transiciones cinematográficas.',
       memories_hint: 'Puedes saltarte este paso — el video usará un fondo sencillo y elegante.',
-      memories_ios_wait_hint: 'Después de tocar la marca azul, tu iPhone puede necesitar un momento para preparar videos grandes o guardados en iCloud. No vuelvas a tocar ni cierres la ventana — la subida comienza automáticamente.',
       memories_upload_btn: 'Subir', memories_uploading: 'Subiendo...',
       memories_create_btn: 'Crear mi video', memories_create_btn_skip: 'Crear sin fotos',
       memories_creating: 'Creando tu video de recuerdos... puede tardar unos minutos',
@@ -227,7 +216,6 @@
       memories_upload_timeout: 'Esto está tardando demasiado — comprueba tu conexión e inténtalo de nuevo.',
       memories_no_files_selected: 'No recibimos ningún archivo del selector — inténtalo de nuevo (comprueba también que las fotos estén completamente descargadas de iCloud).',
       memories_ios_recovery: 'Tu iPhone no envió los archivos al sitio. Abre esta página directamente en Safari y asegúrate de que las fotos o videos estén completamente descargados en tu teléfono.',
-      memories_ios_preparing: 'Tu iPhone está preparando los videos seleccionados. Puede tardar un poco con archivos grandes o guardados en iCloud. No vuelvas a tocar.',
       memories_create_error: 'Error al crear el video. Inténtalo de nuevo.',
       plan_standard: '🎵 Paquete Estándar', plan_premium: '💿 Paquete Premium', plan_video: '🎬 Regalo en video'
     },
@@ -241,7 +229,6 @@
       memories_title: 'Aggiungi le tue foto e i tuoi video',
       memories_sub: 'Aggiungi da 3 a 10 foto o clip video: le trasformeremo in un video con testo e transizioni cinematografiche.',
       memories_hint: 'Puoi saltare questo passaggio — il video userà uno sfondo semplice ed elegante.',
-      memories_ios_wait_hint: "Dopo aver toccato il segno di spunta blu, il tuo iPhone potrebbe aver bisogno di un momento per preparare i video grandi o salvati su iCloud. Non toccare di nuovo e non chiudere la finestra — il caricamento inizia automaticamente.",
       memories_upload_btn: 'Carica', memories_uploading: 'Caricamento...',
       memories_create_btn: 'Crea il mio video', memories_create_btn_skip: 'Crea senza foto',
       memories_creating: 'Creazione del video con i ricordi... può richiedere qualche minuto',
@@ -255,7 +242,6 @@
       memories_upload_timeout: 'Sta impiegando troppo tempo — controlla la connessione e riprova.',
       memories_no_files_selected: 'Non abbiamo ricevuto alcun file dal selettore — riprova (controlla anche che le foto siano scaricate completamente da iCloud).',
       memories_ios_recovery: 'Il tuo iPhone non ha inviato i file al sito. Apri questa pagina direttamente in Safari e assicurati che le foto o i video siano completamente scaricati sul telefono.',
-      memories_ios_preparing: "Il tuo iPhone sta preparando i video selezionati. Può richiedere un po' di tempo per i file grandi o salvati su iCloud. Non toccare di nuovo.",
       memories_create_error: 'Creazione del video non riuscita. Riprova.',
       plan_standard: '🎵 Pacchetto Standard', plan_premium: '💿 Pacchetto Premium', plan_video: '🎬 Regalo video'
     },
@@ -269,7 +255,6 @@
       memories_title: 'Ajoutez vos photos et vidéos',
       memories_sub: 'Ajoutez 3 à 10 photos ou clips vidéo, nous les intégrerons dans un clip lyrique avec des transitions cinématographiques.',
       memories_hint: 'Vous pouvez ignorer cette étape — la vidéo utilisera alors un fond simple et élégant.',
-      memories_ios_wait_hint: "Après avoir appuyé sur la coche bleue, votre iPhone peut avoir besoin d'un moment pour préparer les vidéos volumineuses ou stockées dans iCloud. Ne touchez pas à nouveau l'écran et ne fermez pas la fenêtre — l'envoi démarre automatiquement.",
       memories_upload_btn: 'Envoyer', memories_uploading: 'Envoi en cours...',
       memories_create_btn: 'Créer ma vidéo', memories_create_btn_skip: 'Créer sans photos',
       memories_creating: 'Création de votre vidéo souvenir... cela peut prendre quelques minutes',
@@ -283,7 +268,6 @@
       memories_upload_timeout: "Cela prend trop de temps — vérifiez votre connexion et réessayez.",
       memories_no_files_selected: "Nous n'avons reçu aucun fichier du sélecteur — réessayez (vérifiez aussi que les photos sont bien téléchargées depuis iCloud).",
       memories_ios_recovery: "Votre iPhone n'a pas envoyé les fichiers au site. Ouvrez cette page directement dans Safari et assurez-vous que les photos ou vidéos sont bien téléchargées sur votre téléphone.",
-      memories_ios_preparing: "Votre iPhone prépare les vidéos sélectionnées. Cela peut prendre un moment pour les fichiers volumineux ou stockés dans iCloud. Ne touchez pas à nouveau l'écran.",
       memories_create_error: 'Échec de la création de la vidéo. Veuillez réessayer.',
       plan_standard: '🎵 Pack Standard', plan_premium: '💿 Pack Premium', plan_video: '🎬 Cadeau vidéo'
     },
@@ -297,7 +281,6 @@
       memories_title: 'Добави своите снимки и видеа',
       memories_sub: 'Добави между 3 и 10 снимки или видеоклипа и ние ще ги вплетем в лирик видео с кинематографични преходи.',
       memories_hint: 'Можеш да пропуснеш тази стъпка — видеото ще използва прост, елегантен фон.',
-      memories_ios_wait_hint: 'След като докоснеш синята отметка, iPhone може да се нуждае от малко време, за да подготви големи видеа или такива, съхранени в iCloud. Не докосвай отново и не затваряй прозореца — качването започва автоматично.',
       memories_upload_btn: 'Качи', memories_uploading: 'Качване...',
       memories_create_btn: 'Създай видеото ми', memories_create_btn_skip: 'Създай без снимки',
       memories_creating: 'Създаваме твоето видео със спомени... може да отнеме няколко минути',
@@ -311,7 +294,6 @@
       memories_upload_timeout: 'Това отнема твърде много време — провери връзката си и опитай отново.',
       memories_no_files_selected: 'Не получихме нито един файл от избора — опитай отново (провери също дали снимките са изтеглени напълно от iCloud).',
       memories_ios_recovery: 'Твоят iPhone не изпрати файловете към сайта. Отвори тази страница директно в Safari и се увери, че снимките или видеата са напълно изтеглени на телефона.',
-      memories_ios_preparing: 'Твоят iPhone подготвя избраните видеа. Може да отнеме малко време за големи файлове или такива, съхранени в iCloud. Не докосвай отново.',
       memories_create_error: 'Създаването на видеото не бе успешно. Опитай отново.',
       plan_standard: '🎵 Пакет Стандарт', plan_premium: '💿 Пакет Премиум', plan_video: '🎬 Видео подарък'
     },
@@ -325,7 +307,6 @@
       memories_title: 'Fotoğraflarınızı ve videolarınızı ekleyin',
       memories_sub: '3 ile 10 arası fotoğraf veya video klip ekleyin, bunları sinematik geçişlerle bir söz videosuna dönüştürelim.',
       memories_hint: 'Bu adımı atlayabilirsiniz — video basit, şık bir arka plan kullanır.',
-      memories_ios_wait_hint: "Mavi onay işaretine dokunduktan sonra, iPhone'unuzun büyük veya iCloud'da saklanan videoları hazırlamak için biraz zamana ihtiyacı olabilir. Tekrar dokunmayın ve pencereyi kapatmayın — yükleme otomatik olarak başlar.",
       memories_upload_btn: 'Yükle', memories_uploading: 'Yükleniyor...',
       memories_create_btn: 'Videomu oluştur', memories_create_btn_skip: 'Fotoğrafsız oluştur',
       memories_creating: 'Anı videonuz oluşturuluyor... bu birkaç dakika sürebilir',
@@ -339,7 +320,6 @@
       memories_upload_timeout: 'Bu çok uzun sürüyor — bağlantınızı kontrol edip tekrar deneyin.',
       memories_no_files_selected: "Seçiciden hiçbir dosya alamadık — lütfen tekrar deneyin (fotoğrafların iCloud'dan tamamen indirildiğinden de emin olun).",
       memories_ios_recovery: "iPhone'unuz dosyaları siteye göndermedi. Bu sayfayı doğrudan Safari'de açın ve fotoğrafların veya videoların telefonunuzda tamamen indirildiğinden emin olun.",
-      memories_ios_preparing: "iPhone'unuz seçilen videoları hazırlıyor. Büyük dosyalar veya iCloud'da saklananlar için bu biraz zaman alabilir. Lütfen tekrar dokunmayın.",
       memories_create_error: 'Video oluşturma başarısız oldu. Lütfen tekrar deneyin.',
       plan_standard: '🎵 Standart Paket', plan_premium: '💿 Premium Paket', plan_video: '🎬 Video Hediye'
     }
@@ -357,121 +337,6 @@
     const div = document.createElement('div');
     div.textContent = str == null ? '' : String(str);
     return div.innerHTML;
-  }
-
-  // ==========================================================================================
-  // MOD DIAGNOSTIC (2026-08-14, "trebuie masurat exact unde se pierd cele doua minute") — STRICT
-  // pentru localizarea blocajului raportat pe iPhone (3 videoclipuri selectate, bifa albastra
-  // apasata o singura data, pagina Naluna revine abia dupa ~2 minute). Activat DOAR prin
-  // ?mediaDebug=1 in URL — pentru orice alt client, mediaDebugLog() e un no-op imediat (o
-  // singura verificare booleana), deci NU exista nicio schimbare de comportament, timing sau
-  // continut pentru clientii normali. NU modifica uploadul, R2, CORS, timeout-urile sau
-  // mesajele normale — STRICT citire/inregistrare locala, pastrata in sessionStorage
-  // (supravietuieste revenirii din selectorul nativ), niciodata trimisa catre vreun server. NU
-  // inregistreaza niciodata nume de fisier, tokenul comenzii, continut media, date personale
-  // sau URL-uri semnate — STRICT numarul/dimensiunea totala a fisierelor si marcaje de timp.
-  // ==========================================================================================
-  const MEDIA_DEBUG_ENABLED = new URLSearchParams(location.search).get('mediaDebug') === '1';
-  const MEDIA_DEBUG_STORAGE_KEY = 'naluna_media_debug_timeline';
-  const MEDIA_DEBUG_BUILD = (document.querySelector('meta[name="naluna-build"]') || {}).content || 'unknown';
-  let mediaDebugPickerOpenPerf = null;
-  let mediaDebugTimeline = [];
-  let mediaDebugFirstR2PutLogged = false;
-  let mediaDebugFirstR2ProgressLogged = false;
-  if (MEDIA_DEBUG_ENABLED) {
-    try {
-      const saved = sessionStorage.getItem(MEDIA_DEBUG_STORAGE_KEY);
-      if (saved) mediaDebugTimeline = JSON.parse(saved);
-    } catch (e) { /* pornim cu timeline gol */ }
-  }
-
-  function mediaDebugLog(eventName, extra) {
-    if (!MEDIA_DEBUG_ENABLED) return;
-    const nowPerf = performance.now();
-    if ((eventName === 'file_input_pointerdown' || eventName === 'file_input_click') && mediaDebugPickerOpenPerf == null) {
-      mediaDebugPickerOpenPerf = nowPerf;
-    }
-    const entry = {
-      event: eventName,
-      wallClock: new Date().toISOString(),
-      perfMs: Math.round(nowPerf),
-      sincePickerOpenMs: mediaDebugPickerOpenPerf != null ? Math.round(nowPerf - mediaDebugPickerOpenPerf) : null,
-      visibilityState: document.visibilityState,
-      filesCount: (extra && typeof extra.filesCount === 'number') ? extra.filesCount : null,
-      totalBytes: (extra && typeof extra.totalBytes === 'number') ? extra.totalBytes : null,
-      build: MEDIA_DEBUG_BUILD
-    };
-    mediaDebugTimeline.push(entry);
-    // "picker deschis" e STRICT referinta pentru CICLUL curent de selectie — dupa 'change_event'
-    // (confirmarea ca fisierele au ajuns la pagina), urmatoarea apasare porneste propriul cronometru.
-    if (eventName === 'change_event') mediaDebugPickerOpenPerf = null;
-    try { sessionStorage.setItem(MEDIA_DEBUG_STORAGE_KEY, JSON.stringify(mediaDebugTimeline)); } catch (e) { /* sessionStorage plin/indisponibil — ramane doar in memorie, pentru acest tur */ }
-    mediaDebugRenderPanel();
-  }
-
-  function mediaDebugFormatEntry(e) {
-    return `${e.wallClock} | +${e.sincePickerOpenMs === null ? '-' : e.sincePickerOpenMs + 'ms'} | ${e.event} | vis=${e.visibilityState} | fisiere=${e.filesCount === null ? '-' : e.filesCount} | bytes=${e.totalBytes === null ? '-' : e.totalBytes} | build=${e.build}`;
-  }
-
-  function mediaDebugFallbackCopy(text, done) {
-    try {
-      const ta = document.createElement('textarea');
-      ta.value = text;
-      ta.style.position = 'fixed';
-      ta.style.left = '-9999px';
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand('copy');
-      document.body.removeChild(ta);
-      if (done) done();
-    } catch (e) { /* copierea manuala ramane posibila direct din panou */ }
-  }
-
-  function mediaDebugRenderPanel() {
-    if (!MEDIA_DEBUG_ENABLED || !document.body) return;
-    let panel = document.getElementById('media-debug-panel');
-    if (!panel) {
-      panel = document.createElement('div');
-      panel.id = 'media-debug-panel';
-      panel.style.cssText = 'position:fixed;left:8px;right:8px;bottom:8px;max-height:45vh;overflow:auto;background:#111;color:#0f0;font:11px/1.4 -apple-system,monospace;padding:10px;border-radius:10px;z-index:2147483647;box-shadow:0 4px 24px rgba(0,0,0,.5);';
-      const header = document.createElement('div');
-      header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;';
-      const title = document.createElement('span');
-      title.textContent = 'mediaDebug — build ' + MEDIA_DEBUG_BUILD;
-      title.style.cssText = 'color:#9cf;font-weight:600;';
-      const copyBtn = document.createElement('button');
-      copyBtn.type = 'button';
-      copyBtn.textContent = 'Copiază diagnosticul';
-      copyBtn.style.cssText = 'padding:6px 10px;font:12px -apple-system,sans-serif;cursor:pointer;border-radius:6px;border:1px solid #0f0;background:#000;color:#0f0;';
-      copyBtn.addEventListener('click', () => {
-        const text = mediaDebugTimeline.map(mediaDebugFormatEntry).join('\n');
-        const done = () => { copyBtn.textContent = 'Copiat ✓'; setTimeout(() => { copyBtn.textContent = 'Copiază diagnosticul'; }, 1500); };
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(text).then(done).catch(() => mediaDebugFallbackCopy(text, done));
-        } else {
-          mediaDebugFallbackCopy(text, done);
-        }
-      });
-      header.appendChild(title);
-      header.appendChild(copyBtn);
-      panel.appendChild(header);
-      const pre = document.createElement('pre');
-      pre.id = 'media-debug-log';
-      pre.style.cssText = 'white-space:pre-wrap;word-break:break-all;margin:0;';
-      panel.appendChild(pre);
-      document.body.appendChild(panel);
-    }
-    document.getElementById('media-debug-log').textContent = mediaDebugTimeline.map(mediaDebugFormatEntry).join('\n');
-  }
-
-  if (MEDIA_DEBUG_ENABLED) {
-    mediaDebugRenderPanel();
-    window.addEventListener('blur', () => mediaDebugLog('window_blur'));
-    window.addEventListener('focus', () => mediaDebugLog('window_focus'));
-    window.addEventListener('pageshow', () => mediaDebugLog('pageshow'));
-    document.addEventListener('visibilitychange', () => {
-      mediaDebugLog(document.visibilityState === 'visible' ? 'visibility_visible' : 'visibility_hidden');
-    });
   }
 
   let currentToken = null;
@@ -526,7 +391,6 @@
              server-side (POST /media), neschimbata. NU s-a mai modificat de atunci — HTML valid,
              confirmat exact asa in productie. -->
         <input type="file" id="mem-file-input" multiple accept="image/*,video/*">
-        <p class="memories-hint">${t.memories_ios_wait_hint}</p>
         <p class="memories-hint">${t.memories_hint}</p>
         <div class="mem-page-actions">
           <button type="button" class="${(o.uploadedMedia || []).length > 0 ? '' : 'btn-secondary'}" id="mem-create-btn">${(o.uploadedMedia || []).length > 0 ? t.memories_create_btn : t.memories_create_btn_skip}</button>
@@ -846,10 +710,7 @@
           entry.activePartXhrs[partNumber] = xhr;
           xhr.open('PUT', urlData.url);
           xhr.timeout = MEM_UPLOAD_TIMEOUT_MS;
-          xhr.upload.onprogress = (e) => {
-            if (!mediaDebugFirstR2ProgressLogged && e.loaded > 0) { mediaDebugFirstR2ProgressLogged = true; mediaDebugLog('first_r2_progress'); }
-            if (e.lengthComputable) onProgress(e.loaded);
-          };
+          xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded); };
           xhr.onload = () => {
             delete entry.activePartXhrs[partNumber];
             if (xhr.status >= 200 && xhr.status < 300) {
@@ -862,7 +723,6 @@
           xhr.onerror = () => { delete entry.activePartXhrs[partNumber]; retryOrFail(); };
           xhr.ontimeout = () => { delete entry.activePartXhrs[partNumber]; retryOrFail(); };
           xhr.onabort = () => { delete entry.activePartXhrs[partNumber]; reject(new Error('aborted')); };
-          if (!mediaDebugFirstR2PutLogged) { mediaDebugFirstR2PutLogged = true; mediaDebugLog('first_r2_put_start'); }
           xhr.send(blob);
         } catch (err) {
           retryOrFail();
@@ -886,14 +746,12 @@
     entry.errorMsg = null;
     renderQueueRow(entry);
     try {
-      mediaDebugLog('multipart_init_start');
       const initRes = await fetch(`/api/orders/${orderId}/media/multipart/init`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Access-Token': currentToken || '' },
         body: JSON.stringify({ filename: entry.file.name, size: entry.file.size, mimeType: entry.file.type || '', section: '' })
       });
       const initData = await initRes.json().catch(() => ({}));
-      mediaDebugLog('multipart_init_complete');
       if (!initRes.ok || !initData.sessionId) throw new Error(initData.error || 'init failed');
       entry.multipartSessionId = initData.sessionId;
       const partSize = initData.partSize || (10 * 1024 * 1024);
@@ -997,9 +855,7 @@
     const PICKER_MANUAL_RECOVERY_MS = 5 * 60 * 1000;
     let pickerAwaitingChange = false;
     let pickerOpenToken = 0;
-    if (MEDIA_DEBUG_ENABLED) fileInput.addEventListener('pointerdown', () => mediaDebugLog('file_input_pointerdown'));
     fileInput.addEventListener('click', (e) => {
-      mediaDebugLog('file_input_click');
       if (pickerLocked) {
         if (Date.now() - pickerLockedAt < PICKER_MANUAL_RECOVERY_MS) { e.preventDefault(); return; }
         memLog(orderId, 'picker_manual_recovery', { elapsedMs: Date.now() - pickerLockedAt });
@@ -1020,37 +876,25 @@
       statusEl.classList.remove('err');
       memLog(orderId, 'picker_cancel', {});
     });
-    if (MEDIA_DEBUG_ENABLED) fileInput.addEventListener('input', () => mediaDebugLog('input_event', { filesCount: fileInput.files ? fileInput.files.length : null }));
-    // Fara niciun timer — arata mesajul neutru IMEDIAT daca revenim in pagina si inca asteptam
-    // 'change' (iPhone inca pregateste materialul). Daca 'change' a sosit deja intre timp,
+    // Fara niciun timer — daca revenim in pagina si inca asteptam 'change' (iPhone inca
+    // pregateste materialul), NU aratam nicio eroare si NU deblocam selectorul — doar
+    // consemnam intern (memLog) ca inca asteptam. Daca 'change' a sosit deja intre timp,
     // pickerAwaitingChange e deja fals si aceasta functie nu face nimic.
     function checkPickerDelivery() {
       if (!pickerAwaitingChange) return;
       memLog(orderId, 'picker_still_awaiting_after_focus_return', { ios: memIsIOS });
-      if (memIsIOS) {
-        statusEl.textContent = t.memories_ios_preparing;
-        statusEl.classList.remove('err');
-      }
     }
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') checkPickerDelivery();
     });
     window.addEventListener('focus', checkPickerDelivery);
-    // NOTA: listenerele window/document ale modului diagnostic (blur/focus/pageshow/
-    // visibilitychange) sunt inregistrate O SINGURA DATA, la nivel de modul (vezi mai sus,
-    // langa definitia mediaDebugLog) — NU aici, ca sa nu se inregistreze din nou de fiecare
-    // data cand wireMemoriesEvents() ruleaza (dupa fiecare lookup()), ceea ce ar fi dublat
-    // evenimentele inregistrate in timeline.
 
     let memStatusHintToken = 0;
 
     fileInput.addEventListener('change', () => {
-      mediaDebugLog('change_event');
       pickerLocked = false;
       pickerAwaitingChange = false;
-      mediaDebugLog('filelist_snapshot_start');
       const files = Array.from(fileInput.files);
-      mediaDebugLog('filelist_snapshot_complete', { filesCount: files.length, totalBytes: files.reduce((s, f) => s + (f.size || 0), 0) });
       fileInput.value = '';
       memLog(orderId, 'change', {
         filesLength: files.length,
@@ -1098,10 +942,7 @@
       memLog(orderId, 'staged', { queueLength: uploadQueue.length });
       // Toate cardurile intra IMEDIAT in interfata (randare completa, o singura data, sincron),
       // apoi uploadul porneste automat.
-      mediaDebugLog('queue_render_start');
       renderQueueList();
-      mediaDebugLog('queue_dom_inserted');
-      if (MEDIA_DEBUG_ENABLED) requestAnimationFrame(() => mediaDebugLog('queue_first_paint'));
       processUploadQueue();
     });
 

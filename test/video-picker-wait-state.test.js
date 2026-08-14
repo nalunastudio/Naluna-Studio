@@ -152,10 +152,14 @@ for (const [name, html] of Object.entries(PAGES_WITH_NEUTRAL_MESSAGE)) {
     assert.ok(!src.includes("classList.add('err')"));
   });
 
-  test(`${name}: checkPickerDelivery() arata mesajul neutru STRICT pe iOS, refolosind zona de stare EXISTENTA (niciun element/sectiune noua)`, () => {
+  // RELANSARE (2026-08-14, "elimina mesajul tehnic despre bifa albastra, iCloud si timpul de
+  // asteptare"): checkPickerDelivery() nu mai afiseaza NICIUN text vizibil clientului — doar
+  // consemneaza intern (memLog) ca inca asteapta 'change'. Comportamentul de baza (nicio
+  // eroare, niciun deblocaj, niciun timer) ramane exact cel verificat mai sus.
+  test(`${name}: checkPickerDelivery() NU mai afiseaza niciun mesaj tehnic despre iPhone/iCloud — doar consemneaza intern`, () => {
     const src = extractFunction(html, 'function checkPickerDelivery() {');
-    assert.ok(src.includes('if (memIsIOS) {'));
-    assert.ok(src.includes('statusEl.textContent = t.memories_ios_preparing;'));
+    assert.ok(!src.includes('statusEl.textContent'), 'checkPickerDelivery() nu mai trebuie sa scrie niciun text vizibil');
+    assert.ok(src.includes("memLog("), 'trebuie sa ramana consemnarea interna (memLog), STRICT diagnostic, nevizibila clientului');
   });
 
   test(`${name}: click pe selector reseteaza mesajul de stare (nu ramane un mesaj neutru/eroare vechi la o noua selectie)`, () => {
@@ -164,10 +168,9 @@ for (const [name, html] of Object.entries(PAGES_WITH_NEUTRAL_MESSAGE)) {
     assert.ok(snippet.includes("statusEl.textContent = '';"));
   });
 
-  test(`${name}: textul mesajului neutru "iPhone pregateste..." e exact cel cerut (RO) si e definit in toate cele 8 limbi`, () => {
-    assert.ok(html.includes('iPhone pregătește videoclipurile selectate. Poate dura puțin pentru fișierele mari sau păstrate în iCloud. Nu apăsa din nou.'));
-    const occurrences = (html.match(/memories_ios_preparing:/g) || []).length;
-    assert.equal(occurrences, 8);
+  test(`${name}: mesajul tehnic vechi despre iPhone/iCloud (memories_ios_preparing) a fost eliminat complet`, () => {
+    assert.ok(!html.includes('memories_ios_preparing'), 'cheia de traducere eliminata trebuie sa nu mai apara deloc');
+    assert.ok(!html.includes('iPhone pregătește videoclipurile selectate'));
   });
 }
 

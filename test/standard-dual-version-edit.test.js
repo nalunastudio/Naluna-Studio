@@ -382,24 +382,28 @@ test('emailul si descarcarea dupa plata livreaza EXCLUSIV versiunea selectata pe
 // Video raman neschimbate (2 pasi, regenerateBtn -> confirmRow).
 // ==========================================================================================
 
-test('melodia-mea.html: Standard (inainte de editare) foloseste modul direct — regenerateBtn ramane ascuns intotdeauna', () => {
+// RELANSARE (2026-08-14, "Cadou video reutilizeaza EXACT formatul Standard"): meniul de
+// editare pliabil (inchis implicit, buton "Editează versurile") era rezervat STRICT Standard —
+// acum Video (o singura melodie initiala, la fel ca Standard) foloseste EXACT acelasi
+// comportament. Premium ramane singurul pachet care pastreaza meniul mereu vizibil (2 pasi).
+test('melodia-mea.html: Standard SI Video (inainte de editare) folosesc modul direct — regenerateBtn ramane ascuns intotdeauna', () => {
   const html = read('public/melodia-mea.html');
   assert.ok(
-    html.includes("const standardDirectEditMode = order.plan === 'standard' && !isStandardEditChoice;"),
-    'trebuie detectat explicit modul direct — DOAR Standard, DOAR inainte de a folosi editarea gratuita'
+    html.includes("const standardDirectEditMode = (order.plan === 'standard' || order.plan === 'video') && !isStandardEditChoice;"),
+    'trebuie detectat explicit modul direct — Standard SI Video, DOAR inainte de a folosi editarea gratuita'
   );
   assert.ok(html.includes("regenerateBtn.style.display = 'none';") , 'butonul "Editează cântecul" trebuie ascuns in acest mod (inlocuit de meniul pliabil)');
 });
 
-test('melodia-mea.html: Premium/Video NU sunt afectate de eliminarea pasului intermediar (raman cu 2 pasi)', () => {
+test('melodia-mea.html: Premium NU e afectat de eliminarea pasului intermediar (ramane cu 2 pasi, meniu mereu vizibil)', () => {
   const html = read('public/melodia-mea.html');
   assert.ok(
-    html.includes("const standardDirectEditMode = order.plan === 'standard' && !isStandardEditChoice;"),
-    'conditia trebuie scopata explicit la plan==="standard" — Premium/Video nu trebuie sa intre niciodata pe aceasta ramura'
+    html.includes("const standardDirectEditMode = (order.plan === 'standard' || order.plan === 'video') && !isStandardEditChoice;"),
+    'conditia trebuie sa excluda explicit Premium — Premium nu trebuie sa intre niciodata pe aceasta ramura'
   );
   assert.ok(
     html.includes('standardPreeditToggleWrap.style.display = \'none\';') && html.includes('editMenuFields.hidden = false;'),
-    'Premium/Video trebuie sa aiba mereu meniul de editare vizibil, fara butonul pliabil Standard'
+    'Premium trebuie sa aiba mereu meniul de editare vizibil, fara butonul pliabil Standard'
   );
 });
 

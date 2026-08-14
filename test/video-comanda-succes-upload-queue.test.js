@@ -238,21 +238,20 @@ for (const [name, html] of Object.entries(PAGES)) {
 
   // RELANSARE 2026-08-14: checkPickerDelivery() NU mai declara eroare si NU mai deblocheaza
   // selectorul dupa un timeout scurt — iPhone Photos/iCloud poate avea nevoie de 2-3 minute sa
-  // pregateasca un videoclip mare inainte de 'change'. Acum arata STRICT un mesaj NEUTRU
-  // (memories_ios_preparing), fara timer, fara sa modifice pickerLocked/pickerAwaitingChange.
-  test(`${name}: checkPickerDelivery() NU mai declara eroare si NU mai deblocheaza selectorul — arata STRICT un mesaj neutru, fara niciun timer`, () => {
-    const idx = html.indexOf('function checkPickerDelivery() {');
-    const snippet = html.slice(idx, idx + 500);
+  // pregateasca un videoclip mare inainte de 'change'. RELANSARE ULTERIOARA (aceeasi zi,
+  // "elimina mesajul tehnic despre bifa albastra, iCloud si timpul de asteptare" — cauza reala
+  // a fost deja masurata prin instrumentarea temporara, acum eliminata): checkPickerDelivery()
+  // nu mai afiseaza NICIUN text vizibil, doar consemneaza intern (memLog).
+  test(`${name}: checkPickerDelivery() NU mai declara eroare si NU mai deblocheaza selectorul — nu afiseaza niciun mesaj tehnic, fara niciun timer`, () => {
+    const snippet = extractFunction(html, 'function checkPickerDelivery() {');
     assert.ok(!/setTimeout/.test(snippet), 'checkPickerDelivery() nu mai trebuie sa foloseasca niciun timer');
     assert.ok(!snippet.includes("pickerLocked = false"), 'checkPickerDelivery() nu mai trebuie sa deblocheze selectorul');
     assert.ok(!snippet.includes("classList.add('err')"), 'checkPickerDelivery() nu mai trebuie sa marcheze mesajul ca eroare');
-    assert.ok(snippet.includes('if (memIsIOS) {'));
-    assert.ok(snippet.includes('t.memories_ios_preparing'));
+    assert.ok(!snippet.includes('statusEl.textContent'), 'checkPickerDelivery() nu mai trebuie sa afiseze niciun text vizibil');
   });
 
-  test(`${name}: mesajul neutru "iPhone pregateste..." (memories_ios_preparing) exista in toate cele 8 limbi`, () => {
-    const occurrences = (html.match(/memories_ios_preparing:/g) || []).length;
-    assert.equal(occurrences, 8);
+  test(`${name}: mesajul tehnic vechi despre iPhone/iCloud (memories_ios_preparing) a fost eliminat complet`, () => {
+    assert.ok(!html.includes('memories_ios_preparing'));
   });
 
   test(`${name}: "change" reseteaza flagul de asteptare a picker-ului (pickerAwaitingChange = false), ca sa nu declanseze fals mesajul de recuperare dupa o selectie reusita`, () => {

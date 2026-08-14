@@ -1379,24 +1379,6 @@ app.get('/api/testimonials', async (req, res, next) => {
 
 app.use(express.json({ limit: '20kb' })); // limita de marime — nu accepta payload-uri uriase
 
-// RELANSARE (2026-08-14, "mod diagnostic mediaDebug=1" — "identifica problema de cache prin
-// commitul afisat"): injecteaza commitul curent in cele 3 pagini ale fluxului Cadou video,
-// inlocuind un placeholder static din sursa (`<meta name="naluna-build" content="__NALUNA_BUILD__">`)
-// cu hash-ul real al build-ului activ pe Railway — NU e o ruta noua (aceleasi 3 URL-uri publice,
-// deja servite static pana acum), doar o substitutie de continut inainte de express.static, STRICT
-// pentru aceste 3 fisiere. Fara variabila Railway (ex. rulare locala), ramane placeholder-ul
-// "dev" — vizibil doar in modul diagnostic, niciodata clientilor normali.
-const MEDIA_DEBUG_BUILD = (process.env.RAILWAY_GIT_COMMIT_SHA || 'dev').slice(0, 12);
-const MEDIA_DEBUG_INJECT_FILES = new Set(['/melodia-mea.html', '/comanda-mea.html', '/succes.html']);
-app.use((req, res, next) => {
-  if (req.method !== 'GET' || !MEDIA_DEBUG_INJECT_FILES.has(req.path)) return next();
-  fs.readFile(path.join(__dirname, 'public', req.path), 'utf8', (err, html) => {
-    if (err) return next();
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.send(html.replace('__NALUNA_BUILD__', MEDIA_DEBUG_BUILD));
-  });
-});
-
 // Cache lung (7 zile) DOAR pentru imagini/iconite (logo, favicon, og-image) — practic nu se
 // schimba niciodata, si fara asta fiecare vizita re-verifica fiecare imagine cu serverul
 // (maxAge implicit al express.static e 0). Paginile HTML raman NECACHE-uite (maxAge implicit,
@@ -1793,14 +1775,11 @@ app.post('/api/orders/:orderId/generate', generationLimiter, requireOrderToken, 
     if (!order) return res.status(404).json({ error: 'Comanda nu există.' });
     if (order.status === 'ready') return res.status(400).json({ error: 'Comanda e deja plătită și finalizată.' });
 
-    // Fluxul obligatoriu "Cadou video": materialele trebuie incarcate SI confirmate explicit
-    // ("5. Confirmă selecția materialelor") INAINTE ca generarea gratuita a melodiei sa
-    // poata porni ("6. Numai după salvarea tuturor materialelor începe generarea melodiei") —
-    // verificare server-side, nu doar ordine sugerata in interfata (un client care ar apela
-    // acest endpoint direct, fara sa fi trecut prin UI, nu poate ocoli pasul de upload).
-    if (order.plan === 'video' && !order.mediaConfirmedAt) {
-      return res.status(400).json({ error: 'Încarcă și confirmă fotografiile/videoclipurile înainte de a genera melodia.' });
-    }
+    // RELANSARE (2026-08-14, "materialele se incarca DUPA ce melodia finala e stabilita"):
+    // pachetul "Cadou video" nu mai conditioneaza generarea melodiei de niciun upload — vezi
+    // POST /media/confirm si triggerVideoGeneration mai jos, care declanseaza randarea
+    // videoclipului abia dupa ce clientul alege varianta finala SI confirma materialele.
+    // Gate-ul vechi (mediaConfirmedAt obligatoriu inainte de generare) a fost eliminat complet.
 
     // Blocaj impotriva a doua generari in paralel pentru aceeasi comanda — fara asta,
     // un dublu-click sau un retry de pe client ar putea porni un al doilea task SunoAPI

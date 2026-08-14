@@ -54,21 +54,34 @@ test('regula WAV: comanda.html nu mai foloseste termenul tehnic "WAV" neexplicat
   assert.ok(html.includes('calitate înaltă'), 'formularea inlocuitoare ("versiune/fisier audio la calitate inalta") trebuie sa fie prezenta');
 });
 
-test('scenariul 4: pachetul Video foloseste un buton dedicat catre pasul media, nu "genereaza previzualizarea"', () => {
+// RELANSARE (2026-08-14, "materialele se incarca DUPA ce melodia finala e stabilita"):
+// pachetul Video nu mai sare peste generarea melodiei — foloseste acum EXACT acelasi buton si
+// acelasi apel /generate ca Standard/Premium, imediat dupa crearea comenzii. Materialele se
+// incarca abia dupa ce melodia finala e aleasa, pe melodia-mea.html.
+test('scenariul 4 (relansat): pachetul Video foloseste EXACT acelasi buton "genereaza previzualizarea" ca Standard/Premium, fara ramura separata', () => {
   const html = read('public/comanda.html');
-  assert.ok(html.includes('btn_continue_media'), 'trebuie sa existe cheia de traducere btn_continue_media');
-  assert.ok(html.includes('updateGenerateButtonLabel'), 'eticheta butonului trebuie sa fie actualizata dinamic in functie de planul ales');
+  assert.ok(!html.includes('btn_continue_media'), 'cheia de traducere veche (buton separat catre materiale) nu mai trebuie sa existe');
+  assert.ok(html.includes('updateGenerateButtonLabel'), 'functia ramane, dar foloseste acum necondiTionat btn_generate');
   assert.ok(
-    html.includes("selectedPlan.id === 'video'") && html.includes('melodia-mea.html?id='),
-    'planul video trebuie sa redirectioneze direct catre melodia-mea.html, fara sa apeleze /generate'
+    html.includes("label.setAttribute('data-i18n', 'btn_generate');") && html.includes("label.textContent = t('btn_generate');"),
+    'eticheta butonului trebuie sa fie STRICT btn_generate, indiferent de planul ales'
+  );
+  assert.ok(
+    !html.includes("if (selectedPlan.id === 'video') {") || !html.includes('window.location.href = `/melodia-mea.html?id=${currentOrderId}&token=${tokenParam}`;'),
+    'nu mai trebuie sa existe o ramura separata care redirectioneaza planul video direct catre melodia-mea.html, ocolind /generate'
   );
 });
 
-test('scenariul 5: backend-ul refuza /generate pentru Video fara materiale confirmate', () => {
+test('scenariul 5 (relansat): backend-ul NU mai conditioneaza /generate de materiale confirmate pentru Video', () => {
   const server = read('server.js');
   assert.ok(
-    server.includes("order.plan === 'video' && !order.mediaConfirmedAt"),
-    'ruta POST /generate trebuie sa verifice explicit mediaConfirmedAt pentru planul video'
+    !server.includes("order.plan === 'video' && !order.mediaConfirmedAt"),
+    'gate-ul vechi (mediaConfirmedAt obligatoriu inainte de generare) trebuie eliminat complet din POST /generate'
+  );
+  // Checkout ramane STRICT gatat pe materiale confirmate + videoclip gata — neschimbat.
+  assert.ok(
+    server.includes("if (order.plan === 'video') {") && server.includes("if (!order.mediaConfirmedAt) {"),
+    'checkout-ul trebuie sa ramana gatat pe mediaConfirmedAt (neschimbat) — doar generarea melodiei nu mai e'
   );
 });
 
