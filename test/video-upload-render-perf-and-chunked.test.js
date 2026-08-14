@@ -107,14 +107,18 @@ for (const [name, html] of Object.entries(PAGES)) {
   });
 
   // -----------------------------------------------------------------------------------------
-  // 4. Blocaj impotriva apasarilor duplicate pe selector.
+  // 4. Blocaj impotriva apasarilor duplicate pe selector — RELANSARE 2026-08-14 ("starea de
+  //    asteptare dupa selectarea videoclipurilor iPhone"): eliminat timeout-ul orb de 20s care
+  //    debloca automat selectorul (iPhone Photos/iCloud poate avea nevoie de 2-3 minute inainte
+  //    de 'change', interval in care acel timeout debloca eronat selectorul). Eliberare STRICT
+  //    la 'change'/'cancel' real, sau la o apasare manuala explicita dupa un prag rezonabil.
   // -----------------------------------------------------------------------------------------
-  test(`${name}: prima apasare pe selectorul de fisiere blocheaza apasarile duplicate pana la 'change'/'cancel'/timeout de siguranta`, () => {
+  test(`${name}: prima apasare pe selectorul de fisiere blocheaza apasarile duplicate — eliberata STRICT prin actiune, niciodata printr-un timeout orb`, () => {
     assert.ok(html.includes('let pickerLocked = false;'));
-    assert.ok(html.includes('if (pickerLocked) { e.preventDefault(); return; }'));
     assert.ok(html.includes('pickerLocked = true;'));
-    // eliberare garantata si fara niciun eveniment (siguranta) — timeout explicit, nu doar 'change'/'cancel'
-    assert.ok(/pickerLockTimeoutId\s*=\s*setTimeout\(\s*\(\)\s*=>\s*\{\s*pickerLocked\s*=\s*false;\s*\},\s*20000\)/.test(html));
+    assert.ok(html.includes('const PICKER_MANUAL_RECOVERY_MS = 5 * 60 * 1000;'), 'trebuie sa existe un prag de recuperare manuala rezonabil (5 minute)');
+    assert.ok(!/setTimeout\(\s*\(\)\s*=>\s*\{\s*pickerLocked\s*=\s*false;/.test(html), 'nu mai trebuie sa existe niciun timeout care deblocheaza singur selectorul, fara actiune a utilizatorului');
+    assert.ok(!html.includes('pickerLockTimeoutId'), 'variabila timeout-ului orb eliminat nu mai trebuie sa existe');
   });
 
   // -----------------------------------------------------------------------------------------

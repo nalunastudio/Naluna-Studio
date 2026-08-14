@@ -2960,29 +2960,32 @@
   const memFileInput = document.getElementById('mem-file-input');
   const memStatusEl = document.getElementById('mem-status');
 
-  // RELANSARE 2026-08-14 ("previne cele 100 de apasari"): un singur mecanism deschide
-  // selectorul — prima apasare blocheaza imediat apasarile duplicate (preventDefault opreste
-  // efectiv deschiderea nativa a doua oara), eliberat STRICT la 'change', 'cancel', sau (daca
-  // niciunul din ele nu vine, ex. eroare nativa iOS inainte de revenirea la pagina) un timeout
-  // de siguranta — selectorul nu ramane blocat la nesfarsit.
+  // RELANSARE 2026-08-14 ("starea de asteptare dupa selectarea videoclipurilor iPhone"):
+  // eliminat timeout-ul orb de 20s care debloca automat selectorul — iPhone Photos/iCloud
+  // poate avea nevoie de 2-3 minute sa pregateasca un videoclip mare inainte ca Safari sa
+  // primeasca 'change', iar acel timeout debloca eronat selectorul exact in acest interval
+  // normal. Selectorul se deblocheaza ACUM STRICT la: 'change' real, 'cancel' real, sau o
+  // apasare manuala explicita DUPA PICKER_MANUAL_RECOVERY_MS (recuperare la cerere, niciodata
+  // redeschidere automata).
   let pickerLocked = false;
-  let pickerLockTimeoutId = null;
+  let pickerLockedAt = 0;
+  const PICKER_MANUAL_RECOVERY_MS = 5 * 60 * 1000;
   memFileInput.addEventListener('click', (e) => {
-    if (pickerLocked) { e.preventDefault(); return; }
+    if (pickerLocked && Date.now() - pickerLockedAt < PICKER_MANUAL_RECOVERY_MS) {
+      e.preventDefault();
+      return;
+    }
     pickerLocked = true;
-    clearTimeout(pickerLockTimeoutId);
-    pickerLockTimeoutId = setTimeout(() => { pickerLocked = false; }, 20000);
+    pickerLockedAt = Date.now();
   });
   memFileInput.addEventListener('cancel', () => {
     pickerLocked = false;
-    clearTimeout(pickerLockTimeoutId);
   });
 
   let memStatusHintToken = 0;
 
   memFileInput.addEventListener('change', () => {
     pickerLocked = false;
-    clearTimeout(pickerLockTimeoutId);
     const files = Array.from(memFileInput.files);
     memFileInput.value = '';
     // INCIDENT 2026-08-07 (Cadou video, iPhone): un client a raportat ca a selectat si

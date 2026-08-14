@@ -209,18 +209,21 @@ for (const [name, html] of Object.entries(PAGES)) {
     assert.ok(html.includes("window.addEventListener('focus', checkPickerDelivery);"));
   });
 
-  // RELANSARE 2026-08-14 ("previne cele 100 de apasari"): prima apasare pe input blocheaza
-  // imediat apasarile duplicate (preventDefault opreste efectiv a doua deschidere nativa),
-  // eliberat STRICT la 'change'/'cancel'/timeout de siguranta.
-  test(`${name}: prima apasare pe selector blocheaza apasarile duplicate (pickerLocked + preventDefault)`, () => {
+  // RELANSARE 2026-08-14 ("starea de asteptare dupa selectarea videoclipurilor iPhone"):
+  // prima apasare pe input blocheaza imediat apasarile duplicate (preventDefault opreste
+  // efectiv a doua deschidere nativa) — eliberat STRICT la 'change'/'cancel', SAU la o apasare
+  // manuala explicita dupa PICKER_MANUAL_RECOVERY_MS (niciun timeout orb care deblocheaza
+  // singur, fara actiune a utilizatorului).
+  test(`${name}: prima apasare pe selector blocheaza apasarile duplicate (pickerLocked), eliberata STRICT prin actiune (nu printr-un timeout orb)`, () => {
     const idx = html.indexOf("fileInput.addEventListener('click', (e) => {");
     assert.notEqual(idx, -1);
-    const snippet = html.slice(idx, idx + 300);
-    assert.ok(snippet.includes('if (pickerLocked) { e.preventDefault(); return; }'));
+    const snippet = html.slice(idx, idx + 400);
+    assert.ok(snippet.includes('if (Date.now() - pickerLockedAt < PICKER_MANUAL_RECOVERY_MS) { e.preventDefault(); return; }'));
     assert.ok(snippet.includes('pickerLocked = true;'));
+    assert.ok(!/setTimeout\(\s*\(\)\s*=>\s*\{\s*pickerLocked\s*=\s*false;/.test(html), 'nu mai trebuie sa existe niciun timeout orb care deblocheaza singur selectorul');
   });
 
-  test(`${name}: blocarea selectorului e eliberata la 'cancel' si la 'change', niciodata permanenta`, () => {
+  test(`${name}: blocarea selectorului e eliberata la 'cancel' si la 'change', niciodata printr-un timeout automat`, () => {
     const idx = html.indexOf("fileInput.addEventListener('cancel', () => {");
     assert.notEqual(idx, -1);
     const cancelSnippet = html.slice(idx, idx + 150);
@@ -230,11 +233,23 @@ for (const [name, html] of Object.entries(PAGES)) {
     assert.ok(changeSnippet.includes('pickerLocked = false;'));
   });
 
-  test(`${name}: mesajul de recuperare iOS e afisat STRICT cand memIsIOS e adevarat, niciodata neconditionat`, () => {
+  // RELANSARE 2026-08-14: checkPickerDelivery() NU mai declara eroare si NU mai deblocheaza
+  // selectorul dupa un timeout scurt — iPhone Photos/iCloud poate avea nevoie de 2-3 minute sa
+  // pregateasca un videoclip mare inainte de 'change'. Acum arata STRICT un mesaj NEUTRU
+  // (memories_ios_preparing), fara timer, fara sa modifice pickerLocked/pickerAwaitingChange.
+  test(`${name}: checkPickerDelivery() NU mai declara eroare si NU mai deblocheaza selectorul — arata STRICT un mesaj neutru, fara niciun timer`, () => {
     const idx = html.indexOf('function checkPickerDelivery() {');
-    const snippet = html.slice(idx, idx + 600);
+    const snippet = html.slice(idx, idx + 500);
+    assert.ok(!/setTimeout/.test(snippet), 'checkPickerDelivery() nu mai trebuie sa foloseasca niciun timer');
+    assert.ok(!snippet.includes("pickerLocked = false"), 'checkPickerDelivery() nu mai trebuie sa deblocheze selectorul');
+    assert.ok(!snippet.includes("classList.add('err')"), 'checkPickerDelivery() nu mai trebuie sa marcheze mesajul ca eroare');
     assert.ok(snippet.includes('if (memIsIOS) {'));
-    assert.ok(snippet.includes('t.memories_ios_recovery'));
+    assert.ok(snippet.includes('t.memories_ios_preparing'));
+  });
+
+  test(`${name}: mesajul neutru "iPhone pregateste..." (memories_ios_preparing) exista in toate cele 8 limbi`, () => {
+    const occurrences = (html.match(/memories_ios_preparing:/g) || []).length;
+    assert.equal(occurrences, 8);
   });
 
   test(`${name}: "change" reseteaza flagul de asteptare a picker-ului (pickerAwaitingChange = false), ca sa nu declanseze fals mesajul de recuperare dupa o selectie reusita`, () => {
