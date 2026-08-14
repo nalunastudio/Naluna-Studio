@@ -265,6 +265,7 @@
   .memories h2{ font-family:'Fraunces', serif; font-weight:400; font-size:17px; margin:0 0 6px; }
   .memories-sub{ font-size:13px; color:var(--text-secondary); margin-bottom:14px; }
   .memories-meta{ font-size:12px; color:var(--text-secondary); margin:0 0 14px; line-height:1.6; }
+  .memories-hint{ font-size:12px; color:var(--text-secondary); margin:8px 0 14px; line-height:1.6; }
   .memories-count{ font-size:12px; font-weight:600; margin-bottom:10px; }
   .mem-batch-status{ font-size:12px; font-weight:600; color:var(--gold-deep); margin:2px 0 10px; min-height:15px; }
   .memories-count.ok{ color:var(--success); }
@@ -680,6 +681,7 @@
                depinde deloc de acest atribut — ramane STRICT server-side, neschimbata; DNG
                ramane acceptat, identificat prin fallback pe extensie (inferMediaType). -->
           <input type="file" id="mem-file-input" multiple accept="image/*,video/*">
+          <p class="memories-hint" id="memories-ios-wait-hint"></p>
           <p class="mem-status" id="mem-status"></p>
         </div>
 
@@ -989,6 +991,7 @@
       memories_title: 'Adaugă pozele și videoclipurile tale',
       memories_sub: 'Adaugă între 3 și 10 poze sau clipuri video — le vom transforma într-un videoclip sincronizat cu melodia ta.',
       memories_meta: (min, max) => `Între ${min} și ${max} materiale • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • orice combinație de poze și videoclipuri`,
+      memories_ios_wait_hint: 'După ce apeși bifa albastră, iPhone poate avea nevoie de puțin timp pentru a pregăti videoclipurile mari sau păstrate în iCloud. Nu apăsa din nou și nu închide fereastra — încărcarea începe automat.',
       memories_count: (n, min, max, pending) => (n < min ? `${n} din minimum ${min} materiale` : n > max ? `Prea multe materiale (${n}/${max})` : `${n} materiale — gata de continuare`) + (pending > 0 ? ` (${pending} în curs de încărcare)` : ''),
       memories_uploading: 'Se încarcă...', memories_queued: 'În așteptare...', memories_uploaded: 'Încărcat', memories_remove: '✕', memories_retry: 'Reîncearcă',
       memories_processing: 'Se procesează',
@@ -1068,6 +1071,7 @@
       memories_title: 'Add your photos & videos',
       memories_sub: "Add 3 to 10 photos or video clips — we'll weave them into a video synced to your song.",
       memories_meta: (min, max) => `${min} to ${max} items • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • any mix of photos and videos`,
+      memories_ios_wait_hint: "After you tap the blue checkmark, your iPhone may need a moment to prepare large videos or ones stored in iCloud. Don't tap again and don't close the window — the upload starts automatically.",
       memories_count: (n, min, max, pending) => (n < min ? `${n} of at least ${min} items` : n > max ? `Too many items (${n}/${max})` : `${n} items — ready to continue`) + (pending > 0 ? ` (${pending} uploading)` : ''),
       memories_uploading: 'Uploading...', memories_queued: 'Queued...', memories_uploaded: 'Uploaded', memories_remove: '✕', memories_retry: 'Retry',
       memories_processing: 'Processing',
@@ -1147,6 +1151,7 @@
       memories_title: 'Füge deine Fotos & Videos hinzu',
       memories_sub: 'Füge 3 bis 10 Fotos oder Videoclips hinzu — wir verweben sie zu einem Video, das genau auf dein Lied abgestimmt ist.',
       memories_meta: (min, max) => `${min} bis ${max} Elemente • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • jede Mischung aus Fotos und Videos`,
+      memories_ios_wait_hint: 'Nachdem du auf das blaue Häkchen getippt hast, braucht dein iPhone eventuell etwas Zeit, um große oder in iCloud gespeicherte Videos vorzubereiten. Tippe nicht erneut und schließe das Fenster nicht — der Upload startet automatisch.',
       memories_count: (n, min, max, pending) => (n < min ? `${n} von mindestens ${min} Elementen` : n > max ? `Zu viele Elemente (${n}/${max})` : `${n} Elemente — bereit zum Fortfahren`) + (pending > 0 ? ` (${pending} werden hochgeladen)` : ''),
       memories_uploading: 'Wird hochgeladen...', memories_queued: 'In Warteschlange...', memories_uploaded: 'Hochgeladen', memories_remove: '✕', memories_retry: 'Erneut versuchen',
       memories_processing: 'Wird verarbeitet',
@@ -1226,6 +1231,7 @@
       memories_title: 'Añade tus fotos y videos',
       memories_sub: 'Añade entre 3 y 10 fotos o clips de video — los combinaremos en un video sincronizado con tu canción.',
       memories_meta: (min, max) => `Entre ${min} y ${max} elementos • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • cualquier combinación de fotos y videos`,
+      memories_ios_wait_hint: 'Después de tocar la marca azul, tu iPhone puede necesitar un momento para preparar videos grandes o guardados en iCloud. No vuelvas a tocar ni cierres la ventana — la subida comienza automáticamente.',
       memories_count: (n, min, max, pending) => (n < min ? `${n} de al menos ${min} elementos` : n > max ? `Demasiados elementos (${n}/${max})` : `${n} elementos — listo para continuar`) + (pending > 0 ? ` (${pending} subiendo)` : ''),
       memories_uploading: 'Subiendo...', memories_queued: 'En espera...', memories_uploaded: 'Subido', memories_remove: '✕', memories_retry: 'Reintentar',
       memories_processing: 'Procesando',
@@ -1305,6 +1311,7 @@
       memories_title: 'Aggiungi le tue foto e i tuoi video',
       memories_sub: 'Aggiungi da 3 a 10 foto o clip video: le trasformeremo in un video sincronizzato con la tua canzone.',
       memories_meta: (min, max) => `Da ${min} a ${max} elementi • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • qualsiasi combinazione di foto e video`,
+      memories_ios_wait_hint: "Dopo aver toccato il segno di spunta blu, il tuo iPhone potrebbe aver bisogno di un momento per preparare i video grandi o salvati su iCloud. Non toccare di nuovo e non chiudere la finestra — il caricamento inizia automaticamente.",
       memories_count: (n, min, max, pending) => (n < min ? `${n} di almeno ${min} elementi` : n > max ? `Troppi elementi (${n}/${max})` : `${n} elementi — pronto per continuare`) + (pending > 0 ? ` (${pending} in caricamento)` : ''),
       memories_uploading: 'Caricamento...', memories_queued: 'In attesa...', memories_uploaded: 'Caricato', memories_remove: '✕', memories_retry: 'Riprova',
       memories_processing: 'Elaborazione',
@@ -1384,6 +1391,7 @@
       memories_title: 'Ajoutez vos photos et vidéos',
       memories_sub: 'Ajoutez 3 à 10 photos ou clips vidéo — nous les intégrerons dans une vidéo synchronisée avec votre chanson.',
       memories_meta: (min, max) => `${min} à ${max} éléments • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • tout mélange de photos et vidéos`,
+      memories_ios_wait_hint: "Après avoir appuyé sur la coche bleue, votre iPhone peut avoir besoin d'un moment pour préparer les vidéos volumineuses ou stockées dans iCloud. Ne touchez pas à nouveau l'écran et ne fermez pas la fenêtre — l'envoi démarre automatiquement.",
       memories_count: (n, min, max, pending) => (n < min ? `${n} sur au moins ${min} éléments` : n > max ? `Trop d'éléments (${n}/${max})` : `${n} éléments — prêt à continuer`) + (pending > 0 ? ` (${pending} en cours d'envoi)` : ''),
       memories_uploading: 'Envoi en cours...', memories_queued: 'En attente...', memories_uploaded: 'Envoyé', memories_remove: '✕', memories_retry: 'Réessayer',
       memories_processing: 'Traitement en cours',
@@ -1463,6 +1471,7 @@
       memories_title: 'Добави своите снимки и видеа',
       memories_sub: 'Добави между 3 и 10 снимки или видеоклипа — ще ги превърнем във видео, синхронизирано с твоята песен.',
       memories_meta: (min, max) => `Между ${min} и ${max} материала • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • всякаква комбинация от снимки и видеа`,
+      memories_ios_wait_hint: 'След като докоснеш синята отметка, iPhone може да се нуждае от малко време, за да подготви големи видеа или такива, съхранени в iCloud. Не докосвай отново и не затваряй прозореца — качването започва автоматично.',
       memories_count: (n, min, max, pending) => (n < min ? `${n} от поне ${min} материала` : n > max ? `Твърде много материали (${n}/${max})` : `${n} материала — готово за продължаване`) + (pending > 0 ? ` (${pending} се качват)` : ''),
       memories_uploading: 'Качване...', memories_queued: 'На изчакване...', memories_uploaded: 'Качено', memories_remove: '✕', memories_retry: 'Опитай отново',
       memories_processing: 'Обработва се',
@@ -1542,6 +1551,7 @@
       memories_title: 'Fotoğraflarınızı ve videolarınızı ekleyin',
       memories_sub: '3 ile 10 arası fotoğraf veya video klip ekleyin — bunları şarkınızla senkronize bir videoya dönüştürelim.',
       memories_meta: (min, max) => `${min} ile ${max} arası öğe • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • fotoğraf ve video karışımı kabul edilir`,
+      memories_ios_wait_hint: "Mavi onay işaretine dokunduktan sonra, iPhone'unuzun büyük veya iCloud'da saklanan videoları hazırlamak için biraz zamana ihtiyacı olabilir. Tekrar dokunmayın ve pencereyi kapatmayın — yükleme otomatik olarak başlar.",
       memories_count: (n, min, max, pending) => (n < min ? `${n} / en az ${min} öğe` : n > max ? `Çok fazla öğe (${n}/${max})` : `${n} öğe — devam etmeye hazır`) + (pending > 0 ? ` (${pending} yükleniyor)` : ''),
       memories_uploading: 'Yükleniyor...', memories_queued: 'Sırada...', memories_uploaded: 'Yüklendi', memories_remove: '✕', memories_retry: 'Tekrar dene',
       memories_processing: 'İşleniyor',
@@ -2381,6 +2391,7 @@
     document.getElementById('memories-title').textContent = t.memories_title;
     document.getElementById('memories-sub').textContent = t.memories_sub;
     document.getElementById('memories-meta').textContent = t.memories_meta(MEM_MIN, MEM_MAX);
+    document.getElementById('memories-ios-wait-hint').textContent = t.memories_ios_wait_hint;
     renderExistingList(order);
     renderQueueList();
     updateMemoriesCountAndGates(order);
