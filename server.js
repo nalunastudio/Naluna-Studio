@@ -4944,11 +4944,52 @@ async function downloadOrderMedia(order, items) {
   return localItems;
 }
 
+// Durata REALA a unui videoclip sursa (secunde) — folosita STRICT ca sa alegem un punct de
+// start mai bun in renderMemorySegment (vezi mai jos), niciodata pentru validare (asta ramane
+// treaba lui verifyMediaDecodable, la upload). Esec/timeout -> null, apelantul revine automat
+// la comportamentul vechi (start de la 0) — nicio eroare aici nu trebuie sa opreasca randarea.
+async function getVideoSourceDurationSeconds(localPath) {
+  try {
+    const { stdout } = await execFileAsync('ffprobe', [
+      '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', localPath
+    ], { timeout: 15000 });
+    const d = parseFloat(stdout);
+    return Number.isFinite(d) && d > 0 ? d : null;
+  } catch (err) {
+    return null;
+  }
+}
+
+// CORECȚIE (2026-08-14, "nu selecta accidental numai primul fragment al fiecarui clip"):
+// functie PURA (fara I/O), extrasa separat ca sa poata fi testata izolat, fara ffmpeg —
+// pentru un videoclip SURSA mai lung decat durata alocata (frecvent pentru clipurile de
+// 1-2 minute de pe iPhone), nu mai extragem intotdeauna DE LA INCEPUT (adesea exact
+// momentul in care telefonul e ridicat/pornit, instabil) — alegem un punct de start
+// DETERMINIST (nu aleator — acelasi rezultat la o re-randare), care evita primele ~8% si
+// ultimele ~5% din clip si variaza intre materiale succesive (dupa indexul elementului),
+// folosind pasul de aur pentru o distributie uniforma, nu repetitiva. Pentru un videoclip
+// MAI SCURT decat durata alocata (sau daca durata sursei e necunoscuta — ffprobe a esuat),
+// pastram EXACT comportamentul anterior — bucla completa de la inceput (-stream_loop -1),
+// dovedit robust in productie.
+function computeVideoSegmentStartOffset(index, sourceDurationSeconds, segDurationSeconds) {
+  if (!sourceDurationSeconds || sourceDurationSeconds <= segDurationSeconds) {
+    return { useLoop: true, startOffset: 0 };
+  }
+  const usableSpan = sourceDurationSeconds - segDurationSeconds;
+  const marginStart = sourceDurationSeconds * 0.08;
+  const marginEnd = sourceDurationSeconds * 0.05;
+  const safeSpan = Math.max(0, usableSpan - marginStart - marginEnd);
+  const GOLDEN_RATIO_CONJUGATE = 0.61803398875; // distributie uniforma, deterministă, per index
+  const fraction = safeSpan > 0 ? ((index * GOLDEN_RATIO_CONJUGATE) % 1) : 0;
+  const startOffset = Math.max(0, Math.min(marginStart + fraction * safeSpan, usableSpan));
+  return { useLoop: false, startOffset };
+}
+
 // Randeaza UN element ca segment TACUT, durata fixa exacta, la rezolutia finala a
 // videoclipului (720x1280). Pozele primesc un zoom lent si subtil (efect Ken Burns, de la
 // 1.0x la 1.12x, centrat) — suficient de discret sa nu para agresiv pe o amintire.
-// Videoclipurile sunt scalate/decupate la acelasi format si repetate in bucla (-stream_loop)
-// daca sunt mai scurte decat durata alocata, ca sa umple exact intervalul.
+// Videoclipurile sunt scalate/decupate la acelasi format — vezi computeVideoSegmentStartOffset
+// mai sus pentru alegerea punctului de start.
 async function renderMemorySegment(item, index, segDurationSeconds, order) {
   const outPath = path.join(TEMP_DIR, `${order.id}-memory-seg-${index}.mp4`);
   const frames = Math.max(1, Math.round(segDurationSeconds * MEMORY_VIDEO_FPS));
@@ -4965,8 +5006,13 @@ async function renderMemorySegment(item, index, segDurationSeconds, order) {
       outPath
     ], { timeout: 180000 });
   } else {
+    const sourceDuration = await getVideoSourceDurationSeconds(item.localPath);
+    const { useLoop, startOffset } = computeVideoSegmentStartOffset(index, sourceDuration, segDurationSeconds);
+    const inputArgs = useLoop
+      ? ['-stream_loop', '-1', '-i', item.localPath]
+      : ['-ss', startOffset.toFixed(2), '-i', item.localPath];
     await execFfmpeg([
-      '-y', '-stream_loop', '-1', '-i', item.localPath,
+      '-y', ...inputArgs,
       '-t', String(segDurationSeconds),
       '-vf', `scale=${MEMORY_VIDEO_WIDTH}:${MEMORY_VIDEO_HEIGHT}:force_original_aspect_ratio=increase,crop=${MEMORY_VIDEO_WIDTH}:${MEMORY_VIDEO_HEIGHT},fps=${MEMORY_VIDEO_FPS},format=yuv420p`,
       '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '28', '-an',

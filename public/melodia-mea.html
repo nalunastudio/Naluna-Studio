@@ -666,8 +666,18 @@
           <p class="memories-count" id="memories-count"></p>
           <div class="mem-list" id="mem-uploaded-list"></div>
           <div class="mem-list" id="mem-staged-list"></div>
-          <input type="file" id="mem-file-input" multiple
-            accept="image/jpeg,image/png,image/webp,image/heic,image/heif,image/x-adobe-dng,.dng,video/mp4,video/quicktime,video/webm">
+          <!-- CORECȚIE (2026-08-14, "Articolele nu pot fi încărcate" pe iPhone): acceptul
+               vechi enumera explicit fiecare MIME (inclusiv "image/x-adobe-dng", un tip
+               NESTANDARD, neinregistrat, plus extensia redundanta ".dng") — Safari/iOS poate
+               esua sa initializeze corect selectorul nativ PHPicker cand primeste o lista
+               "accept" cu un MIME pe care nu il recunoaste, aratand exact eroarea nativa
+               raportata ("Articolele nu pot fi încărcate"), pentru SELECTIA INTREAGA, nu doar
+               pentru fisierul DNG — reprodus indirect: cu wildcard-uri simple ("image/*,
+               video/*"), pe care iOS le intelege garantat, problema dispare. Validarea REALA
+               de continut (magic bytes + decodare ffprobe, vezi POST /media in server.js) NU
+               depinde deloc de acest atribut — ramane STRICT server-side, neschimbata; DNG
+               ramane acceptat, identificat prin fallback pe extensie (inferMediaType). -->
+          <input type="file" id="mem-file-input" multiple accept="image/*,video/*">
           <p class="mem-status" id="mem-status"></p>
         </div>
 

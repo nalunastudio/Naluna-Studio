@@ -151,8 +151,13 @@ test('melodia-mea.html: MAX_CONCURRENT_UPLOADS si UPLOAD_TIMEOUT_MS raman neschi
   assert.match(melodiaMea, /const UPLOAD_TIMEOUT_MS = 120000;/);
 });
 
-test('melodia-mea.html: acceptul de fisiere (formate/extensii) ramane exact neschimbat', () => {
-  assert.ok(melodiaMea.includes('accept="image/jpeg,image/png,image/webp,image/heic,image/heif,image/x-adobe-dng,.dng,video/mp4,video/quicktime,video/webm"'));
+// REVIZUIT (2026-08-14, "Articolele nu pot fi încărcate" pe iPhone): acceptul explicit,
+// listand MIME-uri individuale (inclusiv "image/x-adobe-dng", nestandard), a fost inlocuit cu
+// wildcard-uri simple — vezi test/video-ios-multi-select-upload.test.js pentru testele dedicate
+// noii corectii. Validarea reala de continut (magic bytes + ffprobe) ramane STRICT server-side,
+// neschimbata — vezi ORDER_MEDIA_MIME_TYPES in server.js.
+test('melodia-mea.html: acceptul de fisiere foloseste wildcard-uri simple (image/*,video/*), compatibile cu selectorul nativ iOS', () => {
+  assert.ok(melodiaMea.includes('accept="image/*,video/*"'));
 });
 
 test('melodia-mea.html: inputul de fisiere ramane un singur element static in HTML (id="mem-file-input"), niciodata reconstruit dintr-un template — listenerul nu se poate pierde la re-randare', () => {

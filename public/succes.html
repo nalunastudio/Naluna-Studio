@@ -358,8 +358,12 @@
           <p class="memories-sub">${t.memories_sub}</p>
           <div class="mem-list" id="mem-uploaded-list">${uploadedHtml}</div>
           <div class="mem-list" id="mem-staged-list"></div>
-          <input type="file" id="mem-file-input" multiple
-            accept="image/jpeg,image/png,image/webp,image/heic,image/heif,image/x-adobe-dng,.dng,video/mp4,video/quicktime,video/webm">
+          <!-- CORECȚIE (2026-08-14, "Articolele nu pot fi încărcate" pe iPhone) — vezi comentariul
+               identic din melodia-mea.html: acceptul explicit, cu "image/x-adobe-dng" (MIME
+               nestandard) si ".dng" redundant, putea face Safari/iOS sa esueze la initializarea
+               selectorului nativ pentru INTREAGA selectie. Validarea reala ramane STRICT
+               server-side (POST /media), neschimbata. -->
+          <input type="file" id="mem-file-input" multiple accept="image/*,video/*">
           <p class="memories-hint">${t.memories_hint}</p>
           <div class="mem-actions">
             <button type="button" class="btn" id="mem-upload-btn" style="display:none;">${t.memories_upload_btn}</button>
