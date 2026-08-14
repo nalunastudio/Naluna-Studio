@@ -3,6 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- Placeholder inlocuit server-side cu commitul curent — vezi middleware-ul dedicat din
+     server.js, folosit STRICT de modul diagnostic (?mediaDebug=1), ca sa poata identifica
+     un build vechi servit dintr-un cache, fara sa introduca vreo ruta noua. -->
+<meta name="naluna-build" content="__NALUNA_BUILD__">
 <title>NALUNA — cântecul tău</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;1,9..144,400&family=Sora:wght@400;500;600&display=swap" rel="stylesheet">
@@ -393,6 +397,121 @@
       return div.innerHTML;
     }
 
+    // ==========================================================================================
+    // MOD DIAGNOSTIC (2026-08-14, "trebuie masurat exact unde se pierd cele doua minute") — STRICT
+    // pentru localizarea blocajului raportat pe iPhone (3 videoclipuri selectate, bifa albastra
+    // apasata o singura data, pagina Naluna revine abia dupa ~2 minute). Activat DOAR prin
+    // ?mediaDebug=1 in URL — pentru orice alt client, mediaDebugLog() e un no-op imediat (o
+    // singura verificare booleana), deci NU exista nicio schimbare de comportament, timing sau
+    // continut pentru clientii normali. NU modifica uploadul, R2, CORS, timeout-urile sau
+    // mesajele normale — STRICT citire/inregistrare locala, pastrata in sessionStorage
+    // (supravietuieste revenirii din selectorul nativ), niciodata trimisa catre vreun server. NU
+    // inregistreaza niciodata nume de fisier, tokenul comenzii, continut media, date personale
+    // sau URL-uri semnate — STRICT numarul/dimensiunea totala a fisierelor si marcaje de timp.
+    // ==========================================================================================
+    const MEDIA_DEBUG_ENABLED = new URLSearchParams(location.search).get('mediaDebug') === '1';
+    const MEDIA_DEBUG_STORAGE_KEY = 'naluna_media_debug_timeline';
+    const MEDIA_DEBUG_BUILD = (document.querySelector('meta[name="naluna-build"]') || {}).content || 'unknown';
+    let mediaDebugPickerOpenPerf = null;
+    let mediaDebugTimeline = [];
+    let mediaDebugFirstR2PutLogged = false;
+    let mediaDebugFirstR2ProgressLogged = false;
+    if (MEDIA_DEBUG_ENABLED) {
+      try {
+        const saved = sessionStorage.getItem(MEDIA_DEBUG_STORAGE_KEY);
+        if (saved) mediaDebugTimeline = JSON.parse(saved);
+      } catch (e) { /* pornim cu timeline gol */ }
+    }
+
+    function mediaDebugLog(eventName, extra) {
+      if (!MEDIA_DEBUG_ENABLED) return;
+      const nowPerf = performance.now();
+      if ((eventName === 'file_input_pointerdown' || eventName === 'file_input_click') && mediaDebugPickerOpenPerf == null) {
+        mediaDebugPickerOpenPerf = nowPerf;
+      }
+      const entry = {
+        event: eventName,
+        wallClock: new Date().toISOString(),
+        perfMs: Math.round(nowPerf),
+        sincePickerOpenMs: mediaDebugPickerOpenPerf != null ? Math.round(nowPerf - mediaDebugPickerOpenPerf) : null,
+        visibilityState: document.visibilityState,
+        filesCount: (extra && typeof extra.filesCount === 'number') ? extra.filesCount : null,
+        totalBytes: (extra && typeof extra.totalBytes === 'number') ? extra.totalBytes : null,
+        build: MEDIA_DEBUG_BUILD
+      };
+      mediaDebugTimeline.push(entry);
+      // "picker deschis" e STRICT referinta pentru CICLUL curent de selectie — dupa 'change_event'
+      // (confirmarea ca fisierele au ajuns la pagina), urmatoarea apasare porneste propriul cronometru.
+      if (eventName === 'change_event') mediaDebugPickerOpenPerf = null;
+      try { sessionStorage.setItem(MEDIA_DEBUG_STORAGE_KEY, JSON.stringify(mediaDebugTimeline)); } catch (e) { /* sessionStorage plin/indisponibil — ramane doar in memorie, pentru acest tur */ }
+      mediaDebugRenderPanel();
+    }
+
+    function mediaDebugFormatEntry(e) {
+      return `${e.wallClock} | +${e.sincePickerOpenMs === null ? '-' : e.sincePickerOpenMs + 'ms'} | ${e.event} | vis=${e.visibilityState} | fisiere=${e.filesCount === null ? '-' : e.filesCount} | bytes=${e.totalBytes === null ? '-' : e.totalBytes} | build=${e.build}`;
+    }
+
+    function mediaDebugFallbackCopy(text, done) {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        if (done) done();
+      } catch (e) { /* copierea manuala ramane posibila direct din panou */ }
+    }
+
+    function mediaDebugRenderPanel() {
+      if (!MEDIA_DEBUG_ENABLED || !document.body) return;
+      let panel = document.getElementById('media-debug-panel');
+      if (!panel) {
+        panel = document.createElement('div');
+        panel.id = 'media-debug-panel';
+        panel.style.cssText = 'position:fixed;left:8px;right:8px;bottom:8px;max-height:45vh;overflow:auto;background:#111;color:#0f0;font:11px/1.4 -apple-system,monospace;padding:10px;border-radius:10px;z-index:2147483647;box-shadow:0 4px 24px rgba(0,0,0,.5);';
+        const header = document.createElement('div');
+        header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;';
+        const title = document.createElement('span');
+        title.textContent = 'mediaDebug — build ' + MEDIA_DEBUG_BUILD;
+        title.style.cssText = 'color:#9cf;font-weight:600;';
+        const copyBtn = document.createElement('button');
+        copyBtn.type = 'button';
+        copyBtn.textContent = 'Copiază diagnosticul';
+        copyBtn.style.cssText = 'padding:6px 10px;font:12px -apple-system,sans-serif;cursor:pointer;border-radius:6px;border:1px solid #0f0;background:#000;color:#0f0;';
+        copyBtn.addEventListener('click', () => {
+          const text = mediaDebugTimeline.map(mediaDebugFormatEntry).join('\n');
+          const done = () => { copyBtn.textContent = 'Copiat ✓'; setTimeout(() => { copyBtn.textContent = 'Copiază diagnosticul'; }, 1500); };
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(done).catch(() => mediaDebugFallbackCopy(text, done));
+          } else {
+            mediaDebugFallbackCopy(text, done);
+          }
+        });
+        header.appendChild(title);
+        header.appendChild(copyBtn);
+        panel.appendChild(header);
+        const pre = document.createElement('pre');
+        pre.id = 'media-debug-log';
+        pre.style.cssText = 'white-space:pre-wrap;word-break:break-all;margin:0;';
+        panel.appendChild(pre);
+        document.body.appendChild(panel);
+      }
+      document.getElementById('media-debug-log').textContent = mediaDebugTimeline.map(mediaDebugFormatEntry).join('\n');
+    }
+
+    if (MEDIA_DEBUG_ENABLED) {
+      mediaDebugRenderPanel();
+      window.addEventListener('blur', () => mediaDebugLog('window_blur'));
+      window.addEventListener('focus', () => mediaDebugLog('window_focus'));
+      window.addEventListener('pageshow', () => mediaDebugLog('pageshow'));
+      document.addEventListener('visibilitychange', () => {
+        mediaDebugLog(document.visibilityState === 'visible' ? 'visibility_visible' : 'visibility_hidden');
+      });
+    }
+
     // HOTFIX 2026-08-08: playerele audio/video de pe aceasta pagina (melodia principala,
     // melodia cadou, videoclipul cadou) foloseau interpolare directa in innerHTML
     // (`<audio src="...">`) — acelasi tipar care, pe melodia-mea.html, a cauzat preview-uri
@@ -775,7 +894,10 @@
             entry.activePartXhrs[partNumber] = xhr;
             xhr.open('PUT', urlData.url);
             xhr.timeout = MEM_UPLOAD_TIMEOUT_MS;
-            xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded); };
+            xhr.upload.onprogress = (e) => {
+              if (!mediaDebugFirstR2ProgressLogged && e.loaded > 0) { mediaDebugFirstR2ProgressLogged = true; mediaDebugLog('first_r2_progress'); }
+              if (e.lengthComputable) onProgress(e.loaded);
+            };
             xhr.onload = () => {
               delete entry.activePartXhrs[partNumber];
               if (xhr.status >= 200 && xhr.status < 300) {
@@ -788,6 +910,7 @@
             xhr.onerror = () => { delete entry.activePartXhrs[partNumber]; retryOrFail(); };
             xhr.ontimeout = () => { delete entry.activePartXhrs[partNumber]; retryOrFail(); };
             xhr.onabort = () => { delete entry.activePartXhrs[partNumber]; reject(new Error('aborted')); };
+            if (!mediaDebugFirstR2PutLogged) { mediaDebugFirstR2PutLogged = true; mediaDebugLog('first_r2_put_start'); }
             xhr.send(blob);
           } catch (err) {
             retryOrFail();
@@ -810,12 +933,14 @@
       entry.errorMsg = null;
       renderQueueRow(entry);
       try {
+        mediaDebugLog('multipart_init_start');
         const initRes = await fetch(`/api/orders/${orderId}/media/multipart/init`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-Access-Token': accessToken || '' },
           body: JSON.stringify({ filename: entry.file.name, size: entry.file.size, mimeType: entry.file.type || '', section: '' })
         });
         const initData = await initRes.json().catch(() => ({}));
+        mediaDebugLog('multipart_init_complete');
         if (!initRes.ok || !initData.sessionId) throw new Error(initData.error || 'init failed');
         entry.multipartSessionId = initData.sessionId;
         const partSize = initData.partSize || (10 * 1024 * 1024);
@@ -913,7 +1038,9 @@
       const PICKER_MANUAL_RECOVERY_MS = 5 * 60 * 1000;
       let pickerAwaitingChange = false;
       let pickerOpenToken = 0;
+      if (MEDIA_DEBUG_ENABLED) fileInput.addEventListener('pointerdown', () => mediaDebugLog('file_input_pointerdown'));
       fileInput.addEventListener('click', (e) => {
+        mediaDebugLog('file_input_click');
         if (pickerLocked) {
           if (Date.now() - pickerLockedAt < PICKER_MANUAL_RECOVERY_MS) { e.preventDefault(); return; }
           memLog('picker_manual_recovery', { elapsedMs: Date.now() - pickerLockedAt });
@@ -934,6 +1061,7 @@
         statusEl.classList.remove('err');
         memLog('picker_cancel', {});
       });
+      if (MEDIA_DEBUG_ENABLED) fileInput.addEventListener('input', () => mediaDebugLog('input_event', { filesCount: fileInput.files ? fileInput.files.length : null }));
       // Fara niciun timer — arata mesajul neutru IMEDIAT daca revenim in pagina si inca
       // asteptam 'change'; daca 'change' a sosit deja, pickerAwaitingChange e deja fals.
       function checkPickerDelivery() {
@@ -948,13 +1076,19 @@
         if (document.visibilityState === 'visible') checkPickerDelivery();
       });
       window.addEventListener('focus', checkPickerDelivery);
+      // NOTA: listenerele window/document ale modului diagnostic (blur/focus/pageshow/
+      // visibilitychange) sunt inregistrate O SINGURA DATA, la nivel de modul (vezi mai sus,
+      // langa definitia mediaDebugLog) — NU aici, ca sa nu se dubleze evenimentele.
 
       let memStatusHintToken = 0;
 
       fileInput.addEventListener('change', () => {
+        mediaDebugLog('change_event');
         pickerLocked = false;
         pickerAwaitingChange = false;
+        mediaDebugLog('filelist_snapshot_start');
         const files = Array.from(fileInput.files);
+        mediaDebugLog('filelist_snapshot_complete', { filesCount: files.length, totalBytes: files.reduce((s, f) => s + (f.size || 0), 0) });
         fileInput.value = '';
         memLog('change', {
           filesLength: files.length,
@@ -1000,7 +1134,10 @@
           }
         });
         memLog('staged', { queueLength: uploadQueue.length });
+        mediaDebugLog('queue_render_start');
         renderQueueList();
+        mediaDebugLog('queue_dom_inserted');
+        if (MEDIA_DEBUG_ENABLED) requestAnimationFrame(() => mediaDebugLog('queue_first_paint'));
         processUploadQueue();
       });
 

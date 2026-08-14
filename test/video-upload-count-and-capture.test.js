@@ -160,7 +160,7 @@ test('melodia-mea.html: renderQueueRowInner() foloseste isVideoFile() (nu file.t
 // ---------------------------------------------------------------------------------------------
 test('melodia-mea.html: handler-ul de change NU filtreaza dupa tip (photo/video) — fiecare fisier din FileList primeste o intrare in coada, fara exceptie', () => {
   const idx = melodiaMea.indexOf("memFileInput.addEventListener('change'");
-  const end = melodiaMea.indexOf('renderQueueList();\n    processUploadQueue();', idx);
+  const end = melodiaMea.indexOf('processUploadQueue();', idx);
   const snippet = melodiaMea.slice(idx, end);
   assert.ok(snippet.includes('files.forEach(file => {'), 'TOATE fisierele din FileList trebuie parcurse, nu doar files[0]');
   assert.ok(!snippet.includes('.filter('), 'niciun filtru care ar putea elimina videoclipuri sau fotografii din selectie');
@@ -177,12 +177,15 @@ test('melodia-mea.html: FileList e copiat SINCRON intr-un array stabil (Array.fr
 test('melodia-mea.html: inputul e resetat DUPA copierea completa a FileList-ului (memFileInput.value dupa Array.from), niciodata inainte', () => {
   const idx = melodiaMea.indexOf('const files = Array.from(memFileInput.files);');
   const resetIdx = melodiaMea.indexOf("memFileInput.value = '';", idx);
-  assert.ok(resetIdx > idx && resetIdx - idx < 60, 'resetarea trebuie sa vina imediat DUPA copiere, nu inainte');
+  const between = melodiaMea.slice(idx, resetIdx);
+  assert.ok(resetIdx > idx && resetIdx - idx < 250, 'resetarea trebuie sa vina la scurt timp dupa copiere, nu inainte');
+  // STRICT diagnostic (no-op fara ?mediaDebug=1) poate aparea intre ele — nicio alta logica.
+  assert.ok(!/if\s*\(|for\s*\(|files\.forEach|\.push\(/.test(between.replace(/mediaDebugLog\([^)]*\)/g, '')), 'intre copiere si resetare nu trebuie sa existe alta logica decat diagnosticul');
 });
 
 test('melodia-mea.html: eroarea la construirea unei intrari (try/catch per fisier) NU scoate fisierul din lot — e adaugat in coada cu status "error", vizibil, cu retry', () => {
   const idx = melodiaMea.indexOf('files.forEach(file => {');
-  const end = melodiaMea.indexOf('renderQueueList();\n    processUploadQueue();', idx);
+  const end = melodiaMea.indexOf('processUploadQueue();', idx);
   const snippet = melodiaMea.slice(idx, end);
   assert.ok(snippet.includes('} catch (err) {'));
   const catchIdx = snippet.indexOf('} catch (err) {');

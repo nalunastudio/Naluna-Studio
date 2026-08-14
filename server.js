@@ -1378,6 +1378,25 @@ app.get('/api/testimonials', async (req, res, next) => {
 });
 
 app.use(express.json({ limit: '20kb' })); // limita de marime — nu accepta payload-uri uriase
+
+// RELANSARE (2026-08-14, "mod diagnostic mediaDebug=1" — "identifica problema de cache prin
+// commitul afisat"): injecteaza commitul curent in cele 3 pagini ale fluxului Cadou video,
+// inlocuind un placeholder static din sursa (`<meta name="naluna-build" content="__NALUNA_BUILD__">`)
+// cu hash-ul real al build-ului activ pe Railway — NU e o ruta noua (aceleasi 3 URL-uri publice,
+// deja servite static pana acum), doar o substitutie de continut inainte de express.static, STRICT
+// pentru aceste 3 fisiere. Fara variabila Railway (ex. rulare locala), ramane placeholder-ul
+// "dev" — vizibil doar in modul diagnostic, niciodata clientilor normali.
+const MEDIA_DEBUG_BUILD = (process.env.RAILWAY_GIT_COMMIT_SHA || 'dev').slice(0, 12);
+const MEDIA_DEBUG_INJECT_FILES = new Set(['/melodia-mea.html', '/comanda-mea.html', '/succes.html']);
+app.use((req, res, next) => {
+  if (req.method !== 'GET' || !MEDIA_DEBUG_INJECT_FILES.has(req.path)) return next();
+  fs.readFile(path.join(__dirname, 'public', req.path), 'utf8', (err, html) => {
+    if (err) return next();
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(html.replace('__NALUNA_BUILD__', MEDIA_DEBUG_BUILD));
+  });
+});
+
 // Cache lung (7 zile) DOAR pentru imagini/iconite (logo, favicon, og-image) — practic nu se
 // schimba niciodata, si fara asta fiecare vizita re-verifica fiecare imagine cu serverul
 // (maxAge implicit al express.static e 0). Paginile HTML raman NECACHE-uite (maxAge implicit,

@@ -122,7 +122,7 @@ test('melodia-mea.html: renderQueueList() si processUploadQueue() se apeleaza ne
   const forEachStart = melodiaMea.indexOf('files.forEach(file => {', idx);
   assert.notEqual(forEachStart, -1);
   const forEachEnd = melodiaMea.indexOf('});', forEachStart) + 3;
-  const snippet = melodiaMea.slice(forEachEnd, forEachEnd + 300);
+  const snippet = melodiaMea.slice(forEachEnd, forEachEnd + 600);
   assert.ok(snippet.includes('renderQueueList();'), 'renderQueueList() trebuie apelat neconditionat dupa forEach, in afara oricarui try/catch per-fisier');
   assert.ok(snippet.includes('processUploadQueue();'));
   // updateMemoriesCountAndGates() nu mai e apelat separat aici — RELANSARE 2026-08-14, mutat

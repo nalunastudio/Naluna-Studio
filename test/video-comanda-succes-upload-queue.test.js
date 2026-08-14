@@ -116,7 +116,10 @@ for (const [name, html] of Object.entries(PAGES)) {
     const filesIdx = html.indexOf('const files = Array.from(fileInput.files);', idx);
     const resetIdx = html.indexOf("fileInput.value = '';", idx);
     assert.ok(filesIdx > idx && filesIdx - idx < 250);
-    assert.ok(resetIdx > filesIdx && resetIdx - filesIdx < 60, 'resetarea trebuie sa vina imediat DUPA copiere, nu inainte');
+    const between = html.slice(filesIdx, resetIdx);
+    assert.ok(resetIdx > filesIdx && resetIdx - filesIdx < 250, 'resetarea trebuie sa vina la scurt timp dupa copiere, nu inainte');
+    // STRICT diagnostic (no-op fara ?mediaDebug=1) poate aparea intre ele — nicio alta logica.
+    assert.ok(!/if\s*\(|for\s*\(|files\.forEach|\.push\(/.test(between.replace(/mediaDebugLog\([^)]*\)/g, '')), 'intre copiere si resetare nu trebuie sa existe alta logica decat diagnosticul');
   });
 
   test(`${name}: fiecare fisier din selectie e adaugat necondiționat in coada (files.forEach, fara .filter, fara conditie dupa file.type)`, () => {
