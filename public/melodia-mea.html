@@ -986,8 +986,8 @@
       video_status_none: 'Videoclipul tău nu este încă gata.',
       memories_title: 'Adaugă pozele și videoclipurile tale',
       memories_sub: 'Adaugă între 3 și 10 poze sau clipuri video — le vom transforma într-un videoclip sincronizat cu melodia ta.',
-      memories_meta: (min, max) => `Între ${min} și ${max} materiale • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • max. 150MB per fișier • orice combinație de poze și videoclipuri`,
-      memories_count: (n, min, max) => n < min ? `${n} din minimum ${min} materiale` : n > max ? `Prea multe materiale (${n}/${max})` : `${n} materiale — gata de continuare`,
+      memories_meta: (min, max) => `Între ${min} și ${max} materiale • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • orice combinație de poze și videoclipuri`,
+      memories_count: (n, min, max, pending) => (n < min ? `${n} din minimum ${min} materiale` : n > max ? `Prea multe materiale (${n}/${max})` : `${n} materiale — gata de continuare`) + (pending > 0 ? ` (${pending} în curs de încărcare)` : ''),
       memories_uploading: 'Se încarcă...', memories_queued: 'În așteptare...', memories_uploaded: 'Încărcat', memories_remove: '✕', memories_retry: 'Reîncearcă',
       memories_upload_timeout: 'Încărcarea durează prea mult — verifică conexiunea și încearcă din nou.',
       memories_no_files_selected: 'Nu am primit niciun fișier de la selector — încearcă din nou (verifică și dacă fotografiile sunt descărcate complet din iCloud).',
@@ -1060,8 +1060,8 @@
       video_status_none: "Your video isn't ready yet.",
       memories_title: 'Add your photos & videos',
       memories_sub: "Add 3 to 10 photos or video clips — we'll weave them into a video synced to your song.",
-      memories_meta: (min, max) => `${min} to ${max} items • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • max 150MB per file • any mix of photos and videos`,
-      memories_count: (n, min, max) => n < min ? `${n} of at least ${min} items` : n > max ? `Too many items (${n}/${max})` : `${n} items — ready to continue`,
+      memories_meta: (min, max) => `${min} to ${max} items • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • any mix of photos and videos`,
+      memories_count: (n, min, max, pending) => (n < min ? `${n} of at least ${min} items` : n > max ? `Too many items (${n}/${max})` : `${n} items — ready to continue`) + (pending > 0 ? ` (${pending} uploading)` : ''),
       memories_uploading: 'Uploading...', memories_queued: 'Queued...', memories_uploaded: 'Uploaded', memories_remove: '✕', memories_retry: 'Retry',
       memories_upload_timeout: 'This is taking too long — check your connection and try again.',
       memories_no_files_selected: "We didn't receive any file from the picker — please try again (also check the photos are fully downloaded from iCloud).",
@@ -1134,8 +1134,8 @@
       video_status_none: 'Dein Video ist noch nicht fertig.',
       memories_title: 'Füge deine Fotos & Videos hinzu',
       memories_sub: 'Füge 3 bis 10 Fotos oder Videoclips hinzu — wir verweben sie zu einem Video, das genau auf dein Lied abgestimmt ist.',
-      memories_meta: (min, max) => `${min} bis ${max} Elemente • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • max. 150MB pro Datei • jede Mischung aus Fotos und Videos`,
-      memories_count: (n, min, max) => n < min ? `${n} von mindestens ${min} Elementen` : n > max ? `Zu viele Elemente (${n}/${max})` : `${n} Elemente — bereit zum Fortfahren`,
+      memories_meta: (min, max) => `${min} bis ${max} Elemente • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • jede Mischung aus Fotos und Videos`,
+      memories_count: (n, min, max, pending) => (n < min ? `${n} von mindestens ${min} Elementen` : n > max ? `Zu viele Elemente (${n}/${max})` : `${n} Elemente — bereit zum Fortfahren`) + (pending > 0 ? ` (${pending} werden hochgeladen)` : ''),
       memories_uploading: 'Wird hochgeladen...', memories_queued: 'In Warteschlange...', memories_uploaded: 'Hochgeladen', memories_remove: '✕', memories_retry: 'Erneut versuchen',
       memories_upload_timeout: 'Das dauert zu lange — überprüfe deine Verbindung und versuche es erneut.',
       memories_no_files_selected: 'Wir haben keine Datei von der Auswahl erhalten — bitte versuche es erneut (prüfe auch, ob die Fotos vollständig aus iCloud heruntergeladen sind).',
@@ -1208,8 +1208,8 @@
       video_status_none: 'Tu video aún no está listo.',
       memories_title: 'Añade tus fotos y videos',
       memories_sub: 'Añade entre 3 y 10 fotos o clips de video — los combinaremos en un video sincronizado con tu canción.',
-      memories_meta: (min, max) => `Entre ${min} y ${max} elementos • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • máx. 150MB por archivo • cualquier combinación de fotos y videos`,
-      memories_count: (n, min, max) => n < min ? `${n} de al menos ${min} elementos` : n > max ? `Demasiados elementos (${n}/${max})` : `${n} elementos — listo para continuar`,
+      memories_meta: (min, max) => `Entre ${min} y ${max} elementos • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • cualquier combinación de fotos y videos`,
+      memories_count: (n, min, max, pending) => (n < min ? `${n} de al menos ${min} elementos` : n > max ? `Demasiados elementos (${n}/${max})` : `${n} elementos — listo para continuar`) + (pending > 0 ? ` (${pending} subiendo)` : ''),
       memories_uploading: 'Subiendo...', memories_queued: 'En espera...', memories_uploaded: 'Subido', memories_remove: '✕', memories_retry: 'Reintentar',
       memories_upload_timeout: 'Esto está tardando demasiado — comprueba tu conexión e inténtalo de nuevo.',
       memories_no_files_selected: 'No recibimos ningún archivo del selector — inténtalo de nuevo (comprueba también que las fotos estén completamente descargadas de iCloud).',
@@ -1282,8 +1282,8 @@
       video_status_none: 'Il tuo video non è ancora pronto.',
       memories_title: 'Aggiungi le tue foto e i tuoi video',
       memories_sub: 'Aggiungi da 3 a 10 foto o clip video: le trasformeremo in un video sincronizzato con la tua canzone.',
-      memories_meta: (min, max) => `Da ${min} a ${max} elementi • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • max 150MB per file • qualsiasi combinazione di foto e video`,
-      memories_count: (n, min, max) => n < min ? `${n} di almeno ${min} elementi` : n > max ? `Troppi elementi (${n}/${max})` : `${n} elementi — pronto per continuare`,
+      memories_meta: (min, max) => `Da ${min} a ${max} elementi • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • qualsiasi combinazione di foto e video`,
+      memories_count: (n, min, max, pending) => (n < min ? `${n} di almeno ${min} elementi` : n > max ? `Troppi elementi (${n}/${max})` : `${n} elementi — pronto per continuare`) + (pending > 0 ? ` (${pending} in caricamento)` : ''),
       memories_uploading: 'Caricamento...', memories_queued: 'In attesa...', memories_uploaded: 'Caricato', memories_remove: '✕', memories_retry: 'Riprova',
       memories_upload_timeout: 'Sta impiegando troppo tempo — controlla la connessione e riprova.',
       memories_no_files_selected: 'Non abbiamo ricevuto alcun file dal selettore — riprova (controlla anche che le foto siano scaricate completamente da iCloud).',
@@ -1356,8 +1356,8 @@
       video_status_none: "Votre vidéo n'est pas encore prête.",
       memories_title: 'Ajoutez vos photos et vidéos',
       memories_sub: 'Ajoutez 3 à 10 photos ou clips vidéo — nous les intégrerons dans une vidéo synchronisée avec votre chanson.',
-      memories_meta: (min, max) => `${min} à ${max} éléments • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • max 150 Mo par fichier • tout mélange de photos et vidéos`,
-      memories_count: (n, min, max) => n < min ? `${n} sur au moins ${min} éléments` : n > max ? `Trop d'éléments (${n}/${max})` : `${n} éléments — prêt à continuer`,
+      memories_meta: (min, max) => `${min} à ${max} éléments • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • tout mélange de photos et vidéos`,
+      memories_count: (n, min, max, pending) => (n < min ? `${n} sur au moins ${min} éléments` : n > max ? `Trop d'éléments (${n}/${max})` : `${n} éléments — prêt à continuer`) + (pending > 0 ? ` (${pending} en cours d'envoi)` : ''),
       memories_uploading: 'Envoi en cours...', memories_queued: 'En attente...', memories_uploaded: 'Envoyé', memories_remove: '✕', memories_retry: 'Réessayer',
       memories_upload_timeout: "Cela prend trop de temps — vérifiez votre connexion et réessayez.",
       memories_no_files_selected: "Nous n'avons reçu aucun fichier du sélecteur — réessayez (vérifiez aussi que les photos sont bien téléchargées depuis iCloud).",
@@ -1430,8 +1430,8 @@
       video_status_none: 'Видеото ти още не е готово.',
       memories_title: 'Добави своите снимки и видеа',
       memories_sub: 'Добави между 3 и 10 снимки или видеоклипа — ще ги превърнем във видео, синхронизирано с твоята песен.',
-      memories_meta: (min, max) => `Между ${min} и ${max} материала • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • макс. 150MB на файл • всякаква комбинация от снимки и видеа`,
-      memories_count: (n, min, max) => n < min ? `${n} от поне ${min} материала` : n > max ? `Твърде много материали (${n}/${max})` : `${n} материала — готово за продължаване`,
+      memories_meta: (min, max) => `Между ${min} и ${max} материала • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • всякаква комбинация от снимки и видеа`,
+      memories_count: (n, min, max, pending) => (n < min ? `${n} от поне ${min} материала` : n > max ? `Твърде много материали (${n}/${max})` : `${n} материала — готово за продължаване`) + (pending > 0 ? ` (${pending} се качват)` : ''),
       memories_uploading: 'Качване...', memories_queued: 'На изчакване...', memories_uploaded: 'Качено', memories_remove: '✕', memories_retry: 'Опитай отново',
       memories_upload_timeout: 'Това отнема твърде много време — провери връзката си и опитай отново.',
       memories_no_files_selected: 'Не получихме нито един файл от избора — опитай отново (провери също дали снимките са изтеглени напълно от iCloud).',
@@ -1504,8 +1504,8 @@
       video_status_none: 'Videonuz henüz hazır değil.',
       memories_title: 'Fotoğraflarınızı ve videolarınızı ekleyin',
       memories_sub: '3 ile 10 arası fotoğraf veya video klip ekleyin — bunları şarkınızla senkronize bir videoya dönüştürelim.',
-      memories_meta: (min, max) => `${min} ile ${max} arası öğe • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • dosya başına maks. 150MB • fotoğraf ve video karışımı kabul edilir`,
-      memories_count: (n, min, max) => n < min ? `${n} / en az ${min} öğe` : n > max ? `Çok fazla öğe (${n}/${max})` : `${n} öğe — devam etmeye hazır`,
+      memories_meta: (min, max) => `${min} ile ${max} arası öğe • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • fotoğraf ve video karışımı kabul edilir`,
+      memories_count: (n, min, max, pending) => (n < min ? `${n} / en az ${min} öğe` : n > max ? `Çok fazla öğe (${n}/${max})` : `${n} öğe — devam etmeye hazır`) + (pending > 0 ? ` (${pending} yükleniyor)` : ''),
       memories_uploading: 'Yükleniyor...', memories_queued: 'Sırada...', memories_uploaded: 'Yüklendi', memories_remove: '✕', memories_retry: 'Tekrar dene',
       memories_upload_timeout: 'Bu çok uzun sürüyor — bağlantınızı kontrol edip tekrar deneyin.',
       memories_no_files_selected: "Seçiciden hiçbir dosya alamadık — lütfen tekrar deneyin (fotoğrafların iCloud'dan tamamen indirildiğinden de emin olun).",
@@ -2319,6 +2319,20 @@
   let memOrderRef = null;
   const thumbCache = new Map(); // index-ul din uploadedMedia -> URL semnat (evita re-cereri la fiecare randare)
 
+  // CORECȚIE (2026-08-14, "un MIME type gol nu elimină fișierul valid"): Safari iOS poate
+  // raporta file.type gol pentru unele videoclipuri (mai ales cele nematerializate complet
+  // din iCloud in momentul selecției) — fallback pe extensia numelui de fișier, exact aceeași
+  // logică folosită deja server-side (inferMediaType in lib/media-analysis.js), STRICT pentru
+  // afișarea corectă a iconiței locale (🎬 vs 🖼️) — validarea REALĂ de conținut rămâne
+  // server-side, neschimbată, indiferent de ce raportează browserul.
+  const VIDEO_EXTENSIONS = ['.mp4', '.m4v', '.mov', '.webm'];
+  function isVideoFile(file) {
+    if (file.type.startsWith('video')) return true;
+    if (file.type) return false; // tip declarat explicit, dar nu video -> e o fotografie
+    const match = String(file.name || '').match(/\.[^./\\]+$/);
+    return !!match && VIDEO_EXTENSIONS.includes(match[0].toLowerCase());
+  }
+
   function renderMemories(order) {
     memOrderRef = order;
     const section = document.getElementById('memories-section');
@@ -2334,13 +2348,21 @@
   const MEM_MIN = 3;
   const MEM_MAX = 10;
 
+  // CORECȚIE (2026-08-14, "selecția nativă și lista Naluna trebuie să aibă exact același
+  // număr de materiale"): numărul afișat conta STRICT materialele deja confirmate de server
+  // (order.uploadedMedia) — cât timp restul selecției era încă în coadă/se încărca (normal,
+  // mai ales pentru videoclipuri mari), clientul vedea un număr mai mic decât cel selectat
+  // efectiv în iOS, dând impresia că fișiere "au dispărut", deși erau doar în curs de
+  // procesare. Textul include acum explicit și câte materiale mai sunt în curs de încărcare,
+  // ca numărul total vizibil (confirmate + în curs) să reflecte imediat întreaga selecție.
   function updateMemoriesCountAndGates(order) {
     const total = (order.uploadedMedia || []).length;
-    const uploading = uploadQueue.some(q => q.status === 'uploading' || q.status === 'pending');
+    const pendingCount = uploadQueue.filter(q => q.status === 'uploading' || q.status === 'pending').length;
+    const uploading = pendingCount > 0;
     const hasUnresolvedError = uploadQueue.some(q => q.status === 'error');
     const countEl = document.getElementById('memories-count');
     const ok = total >= MEM_MIN && total <= MEM_MAX;
-    countEl.textContent = t.memories_count(total, MEM_MIN, MEM_MAX);
+    countEl.textContent = t.memories_count(total, MEM_MIN, MEM_MAX, pendingCount);
     countEl.className = 'memories-count ' + (ok ? 'ok' : 'warn');
 
     const awaitingBtn = document.getElementById('awaiting-media-continue-btn');
@@ -2490,7 +2512,7 @@
     const el = document.getElementById('mem-staged-list');
     el.innerHTML = uploadQueue.map(q => `
       <div class="mem-item" data-queue-id="${q.localId}">
-        <span class="mem-thumb">${q.file.type.startsWith('video') ? '🎬' : (q.thumbUrl ? `<img src="${q.thumbUrl}" alt="">` : '🖼️')}</span>
+        <span class="mem-thumb">${isVideoFile(q.file) ? '🎬' : (q.thumbUrl ? `<img src="${q.thumbUrl}" alt="">` : '🖼️')}</span>
         <div class="mem-info">
           <span class="mem-name">${escapeHtml(q.file.name)}</span>
           <span class="mem-meta ${q.status === 'error' ? 'err' : ''}">${

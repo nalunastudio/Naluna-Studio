@@ -82,7 +82,7 @@ test('melodia-mea.html: renderQueueList() NU mai construieste niciun element <vi
   const end = melodiaMea.indexOf('el.querySelectorAll', idx);
   const snippet = melodiaMea.slice(idx, end);
   assert.ok(!snippet.includes('<video'), 'coada de asteptare (inainte de upload) nu mai trebuie sa randeze niciun <video src="blob:...">');
-  assert.ok(snippet.includes("q.file.type.startsWith('video') ? '🎬'"), 'videoclipurile din coada trebuie sa foloseasca STRICT iconita statica');
+  assert.ok(snippet.includes("isVideoFile(q.file) ? '🎬'"), 'videoclipurile din coada trebuie sa foloseasca STRICT iconita statica (isVideoFile — vezi test/video-media-limits.test.js pentru fallback-ul pe extensie cand MIME e gol)');
 });
 
 test('melodia-mea.html: fotografiile din coada de asteptare raman randate ca <img> din blob local, neschimbat', () => {
