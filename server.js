@@ -475,7 +475,16 @@ const ORDER_MEDIA_MIME_TYPES = {
   photo: ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'image/x-adobe-dng'],
   video: ['video/mp4', 'video/quicktime', 'video/webm']
 };
-const ORDER_MEDIA_MAX_BYTES = 150 * 1024 * 1024; // 150MB — suficient pentru un videoclip scurt de telefon la calitate buna
+// CORECȚIE (2026-08-14, "elimină plafonul artificial de 150MB"): 150MB era un plafon ARBITRAR,
+// nelegat de vreo constrangere reala de infrastructura — respingea exact videoclipurile normale
+// de 1-2 minute pe care pachetul le promite explicit (un videoclip iPhone 4K la bitrate inalt,
+// STRICT sub limita de ORDER_MEDIA_MAX_VIDEO_SECONDS=120s, poate ajunge realist la 400-600MB).
+// Configurabil prin env (ca ORDER_MEDIA_MAX_VIDEO_SECONDS mai jos), fara redeploy de cod daca
+// decizia de business se schimba. Implicit 700MB — acopera generos si cel mai incarcat caz
+// real (4K60 HEVC, 2 minute), ramanand o limita EXPLICITA (nu upload "nelimitat") — restul
+// pipeline-ului (multer diskStorage, streaming catre R2 cu fs.createReadStream) NU tine
+// niciodata fisierul intreg in memorie, indiferent de dimensiune — vezi storage.uploadPrivateFile.
+const ORDER_MEDIA_MAX_BYTES = (Number(process.env.ORDER_MEDIA_MAX_MB) > 0 ? Number(process.env.ORDER_MEDIA_MAX_MB) : 700) * 1024 * 1024;
 const ORDER_MEDIA_MAX_ITEMS = 10;
 // Minimul cerut de fluxul "Cadou video" (cerinta de business, nu doar text in UI) —
 // vezi POST /api/orders/:orderId/media/confirm si /checkout, care il aplica server-side.
@@ -497,9 +506,9 @@ function isVideoLockActive(order) {
 }
 
 // STOCARE PE DISC, NU IN MEMORIE — cu memoryStorage(), pana la ORDER_MEDIA_MAX_ITEMS (10)
-// fisiere de ORDER_MEDIA_MAX_BYTES (150MB) fiecare puteau ajunge simultan in RAM-ul
-// procesului Node (pana la 1.5GB per cerere) — pe o instanta Railway obisnuita, asta putea
-// termina procesul (OOM kill) la un singur upload nefericit. diskStorage scrie fiecare
+// fisiere de ORDER_MEDIA_MAX_BYTES fiecare puteau ajunge simultan in RAM-ul procesului Node
+// (multi GB per cerere, mai ales dupa marirea plafonului la 700MB) — pe o instanta Railway
+// obisnuita, asta putea termina procesul (OOM kill) la un singur upload nefericit. diskStorage scrie fiecare
 // fisier direct pe disc (in TEMP_DIR, deja folosit ca spatiu de lucru ffmpeg), streamed,
 // fara sa retina niciodata continutul complet in memorie. `fileFilter` ramane PERMISIV —
 // respinge doar la nivel de extensie evident, nu de MIME — validarea REALA (magic bytes +

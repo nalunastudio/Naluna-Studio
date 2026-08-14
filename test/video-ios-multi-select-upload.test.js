@@ -73,8 +73,10 @@ test('server.js: fisierele mari NU sunt tinute in memorie (diskStorage, streamin
   assert.ok(!server.includes('toString(\'base64\')') || true);
 });
 
-test('server.js: limitele existente raman neschimbate — 150MB/fisier, maximum 10 materiale, minimum 3, maximum 120s per videoclip', () => {
-  assert.match(server, /const ORDER_MEDIA_MAX_BYTES = 150 \* 1024 \* 1024;/);
+// REVIZUIT (2026-08-14, "elimină plafonul artificial de 150MB"): 150MB era plafonul GRESIT
+// care respingea videoclipuri normale de 1-2 minute — vezi test/video-media-limits.test.js
+// pentru testele dedicate noii limite (700MB implicit, configurabila prin ORDER_MEDIA_MAX_MB).
+test('server.js: numarul de materiale (10 maximum, 3 minimum) si durata maxima video (120s) raman neschimbate', () => {
   assert.match(server, /const ORDER_MEDIA_MAX_ITEMS = 10;/);
   assert.match(server, /const ORDER_MEDIA_MIN_ITEMS = 3;/);
   assert.ok(/ORDER_MEDIA_MAX_VIDEO_SECONDS[\s\S]{0,120}: 120;/.test(server));

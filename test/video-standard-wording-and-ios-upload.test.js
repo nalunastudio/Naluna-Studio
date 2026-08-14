@@ -146,9 +146,10 @@ test('melodia-mea.html: MEM_MIN=3 si MEM_MAX=10 raman neschimbate', () => {
   assert.match(melodiaMea, /const MEM_MAX = 10;/);
 });
 
-test('melodia-mea.html: MAX_CONCURRENT_UPLOADS si UPLOAD_TIMEOUT_MS raman neschimbate (mecanismul de coada de la hotfixul anterior)', () => {
+// REVIZUIT (2026-08-14, "elimină plafonul artificial de 150MB"): UPLOAD_TIMEOUT_MS marit de la
+// 2 la 15 minute — vezi test/video-media-limits.test.js pentru testul dedicat noii valori.
+test('melodia-mea.html: MAX_CONCURRENT_UPLOADS ramane neschimbat (mecanismul de coada de la hotfixul anterior)', () => {
   assert.match(melodiaMea, /const MAX_CONCURRENT_UPLOADS = 2;/);
-  assert.match(melodiaMea, /const UPLOAD_TIMEOUT_MS = 120000;/);
 });
 
 // REVIZUIT (2026-08-14, "Articolele nu pot fi încărcate" pe iPhone): acceptul explicit,

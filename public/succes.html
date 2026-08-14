@@ -109,7 +109,6 @@
         memories_remove: '✕',
         memories_upload_error: 'Încărcarea a eșuat. Încearcă din nou', media_load_error: 'Nu s-a putut încărca — atinge pentru a reîncerca.',
         memories_create_error: 'Crearea videoclipului a eșuat. Încearcă din nou',
-        memories_sections: { none: 'Fără preferință', beginning: 'Început', verse1: 'Strofa 1', chorus: 'Refren', verse2: 'Strofa 2', ending: 'Final' },
         plan_standard: '🎵 Pachet Standard', plan_premium: '💿 Pachet Premium', plan_video: '🎬 Cadou video'
       },
       en: {
@@ -133,7 +132,6 @@
         memories_remove: '✕',
         memories_upload_error: 'Upload failed. Please try again.', media_load_error: 'Could not load — tap to retry.',
         memories_create_error: 'Creating the video failed. Please try again.',
-        memories_sections: { none: 'No preference', beginning: 'Beginning', verse1: 'Verse 1', chorus: 'Chorus', verse2: 'Verse 2', ending: 'Ending' },
         plan_standard: '🎵 Standard package', plan_premium: '💿 Premium package', plan_video: '🎬 Video gift'
       },
       de: {
@@ -157,7 +155,6 @@
         memories_remove: '✕',
         memories_upload_error: 'Hochladen fehlgeschlagen. Bitte versuche es erneut.', media_load_error: 'Konnte nicht geladen werden — zum Wiederholen tippen.',
         memories_create_error: 'Videoerstellung fehlgeschlagen. Bitte versuche es erneut.',
-        memories_sections: { none: 'Keine Präferenz', beginning: 'Anfang', verse1: 'Strophe 1', chorus: 'Refrain', verse2: 'Strophe 2', ending: 'Ende' },
         plan_standard: '🎵 Standard-Paket', plan_premium: '💿 Premium-Paket', plan_video: '🎬 Video-Geschenk'
       },
       es: {
@@ -181,7 +178,6 @@
         memories_remove: '✕',
         memories_upload_error: 'Error al subir. Inténtalo de nuevo.', media_load_error: 'No se pudo cargar — toca para reintentar.',
         memories_create_error: 'Error al crear el video. Inténtalo de nuevo.',
-        memories_sections: { none: 'Sin preferencia', beginning: 'Inicio', verse1: 'Estrofa 1', chorus: 'Estribillo', verse2: 'Estrofa 2', ending: 'Final' },
         plan_standard: '🎵 Paquete Estándar', plan_premium: '💿 Paquete Premium', plan_video: '🎬 Regalo en video'
       },
       it: {
@@ -205,7 +201,6 @@
         memories_remove: '✕',
         memories_upload_error: 'Caricamento non riuscito. Riprova.', media_load_error: 'Impossibile caricare — tocca per riprovare.',
         memories_create_error: 'Creazione del video non riuscita. Riprova.',
-        memories_sections: { none: 'Nessuna preferenza', beginning: 'Inizio', verse1: 'Strofa 1', chorus: 'Ritornello', verse2: 'Strofa 2', ending: 'Finale' },
         plan_standard: '🎵 Pacchetto Standard', plan_premium: '💿 Pacchetto Premium', plan_video: '🎬 Regalo video'
       },
       fr: {
@@ -229,7 +224,6 @@
         memories_remove: '✕',
         memories_upload_error: 'Échec de l\'envoi. Veuillez réessayer.', media_load_error: 'Échec du chargement — touchez pour réessayer.',
         memories_create_error: 'Échec de la création de la vidéo. Veuillez réessayer.',
-        memories_sections: { none: 'Aucune préférence', beginning: 'Début', verse1: 'Couplet 1', chorus: 'Refrain', verse2: 'Couplet 2', ending: 'Fin' },
         plan_standard: '🎵 Pack Standard', plan_premium: '💿 Pack Premium', plan_video: '🎬 Cadeau vidéo'
       },
       bg: {
@@ -253,7 +247,6 @@
         memories_remove: '✕',
         memories_upload_error: 'Качването не бе успешно. Опитай отново.', media_load_error: 'Неуспешно зареждане — докосни за повторен опит.',
         memories_create_error: 'Създаването на видеото не бе успешно. Опитай отново.',
-        memories_sections: { none: 'Без предпочитание', beginning: 'Начало', verse1: 'Куплет 1', chorus: 'Припев', verse2: 'Куплет 2', ending: 'Край' },
         plan_standard: '🎵 Пакет Стандарт', plan_premium: '💿 Пакет Премиум', plan_video: '🎬 Видео подарък'
       },
       tr: {
@@ -277,7 +270,6 @@
         memories_remove: '✕',
         memories_upload_error: 'Yükleme başarısız oldu. Lütfen tekrar deneyin.', media_load_error: 'Yüklenemedi — tekrar denemek için dokun.',
         memories_create_error: 'Video oluşturma başarısız oldu. Lütfen tekrar deneyin.',
-        memories_sections: { none: 'Fark etmez', beginning: 'Başlangıç', verse1: '1. Kıta', chorus: 'Nakarat', verse2: '2. Kıta', ending: 'Final' },
         plan_standard: '🎵 Standart Paket', plan_premium: '💿 Premium Paket', plan_video: '🎬 Video Hediye'
       }
     };
@@ -339,15 +331,15 @@
     // fisiere alese local, nu inca incarcate — { file, section }
     let stagedFiles = [];
 
+    // CORECȚIE (2026-08-14, "poziționare complet automată"): dropdown-ul de preferință de
+    // sectiune a fost eliminat — pozitionarea materialelor in montaj e acum STRICT automata.
     function renderMemories(data, variant) {
       if (data.plan !== 'video' || variant.hasVideo) return '';
       const uploaded = data.uploadedMedia || [];
-      const sectionOptions = Object.keys(t.memories_sections)
-        .map(k => `<option value="${k === 'none' ? '' : k}">${escapeHtml(t.memories_sections[k])}</option>`).join('');
 
       const uploadedHtml = uploaded.map((m, i) => `
         <div class="mem-item">
-          <span class="mem-name">${m.type === 'photo' ? '🖼️' : '🎬'} ${escapeHtml(t.memories_sections[m.section] || t.memories_sections.none)}</span>
+          <span class="mem-name">${m.type === 'photo' ? '🖼️' : '🎬'}</span>
           <button type="button" class="mem-remove" data-remove-index="${i}" title="${t.memories_remove}">${t.memories_remove}</button>
         </div>
       `).join('');
@@ -378,22 +370,14 @@
       const el = document.getElementById('mem-staged-list');
       const uploadBtn = document.getElementById('mem-upload-btn');
       if (!el || !uploadBtn) return;
-      const sectionOptions = Object.keys(t.memories_sections)
-        .map(k => `<option value="${k === 'none' ? '' : k}">${escapeHtml(t.memories_sections[k])}</option>`).join('');
       el.innerHTML = stagedFiles.map((sf, i) => `
         <div class="mem-item">
           <span class="mem-name">${sf.file.type.startsWith('video') ? '🎬' : '🖼️'} ${escapeHtml(sf.file.name)}</span>
-          <select data-staged-index="${i}">${sectionOptions}</select>
           <button type="button" class="mem-remove" data-staged-remove="${i}" title="${t.memories_remove}">${t.memories_remove}</button>
         </div>
       `).join('');
       uploadBtn.style.display = stagedFiles.length > 0 ? 'inline-block' : 'none';
 
-      el.querySelectorAll('select[data-staged-index]').forEach(sel => {
-        sel.addEventListener('change', () => {
-          stagedFiles[Number(sel.dataset.stagedIndex)].section = sel.value || null;
-        });
-      });
       el.querySelectorAll('button[data-staged-remove]').forEach(btn => {
         btn.addEventListener('click', () => {
           stagedFiles.splice(Number(btn.dataset.stagedRemove), 1);
