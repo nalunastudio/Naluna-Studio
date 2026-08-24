@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Se creează videoclipul tău — NALUNA</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;1,9..144,400&family=Sora:wght@400;500;600&display=swap" rel="stylesheet">
+<!--
+  Pagina DEDICATA de procesare pentru fluxul "Cadou video" (CORECȚIE 2026-08-24) — mirrors
+  STRUCTURAL se-compune.html (pagina existenta, deja dovedita, pentru asteptarea melodiei),
+  acelasi tipar de polling rezistent (nu moare niciodata la o singura eroare de retea,
+  re-verifica imediat la revenirea din fundal pe iPhone, stare terminala clara). Diferente
+  fata de acel model:
+    - nu exista niciun procent REAL pentru randarea video (server.js nu expune un
+      echivalent al generationPhasePercent pentru pasul video) — arătăm STRICT eticheta
+      etapei curente, niciodata un procent inventat (cerinta explicita a clientului);
+    - starea vine din order.videoStatus ('generating'/'stale'/'ready'/'failed'/'none'),
+      deja calculata server-side (GET /api/orders/:id, campul videoStatus) — nu introducem
+      niciun endpoint nou;
+    - Retry apeleaza STRICT POST /create-video (deja idempotent server-side — vezi
+      claimVideoRenderForOrder in server.js), tratand 200/202 SI 409 (job deja activ) ca
+      succes, exact acelasi tipar folosit acum si in melodia-mea.html.
+  Aceasta pagina e navigata STRICT dupa ce serverul a confirmat deja acceptarea jobului
+  (vezi handler-ul butonului "gift-video-create-btn" din melodia-mea.html) — nu porneste
+  ea insasi niciun job la incarcare, doar deriva si afiseaza starea reala.
+-->
+<style>
+  :root{
+    --bg:#FAF8F5; --bg-secondary:#F8F6F2; --surface:#FDFCFA;
+    --text:#2B2B2B; --text-secondary:#6B6B6B;
+    --gold:#A8834B; --gold-soft:#C9A876; --gold-deep:#8B6D3F; --line:#E8E2D6;
+    --success:#5F8F6E; --error:#B3574A;
+  }
+  *{box-sizing:border-box;}
+  html, body{ height:100%; }
+  body{
+    background:var(--bg); color:var(--text); font-family:'Sora', sans-serif;
+    min-height:100vh; display:flex; align-items:center; justify-content:center; margin:0;
+    padding:24px; position:relative; overflow:hidden;
+  }
+  @media (prefers-reduced-motion: reduce){
+    *{ animation-duration:0.01ms !important; animation-iteration-count:1 !important; transition-duration:0.01ms !important; }
+  }
+
+  .ambient-wash{
+    position:fixed; inset:0; z-index:0; pointer-events:none;
+    background:
+      radial-gradient(circle at 18% 20%, rgba(168,131,75,.08), transparent 45%),
+      radial-gradient(circle at 85% 80%, rgba(168,131,75,.07), transparent 50%);
+  }
+  .ambient-blob{
+    position:fixed; border-radius:50%; filter:blur(60px); pointer-events:none; z-index:0;
+    background:radial-gradient(circle, rgba(201,168,118,.16), transparent 70%);
+  }
+  .blob-1{ width:340px; height:340px; top:-80px; left:-100px; animation:driftA 22s ease-in-out infinite; }
+  .blob-2{ width:280px; height:280px; bottom:-100px; right:-80px; animation:driftB 26s ease-in-out infinite; }
+  @keyframes driftA{ 0%,100%{ transform:translate(0,0); } 50%{ transform:translate(40px,30px); } }
+  @keyframes driftB{ 0%,100%{ transform:translate(0,0); } 50%{ transform:translate(-30px,-40px); } }
+
+  .card{
+    position:relative; z-index:1;
+    background:rgba(253,252,250,.68);
+    backdrop-filter:blur(18px) saturate(140%);
+    -webkit-backdrop-filter:blur(18px) saturate(140%);
+    border:1px solid rgba(255,255,255,.5);
+    border-radius:26px;
+    padding:52px 42px;
+    max-width:520px; width:100%; text-align:center;
+    box-shadow:0 24px 60px -20px rgba(139,109,63,.18), 0 2px 8px rgba(43,43,43,.05);
+    transition:box-shadow .6s ease;
+  }
+  .logo-mark{ width:48px; margin:0 auto 26px; display:block; opacity:.92; }
+
+  .spinner-wrap{ position:relative; width:80px; height:80px; margin:0 auto 26px; }
+  .spinner-glow{
+    position:absolute; inset:-16px; border-radius:50%;
+    background:radial-gradient(circle, rgba(168,131,75,.2), rgba(168,131,75,0) 70%);
+    animation:glow 3.4s ease-in-out infinite;
+  }
+  @keyframes glow{ 0%,100%{ opacity:.55; transform:scale(1); } 50%{ opacity:1; transform:scale(1.1); } }
+  .spinner{
+    position:absolute; inset:0; border-radius:50%;
+    border:2px solid var(--line); border-top-color:var(--gold); border-right-color:var(--gold-soft);
+    animation:spin 2.6s linear infinite;
+  }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+  .spinner-check{
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    font-size:28px; color:var(--success); opacity:0; transform:scale(.6);
+    transition:opacity .5s ease, transform .5s ease;
+  }
+  .spinner-check.show{ opacity:1; transform:scale(1); }
+
+  h1{ font-family:'Fraunces', serif; font-weight:400; font-size:23px; margin-bottom:8px; letter-spacing:-.01em; }
+  p.sub{ color:var(--text-secondary); font-size:14px; margin-bottom:22px; }
+
+  .status-msg{
+    font-family:'Fraunces', serif; font-style:italic; color:var(--gold-deep);
+    font-size:16px; min-height:24px; margin-bottom:18px;
+    opacity:1; transition:opacity .5s ease;
+  }
+  .status-msg.fading{ opacity:0; }
+
+  /* Bara ramane STRICT nedeterminata — spre deosebire de se-compune.html, nu exista niciun
+     procent real de randare video expus de server, deci nu comutam NICIODATA pe o latime
+     controlata explicit (cerinta clientului: fara procente inventate). */
+  .progress-track{
+    height:7px; border-radius:999px; background:var(--surface); border:1px solid var(--line);
+    overflow:hidden; margin-bottom:20px; position:relative;
+  }
+  .progress-fill{
+    height:100%; border-radius:999px; position:absolute; top:0; left:-40%; width:40%;
+    background:linear-gradient(90deg, var(--gold-deep), var(--gold-soft));
+    animation:indeterminate 1.6s ease-in-out infinite;
+  }
+  .progress-fill.done{ animation:none; left:0; width:100%; }
+  @keyframes indeterminate{ 0%{ left:-40%; } 100%{ left:100%; } }
+  @media (prefers-reduced-motion: reduce){ .progress-fill{ animation-duration:.001ms; } }
+
+  .keep-open{ color:var(--text-secondary); font-size:13px; line-height:1.5; }
+
+  .soft-notice{
+    display:none; margin-top:18px; padding:12px 16px; border-radius:14px;
+    background:rgba(168,131,75,.08); color:var(--gold-deep); font-size:13px; line-height:1.5;
+  }
+
+  .error-state{ display:none; }
+  .error-state h1{ color:var(--error); }
+  .btn{
+    display:inline-block; margin-top:16px; padding:13px 28px; border-radius:999px;
+    background:var(--text); color:var(--bg); border:none; font-weight:500; font-size:14px;
+    cursor:pointer; transition:background-color .25s ease;
+  }
+  .btn:hover{ background:var(--gold-deep); }
+  .btn:disabled{ opacity:.6; cursor:default; }
+
+  @media (max-width: 480px){
+    .card{ padding:38px 26px; }
+    .blob-1, .blob-2{ display:none; }
+  }
+</style>
+</head>
+<body>
+  <div class="ambient-wash"></div>
+  <div class="ambient-blob blob-1"></div>
+  <div class="ambient-blob blob-2"></div>
+
+  <div class="card">
+    <img class="logo-mark" src="/logo.svg" alt="NALUNA">
+
+    <div id="progress-state">
+      <div class="spinner-wrap">
+        <div class="spinner-glow"></div>
+        <div class="spinner" id="spinner"></div>
+        <div class="spinner-check" id="spinner-check">✓</div>
+      </div>
+
+      <h1 id="p-title">Îți pregătim videoclipul cadou</h1>
+      <p class="sub" id="p-subtitle">Transformăm amintirile tale într-un videoclip sincronizat cu melodia aleasă.</p>
+
+      <div class="status-msg" id="status-msg"></div>
+
+      <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+      <p class="keep-open" id="p-keepopen">Nu închide această pagină. Rezultatul va apărea automat când este gata.</p>
+
+      <div class="soft-notice" id="soft-notice"></div>
+      <div class="soft-notice" id="long-notice" style="text-align:center;">
+        <strong id="long-notice-title"></strong><br>
+        <span id="long-notice-sub"></span>
+      </div>
+    </div>
+
+    <div class="error-state" id="error-state">
+      <h1 id="err-title">Nu am putut crea videoclipul de această dată</h1>
+      <p class="sub" id="err-sub">Poți încerca din nou</p>
+      <button class="btn" id="retry-btn">Încearcă din nou</button>
+    </div>
+  </div>
+
+<script>
+  const T = {
+    ro: {
+      title: 'Îți pregătim videoclipul cadou',
+      subtitle: 'Transformăm amintirile tale într-un videoclip sincronizat cu melodia aleasă.',
+      staleTitle: 'Actualizăm videoclipul tău',
+      staleSubtitle: 'Materialele sau melodia s-au schimbat — recreăm videoclipul cu ultima versiune.',
+      keepOpen: 'Nu închide această pagină. Rezultatul va apărea automat când este gata.',
+      stages: [
+        'Materialele tale sunt confirmate...',
+        'Analizăm melodia aleasă...',
+        'Pregătim fotografiile și filmările...',
+        'Montăm videoclipul...',
+        'Finalizăm previzualizarea...'
+      ],
+      readyMsg: 'Videoclipul tău este gata!',
+      readySub: 'Te ducem la previzualizare...',
+      softNotice: 'Conexiunea durează puțin mai mult. Verificăm în continuare.',
+      longTitle: 'Videoclipul durează puțin mai mult decât de obicei', longSub: 'Nu închide pagina. Continuăm să verificăm automat.',
+      errTitle: 'Nu am putut crea videoclipul de această dată',
+      errSub: 'Poți încerca din nou.',
+      retryBtn: 'Încearcă din nou', retrying: 'Se reîncearcă...'
+    },
+    en: {
+      title: "We're preparing your gift video",
+      subtitle: "We're turning your memories into a video synced to the song you chose.",
+      staleTitle: 'Updating your video',
+      staleSubtitle: 'Your materials or song changed — we\'re recreating the video with the latest version.',
+      keepOpen: 'Don\'t close this page. The result will appear automatically when ready.',
+      stages: [
+        'Your materials are confirmed...',
+        'Analysing the chosen song...',
+        'Preparing your photos and clips...',
+        'Assembling the video...',
+        'Finalising the preview...'
+      ],
+      readyMsg: 'Your video is ready!',
+      readySub: 'Taking you to the preview...',
+      softNotice: 'The connection is taking a little longer. We\'re still checking.',
+      longTitle: 'Your video is taking a little longer than usual', longSub: "Don't close this page. We'll keep checking automatically.",
+      errTitle: "We couldn't create your video this time",
+      errSub: 'You can try again.',
+      retryBtn: 'Try again', retrying: 'Retrying...'
+    },
+    de: {
+      title: 'Wir bereiten dein Geschenkvideo vor',
+      subtitle: 'Wir verwandeln deine Erinnerungen in ein Video, das auf dein gewähltes Lied abgestimmt ist.',
+      staleTitle: 'Wir aktualisieren dein Video',
+      staleSubtitle: 'Deine Materialien oder dein Lied haben sich geändert — wir erstellen das Video mit der neuesten Version neu.',
+      keepOpen: 'Schließe diese Seite nicht. Das Ergebnis erscheint automatisch, sobald es fertig ist.',
+      stages: [
+        'Deine Materialien sind bestätigt...',
+        'Wir analysieren das gewählte Lied...',
+        'Wir bereiten deine Fotos und Clips vor...',
+        'Wir erstellen das Video...',
+        'Wir finalisieren die Vorschau...'
+      ],
+      readyMsg: 'Dein Video ist fertig!',
+      readySub: 'Wir bringen dich zur Vorschau...',
+      softNotice: 'Die Verbindung dauert etwas länger. Wir prüfen weiterhin.',
+      longTitle: 'Dein Video braucht etwas länger als sonst', longSub: 'Schließe diese Seite nicht. Wir prüfen automatisch weiter.',
+      errTitle: 'Wir konnten dein Video dieses Mal nicht erstellen',
+      errSub: 'Du kannst es erneut versuchen.',
+      retryBtn: 'Erneut versuchen', retrying: 'Erneuter Versuch...'
+    },
+    es: {
+      title: 'Estamos preparando tu video de regalo',
+      subtitle: 'Estamos convirtiendo tus recuerdos en un video sincronizado con la canción elegida.',
+      staleTitle: 'Estamos actualizando tu video',
+      staleSubtitle: 'Tus materiales o tu canción cambiaron — recreamos el video con la última versión.',
+      keepOpen: 'No cierres esta página. El resultado aparecerá automáticamente cuando esté listo.',
+      stages: [
+        'Tus materiales están confirmados...',
+        'Analizando la canción elegida...',
+        'Preparando tus fotos y videos...',
+        'Montando el video...',
+        'Finalizando la previsualización...'
+      ],
+      readyMsg: '¡Tu video está listo!',
+      readySub: 'Te llevamos a la previsualización...',
+      softNotice: 'La conexión está tardando un poco más. Seguimos comprobando.',
+      longTitle: 'Tu video está tardando un poco más de lo habitual', longSub: 'No cierres esta página. Seguimos comprobando automáticamente.',
+      errTitle: 'No pudimos crear tu video esta vez',
+      errSub: 'Puedes intentarlo de nuevo.',
+      retryBtn: 'Intentar de nuevo', retrying: 'Reintentando...'
+    },
+    it: {
+      title: 'Stiamo preparando il tuo video regalo',
+      subtitle: 'Stiamo trasformando i tuoi ricordi in un video sincronizzato con la canzone scelta.',
+      staleTitle: 'Stiamo aggiornando il tuo video',
+      staleSubtitle: 'I tuoi materiali o la tua canzone sono cambiati — ricreiamo il video con l\'ultima versione.',
+      keepOpen: 'Non chiudere questa pagina. Il risultato apparirà automaticamente quando sarà pronto.',
+      stages: [
+        'I tuoi materiali sono confermati...',
+        'Analizziamo la canzone scelta...',
+        'Prepariamo le tue foto e i tuoi video...',
+        'Montiamo il video...',
+        "Finalizziamo l'anteprima..."
+      ],
+      readyMsg: 'Il tuo video è pronto!',
+      readySub: 'Ti portiamo all\'anteprima...',
+      softNotice: 'La connessione sta impiegando un po\' più di tempo. Stiamo ancora verificando.',
+      longTitle: 'Il tuo video sta impiegando un po\' più del solito', longSub: 'Non chiudere questa pagina. Continuiamo a verificare automaticamente.',
+      errTitle: 'Questa volta non siamo riusciti a creare il tuo video',
+      errSub: 'Puoi riprovare.',
+      retryBtn: 'Riprova', retrying: 'Nuovo tentativo...'
+    },
+    fr: {
+      title: 'Nous préparons ta vidéo cadeau',
+      subtitle: 'Nous transformons tes souvenirs en une vidéo synchronisée avec la chanson choisie.',
+      staleTitle: 'Nous mettons à jour ta vidéo',
+      staleSubtitle: 'Tes souvenirs ou ta chanson ont changé — nous recréons la vidéo avec la dernière version.',
+      keepOpen: 'Ne fermez pas cette page. Le résultat apparaîtra automatiquement une fois prêt.',
+      stages: [
+        'Tes souvenirs sont confirmés...',
+        'Analyse de la chanson choisie...',
+        'Préparation de tes photos et vidéos...',
+        'Montage de la vidéo...',
+        "Finalisation de l'aperçu..."
+      ],
+      readyMsg: 'Ta vidéo est prête !',
+      readySub: 'Direction la prévisualisation...',
+      softNotice: 'La connexion prend un peu plus de temps. Nous continuons à vérifier.',
+      longTitle: 'Ta vidéo prend un peu plus de temps que d\'habitude', longSub: 'Ne fermez pas cette page. Nous continuons à vérifier automatiquement.',
+      errTitle: "Nous n'avons pas pu créer ta vidéo cette fois-ci",
+      errSub: 'Tu peux réessayer.',
+      retryBtn: 'Réessayer', retrying: 'Nouvelle tentative...'
+    },
+    bg: {
+      title: 'Подготвяме твоето видео подарък',
+      subtitle: 'Превръщаме спомените ти във видео, синхронизирано с избраната песен.',
+      staleTitle: 'Актуализираме видеото ти',
+      staleSubtitle: 'Материалите или песента ти са променени — пресъздаваме видеото с последната версия.',
+      keepOpen: 'Не затваряй тази страница. Резултатът ще се появи автоматично, когато е готов.',
+      stages: [
+        'Материалите ти са потвърдени...',
+        'Анализираме избраната песен...',
+        'Подготвяме снимките и клиповете ти...',
+        'Монтираме видеото...',
+        'Финализираме прегледа...'
+      ],
+      readyMsg: 'Видеото ти е готово!',
+      readySub: 'Отвеждаме те към прегледа...',
+      softNotice: 'Връзката отнема малко повече време. Продължаваме да проверяваме.',
+      longTitle: 'Видеото отнема малко повече време от обичайното', longSub: 'Не затваряй тази страница. Продължаваме да проверяваме автоматично.',
+      errTitle: 'Този път не успяхме да създадем видеото ти',
+      errSub: 'Можеш да опиташ отново.',
+      retryBtn: 'Опитай отново', retrying: 'Нов опит...'
+    },
+    tr: {
+      title: 'Hediye videonuzu hazırlıyoruz',
+      subtitle: 'Anılarınızı seçtiğiniz şarkıyla senkronize bir videoya dönüştürüyoruz.',
+      staleTitle: 'Videonuzu güncelliyoruz',
+      staleSubtitle: 'Materyalleriniz veya şarkınız değişti — videoyu en son sürümle yeniden oluşturuyoruz.',
+      keepOpen: 'Bu sayfayı kapatmayın. Sonuç hazır olduğunda otomatik olarak görünecektir.',
+      stages: [
+        'Materyalleriniz onaylandı...',
+        'Seçilen şarkıyı analiz ediyoruz...',
+        'Fotoğraflarınızı ve videolarınızı hazırlıyoruz...',
+        'Videoyu birleştiriyoruz...',
+        'Ön izlemeyi tamamlıyoruz...'
+      ],
+      readyMsg: 'Videonuz hazır!',
+      readySub: 'Ön izlemeye yönlendiriliyorsunuz...',
+      softNotice: 'Bağlantı biraz daha uzun sürüyor. Kontrol etmeye devam ediyoruz.',
+      longTitle: 'Videonuz her zamankinden biraz daha uzun sürüyor', longSub: 'Bu sayfayı kapatmayın. Otomatik olarak kontrol etmeye devam ediyoruz.',
+      errTitle: 'Bu sefer videonuzu oluşturamadık',
+      errSub: 'Tekrar deneyebilirsiniz.',
+      retryBtn: 'Tekrar dene', retrying: 'Tekrar deneniyor...'
+    }
+  };
+
+  const supportedLangs = ['ro', 'en', 'de', 'es', 'it', 'fr', 'bg', 'tr'];
+  const savedLang = localStorage.getItem('nds_lang');
+  const lang = supportedLangs.includes(savedLang) ? savedLang : 'ro';
+  const t = T[lang];
+  document.documentElement.lang = lang;
+
+  const params = new URLSearchParams(window.location.search);
+  const orderId = params.get('id');
+  const accessToken = params.get('token') || localStorage.getItem('nds_access_token') || '';
+
+  if (!orderId) {
+    window.location.href = '/index.html';
+    throw new Error('orderId lipsa din URL — redirectionare catre /index.html');
+  }
+
+  document.getElementById('p-title').textContent = t.title;
+  document.getElementById('p-subtitle').textContent = t.subtitle;
+  document.getElementById('p-keepopen').textContent = t.keepOpen;
+  document.getElementById('err-title').textContent = t.errTitle;
+  document.getElementById('err-sub').textContent = t.errSub;
+  document.getElementById('retry-btn').textContent = t.retryBtn;
+  document.getElementById('soft-notice').textContent = t.softNotice;
+  document.getElementById('long-notice-title').textContent = t.longTitle;
+  document.getElementById('long-notice-sub').textContent = t.longSub;
+
+  const progressState = document.getElementById('progress-state');
+  const errorState = document.getElementById('error-state');
+  const progressFill = document.getElementById('progress-fill');
+  const statusMsgEl = document.getElementById('status-msg');
+  const softNoticeEl = document.getElementById('soft-notice');
+  const spinnerEl = document.getElementById('spinner');
+  const spinnerCheckEl = document.getElementById('spinner-check');
+  const retryBtn = document.getElementById('retry-btn');
+  const pTitleEl = document.getElementById('p-title');
+  const pSubtitleEl = document.getElementById('p-subtitle');
+
+  const startKey = `nds_video_start_${orderId}`;
+  let startTime = Number(localStorage.getItem(startKey));
+  if (!startTime) {
+    startTime = Date.now();
+    localStorage.setItem(startKey, String(startTime));
+  }
+
+  // Timp de referinta STRICT pentru rotatia textului calitativ (t.stages) si pentru
+  // declansarea mesajului linistitor "dureaza putin mai mult" — NU un procent, NU o
+  // estimare afisata clientului ca fiind exacta. Un videoclip real dureaza de obicei 1-3
+  // minute, dar poate varia mult in functie de numarul de materiale — acest text ramane
+  // reasigurare calitativa, niciodata o cifra inventata.
+  const ESTIMATE_MS = 90000;
+  const STAGE_INTERVAL_MS = ESTIMATE_MS / t.stages.length;
+  let currentStageIndex = -1;
+  let finished = false;
+  let isStale = false;
+
+  function setStatusMessage(msg) {
+    statusMsgEl.classList.add('fading');
+    setTimeout(() => {
+      statusMsgEl.textContent = msg;
+      statusMsgEl.classList.remove('fading');
+    }, 220);
+  }
+
+  function updateProgress() {
+    if (finished) return;
+    const elapsed = Date.now() - startTime;
+    const stageIndex = Math.min(Math.floor(elapsed / STAGE_INTERVAL_MS), t.stages.length - 1);
+    if (stageIndex !== currentStageIndex) {
+      currentStageIndex = stageIndex;
+      setStatusMessage(t.stages[stageIndex]);
+    }
+  }
+  updateProgress();
+  const progressTimer = setInterval(updateProgress, 1000);
+
+  function finishSuccess() {
+    finished = true;
+    clearInterval(progressTimer);
+    localStorage.removeItem(startKey);
+
+    progressFill.classList.add('done');
+    hideLongNotice();
+    setStatusMessage(t.readyMsg);
+    spinnerEl.style.opacity = '0';
+    spinnerCheckEl.classList.add('show');
+    pSubtitleEl.textContent = t.readySub;
+
+    setTimeout(() => {
+      window.location.href = `/melodia-mea.html?id=${encodeURIComponent(orderId)}&token=${encodeURIComponent(accessToken)}`;
+    }, 1400);
+  }
+
+  let consecutivePollFailures = 0;
+
+  function showSoftNotice() { softNoticeEl.style.display = 'block'; }
+  function hideSoftNotice() { softNoticeEl.style.display = 'none'; }
+
+  const longNoticeEl = document.getElementById('long-notice');
+  let longNoticeShown = false;
+  function showLongNotice() {
+    if (longNoticeShown) return;
+    longNoticeShown = true;
+    longNoticeEl.style.display = 'block';
+  }
+  function hideLongNotice() {
+    longNoticeShown = false;
+    longNoticeEl.style.display = 'none';
+  }
+
+  // Un job 'failed' e o stare TERMINALA reala (lock expirat fara rezultat, sau eroare
+  // explicita retinuta de randare — vezi videoStatus in server.js) — nu pornim automat o
+  // noua randare; clientul decide explicit prin Retry.
+  function handleFailed() {
+    finished = true;
+    if (pollTimer) clearTimeout(pollTimer);
+    clearInterval(progressTimer);
+    hideSoftNotice();
+    hideLongNotice();
+    progressState.style.display = 'none';
+    errorState.style.display = 'block';
+  }
+
+  // CORECȚIE (2026-08-24, "pollingul se oprea definitiv dupa o singura eroare de retea"):
+  // spre deosebire de o versiune naiva, bucla de mai jos REINCEARCA mereu (setTimeout la
+  // finalul fiecarei ramuri, inclusiv eroare) — nu exista niciun drum prin aceasta functie
+  // care sa lase pollTimer null fara sa il re-programeze, cu exceptia starilor terminale
+  // explicite (finishSuccess/handleFailed). Backoff: intervalul creste usor la esecuri
+  // consecutive (5s -> 10s -> 20s, plafonat), revine la 5s de indata ce un raspuns reusit
+  // soseste.
+  let pollTimer = null;
+  function nextPollDelay() {
+    return Math.min(5000 * Math.max(1, consecutivePollFailures), 20000);
+  }
+  async function pollStatus() {
+    try {
+      const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}?token=${encodeURIComponent(accessToken)}`);
+      if (!res.ok) {
+        consecutivePollFailures++;
+        if (consecutivePollFailures >= 2) showSoftNotice();
+        // Un 404/403 repetat inseamna aproape sigur comanda/tokenul invalid (nu o eroare
+        // tranzitorie de retea) — dupa cateva incercari, revenim la pagina comuna in loc sa
+        // pastram clientul blocat la nesfarsit pe o pagina care nu se va debloca niciodata.
+        if ((res.status === 404 || res.status === 403) && consecutivePollFailures >= 4) {
+          window.location.href = `/melodia-mea.html?id=${encodeURIComponent(orderId)}&token=${encodeURIComponent(accessToken)}`;
+          return;
+        }
+        pollTimer = setTimeout(pollStatus, nextPollDelay());
+        return;
+      }
+      consecutivePollFailures = 0;
+      hideSoftNotice();
+      const order = await res.json();
+
+      if (order.plan !== 'video') {
+        window.location.href = `/melodia-mea.html?id=${encodeURIComponent(orderId)}&token=${encodeURIComponent(accessToken)}`;
+        return;
+      }
+
+      if (order.videoStatus === 'ready') {
+        finishSuccess();
+        return;
+      }
+      if (order.videoStatus === 'failed') {
+        handleFailed();
+        return;
+      }
+
+      // 'generating' (randare activa) / 'stale' (materialele sau varianta s-au schimbat,
+      // regenerare automata deja pornita server-side) / 'none' (fereastra scurta, reala,
+      // dintre acceptarea jobului si scrierea efectiva a lock-ului — vezi comentariul din
+      // claimVideoRenderForOrder in server.js) — in toate cele trei cazuri, jobul e activ
+      // sau pe cale sa devina activ: continuam sa asteptam si sa verificam.
+      const nowStale = order.videoStatus === 'stale';
+      if (nowStale !== isStale) {
+        isStale = nowStale;
+        pTitleEl.textContent = isStale ? t.staleTitle : t.title;
+        pSubtitleEl.textContent = isStale ? t.staleSubtitle : t.subtitle;
+      }
+
+      if (Date.now() - startTime > ESTIMATE_MS) showLongNotice();
+      pollTimer = setTimeout(pollStatus, nextPollDelay());
+    } catch (err) {
+      consecutivePollFailures++;
+      if (consecutivePollFailures >= 2) showSoftNotice();
+      pollTimer = setTimeout(pollStatus, nextPollDelay());
+    }
+  }
+  pollStatus();
+
+  // HOTFIX (mostenit din se-compune.html, 2026-08-07): Safari iOS poate suspenda
+  // setTimeout-urile unei pagini cat timp tab-ul nu e vizibil — fortam o verificare
+  // IMEDIATA a starii reale de fiecare data cand tab-ul redevine vizibil (revenire din
+  // fundal) sau pagina e restaurata din bfcache, fara sa asteptam ca timer-ul intrerupt sa
+  // se reactiveze singur.
+  function forceImmediatePoll() {
+    if (finished) return;
+    if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+    pollStatus();
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) forceImmediatePoll();
+  });
+  window.addEventListener('pageshow', (event) => {
+    if (event.persisted) forceImmediatePoll();
+  });
+
+  // Retry — STRICT POST /create-video (deja idempotent server-side). 200/202 (pornit) SI
+  // 409 (deja activ, pornit concurent dintr-o alta fila/dispozitiv) sunt ambele tratate ca
+  // succes — in ambele cazuri exista acum un job real, reluam polling-ul normal. Orice alt
+  // raspuns (sau eroare de retea) ramane in starea de eroare, cu butonul reactivat.
+  retryBtn.addEventListener('click', async () => {
+    retryBtn.disabled = true;
+    retryBtn.textContent = t.retrying;
+    let res = null;
+    try {
+      res = await fetch(`/api/orders/${encodeURIComponent(orderId)}/create-video`, {
+        method: 'POST',
+        headers: { 'X-Access-Token': accessToken }
+      });
+    } catch (e) { /* res ramane null -> ramura de eroare de mai jos */ }
+
+    if (!res || (!res.ok && res.status !== 409)) {
+      retryBtn.disabled = false;
+      retryBtn.textContent = t.retryBtn;
+      return;
+    }
+
+    consecutivePollFailures = 0;
+    startTime = Date.now();
+    localStorage.setItem(startKey, String(startTime));
+
+    finished = false;
+    isStale = false;
+    errorState.style.display = 'none';
+    progressState.style.display = 'block';
+    retryBtn.disabled = false;
+    retryBtn.textContent = t.retryBtn;
+    spinnerEl.style.opacity = '1';
+    spinnerCheckEl.classList.remove('show');
+    progressFill.classList.remove('done');
+    pTitleEl.textContent = t.title;
+    pSubtitleEl.textContent = t.subtitle;
+    currentStageIndex = -1;
+
+    updateProgress();
+    pollStatus();
+  });
+</script>
+</body>
+</html>

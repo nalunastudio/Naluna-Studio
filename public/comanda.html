@@ -181,11 +181,13 @@
 
   .price-note{ font-size:13px; color:var(--text-secondary); }
 
-  /* MODIFICARE STRICTĂ — fluxul pachetului Premium £25 (hotfix 2026-08-09): ecranul dedicat
-     de sumar Premium (step 5) si ecranul de configurare a celei de-a doua melodii (step 6).
-     Reutilizeaza clasele existente (.theme-card, .theme-grid, .field-error, .btn etc.) — noile
-     clase de mai jos acopera DOAR nevoile specifice acestor doua ecrane: pretul mare de pe
-     sumar si sectiunile "obligatorii" cu contrast puternic de pe ecranul de configurare. */
+  /* MODIFICARE STRICTĂ — fluxul pachetului Premium £25 (hotfix 2026-08-09; CORECȚIE 2026-08-23,
+     eliminarea ecranului separat "Pachet Premium"): ecranele de configurare a celei de-a doua
+     melodii (step 5/6). .premium-price-hero ramane in CSS (nefolosita in HTML dupa eliminarea
+     ecranului de sumar) doar pentru compatibilitate; nicio regresie vizuala pe pasul 4, care
+     foloseste exact acelasi bloc .benefits-card ca inainte. Reutilizeaza clasele existente
+     (.theme-card, .theme-grid, .field-error, .btn etc.) — noile clase de mai jos acopera DOAR
+     sectiunile "obligatorii" cu contrast puternic de pe ecranele de configurare. */
   .premium-price-hero{
     font-family:'Fraunces', serif; font-size:40px; color:var(--gold-deep);
     text-align:center; margin:18px 0 6px;
@@ -617,40 +619,17 @@
       </div>
     </div>
 
-    <!-- MODIFICARE STRICTĂ — fluxul pachetului Premium £25 (hotfix 2026-08-09): ecran dedicat,
-         afisat DOAR cand clientul selecteaza cardul Premium (vezi selectPlan() -> showStep(5)).
-         Standard si Video NU trec niciodata prin acest ecran — raman EXACT pe fluxul vechi,
-         pasul 4 (plan + genre2 inline pentru Video + buton de trimitere). Contine NUMAI titlul,
-         pretul, lista de beneficii, totalul si cele doua butoane — nimic altceva (nicio carte
-         Standard/Video, niciun selector de gen, nicio configurare). -->
-    <div class="step-card" data-step="5" style="display:none;">
-      <h1 data-i18n="premium_summary_title">Pachet Premium</h1>
-      <div class="premium-price-hero">£25</div>
-
-      <div class="benefits-card">
-        <div class="benefits-list" id="premium-summary-benefits"></div>
-      </div>
-
-      <div class="order-summary">
-        <div class="row total"><span data-i18n="sum_total">Total</span><span>£25</span></div>
-      </div>
-
-      <button type="button" class="btn btn-primary" data-next="6" style="width:100%; justify-content:center; margin-top:20px;">
-        <span data-i18n="btn_generate">Generează previzualizarea gratuit →</span>
-      </button>
-
-      <div class="wizard-nav">
-        <button type="button" class="btn btn-ghost btn-back" data-prev="4" data-i18n="btn_back">Înapoi</button>
-        <span></span>
-      </div>
-    </div>
+    <!-- MODIFICARE STRICTĂ — beneficiile Premium afișate INLINE pe pasul comun (pasul 4, vezi
+         renderBenefits()/selectPlan() mai jos), în loc de un ecran separat de sumar. Ecranul
+         dedicat "Pachet Premium" (fostul pas 5) a fost eliminat — Premium rămâne pe pasul 4,
+         exact ca Standard și Cadou video. -->
 
     <!-- MODIFICARE STRICTĂ — fluxul pachetului Premium £25 (hotfix 2026-08-09; SEPARARE ÎN DOI
          PAȘI, hotfix 2026-08-10 runda 2): genul celei de-a doua melodii (obligatoriu, diferit de
          primul) — acum ecran DEDICAT, separat de "Pentru cine este a doua melodie?" (pasul
-         urmator, data-step="7"). Butonul de mai jos NU trimite comanda — doar valideaza genul si
-         trece la pasul urmator (vezi validateStep(6)). -->
-    <div class="step-card" data-step="6" style="display:none;">
+         urmator, data-step="6"). Butonul de mai jos NU trimite comanda — doar valideaza genul si
+         trece la pasul urmator (vezi validateStep(5)). -->
+    <div class="step-card" data-step="5" style="display:none;">
       <h1 data-i18n="song2_config_title">Configurează a doua melodie</h1>
 
       <div class="mandatory-section">
@@ -663,21 +642,21 @@
         <div id="song2-genre-slot"></div>
       </div>
 
-      <button type="button" class="btn btn-primary btn-continue" data-next="7" data-validate="6" data-i18n="btn_continue" style="width:100%; justify-content:center; margin-top:20px;">Continuă</button>
+      <button type="button" class="btn btn-primary btn-continue" data-next="6" data-validate="5" data-i18n="btn_continue" style="width:100%; justify-content:center; margin-top:20px;">Continuă</button>
 
       <div class="wizard-nav">
-        <button type="button" class="btn btn-ghost btn-back" data-prev="5" data-i18n="btn_back">Înapoi</button>
+        <button type="button" class="btn btn-ghost btn-back" data-prev="4" data-i18n="btn_back">Înapoi</button>
         <span></span>
       </div>
     </div>
 
     <!-- MODIFICARE STRICTĂ — fluxul pachetului Premium £25 (hotfix 2026-08-09; SEPARARE ÎN DOI
          PAȘI, hotfix 2026-08-10 runda 2): destinatarul celei de-a doua melodii (obligatoriu:
-         aceeași persoană sau altcineva) — ecran DEDICAT, dupa alegerea genului (pasul 6). Genul
+         aceeași persoană sau altcineva) — ecran DEDICAT, dupa alegerea genului (pasul 5). Genul
          ramane pastrat (nu e resetat) daca utilizatorul apasa Înapoi si revine aici. Butonul
          final ramane dezactivat pana cand toate alegerile obligatorii sunt complete si valide —
          vezi updateSong2ContinueState(). -->
-    <div class="step-card" data-step="7" style="display:none;">
+    <div class="step-card" data-step="6" style="display:none;">
       <h1 data-i18n="song2_config_title">Configurează a doua melodie</h1>
 
       <div class="mandatory-section">
@@ -795,19 +774,19 @@
       <div id="status-msg-song2"></div>
 
       <div class="wizard-nav">
-        <button type="button" class="btn btn-ghost btn-back" data-prev="6" data-i18n="btn_back">Înapoi</button>
+        <button type="button" class="btn btn-ghost btn-back" data-prev="5" data-i18n="btn_back">Înapoi</button>
         <span></span>
       </div>
     </div>
 
     <!-- ADAUGAT (2026-08-13) — mini-pagina dedicata pentru datele persoanei/melodiei 2, EXCLUSIV
-         Premium SI EXCLUSIV cand "Pentru altă persoană" a fost ales (pasul 7). Reutilizeaza EXACT
+         Premium SI EXCLUSIV cand "Pentru altă persoană" a fost ales (pasul 6). Reutilizeaza EXACT
          componentele/stilul campurilor de pe pasul 2 (acelasi tipar .field/label/input/textarea,
          aceleasi chei de traducere pentru sender/relationship/story — niciun text nou pentru ele).
-         Campul de nume (id="song2-recipient-name") e MUTAT AICI de pe pasul 7 (nu duplicat) —
+         Campul de nume (id="song2-recipient-name") e MUTAT AICI de pe pasul 6 (nu duplicat) —
          acelasi element, acelasi id, toata logica JS existenta (validare, draft, payload) ramane
          neschimbata. Ordinea cerută explicit: nume, expeditor, relație, poveste. -->
-    <div class="step-card" data-step="8" style="display:none;">
+    <div class="step-card" data-step="7" style="display:none;">
       <h1 data-i18n="song2_config_title">Configurează a doua melodie</h1>
 
       <!-- Numele destinatarului cand NU e "Amândoi" — pentru orice ocazie (generica SAU rol
@@ -844,7 +823,7 @@
       <div id="status-msg-song2-details"></div>
 
       <div class="wizard-nav">
-        <button type="button" class="btn btn-ghost btn-back" data-prev="7" data-i18n="btn_back">Înapoi</button>
+        <button type="button" class="btn btn-ghost btn-back" data-prev="6" data-i18n="btn_back">Înapoi</button>
         <span></span>
       </div>
     </div>
@@ -2198,19 +2177,20 @@
   let currentStep = 1;
 
   // MODIFICARE STRICTĂ — fluxul pachetului Premium £25 (hotfix 2026-08-09; SEPARARE ÎN DOI PAȘI,
-  // hotfix 2026-08-10 runda 2): Standard si Video raman la EXACT 4 pasi, neschimbat — DOAR
-  // Premium capata inca 3 pasi dedicati (sumar, genul melodiei 2, destinatarul melodiei 2 — genul
-  // si destinatarul erau UN SINGUR ecran combinat, acum separate). `selectedPlan` e declarat mai
-  // jos in acest script, dar functia insasi ruleaza abia dupa initializare completa, deci
-  // referinta e sigura.
-  // ADAUGAT (2026-08-13): Premium capata un al 8-lea pas, DAR STRICT DOAR cand "Pentru altă
+  // hotfix 2026-08-10 runda 2; CORECȚIE 2026-08-23, eliminarea ecranului separat "Pachet
+  // Premium"): Standard si Video raman la EXACT 4 pasi, neschimbat — Premium ramane STRICT pe
+  // pasul 4 (beneficiile afisate inline in acelasi bloc, ca Standard/Video, fara ecran separat de
+  // sumar) si capata inca 2 pasi dedicati (genul melodiei 2, destinatarul melodiei 2).
+  // `selectedPlan` e declarat mai jos in acest script, dar functia insasi ruleaza abia dupa
+  // initializare completa, deci referinta e sigura.
+  // ADAUGAT (2026-08-13): Premium capata un al 7-lea pas, DAR STRICT DOAR cand "Pentru altă
   // persoană" a fost ales (mini-pagina dedicata datelor persoanei 2) — "Pentru aceeași
-  // persoană" ramane la 7 pasi, neschimbat (nimic nou de completat pentru melodia 2 in acel
+  // persoană" ramane la 6 pasi, neschimbat (nimic nou de completat pentru melodia 2 in acel
   // caz). song2TargetInput e declarat mai jos in acest script, dar functia insasi ruleaza
   // abia dupa initializare completa (acelasi principiu ca la selectedPlan mai sus).
   function getTotalSteps() {
     if (selectedPlan.id !== 'premium') return 4;
-    return song2TargetInput.value === 'other' ? 8 : 7;
+    return song2TargetInput.value === 'other' ? 7 : 6;
   }
 
   const stepCards = document.querySelectorAll('.step-card');
@@ -2230,9 +2210,9 @@
     });
     // MODIFICARE STRICTĂ — fluxul pachetului Premium £25 (hotfix 2026-08-09): eticheta "Prima
     // melodie: [gen]" trebuie sa ramana corecta indiferent CUM a ajuns clientul pe acest pas
-    // (click direct, revenire din pasul 5, restaurare din draft) — actualizata aici, o singura
+    // (click direct, revenire din pasul 6, restaurare din draft) — actualizata aici, o singura
     // data, in loc de la fiecare punct posibil care ar putea schimba genul primei melodii.
-    if (n === 6 && typeof updateSong1GenreDisplay === 'function') updateSong1GenreDisplay();
+    if (n === 5 && typeof updateSong1GenreDisplay === 'function') updateSong1GenreDisplay();
     updateProgressLabel();
     try { localStorage.setItem(STEP_KEY, String(n)); } catch (err) { /* ignoram */ }
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -2357,7 +2337,7 @@
     // inainte de a trece la ecranul urmator (persoana). genre2Field e un element vizibil
     // (hidden inputul propriu-zis nu poate primi focus vizibil), deci derulam explicit catre el,
     // acelasi tipar deja folosit la validarea finala de trimitere (mai jos in acest fisier).
-    if (n === 6) {
+    if (n === 5) {
       const g2 = genre2Input.value;
       if (!g2) {
         setFieldError('genre2', t('val_genre2_required'));
@@ -2767,7 +2747,7 @@
   });
 
   // Folosita la validarea FINALA de trimitere (submit handler, mai jos) — STRICT Premium
-  // are nevoie de un al doilea gen, diferit de primul, colectat pe ecranul dedicat, pasul 6.
+  // are nevoie de un al doilea gen, diferit de primul, colectat pe ecranul dedicat, pasul 5.
   // CORECȚIE (2026-08-14, "Cadou video ramane la o singura melodie initiala, exact ca
   // Standard"): Video nu mai cere niciun al doilea gen la crearea comenzii — vezi
   // PLAN_VARIANT_COUNT.video in server.js.
@@ -2846,7 +2826,7 @@
   const song2Name1Label = document.getElementById('song2-name1-label');
   const song2Name2Label = document.getElementById('song2-name2-label');
   const song2ContinueBtn = document.getElementById('song2-continue-btn');
-  // ADAUGAT (2026-08-13) — mini-pagina dedicata (pasul 8): expeditor/relatie/poveste PROPRII
+  // ADAUGAT (2026-08-13) — mini-pagina dedicata (pasul 7): expeditor/relatie/poveste PROPRII
   // melodiei 2, complet separate de campurile principale #sender/#relationship/#story.
   const song2SenderNameInput = document.getElementById('song2-sender-name');
   const song2RelationshipInput = document.getElementById('song2-relationship');
@@ -2979,7 +2959,7 @@
       song2RelationPanel.style.display = 'block';
       // CORECȚIE (2026-08-13, runda 8, "elimină câmpurile duplicate de nume la Amândoi"):
       // song2BothNamesField nu mai e afisat NICIODATA — numele se introduc o singura data, pe
-      // mini-pagina dedicata (pasul 8), in campul unic #song2-recipient-name (vezi mai jos).
+      // mini-pagina dedicata (pasul 7), in campul unic #song2-recipient-name (vezi mai jos).
       song2BothNamesField.style.display = 'none';
       if (song2RecipientRoleInput.value) renderSong2SenderRoleGrid(song2RecipientRoleInput.value, song2FamilySenderRoleSlot);
       else song2SenderRoleSubfield.style.display = 'none';
@@ -3103,12 +3083,12 @@
     });
   });
 
-  // CORECȚIE (2026-08-13): campul numelui s-a mutat pe mini-pagina (pasul 8) — validitatea lui
-  // conteaza acum pentru song2DetailsContinueBtn (pasul 8), nu pentru song2ContinueBtn (pasul 7).
+  // CORECȚIE (2026-08-13): campul numelui s-a mutat pe mini-pagina (pasul 7) — validitatea lui
+  // conteaza acum pentru song2DetailsContinueBtn (pasul 7), nu pentru song2ContinueBtn (pasul 6).
   song2RecipientNameInput.addEventListener('input', () => { setFieldError('song2RecipientName', ''); updateSong2DetailsContinueState(); saveDraft(); });
   song2Name1Input.addEventListener('input', () => { setFieldError('song2Name1', ''); updateSong2ContinueState(); saveDraft(); });
   song2Name2Input.addEventListener('input', () => { setFieldError('song2Name2', ''); updateSong2ContinueState(); saveDraft(); });
-  // ADAUGAT (2026-08-13) — mini-pagina dedicata (pasul 8): expeditor/relatie/poveste proprii.
+  // ADAUGAT (2026-08-13) — mini-pagina dedicata (pasul 7): expeditor/relatie/poveste proprii.
   song2SenderNameInput.addEventListener('input', () => { setFieldError('song2SenderName', ''); updateSong2DetailsContinueState(); saveDraft(); });
   song2RelationshipInput.addEventListener('input', () => { setFieldError('song2Relationship', ''); updateSong2DetailsContinueState(); saveDraft(); });
   song2StoryInput.addEventListener('input', () => { setFieldError('song2Story', ''); updateSong2DetailsContinueState(); saveDraft(); });
@@ -3158,8 +3138,8 @@
     if (song2ContinueBtn) song2ContinueBtn.disabled = !song2AllValid();
   }
 
-  // ADAUGAT (2026-08-13) — mini-pagina dedicata (pasul 8): validitatea PROPRIE a acestui pas,
-  // complet separata de song2AllValid() (pasul 7). Numele individual (cand nu e "Amândoi") s-a
+  // ADAUGAT (2026-08-13) — mini-pagina dedicata (pasul 7): validitatea PROPRIE a acestui pas,
+  // complet separata de song2AllValid() (pasul 6). Numele individual (cand nu e "Amândoi") s-a
   // mutat aici — acelasi camp/id, doar relocat — impreuna cu expeditorul/relatia/povestea, noi.
   function song2DetailsAllValid() {
     // CORECȚIE (2026-08-13): campul de nume e acum obligatoriu necondiționat — el e sursa
@@ -3189,6 +3169,11 @@
   const sumTotal = document.getElementById('sum-total');
   const benefitsListEl = document.getElementById('benefits-list');
   let selectedPlan = { id: 'standard', price: 15, label: 'Standard' };
+  // Adevarul despre ce sa afiseze blocul de beneficii la incarcare: NIMIC pana cand clientul
+  // alege explicit un pachet (click/Enter/Space) sau pana cand un draft salvat anterior aduce
+  // deja un plan ales — cardul Standard ramane vizual "activ" implicit (neschimbat), dar asta
+  // NU inseamna ca a fost ales explicit.
+  let planExplicitlySelected = false;
 
   // Beneficiile REALE ale pachetului curent — sursa unica e obiectul de traduceri
   // (t.benefits_standard/premium/video), acelasi obiect din care se randeaza si restul
@@ -3197,19 +3182,6 @@
     const key = `benefits_${planId}`;
     const items = (translations[currentLang] && translations[currentLang][key]) || translations.ro[key] || [];
     benefitsListEl.innerHTML = items.map(text => `
-      <div class="benefit-item"><span class="benefit-check">✓</span><span class="benefit-text">${text}</span></div>
-    `).join('');
-  }
-
-  // MODIFICARE STRICTĂ — fluxul pachetului Premium £25 (hotfix 2026-08-09): lista de beneficii
-  // de pe ecranul dedicat Premium (pasul 5) — ACEEAȘI sursa de date (benefits_premium) ca lista
-  // de pe cardul de pachet (pasul 4), doar randata intr-un element separat, DEDICAT — cardul de
-  // pe pasul 4 ramane complet neatins (ramane sa afiseze acelasi continut, nefolosit vizual
-  // pentru Premium, care navigheaza departe de pasul 4 imediat ce e selectat).
-  const premiumSummaryBenefitsEl = document.getElementById('premium-summary-benefits');
-  function renderPremiumSummaryBenefits() {
-    const items = (translations[currentLang] && translations[currentLang].benefits_premium) || translations.ro.benefits_premium || [];
-    premiumSummaryBenefitsEl.innerHTML = items.map(text => `
       <div class="benefit-item"><span class="benefit-check">✓</span><span class="benefit-text">${text}</span></div>
     `).join('');
   }
@@ -3237,6 +3209,7 @@
     };
     sumPlan.textContent = selectedPlan.label;
     sumTotal.textContent = '£' + selectedPlan.price;
+    planExplicitlySelected = true;
     renderBenefits(selectedPlan.id);
     updateGenerateButtonLabel();
     updateGenre2Visibility();
@@ -3246,13 +3219,6 @@
     // progres trebuie sa reflecte imediat noul total, nu doar la urmatoarea navigare de pas.
     updateProgressLabel();
     saveDraft();
-    // Selectarea cardului Premium deschide IMEDIAT ecranul dedicat de sumar (pasul 5) —
-    // Standard si Video raman EXACT pe pasul 4, comportament complet neschimbat (doar
-    // highlight + genre2 inline pentru Video, ca inainte).
-    if (selectedPlan.id === 'premium') {
-      renderPremiumSummaryBenefits();
-      showStep(5);
-    }
   }
 
   plans.forEach(p => {
@@ -3476,6 +3442,7 @@
         };
         sumPlan.textContent = selectedPlan.label;
         sumTotal.textContent = '£' + selectedPlan.price;
+        planExplicitlySelected = true;
         updateGenerateButtonLabel();
       }
     }
@@ -3486,7 +3453,6 @@
     // refreshSong2OtherUI() dupa restaurarea planului si a tuturor campurilor song2 de mai sus —
     // functie idempotenta, reface intreaga stare vizuala a ecranului 6 dintr-o singura trecere.
     refreshSong2OtherUI();
-    if (selectedPlan.id === 'premium') renderPremiumSummaryBenefits();
   }
   restoreDraft();
   updateStep3ContinueState();
@@ -3501,7 +3467,10 @@
   form.addEventListener('input', saveDraft);
 
   applyLang(currentLang);
-  renderBenefits(selectedPlan.id);
+  // Vizita noua (niciun draft cu plan salvat, nicio selectie explicita inca): blocul de
+  // beneficii ramane gol pana la selectarea explicita a unui pachet (click/Enter/Space) — vezi
+  // planExplicitlySelected, setat in selectPlan()/restoreDraft().
+  if (planExplicitlySelected) renderBenefits(selectedPlan.id);
   updateGenerateButtonLabel();
   updateGenre2Visibility();
   showStep(restoredStep);
@@ -3528,25 +3497,26 @@
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
 
-    // MODIFICARE STRICTĂ — fluxul pachetului Premium £25 (hotfix 2026-08-09): daca butonul
-    // "Generează previzualizarea gratuită" de pe pasul 4 e apasat direct (posibil doar daca
-    // clientul revine pe pasul 4 dupa ce a ales deja Premium, fara sa re-selecteze cardul —
-    // vezi selectPlan(), care in mod normal navigheaza deja direct catre pasul 5), redirectam
-    // catre ecranul dedicat in loc sa incercam o trimitere invalida.
+    // MODIFICARE STRICTĂ — fluxul pachetului Premium £25 (hotfix 2026-08-09; CORECȚIE 2026-08-23,
+    // eliminarea ecranului separat "Pachet Premium"): butonul "Generează previzualizarea
+    // gratuită" de pe pasul 4 e butonul REAL de continuare pentru Premium (nu doar o plasa de
+    // siguranta) — Premium ramane pe pasul 4 (beneficiile afisate inline, vezi selectPlan()),
+    // deci acest buton trebuie sa avanseze explicit catre prima configurare obligatorie a celei
+    // de-a doua melodii (genul, pasul 5), fara sa trimita comanda direct.
     if (selectedPlan.id === 'premium' && currentStep === 4) {
       showStep(5);
       return;
     }
 
-    // ADAUGAT (2026-08-13) — mini-pagina dedicata datelor persoanei 2 (pasul 8): butonul pasului
-    // 7 ("song2-continue-btn") ramane type="submit" (acelasi tipar ca mai sus, pentru Enter
+    // ADAUGAT (2026-08-13) — mini-pagina dedicata datelor persoanei 2 (pasul 7): butonul pasului
+    // 6 ("song2-continue-btn") ramane type="submit" (acelasi tipar ca mai sus, pentru Enter
     // implicit), dar cand "Pentru altă persoană" a fost ales, NU trimite direct comanda —
     // redirectioneaza catre mini-pagina, exact acelasi tipar ca redirectarea pasului 4->5.
-    // "Pentru aceeași persoană" ramane neschimbat: pasul 7 e in continuare pasul final pentru
-    // acel caz (getTotalSteps() intoarce 7, nu 8), deci aceasta ramura nu se activeaza.
-    if (selectedPlan.id === 'premium' && currentStep === 7 && song2TargetInput.value === 'other') {
+    // "Pentru aceeași persoană" ramane neschimbat: pasul 6 e in continuare pasul final pentru
+    // acel caz (getTotalSteps() intoarce 6, nu 7), deci aceasta ramura nu se activeaza.
+    if (selectedPlan.id === 'premium' && currentStep === 6 && song2TargetInput.value === 'other') {
       updateSong2DetailsContinueState();
-      showStep(8);
+      showStep(7);
       return;
     }
 
@@ -3630,7 +3600,7 @@
       }
     }
 
-    // ADAUGAT (2026-08-13) — mini-pagina dedicata datelor persoanei 2 (pasul 8): plasa de
+    // ADAUGAT (2026-08-13) — mini-pagina dedicata datelor persoanei 2 (pasul 7): plasa de
     // siguranta redundanta fata de gating-ul butonului (updateSong2DetailsContinueState) —
     // acelasi tipar/pozitionare ca validarea de mai sus pentru campurile pasului 7.
     if (selectedPlan.id === 'premium' && song2TargetInput.value === 'other') {

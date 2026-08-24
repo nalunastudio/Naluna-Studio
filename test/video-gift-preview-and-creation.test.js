@@ -192,11 +192,12 @@ test('server.js: schimbarea variantei (POST /select) marcheaza videoclipul VECHI
 });
 
 // ---------------------------------------------------------------------------------------------
-// 5. PREVIZUALIZAREA GRATUITA DE 30s — fisier video REAL, taiat din videoclipul complet deja
-//    randat (acelasi montaj/materiale/melodie), fara watermark/filtre/servicii noi.
+// 5. PREVIZUALIZAREA GRATUITA DE 25s (CORECȚIE 2026-08-23, min(25s, durata totală)) — fisier
+//    video REAL, taiat din videoclipul complet deja randat (acelasi montaj/materiale/melodie),
+//    fara watermark/filtre/servicii noi.
 // ---------------------------------------------------------------------------------------------
-test('server.js: VIDEO_PREVIEW_SECONDS e definit la exact 30', () => {
-  assert.match(server, /const VIDEO_PREVIEW_SECONDS = 30;/);
+test('server.js: VIDEO_PREVIEW_SECONDS e definit la exact 25', () => {
+  assert.match(server, /const VIDEO_PREVIEW_SECONDS = 25;/);
 });
 
 test('server.js: previzualizarea se taie STRICT din videoclipul complet DEJA randat (acelasi montaj/materiale/melodie), fara reencodare (-c copy), fara filtre/watermark noi', () => {
@@ -309,7 +310,7 @@ test('melodia-mea.html: textul romana al noilor chei e exact cel cerut', () => {
   assert.ok(melodiaMea.includes("gift_video_create_sub: 'Vom transforma amintirile tale într-un videoclip sincronizat cu melodia aleasă.',"));
   assert.ok(melodiaMea.includes("gift_video_processing_title: 'Îți pregătim videoclipul cadou',"));
   assert.ok(melodiaMea.includes("gift_video_preview_title: 'Previzualizarea videoclipului tău cadou',"));
-  assert.ok(melodiaMea.includes("gift_video_preview_badge: '30 de secunde gratuite',"));
+  assert.ok(melodiaMea.includes("gift_video_preview_badge: '25 de secunde gratuite',"));
 });
 
 // ---------------------------------------------------------------------------------------------

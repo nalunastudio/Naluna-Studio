@@ -71,96 +71,116 @@ function premiumOrder(overrides) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// TEST 1: selectarea Premium deschide numai sumarul pachetului.
+// TEST 1 (CORECȚIE 2026-08-23) — selectarea Premium ramane pe pagina comuna (pasul 4) si
+// afiseaza beneficiile INLINE, in acelasi bloc folosit de Standard/Cadou video — ecranul separat
+// "Pachet Premium" (fostul pas 5) a fost eliminat complet.
 // ---------------------------------------------------------------------------------------------
-test('comanda.html: selectPlan() navigheaza automat la pasul 5 DOAR pentru Premium', () => {
-  assert.match(comanda, /if \(selectedPlan\.id === 'premium'\) \{\s*renderPremiumSummaryBenefits\(\);\s*showStep\(5\);\s*\}/);
+test('comanda.html: selectPlan() NU mai navigheaza automat catre niciun ecran separat pentru Premium (fara showStep(5) redundant)', () => {
+  const start = comanda.indexOf('function selectPlan(p) {');
+  const end = comanda.indexOf('\n  }', start);
+  const snippet = comanda.slice(start, end);
+  assert.ok(!snippet.includes('showStep('), 'selectPlan() nu trebuie sa apeleze showStep() pentru niciun plan');
+  assert.ok(!snippet.includes('renderPremiumSummaryBenefits'), 'functia veche a fost eliminata complet');
+  assert.ok(snippet.includes('renderBenefits(selectedPlan.id);'), 'renderBenefits() ramane singura sursa, comuna tuturor pachetelor');
 });
 
-test('comanda.html: pasul 5 (sumarul Premium) NU contine cardurile Standard/Video, niciun selector de configurare', () => {
-  const idx = comanda.indexOf('data-step="5"');
-  const nextStepIdx = comanda.indexOf('data-step="6"', idx);
-  const step5Html = comanda.slice(idx, nextStepIdx);
-  assert.ok(!step5Html.includes('data-plan="standard"'), 'pasul 5 nu trebuie sa contina cardul Standard');
-  assert.ok(!step5Html.includes('data-plan="video"'), 'pasul 5 nu trebuie sa contina cardul Cadou video');
-  assert.ok(!step5Html.includes('data-plan="premium"'), 'pasul 5 nu trebuie sa contina din nou cardul Premium (deja selectat)');
-  assert.ok(!step5Html.includes('song2-genre-slot'), 'pasul 5 nu trebuie sa contina selectorul genului celei de-a doua melodii');
-  assert.ok(!step5Html.includes('song2-same-card'), 'pasul 5 nu trebuie sa contina selectorul de destinatar al celei de-a doua melodii');
-  assert.ok(step5Html.includes('premium_summary_title'));
-  assert.ok(step5Html.includes('£25'));
-  assert.ok(step5Html.includes('premium-summary-benefits'));
-  assert.ok(step5Html.includes('sum_total'));
+test('comanda.html: nu mai exista niciun ecran/functie/element dedicat sumarului Premium separat (renderPremiumSummaryBenefits, #premium-summary-benefits, premium_summary_title ca h1 de ecran)', () => {
+  assert.ok(!comanda.includes('renderPremiumSummaryBenefits'), 'functia veche trebuie eliminata');
+  assert.ok(!comanda.includes('premium-summary-benefits'), 'elementul dedicat vechi trebuie eliminat');
+  assert.ok(!comanda.includes('<h1 data-i18n="premium_summary_title">'), 'ecranul separat "Pachet Premium" nu mai trebuie sa existe in HTML');
+});
+
+test('comanda.html: beneficiile Premium se randeaza in ACELASI bloc comun (#benefits-list) ca Standard si Cadou video, folosind aceeasi functie renderBenefits()', () => {
+  assert.match(comanda, /function renderBenefits\(planId\) \{\s*const key = `benefits_\$\{planId\}`;/);
+  assert.match(comanda, /<div class="benefits-list" id="benefits-list"><\/div>/);
+});
+
+test('comanda.html: la incarcarea initiala, blocul de beneficii ramane gol pana la selectarea explicita a unui pachet (planExplicitlySelected)', () => {
+  assert.match(comanda, /let planExplicitlySelected = false;/);
+  assert.match(comanda, /if \(planExplicitlySelected\) renderBenefits\(selectedPlan\.id\);/);
+  // selectPlan() (click/Enter/Space) seteaza flag-ul la true INAINTE de a randa beneficiile.
+  const start = comanda.indexOf('function selectPlan(p) {');
+  const snippet = comanda.slice(start, start + 700);
+  assert.match(snippet, /planExplicitlySelected = true;\s*renderBenefits\(selectedPlan\.id\);/);
+});
+
+test('comanda.html: restaurarea draftului cu un plan salvat marcheaza selectia ca explicita (beneficiile corecte se randeaza la initializare, fara ecranul vechi de sumar)', () => {
+  const start = comanda.indexOf('function restoreDraft() {');
+  const end = comanda.indexOf('\n  }', comanda.indexOf('updateGenerateButtonLabel();', start));
+  const snippet = comanda.slice(start, end);
+  assert.match(snippet, /planExplicitlySelected = true;/);
+  assert.ok(!snippet.includes('renderPremiumSummaryBenefits'), 'restaurarea nu mai trebuie sa deschida fostul sumar Premium');
 });
 
 // ---------------------------------------------------------------------------------------------
-// TEST 2: selectorul genului nu apare pe primul ecran (pasul 5).
+// TEST 2/3 (CORECȚIE 2026-08-23) — click/Enter/Space pe cardul Premium au acelasi comportament
+// (toate trec prin selectPlan()), iar butonul "Generează..." de pe pasul 4 e cel care avanseaza
+// explicit spre configurarea celei de-a doua melodii — fara sa porneasca generarea imediat.
 // ---------------------------------------------------------------------------------------------
-test('comanda.html: genre2-field NU e prezent in interiorul pasului 5', () => {
-  const idx = comanda.indexOf('data-step="5"');
-  const nextStepIdx = comanda.indexOf('data-step="6"', idx);
-  const step5Html = comanda.slice(idx, nextStepIdx);
-  assert.ok(!step5Html.includes('genre2-card'), 'pasul 5 nu trebuie sa contina cardurile de gen');
-});
-
-// ---------------------------------------------------------------------------------------------
-// TEST 3: "Generează previzualizarea gratuită" deschide configurarea fara sa porneasca generarea.
-// ---------------------------------------------------------------------------------------------
-test('comanda.html: butonul de pe pasul 5 e type="button" cu data-next="6" (NU type="submit") — nu poate porni direct generarea', () => {
-  const idx = comanda.indexOf('data-step="5"');
-  const nextStepIdx = comanda.indexOf('data-step="6"', idx);
-  const step5Html = comanda.slice(idx, nextStepIdx);
-  assert.match(step5Html, /<button type="button" class="btn btn-primary" data-next="6"/);
-  assert.ok(!/<button type="submit"[^>]*data-next="6"/.test(step5Html), 'butonul NU trebuie sa fie type="submit"');
+test('comanda.html: click SI keydown (Enter/Space) pe un card de plan apeleaza identic selectPlan(p)', () => {
+  assert.match(comanda, /p\.addEventListener\('click', \(\) => selectPlan\(p\)\);/);
+  assert.match(comanda, /if \(e\.key === 'Enter' \|\| e\.key === ' '\) \{ e\.preventDefault\(\); selectPlan\(p\); \}/);
 });
 
 test('comanda.html: submit handler porneste generarea DOAR la pasul final (getTotalSteps()), niciodata mai devreme', () => {
   assert.match(comanda, /if \(currentStep !== getTotalSteps\(\)\) \{/);
+});
+
+test('comanda.html: pe pasul 4, cu Premium selectat, butonul "Generează..." avanseaza direct la pasul 5 (prima configurare obligatorie a melodiei 2 — genul), fara sa trimita comanda si fara sa schimbe URL-ul', () => {
   assert.match(comanda, /if \(selectedPlan\.id === 'premium' && currentStep === 4\) \{\s*showStep\(5\);\s*return;\s*\}/);
 });
 
-// MODIFICARE STRICTĂ — separarea configurarii Premium in doi pasi (hotfix 2026-08-10 runda 2):
-// genul (pasul 6) si destinatarul (pasul 7) sunt acum ecrane SEPARATE — Premium are 7 pasi in
-// total (5 originali + genul + destinatarul), nu 6.
-test('comanda.html: getTotalSteps() e 7 sau 8 pentru premium (8 STRICT cand "Pentru altă persoană" a fost ales — mini-pagina dedicata, ADAUGAT 2026-08-13), 4 pentru orice alt pachet (Standard/Video neschimbate)', () => {
-  assert.match(comanda, /function getTotalSteps\(\) \{\s*if \(selectedPlan\.id !== 'premium'\) return 4;\s*return song2TargetInput\.value === 'other' \? 8 : 7;\s*\}/);
+// MODIFICARE STRICTĂ — separarea configurarii Premium in doi pasi (hotfix 2026-08-10 runda 2),
+// CORECȚIE 2026-08-23 (eliminarea ecranului separat "Pachet Premium"): genul (pasul 5) si
+// destinatarul (pasul 6) raman ecrane SEPARATE — Premium are acum 6 sau 7 pasi in total
+// (pasul 5 al vechiului flux, sumarul, a fost eliminat), nu 7/8.
+test('comanda.html: getTotalSteps() e 6 sau 7 pentru premium (7 STRICT cand "Pentru altă persoană" a fost ales — mini-pagina dedicata), 4 pentru orice alt pachet (Standard/Video neschimbate)', () => {
+  assert.match(comanda, /function getTotalSteps\(\) \{\s*if \(selectedPlan\.id !== 'premium'\) return 4;\s*return song2TargetInput\.value === 'other' \? 7 : 6;\s*\}/);
 });
 
-test('comanda.html: pasul 6 (genul) si pasul 7 (destinatarul) sunt ecrane distincte, fiecare cu propriul step-card', () => {
+test('comanda.html: pasul 5 (genul) si pasul 6 (destinatarul) sunt ecrane distincte, fiecare cu propriul step-card — pasul 4 este pagina comuna cu pachetele', () => {
+  assert.match(comanda, /<div class="step-card" data-step="5" style="display:none;">/);
   assert.match(comanda, /<div class="step-card" data-step="6" style="display:none;">/);
-  assert.match(comanda, /<div class="step-card" data-step="7" style="display:none;">/);
-  const idx6 = comanda.indexOf('data-step="6"');
-  const idx7 = comanda.indexOf('data-step="7"', idx6);
-  const step6Html = comanda.slice(idx6, idx7);
-  assert.ok(step6Html.includes('song2_genre_section_title'), 'pasul 6 trebuie sa contina sectiunea de gen');
-  assert.ok(!step6Html.includes('song2_target_section_title'), 'pasul 6 NU trebuie sa contina sectiunea de destinatar');
-  assert.match(step6Html, /data-next="7" data-validate="6"/, 'pasul 6 trebuie sa aiba un buton Continuă catre pasul 7, cu validare');
+  const idx5 = comanda.indexOf('data-step="5"');
+  const idx6 = comanda.indexOf('data-step="6"', idx5);
+  const step5Html = comanda.slice(idx5, idx6);
+  assert.ok(step5Html.includes('song2_genre_section_title'), 'pasul 5 trebuie sa contina sectiunea de gen');
+  assert.ok(!step5Html.includes('song2_target_section_title'), 'pasul 5 NU trebuie sa contina sectiunea de destinatar');
+  assert.match(step5Html, /data-next="6" data-validate="5"/, 'pasul 5 trebuie sa aiba un buton Continuă catre pasul 6, cu validare');
 });
 
-test('comanda.html: validateStep(6) cere genre2 obligatoriu si diferit de genre, inainte de a trece la pasul 7', () => {
-  const idx = comanda.indexOf('if (n === 6) {');
+test('comanda.html: butonul "Înapoi" din configurarea Premium (pasul 5, genul melodiei 2) revine la pagina comuna cu pachetele (pasul 4)', () => {
+  const idx5 = comanda.indexOf('data-step="5"');
+  const idx6 = comanda.indexOf('data-step="6"', idx5);
+  const step5Html = comanda.slice(idx5, idx6);
+  assert.match(step5Html, /data-prev="4"/);
+});
+
+test('comanda.html: validateStep(5) cere genre2 obligatoriu si diferit de genre, inainte de a trece la pasul 6', () => {
+  const idx = comanda.indexOf('if (n === 5) {');
   const snippet = comanda.slice(idx, idx + 500);
   assert.ok(snippet.includes("t('val_genre2_required')"));
   assert.ok(snippet.includes("t('val_genre_same')"));
 });
 
-test('comanda.html: butonul "Înapoi" de pe pasul 7 pastreaza genul ales pe pasul 6 (revine la pasul 6, nu reseteaza genre2Input)', () => {
-  const idx7 = comanda.indexOf('data-step="7"');
-  const idx8 = comanda.indexOf('</form>', idx7);
-  const step7Html = comanda.slice(idx7, idx8);
-  assert.match(step7Html, /data-prev="6"/);
+test('comanda.html: butonul "Înapoi" de pe pasul 6 (destinatarul) pastreaza genul ales pe pasul 5 (revine la pasul 5, nu reseteaza genre2Input)', () => {
+  const idx6 = comanda.indexOf('data-step="6"');
+  const idx7 = comanda.indexOf('data-step="7"', idx6);
+  const step6Html = comanda.slice(idx6, idx7);
+  assert.match(step6Html, /data-prev="5"/);
 });
 
 // ---------------------------------------------------------------------------------------------
 // TEST 4: sectiunea genului e vizibila si marcata obligatorie.
 // ---------------------------------------------------------------------------------------------
-test('comanda.html: sectiunea genului de pe pasul 6 e intr-un .mandatory-section, cu marcaj badge_required', () => {
+test('comanda.html: sectiunea genului de pe pasul 5 e intr-un .mandatory-section, cu marcaj badge_required', () => {
   const idx = comanda.indexOf('song2_genre_section_title');
   const context = comanda.slice(idx - 400, idx + 50);
   assert.ok(context.includes('mandatory-section'), 'sectiunea genului trebuie sa fie in interiorul unui .mandatory-section');
   assert.ok(context.includes('badge_required'), 'sectiunea genului trebuie sa aiba marcajul "Obligatoriu"');
 });
 
-test('comanda.html: "Prima melodie: [gen]" e afisat pe pasul 6, actualizat din cardul real de gen (nu dintr-o cheie inexistenta gen_<val>)', () => {
+test('comanda.html: "Prima melodie: [gen]" e afisat pe pasul 5, actualizat din cardul real de gen (nu dintr-o cheie inexistenta gen_<val>)', () => {
   assert.match(comanda, /id="song1-genre-display"/);
   assert.match(comanda, /function updateSong1GenreDisplay\(\) \{\s*const card = document\.querySelector\(`\.genre-card\[data-genre="\$\{genreInput\.value\}"\]:not\(\.genre2-card\)`\);/);
 });
@@ -364,9 +384,9 @@ test('comanda.html: butonul "Continuă..." incepe disabled si e controlat DOAR d
 
 // MODIFICARE (2026-08-13, runda "Amândoi" fara campuri duplicate): numele (fie individual, fie
 // "Amândoi", ex. "Maria și Victor") se introduce acum O SINGURA DATA, pe mini-pagina dedicata
-// (pasul 8, song2-recipient-name) — song2AllValid() (pasul 7) NU mai valideaza niciun nume,
+// (pasul 7, song2-recipient-name) — song2AllValid() (pasul 6) NU mai valideaza niciun nume,
 // indiferent daca rolul e "both" sau individual.
-test('comanda.html: song2AllValid() (pasul 7) verifica genul (diferit de primul), alegerea same/other, SI (daca "other") ocazia si relatia/nunta — NU mai valideaza niciun nume (mutat integral in song2DetailsAllValid())', () => {
+test('comanda.html: song2AllValid() (pasul 6) verifica genul (diferit de primul), alegerea same/other, SI (daca "other") ocazia si relatia/nunta — NU mai valideaza niciun nume (mutat integral in song2DetailsAllValid())', () => {
   const start = comanda.indexOf('function song2AllValid() {');
   const snippet = comanda.slice(start, start + 1400);
   assert.ok(snippet.includes("if (!genre2Input.value || genre2Input.value === genreInput.value) return false;"));
@@ -380,7 +400,7 @@ test('comanda.html: song2AllValid() (pasul 7) verifica genul (diferit de primul)
   assert.ok(!snippet.includes("} else if (!song2RecipientNameInput.value.trim()) {"), 'verificarea numelui individual NU mai trebuie sa fie in song2AllValid() — s-a mutat in song2DetailsAllValid()');
 });
 
-test('comanda.html: song2DetailsAllValid() (mini-pagina, pasul 8) verifica numele (individual sau "Amândoi", necondiționat), expeditorul, relatia si povestea — toate proprii melodiei 2', () => {
+test('comanda.html: song2DetailsAllValid() (mini-pagina, pasul 7) verifica numele (individual sau "Amândoi", necondiționat), expeditorul, relatia si povestea — toate proprii melodiei 2', () => {
   const start = comanda.indexOf('function song2DetailsAllValid() {');
   assert.ok(start !== -1);
   const snippet = comanda.slice(start, start + 700);

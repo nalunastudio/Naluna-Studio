@@ -116,7 +116,7 @@ const PREVIEW_SECONDS = 40;
 // Previzualizarea GRATUITĂ a videoclipului cadou (pachetul "video"), disponibilă ÎNAINTE de
 // plată — vezi generateLyricVideo() mai jos, care taie acest fragment (stream copy, fără
 // reencodare) din videoclipul complet deja randat, exact ca la începutul lui.
-const VIDEO_PREVIEW_SECONDS = 30;
+const VIDEO_PREVIEW_SECONDS = 25;
 const FREE_EDITS = 1; // prima melodie generata NU consuma nicio editare (vezi /generate, care
                        // nu atinge editsUsed) — clientul are apoi exact O SINGURA regenerare
                        // gratuita; a doua tentativa e blocata
@@ -2361,7 +2361,7 @@ app.get('/api/orders/:orderId', async (req, res, next) => {
       // daca extrasul de pachet (WAV/video, vezi generatePremiumExtras) e deja gata.
       hasWav: !!v.wavKey,
       hasVideo: !!v.videoKey,
-      // Previzualizarea gratuita de 30s (cerinta "Cadou video"), disponibila INAINTE de plata —
+      // Previzualizarea gratuita de 25s (cerinta "Cadou video"), disponibila INAINTE de plata —
       // separata de hasVideo (videoclipul COMPLET, deblocat STRICT dupa plata, vezi /media/video).
       hasVideoPreview: !!v.videoPreviewKey,
       videoFailedReason: v.videoFailedReason || null,
@@ -2397,7 +2397,7 @@ app.get('/api/orders/:orderId', async (req, res, next) => {
     if (order.plan === 'video') {
       if (isVideoLockActive(order)) videoStatus = 'generating';
       else if (order.videoStaleReason) videoStatus = 'stale';
-      // RELANSARE (2026-08-14, "previzualizarea gratuita de 30s"): 'ready' cere acum AMBELE
+      // RELANSARE (2026-08-14, "previzualizarea gratuita de 25s"): 'ready' cere acum AMBELE
       // fisiere — videoclipul complet SI previzualizarea (create in acelasi job, vezi
       // generateLyricVideo) — o comanda veche cu doar videoKey (dinainte ca previzualizarea
       // sa existe) nu trebuie sa arate "gata" cat timp nu exista inca nimic redabil pre-plata.
@@ -3160,7 +3160,7 @@ app.post('/api/orders/:orderId/create-video', requireOrderToken, async (req, res
       return res.status(400).json({ error: `Încarcă și confirmă cel puțin ${ORDER_MEDIA_MIN_ITEMS} materiale înainte de a crea videoclipul.` });
     }
 
-    // RELANSARE (2026-08-14, "previzualizarea gratuita de 30s"): "deja gata" inseamna acum
+    // RELANSARE (2026-08-14, "previzualizarea gratuita de 25s"): "deja gata" inseamna acum
     // STRICT ambele fisiere disponibile — videoclipul complet SI previzualizarea. O comanda
     // veche cu doar videoKey (creata inainte ca previzualizarea sa existe) trebuie sa mai
     // porneasca INCA un job (idempotent — vezi generatePremiumExtras), ca sa capete si
@@ -3173,8 +3173,17 @@ app.post('/api/orders/:orderId/create-video', requireOrderToken, async (req, res
       return res.status(409).json({ error: 'Videoclipul este deja în curs de creare.' });
     }
 
+    // CORECȚIE (2026-08-24): asteptam (await) STRICT rezervarea atomica (scrierea lock-ului in
+    // Postgres) inainte de a raspunde — clientul nu mai primeste niciodata "started: true" fara
+    // ca starea durabila sa fie deja garantat scrisa. Randarea propriu-zisa (poate dura minute)
+    // ramane fire-and-forget DUPA acest punct, exact ca inainte.
+    const claim = await claimVideoRenderForOrder(order.id, order.selectedVariantId);
+    if (!claim) {
+      return res.status(409).json({ error: 'Videoclipul este deja în curs de creare.' });
+    }
+
     res.json({ started: true });
-    triggerVideoGeneration(order.id, order.selectedVariantId).catch(err => {
+    runVideoRenderJob(order.id, order.selectedVariantId, claim.mediaRevisionAtStart).catch(err => {
       console.error('Crearea videoclipului cu memorii a esuat pentru comanda', order.id, err.message);
     });
   } catch (err) {
@@ -3183,7 +3192,7 @@ app.post('/api/orders/:orderId/create-video', requireOrderToken, async (req, res
 });
 
 // ==========================================================================================
-// Previzualizarea GRATUITA de 30s a videoclipului cadou — cerinta "Cadou video": clientul
+// Previzualizarea GRATUITA de 25s a videoclipului cadou — cerinta "Cadou video": clientul
 // trebuie sa poata vedea inceputul videoclipului INAINTE de plata. Spre deosebire de
 // /media/video/:orderId (videoclipul COMPLET, STRICT dupa plata — vezi decizia finala din acea
 // ruta), aceasta ruta e autorizata STRICT prin accessToken-ul comenzii (requireOrderToken), NU
@@ -3206,18 +3215,21 @@ app.get('/api/orders/:orderId/media/video-preview-url', requireOrderToken, async
 });
 
 // ==========================================================================================
-// Declanseaza randarea video cu rezervare ATOMICA persistenta (vezi db.claimVideoRender) —
-// punct UNIC de intrare pentru orice randare video, apelat automat de:
-//   1) finalizeVariantsIfNeeded(), dupa ce melodia (initiala SAU regenerata) ajunge
-//      'preview_ready' pentru un pachet "video" cu materiale deja confirmate;
-//   2) POST /select, cand clientul schimba varianta audio activa;
-//   3) POST /create-video, ca reincercare manuala explicita.
-// Idempotent: daca lock-ul e deja detinut (randare activa) sau videoclipul curent e deja
-// valabil pentru variantId cerut, nu porneste o a doua randare.
+// CORECȚIE (2026-08-24, "jobul poate fi pornit fire-and-forget INAINTE ca starea durabila sa
+// fie salvata"): faza de REZERVARE (db.claimVideoRender — scrierea atomica a lock-ului in
+// Postgres) a fost separata explicit de faza de RANDARE propriu-zisa (generatePremiumExtras,
+// care poate dura minute). POST /create-video de mai jos ACUM asteapta (await) STRICT faza de
+// rezervare inainte sa raspunda clientului cu "started: true" — daca procesul crapa sau
+// db.claimVideoRender arunca o eroare INTRE trimiterea raspunsului si scrierea lock-ului (cum
+// se putea intampla inainte, cand intreg triggerVideoGeneration pornea fire-and-forget dupa
+// res.json), clientul primea deja confirmarea, dar niciun job nu exista de fapt niciunde —
+// randarea nu mai pornea NICIODATA, iar starea video ramanea 'none' la infinit, fara nicio cale
+// de recuperare (nu 'failed', pentru ca nu exista niciun lock expirat de recuperat). Acum, daca
+// rezervarea esueaza, raspunsul reflecta exact asta INAINTE de a fi trimis.
 // ==========================================================================================
-async function triggerVideoGeneration(orderId, variantId) {
+async function claimVideoRenderForOrder(orderId, variantId) {
   const orderAtStart = await db.getOrderById(orderId);
-  if (!orderAtStart) return;
+  if (!orderAtStart) return null;
   const mediaRevisionAtStart = orderAtStart.mediaRevision;
 
   // Lock-ul e legat de (orderId, variantId, mediaRevision) — vezi cerinta E9 ("un render
@@ -3225,8 +3237,14 @@ async function triggerVideoGeneration(orderId, variantId) {
   // DOAR daca aceasta tripleta inca reprezinta versiunea curenta la momentul finalizarii —
   // verificat explicit in generatePremiumExtras() inainte de orice scriere a videoKey.
   const claimedOrder = await db.claimVideoRender(orderId, variantId, mediaRevisionAtStart);
-  if (!claimedOrder) return; // randare deja activa (lock neexpirat) — no-op sigur
+  if (!claimedOrder) return null; // randare deja activa (lock neexpirat) — no-op sigur
+  return { claimedOrder, mediaRevisionAtStart };
+}
 
+// Faza de RANDARE propriu-zisa — presupune lock-ul DEJA detinut (vezi claimVideoRenderForOrder
+// mai sus). Poate dura minute; pornita STRICT dupa ce apelantul stie sigur ca rezervarea a
+// reusit (fie a asteptat-o direct, fie a mostenit-o dintr-un apel anterior).
+async function runVideoRenderJob(orderId, variantId, mediaRevisionAtStart) {
   // Problema 1 — faza 2 pentru pachetul Video ("Realizăm videoclipul și îl sincronizăm"):
   // audio-ul e deja gata la acest punct (altfel randarea nici nu ar fi putut porni), doar
   // videoclipul mai ramane. Vezi PHASE_PROGRESS/melodia-mea.html pentru afisarea distincta.
@@ -3250,7 +3268,7 @@ async function triggerVideoGeneration(orderId, variantId) {
       }
     }
   } catch (err) {
-    console.error(`Comanda ${orderId}: triggerVideoGeneration a esuat pentru varianta ${variantId}:`, err.message);
+    console.error(`Comanda ${orderId}: runVideoRenderJob a esuat pentru varianta ${variantId}:`, err.message);
   } finally {
     await db.releaseVideoRender(orderId);
   }
@@ -3269,6 +3287,26 @@ async function triggerVideoGeneration(orderId, variantId) {
       }
     }
   }
+}
+
+// ==========================================================================================
+// Declanseaza randarea video cu rezervare ATOMICA persistenta (vezi db.claimVideoRender) —
+// punct UNIC de intrare pentru orice randare video, apelat automat de:
+//   1) finalizeVariantsIfNeeded(), dupa ce melodia (initiala SAU regenerata) ajunge
+//      'preview_ready' pentru un pachet "video" cu materiale deja confirmate;
+//   2) POST /select, cand clientul schimba varianta audio activa;
+//   3) POST /create-video, ca reincercare manuala explicita (care acum apeleaza direct
+//      claimVideoRenderForOrder + runVideoRenderJob, ca sa poata astepta rezervarea inainte de
+//      a raspunde — vezi comentariul de mai sus).
+// Idempotent: daca lock-ul e deja detinut (randare activa) sau videoclipul curent e deja
+// valabil pentru variantId cerut, nu porneste o a doua randare. Foloseste ea insasi cele doua
+// faze de mai sus — pastrata pentru apelantii "fire-and-forget" (background, fara raspuns HTTP
+// de care sa depinda).
+// ==========================================================================================
+async function triggerVideoGeneration(orderId, variantId) {
+  const claim = await claimVideoRenderForOrder(orderId, variantId);
+  if (!claim) return;
+  await runVideoRenderJob(orderId, variantId, claim.mediaRevisionAtStart);
 }
 
 // ==========================================================================================
@@ -4950,7 +4988,7 @@ async function generatePremiumExtras(orderId, options = {}) {
       }
     }
 
-    // RELANSARE (2026-08-14, "previzualizarea gratuita de 30s"): re-randam si pentru o
+    // RELANSARE (2026-08-14, "previzualizarea gratuita de 25s"): re-randam si pentru o
     // comanda VECHE care are deja videoKey dar nu si videoPreviewKey (creata inainte ca
     // aceasta previzualizare sa existe) — un singur job, produce ambele fisiere (vezi
     // generateLyricVideo).
@@ -5402,13 +5440,21 @@ async function generateLyricVideo(order, variant, tempFullMp3Path) {
       ? ['-i', memoryBackground.backgroundPath]
       : ['-f', 'lavfi', '-i', `color=c=${VIDEO_BG_COLOR}:s=${MEMORY_VIDEO_WIDTH}x${MEMORY_VIDEO_HEIGHT}:d=${durationSeconds}`];
 
+    // CORECȚIE (2026-08-24, "output compatibil mobil: MP4 H.264, AAC, yuv420p, faststart"):
+    // -pix_fmt yuv420p adaugat explicit (nu doar mostenit implicit din sursa) — garanteaza
+    // compatibilitate universala cu playerele mobile/social (unele nu reda deloc alte
+    // subesantionari de crominanta). -movflags +faststart muta atomul moov la inceputul
+    // fisierului — necesar ca Reels/WhatsApp/browserul mobil sa poata incepe reda inainte ca
+    // fisierul intreg sa fie descarcat. Previzualizarea (taiata mai jos cu -c copy din acest
+    // fisier) mosteneste automat ambele proprietati, fara nicio schimbare suplimentara acolo.
     await execFfmpeg([
       '-y',
       ...videoInputArgs,
       '-i', tempFullMp3Path,
       '-vf', `subtitles='${srtForFilter}':force_style='${VIDEO_TEXT_STYLE}'`,
-      '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '26',
+      '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '26', '-pix_fmt', 'yuv420p',
       '-c:a', 'aac', '-b:a', '192k',
+      '-movflags', '+faststart',
       '-shortest',
       tempVideo
     ], { timeout: 600000 });
@@ -5423,12 +5469,12 @@ async function generateLyricVideo(order, variant, tempFullMp3Path) {
   const videoKey = `orders/full-video/${order.id}-${variant.id}.mp4`;
   await storage.uploadPrivateFile(tempVideo, videoKey, 'video/mp4');
 
-  // Previzualizarea gratuita de 30s (cerinta 5/7, "Cadou video"): taiem STRICT primele
+  // Previzualizarea gratuita de 25s (cerinta 5/7, "Cadou video"): taiem STRICT primele
   // VIDEO_PREVIEW_SECONDS din videoclipul complet DEJA randat mai sus — reprezinta exact
   // "inceputul videoclipului cadou", foloseste aceeasi melodie/materiale/montaj (niciun
   // pipeline nou), si costa practic nimic in plus (`-c copy`, fara reencodare — primul
   // cadru al unui encode H.264 e intotdeauna un keyframe, deci taierea de la pozitia 0 e
-  // curata, fara artefacte). Daca videoclipul complet e deja mai scurt de 30s, `-t` nu are
+  // curata, fara artefacte). Daca videoclipul complet e deja mai scurt de 25s, `-t` nu are
   // niciun efect (ffmpeg copiaza tot ce exista).
   const tempVideoPreview = path.join(TEMP_DIR, `${order.id}-${variant.id}-video-preview.mp4`);
   let videoPreviewKey = null;

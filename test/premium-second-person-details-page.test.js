@@ -23,28 +23,28 @@ test('comanda.html: campul vechi "Numele destinatarului" (label) nu mai exista �
   assert.match(comanda, /song2_recipient_name_label: 'Numele celei de-a doua persoane',/);
 });
 
-test('comanda.html: campul de nume (input HTML #song2-recipient-name) exista o SINGURA data in marcaj — mutat pe pasul 8, niciodata duplicat pe pasul 7', () => {
+test('comanda.html: campul de nume (input HTML #song2-recipient-name) exista o SINGURA data in marcaj — mutat pe pasul 7, niciodata duplicat pe pasul 6', () => {
   const occurrences = (comanda.match(/<input type="text" id="song2-recipient-name"/g) || []).length;
   assert.equal(occurrences, 1, `elementul trebuie sa existe o singura data in HTML (mutat, nu duplicat), gasit de ${occurrences} ori`);
 });
 
-test('comanda.html: pasul 8 (mini-pagina) exista, e ascuns implicit, si contine cele 4 campuri in ordinea ceruta: nume, expeditor, relatie, poveste', () => {
-  const stepIdx = comanda.indexOf('data-step="8"');
-  assert.ok(stepIdx !== -1, 'trebuie sa existe un pas 8');
+test('comanda.html: pasul 7 (mini-pagina) exista, e ascuns implicit, si contine cele 4 campuri in ordinea ceruta: nume, expeditor, relatie, poveste', () => {
+  const stepIdx = comanda.indexOf('data-step="7"');
+  assert.ok(stepIdx !== -1, 'trebuie sa existe un pas 7');
   const stepStart = comanda.lastIndexOf('<div class="step-card"', stepIdx);
-  assert.ok(comanda.slice(stepStart, stepIdx + 40).includes('style="display:none;"'), 'pasul 8 trebuie sa fie ascuns implicit, ca toti ceilalti pasi');
+  assert.ok(comanda.slice(stepStart, stepIdx + 40).includes('style="display:none;"'), 'pasul 7 trebuie sa fie ascuns implicit, ca toti ceilalti pasi');
   const nextStepIdx = comanda.indexOf('</form>', stepIdx);
   const body = comanda.slice(stepIdx, nextStepIdx);
   const nameIdx = body.indexOf('id="song2-recipient-name"');
   const senderIdx = body.indexOf('id="song2-sender-name"');
   const relationshipIdx = body.indexOf('id="song2-relationship"');
   const storyIdx = body.indexOf('id="song2-story"');
-  assert.ok(nameIdx !== -1 && senderIdx !== -1 && relationshipIdx !== -1 && storyIdx !== -1, 'toate cele 4 campuri trebuie sa existe pe pasul 8');
+  assert.ok(nameIdx !== -1 && senderIdx !== -1 && relationshipIdx !== -1 && storyIdx !== -1, 'toate cele 4 campuri trebuie sa existe pe pasul 7');
   assert.ok(nameIdx < senderIdx && senderIdx < relationshipIdx && relationshipIdx < storyIdx, 'ordinea trebuie sa fie exact: nume, expeditor, relatie, poveste');
 });
 
 test('comanda.html: mini-pagina reutilizeaza EXACT cheile de traducere existente pentru expeditor/relatie/poveste (label_sender, label_relationship, label_story) — niciun text romanesc hardcodat, nicio cheie noua duplicata', () => {
-  const stepIdx = comanda.indexOf('data-step="8"');
+  const stepIdx = comanda.indexOf('data-step="7"');
   const nextStepIdx = comanda.indexOf('</form>', stepIdx);
   const body = comanda.slice(stepIdx, nextStepIdx);
   assert.ok(body.includes('data-i18n="label_sender"'));
@@ -55,22 +55,22 @@ test('comanda.html: mini-pagina reutilizeaza EXACT cheile de traducere existente
   assert.ok(body.includes('data-i18n-placeholder="ph_story"'));
 });
 
-test('comanda.html: mini-pagina apare STRICT dupa pasul 7 (data-prev="7") si nu exista pentru Standard/Video (getTotalSteps ramane 4 pentru ele)', () => {
-  const stepIdx = comanda.indexOf('data-step="8"');
+test('comanda.html: mini-pagina apare STRICT dupa pasul 6 (data-prev="6") si nu exista pentru Standard/Video (getTotalSteps ramane 4 pentru ele)', () => {
+  const stepIdx = comanda.indexOf('data-step="7"');
   const nextStepIdx = comanda.indexOf('</form>', stepIdx);
   const body = comanda.slice(stepIdx, nextStepIdx);
-  assert.ok(body.includes('data-prev="7"'));
+  assert.ok(body.includes('data-prev="6"'));
   assert.match(comanda, /function getTotalSteps\(\) \{\s*if \(selectedPlan\.id !== 'premium'\) return 4;/);
 });
 
-test('comanda.html: pasul 8 apare STRICT cand "Pentru altă persoană" a fost ales (getTotalSteps intoarce 8 doar in acel caz) — "Pentru aceeași persoană" ramane la 7 pasi', () => {
-  assert.match(comanda, /return song2TargetInput\.value === 'other' \? 8 : 7;/);
+test('comanda.html: pasul 7 apare STRICT cand "Pentru altă persoană" a fost ales (getTotalSteps intoarce 7 doar in acel caz) — "Pentru aceeași persoană" ramane la 6 pasi', () => {
+  assert.match(comanda, /return song2TargetInput\.value === 'other' \? 7 : 6;/);
 });
 
-test('comanda.html: submit handler-ul de pe pasul 7 redirectioneaza catre pasul 8 (nu trimite direct comanda) STRICT cand song2Target=other — acelasi tipar ca redirectarea pasului 4->5', () => {
+test('comanda.html: submit handler-ul de pe pasul 6 redirectioneaza catre pasul 7 (nu trimite direct comanda) STRICT cand song2Target=other — acelasi tipar ca redirectarea pasului 4->5', () => {
   const idx = comanda.indexOf("form.addEventListener('submit'");
   const body = comanda.slice(idx, idx + 2000);
-  assert.match(body, /if \(selectedPlan\.id === 'premium' && currentStep === 7 && song2TargetInput\.value === 'other'\) \{\s*updateSong2DetailsContinueState\(\);\s*showStep\(8\);\s*return;\s*\}/);
+  assert.match(body, /if \(selectedPlan\.id === 'premium' && currentStep === 6 && song2TargetInput\.value === 'other'\) \{\s*updateSong2DetailsContinueState\(\);\s*showStep\(7\);\s*return;\s*\}/);
 });
 
 test('comanda.html: campul de nume ramane vizibil condiționat (ascuns cand "Amândoi" e ales) — mecanismul refreshSong2OtherUI() ramane neschimbat, doar elementul a fost mutat', () => {
