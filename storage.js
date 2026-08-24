@@ -94,12 +94,12 @@ const PRIVATE_BUCKET = process.env.S3_PRIVATE_BUCKET;
 const PUBLIC_BUCKET = process.env.S3_PUBLIC_BUCKET;
 
 let s3Client = null;
-let PutObjectCommand, GetObjectCommand, DeleteObjectCommand, getSignedUrl;
+let PutObjectCommand, GetObjectCommand, DeleteObjectCommand, HeadObjectCommand, getSignedUrl;
 let CreateMultipartUploadCommand, UploadPartCommand, CompleteMultipartUploadCommand, AbortMultipartUploadCommand, GetBucketCorsCommand;
 
 if (CLOUD_ENABLED) {
   const {
-    S3Client, PutObjectCommand: POC, GetObjectCommand: GOC, DeleteObjectCommand: DOC,
+    S3Client, PutObjectCommand: POC, GetObjectCommand: GOC, DeleteObjectCommand: DOC, HeadObjectCommand: HOC,
     CreateMultipartUploadCommand: CMU, UploadPartCommand: UPC,
     CompleteMultipartUploadCommand: CMPU, AbortMultipartUploadCommand: AMU,
     GetBucketCorsCommand: GBC
@@ -108,6 +108,7 @@ if (CLOUD_ENABLED) {
   PutObjectCommand = POC;
   GetObjectCommand = GOC;
   DeleteObjectCommand = DOC;
+  HeadObjectCommand = HOC;
   CreateMultipartUploadCommand = CMU;
   UploadPartCommand = UPC;
   CompleteMultipartUploadCommand = CMPU;
@@ -345,6 +346,22 @@ async function checkUploadCors(origins) {
   }
 }
 
+// ADAUGAT (2026-08-24, "iPhone: fotografiile/videoclipurile pentru preview folosesc direct
+// fisierul original"): verifica STRICT existenta unui fisier in bucket-ul PRIVAT, fara sa-l
+// descarce — folosit pentru cache-ul de thumbnailuri mici generate la cerere (vezi
+// ensureMediaThumbnail in server.js), ca sa nu regeneram acelasi thumbnail la fiecare vizualizare.
+async function privateFileExists(key) {
+  if (!CLOUD_ENABLED) {
+    return fs.existsSync(path.join(LOCAL_PRIVATE_DIR, key));
+  }
+  try {
+    await s3Client.send(new HeadObjectCommand({ Bucket: PRIVATE_BUCKET, Key: key }));
+    return true;
+  } catch (err) {
+    return false;
+  }
+}
+
 // ============================================================================
 // STERGERE — tot cu API separat privat/public
 // ============================================================================
@@ -375,6 +392,7 @@ module.exports = {
   uploadPrivateBuffer,
   getPublicUrl,
   getSignedDownloadUrl,
+  privateFileExists,
   deletePrivateFile,
   deletePublicFile,
   createPrivateMultipartUpload,

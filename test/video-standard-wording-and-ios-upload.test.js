@@ -98,12 +98,18 @@ test('melodia-mea.html: fotografiile din coada de asteptare raman randate ca <im
   assert.ok(snippet.includes('<img src="${q.thumbUrl}" alt="" loading="lazy" decoding="async">'));
 });
 
-test('melodia-mea.html: thumbUrl se creeaza STRICT pentru fotografii — niciun URL.createObjectURL nu mai e legat de un videoclip din coada', () => {
+// CORECȚIE (2026-08-24, "iPhone: pagina se blocheaza/raspunde greu"): thumbUrl NU se mai
+// atribuie SINCRON din fisierul original (URL.createObjectURL(file) forta Safari sa decodeze
+// o fotografie originala la rezolutie completa doar pentru un thumbnail mic) — porneste gol
+// si e populat ASINCRON, controlat, cu un thumbnail MIC (createImageBitmap + canvas), STRICT
+// pentru fotografii (videoclipurile raman pe iconita, niciodata trimise la generarea de
+// thumbnail — vezi scheduleLocalThumbnail, apelat doar cand !isVideoFile(entry.file)).
+test('melodia-mea.html: thumbUrl porneste gol si e populat asincron STRICT pentru fotografii (scheduleLocalThumbnail) — niciun videoclip din coada nu e trimis la generarea de thumbnail', () => {
   const idx = melodiaMea.indexOf("memFileInput.addEventListener('change'");
-  const end = melodiaMea.indexOf('renderQueueList();\n    processUploadQueue();', idx);
+  const end = melodiaMea.indexOf('newEntries.forEach(entry =>', idx) + 200;
   const snippet = melodiaMea.slice(idx, end);
-  assert.ok(snippet.includes('thumbUrl: /^image\\//.test(file.type) ? URL.createObjectURL(file) : null,'));
-  assert.ok(!snippet.includes('/^(image|video)\\/'), 'regexul vechi care includea si videoclipurile nu mai trebuie sa existe');
+  assert.ok(snippet.includes('thumbUrl: null,'));
+  assert.ok(snippet.includes('newEntries.forEach(entry => { if (!isVideoFile(entry.file)) scheduleLocalThumbnail(entry); });'));
 });
 
 test('melodia-mea.html: fiecare fisier din selectie e adaugat in coada intr-un try/catch — o exceptie la un singur fisier nu mai opreste tot handler-ul de change', () => {

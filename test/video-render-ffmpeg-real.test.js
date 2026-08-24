@@ -127,8 +127,12 @@ test('ffmpeg + ffprobe (REAL): previzualizarea video dintr-un fisier MAI SCURT d
 // ---------------------------------------------------------------------------------------------
 // 2) Videoclipul complet: format compatibil mobil — H.264, AAC, yuv420p, faststart.
 // ---------------------------------------------------------------------------------------------
+// CORECȚIE (2026-08-24, "versurile sunt prea mari si greoaie"): filtrul de subtitrare trece
+// acum de la SRT+force_style() la un fisier .ass scris explicit (doua stiluri proprii — vezi
+// toAss() in server.js si test/gift-video-localization-and-upload.test.js) — ancora testului
+// se actualizeaza in consecinta, restul verificarii (flagurile de format mobil) ramane identic.
 test('server.js: mux-ul final din generateLyricVideo include EXPLICIT -pix_fmt yuv420p si -movflags +faststart (nu doar mostenite implicit)', () => {
-  const idx = server.indexOf("'-vf', `subtitles='${srtForFilter}':force_style='${VIDEO_TEXT_STYLE}'`,");
+  const idx = server.indexOf("'-vf', `subtitles='${assForFilter}'`,");
   assert.ok(idx !== -1, 'nu am gasit filtrul de subtitrare din mux-ul final');
   const snippet = server.slice(idx, idx + 400);
   assert.ok(snippet.includes("'-pix_fmt', 'yuv420p'"), 'lipseste -pix_fmt yuv420p explicit din mux-ul final');

@@ -227,9 +227,15 @@ test('melodia-mea.html: uploadul multipart direct catre R2 (Round 6) ramane nesc
   assert.ok(melodiaMea.includes('const MEM_MULTIPART_THRESHOLD_BYTES = 20 * 1024 * 1024;'));
 });
 
-test('melodia-mea.html: logica de blocare/deblocare a selectorului (picker lock, Round 7) ramane neschimbata', () => {
-  assert.ok(melodiaMea.includes('const PICKER_MANUAL_RECOVERY_MS = 5 * 60 * 1000;'));
+// CORECȚIE (2026-08-24, "selectorul ramane blocat pana la 5 minute pe iPhone"): plafonul ORB
+// de recuperare automata a fost redus (afordanta EXPLICITA — vezi showPickerWaitingMessage —
+// devine acum calea normala de recuperare, surfacing dupa PICKER_RETURN_GRACE_MS, mult mai
+// devreme decat plafonul orb). 'change'/'cancel' raman autoritatea, neschimbate.
+test('melodia-mea.html: logica de blocare/deblocare a selectorului (picker lock) foloseste acum un plafon orb mult mai scurt, plus o afordanta explicita de recuperare', () => {
+  assert.ok(melodiaMea.includes('const PICKER_MANUAL_RECOVERY_MS = 90 * 1000;'));
+  assert.ok(!melodiaMea.includes('const PICKER_MANUAL_RECOVERY_MS = 5 * 60 * 1000;'), 'vechiul plafon de 5 minute nu mai trebuie sa existe');
   assert.ok(!melodiaMea.includes('pickerLockTimeoutId'));
+  assert.ok(melodiaMea.includes('function showPickerWaitingMessage() {'), 'afordanta explicita de recuperare trebuie sa existe');
 });
 
 // ---------------------------------------------------------------------------------------------

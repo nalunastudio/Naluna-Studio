@@ -307,6 +307,11 @@
   }
   .mem-status{ font-size:13px; margin-top:10px; }
   .mem-status.err{ color:var(--error); }
+  .mem-picker-retry-btn{
+    background:none; border:none; padding:0; margin-left:4px; color:var(--gold-deep);
+    font-size:13px; font-weight:600; text-decoration:underline; cursor:pointer;
+    font-family:'Sora',sans-serif;
+  }
 
   .video-status-msg{ font-size:13px; margin-top:12px; padding:10px 12px; border-radius:10px; }
   .video-status-msg.generating{ background:rgba(168,131,75,.09); color:var(--gold-deep); }
@@ -1023,6 +1028,8 @@
       memories_auto_upload_hint: 'Materialele se încarcă automat. Nu mai trebuie să apeși.',
       memories_upload_timeout: 'Încărcarea durează prea mult — verifică conexiunea și încearcă din nou.',
       memories_no_files_selected: 'Nu am primit niciun fișier de la selector — încearcă din nou (verifică și dacă fotografiile sunt descărcate complet din iCloud).',
+      memories_picker_waiting: 'Așteptăm ca telefonul să pregătească materialul selectat...',
+      memories_picker_retry: 'Renunță și încearcă din nou',
       preview_load_error: 'Nu am putut încărca previzualizarea. Atinge aici ca să încerci din nou.',
       memories_move_up: 'Mută mai sus', memories_move_down: 'Mută mai jos',
       memories_upload_error: 'Încărcarea a eșuat. Încearcă din nou',
@@ -1101,6 +1108,8 @@
       memories_auto_upload_hint: 'Materials are uploading automatically. No need to tap again.',
       memories_upload_timeout: 'This is taking too long — check your connection and try again.',
       memories_no_files_selected: "We didn't receive any file from the picker — please try again (also check the photos are fully downloaded from iCloud).",
+      memories_picker_waiting: "We're waiting for your phone to prepare the selected file...",
+      memories_picker_retry: 'Cancel and try again',
       preview_load_error: "We couldn't load the preview. Tap here to try again.",
       memories_move_up: 'Move up', memories_move_down: 'Move down',
       memories_upload_error: 'Upload failed. Please try again.',
@@ -1179,6 +1188,8 @@
       memories_auto_upload_hint: 'Die Materialien werden automatisch hochgeladen. Du musst nicht erneut tippen.',
       memories_upload_timeout: 'Das dauert zu lange — überprüfe deine Verbindung und versuche es erneut.',
       memories_no_files_selected: 'Wir haben keine Datei von der Auswahl erhalten — bitte versuche es erneut (prüfe auch, ob die Fotos vollständig aus iCloud heruntergeladen sind).',
+      memories_picker_waiting: 'Wir warten, bis dein Telefon die ausgewählte Datei vorbereitet...',
+      memories_picker_retry: 'Abbrechen und erneut versuchen',
       preview_load_error: 'Die Vorschau konnte nicht geladen werden. Tippe hier, um es erneut zu versuchen.',
       memories_move_up: 'Nach oben', memories_move_down: 'Nach unten',
       memories_upload_error: 'Hochladen fehlgeschlagen. Bitte versuche es erneut.',
@@ -1257,6 +1268,8 @@
       memories_auto_upload_hint: 'Los materiales se suben automáticamente. No hace falta que vuelvas a tocar.',
       memories_upload_timeout: 'Esto está tardando demasiado — comprueba tu conexión e inténtalo de nuevo.',
       memories_no_files_selected: 'No recibimos ningún archivo del selector — inténtalo de nuevo (comprueba también que las fotos estén completamente descargadas de iCloud).',
+      memories_picker_waiting: 'Estamos esperando a que tu teléfono prepare el archivo seleccionado...',
+      memories_picker_retry: 'Cancelar e intentar de nuevo',
       preview_load_error: 'No pudimos cargar la previsualización. Toca aquí para intentarlo de nuevo.',
       memories_move_up: 'Subir', memories_move_down: 'Bajar',
       memories_upload_error: 'Error al subir. Inténtalo de nuevo.',
@@ -1335,6 +1348,8 @@
       memories_auto_upload_hint: 'I materiali si caricano automaticamente. Non serve toccare di nuovo.',
       memories_upload_timeout: 'Sta impiegando troppo tempo — controlla la connessione e riprova.',
       memories_no_files_selected: 'Non abbiamo ricevuto alcun file dal selettore — riprova (controlla anche che le foto siano scaricate completamente da iCloud).',
+      memories_picker_waiting: 'Stiamo aspettando che il telefono prepari il file selezionato...',
+      memories_picker_retry: 'Annulla e riprova',
       preview_load_error: "Non siamo riusciti a caricare l'anteprima. Tocca qui per riprovare.",
       memories_move_up: 'Sposta su', memories_move_down: 'Sposta giù',
       memories_upload_error: 'Caricamento non riuscito. Riprova.',
@@ -1413,6 +1428,8 @@
       memories_auto_upload_hint: "Les éléments s'envoient automatiquement. Inutile de retoucher l'écran.",
       memories_upload_timeout: "Cela prend trop de temps — vérifiez votre connexion et réessayez.",
       memories_no_files_selected: "Nous n'avons reçu aucun fichier du sélecteur — réessayez (vérifiez aussi que les photos sont bien téléchargées depuis iCloud).",
+      memories_picker_waiting: "Nous attendons que ton téléphone prépare le fichier sélectionné...",
+      memories_picker_retry: 'Annuler et réessayer',
       preview_load_error: "Nous n'avons pas pu charger l'aperçu. Touchez ici pour réessayer.",
       memories_move_up: 'Monter', memories_move_down: 'Descendre',
       memories_upload_error: "Échec de l'envoi. Veuillez réessayer.",
@@ -1491,6 +1508,8 @@
       memories_auto_upload_hint: 'Материалите се качват автоматично. Не е нужно да докосваш отново.',
       memories_upload_timeout: 'Това отнема твърде много време — провери връзката си и опитай отново.',
       memories_no_files_selected: 'Не получихме нито един файл от избора — опитай отново (провери също дали снимките са изтеглени напълно от iCloud).',
+      memories_picker_waiting: 'Изчакваме телефонът ти да подготви избрания файл...',
+      memories_picker_retry: 'Откажи и опитай отново',
       preview_load_error: 'Не успяхме да заредим прегледа. Докосни тук, за да опиташ отново.',
       memories_move_up: 'Премести нагоре', memories_move_down: 'Премести надолу',
       memories_upload_error: 'Качването не бе успешно. Опитай отново.',
@@ -1569,6 +1588,8 @@
       memories_auto_upload_hint: 'Materyaller otomatik olarak yükleniyor. Tekrar dokunmana gerek yok.',
       memories_upload_timeout: 'Bu çok uzun sürüyor — bağlantınızı kontrol edip tekrar deneyin.',
       memories_no_files_selected: "Seçiciden hiçbir dosya alamadık — lütfen tekrar deneyin (fotoğrafların iCloud'dan tamamen indirildiğinden de emin olun).",
+      memories_picker_waiting: 'Telefonunuzun seçilen dosyayı hazırlamasını bekliyoruz...',
+      memories_picker_retry: 'İptal et ve tekrar dene',
       preview_load_error: 'Ön izlemeyi yükleyemedik. Tekrar denemek için buraya dokunun.',
       memories_move_up: 'Yukarı taşı', memories_move_down: 'Aşağı taşı',
       memories_upload_error: 'Yükleme başarısız oldu. Lütfen tekrar deneyin.',
@@ -2664,6 +2685,72 @@
     `;
   }
 
+  // ==========================================================================================
+  // CORECȚIE (2026-08-24, "iPhone: selectarea/afișarea materialelor se blochează sau răspunde
+  // foarte greu"): thumbnailuri MICI, generate client-side, unul câte unul (concurență 1 — nu
+  // decodăm mai multe fotografii originale simultan), fără codificare base64 sau FileReader pe
+  // fișierul complet (fără "read as data URL", fără arrayBuffer()). createImageBitmap({resizeWidth})
+  // lasă browserul (adesea accelerat hardware) să decodeze DIRECT la o rezoluție mică, în loc să decodeze fotografia
+  // originală întreagă doar ca să o arate la ~60px. Rezultatul e desenat pe un <canvas> mic și
+  // convertit într-un blob — thumbUrl-ul afișat e deci mereu un fișier MIC, niciodată originalul.
+  // Dacă browserul nu suportă createImageBitmap (sau decodarea eșuează pentru un format
+  // particular), cade tăcut pe iconița 🖼️ deja afișată — nu blochează restul cozii.
+  // ==========================================================================================
+  const LOCAL_THUMB_MAX_DIM = 240;
+  const LOCAL_THUMB_CONCURRENCY = 1;
+  let localThumbQueue = [];
+  let localThumbActive = 0;
+  function scheduleLocalThumbnail(entry) {
+    localThumbQueue.push(entry);
+    pumpLocalThumbQueue();
+  }
+  function pumpLocalThumbQueue() {
+    while (localThumbActive < LOCAL_THUMB_CONCURRENCY && localThumbQueue.length > 0) {
+      const entry = localThumbQueue.shift();
+      // Fisierul a fost deja eliminat din coada de upload (utilizatorul l-a sters) inainte sa
+      // apuce randul — nu mai are rost sa generam un thumbnail pentru el.
+      if (!uploadQueue.includes(entry)) continue;
+      localThumbActive++;
+      generateLocalThumbnail(entry).finally(() => {
+        localThumbActive--;
+        pumpLocalThumbQueue();
+      });
+    }
+  }
+  async function generateLocalThumbnail(entry) {
+    if (typeof createImageBitmap !== 'function') return; // browser vechi/neobisnuit — ramane pe iconita
+    let bitmap = null;
+    try {
+      bitmap = await createImageBitmap(entry.file, { resizeWidth: LOCAL_THUMB_MAX_DIM, resizeQuality: 'medium' });
+      const canvas = document.createElement('canvas');
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(bitmap, 0, 0);
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.82));
+      if (!blob) return;
+      // Fisierul a putut fi eliminat din coada CAT TIMP thumbnailul se genera (decodarea poate
+      // dura cateva sute de ms) — nu mai atingem un rand care nu mai exista.
+      if (!uploadQueue.includes(entry)) return;
+      entry.thumbUrl = URL.createObjectURL(blob);
+      patchQueueRowThumb(entry);
+    } catch (err) {
+      // format nesuportat/decodare esuata — ramane pe iconita 🖼️, niciodata o eroare vizibila
+    } finally {
+      if (bitmap && typeof bitmap.close === 'function') bitmap.close();
+    }
+  }
+  // Patch DIRECT al iconitei unui singur rand, fara sa reconstruiasca restul cardului (acelasi
+  // principiu ca patchQueueRowProgress mai jos) — thumbnailurile sosesc asincron, unul cate
+  // unul, mult dupa randarea initiala a listei.
+  function patchQueueRowThumb(entry) {
+    const row = document.querySelector(`#mem-staged-list [data-queue-id="${entry.localId}"]`);
+    if (!row) return;
+    const thumbEl = row.querySelector('.mem-thumb');
+    if (!thumbEl || isVideoFile(entry.file)) return;
+    thumbEl.innerHTML = `<img src="${entry.thumbUrl}" alt="" loading="lazy" decoding="async">`;
+  }
+
   function wireQueueRow(row, entry) {
     const retryBtn = row.querySelector('[data-retry-id]');
     if (retryBtn) retryBtn.addEventListener('click', () => {
@@ -3050,16 +3137,54 @@
   const memFileInput = document.getElementById('mem-file-input');
   const memStatusEl = document.getElementById('mem-status');
 
-  // RELANSARE 2026-08-14 ("starea de asteptare dupa selectarea videoclipurilor iPhone"):
-  // eliminat timeout-ul orb de 20s care debloca automat selectorul — iPhone Photos/iCloud
-  // poate avea nevoie de 2-3 minute sa pregateasca un videoclip mare inainte ca Safari sa
-  // primeasca 'change', iar acel timeout debloca eronat selectorul exact in acest interval
-  // normal. Selectorul se deblocheaza ACUM STRICT la: 'change' real, 'cancel' real, sau o
-  // apasare manuala explicita DUPA PICKER_MANUAL_RECOVERY_MS (recuperare la cerere, niciodata
-  // redeschidere automata).
+  // CORECȚIE (2026-08-24, "selectorul rămâne blocat până la 5 minute pe iPhone dacă Safari nu
+  // emite 'cancel'"): 'change'/'cancel' rămân sursa AUTORITATIVĂ de deblocare (neschimbat —
+  // Photos/iCloud poate avea nevoie legitim de 2-3 minute să pregătească un videoclip mare
+  // înainte ca 'change' să sosească, iar un timeout orb ar debloca greșit exact în acel
+  // interval normal, cum s-a întâmplat înainte). Ce s-a adăugat acum: 'visibilitychange'/
+  // 'focus'/'pageshow' NU mai deblochează nimic automat și NU redeschid galeria — ele
+  // declanșează STRICT o mică fereastră de grație (PICKER_RETURN_GRACE_MS) după care, dacă tot
+  // nu a sosit 'change'/'cancel', afișăm un mesaj vizibil cu un buton EXPLICIT "Renunță și
+  // încearcă din nou" — clientul decide singur, în câteva secunde, în loc să lovească un
+  // selector care nu răspunde timp de 5 minute fără nicio explicație. Plasa de siguranță
+  // complet automată (PICKER_MANUAL_RECOVERY_MS) rămâne, dar redusă — afordanța explicită de
+  // mai sus e acum calea normală de recuperare, nu ultimul resort.
   let pickerLocked = false;
   let pickerLockedAt = 0;
-  const PICKER_MANUAL_RECOVERY_MS = 5 * 60 * 1000;
+  const PICKER_MANUAL_RECOVERY_MS = 90 * 1000;
+  const PICKER_RETURN_GRACE_MS = 1500;
+  let pickerReturnGraceTimer = null;
+  let pickerWaitingMessageShown = false;
+
+  function clearPickerWaitingMessage() {
+    pickerWaitingMessageShown = false;
+    if (pickerReturnGraceTimer) { clearTimeout(pickerReturnGraceTimer); pickerReturnGraceTimer = null; }
+  }
+  function showPickerWaitingMessage() {
+    if (!pickerLocked || pickerWaitingMessageShown) return;
+    pickerWaitingMessageShown = true;
+    memStatusEl.innerHTML = `${escapeHtml(t.memories_picker_waiting)} <button type="button" id="mem-picker-retry-btn" class="mem-picker-retry-btn"></button>`;
+    memStatusEl.className = 'mem-status';
+    const retryBtn = document.getElementById('mem-picker-retry-btn');
+    retryBtn.textContent = t.memories_picker_retry;
+    retryBtn.addEventListener('click', () => {
+      pickerLocked = false;
+      clearPickerWaitingMessage();
+      memStatusEl.textContent = '';
+      memStatusEl.className = 'mem-status';
+    });
+  }
+  function handlePickerPossibleReturn() {
+    if (!pickerLocked || pickerReturnGraceTimer) return;
+    pickerReturnGraceTimer = setTimeout(() => {
+      pickerReturnGraceTimer = null;
+      showPickerWaitingMessage();
+    }, PICKER_RETURN_GRACE_MS);
+  }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) handlePickerPossibleReturn(); });
+  window.addEventListener('focus', handlePickerPossibleReturn);
+  window.addEventListener('pageshow', (event) => { if (event.persisted) handlePickerPossibleReturn(); });
+
   memFileInput.addEventListener('click', (e) => {
     if (pickerLocked && Date.now() - pickerLockedAt < PICKER_MANUAL_RECOVERY_MS) {
       e.preventDefault();
@@ -3067,15 +3192,18 @@
     }
     pickerLocked = true;
     pickerLockedAt = Date.now();
+    clearPickerWaitingMessage();
   });
   memFileInput.addEventListener('cancel', () => {
     pickerLocked = false;
+    clearPickerWaitingMessage();
   });
 
   let memStatusHintToken = 0;
 
   memFileInput.addEventListener('change', () => {
     pickerLocked = false;
+    clearPickerWaitingMessage();
     const files = Array.from(memFileInput.files);
     memFileInput.value = '';
     // INCIDENT 2026-08-07 (Cadou video, iPhone): un client a raportat ca a selectat si
@@ -3107,6 +3235,7 @@
     // renderQueueList()/processUploadQueue() de mai jos tot trebuie să ruleze. thumbUrl se
     // creează STRICT pentru fotografii — un singur URL.createObjectURL() per fișier, refolosit
     // intre randari (patchQueueRowProgress nu il recreeaza niciodata), revocat doar la eliminare.
+    const newEntries = [];
     files.forEach(file => {
       try {
         const entry = {
@@ -3116,12 +3245,20 @@
           status: 'pending',
           progress: 0,
           errorMsg: null,
-          thumbUrl: /^image\//.test(file.type) ? URL.createObjectURL(file) : null,
+          // CORECȚIE (2026-08-24, "iPhone: pagina se blochează/răspunde greu"): NU mai folosim
+          // URL.createObjectURL(file) direct pe fișierul original ca thumbnail — afișarea lui
+          // într-un <img> tot forța Safari să decodeze o fotografie originală (12+ MP pe un
+          // iPhone modern) doar ca să arate un pătrat de ~60px. thumbUrl pornește gol (iconița
+          // 🖼️ rămâne vizibilă imediat) și e populat ASINCRON, controlat, unul câte unul, cu un
+          // thumbnail MIC generat client-side (vezi scheduleLocalThumbnail mai jos) — niciodată
+          // sincron în acest handler.
+          thumbUrl: null,
           xhr: null,
           multipartSessionId: null,
           abortRequested: false
         };
         uploadQueue.push(entry);
+        newEntries.push(entry);
       } catch (err) {
         uploadQueue.push({
           localId: 'q' + Math.random().toString(36).slice(2),
@@ -3141,6 +3278,10 @@
     // nu asteapta thumbnailuri/metadate/raspunsul serverului), apoi uploadul porneste automat.
     renderQueueList();
     processUploadQueue();
+    // Thumbnailurile (STRICT pentru fotografii — videoclipurile pastreaza iconita 🎬, nu se
+    // incearca niciodata generarea unui cadru din ele local) pornesc DUPA randarea si dupa ce
+    // uploadul e deja pornit — nu blocheaza niciuna din cele doua.
+    newEntries.forEach(entry => { if (!isVideoFile(entry.file)) scheduleLocalThumbnail(entry); });
   });
 
   // ==========================================================================================

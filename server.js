@@ -80,7 +80,8 @@ const {
   deriveSectionTimings,
   computeSectionAwareSegmentDurations,
   MEMORY_SECTION_ORDER,
-  sortMediaBySection
+  sortMediaBySection,
+  buildShotPlan
 } = require('./lib/media-analysis');
 const { getGiftVariant } = require('./lib/entitlements');
 
@@ -666,7 +667,7 @@ async function extractDngPreviewToJpeg(dngPath) {
 // comanda esueaza cu exit code diferit de zero, desi acelasi fisier trece perfect prin ffprobe
 // pe un build complet (Gyan.dev) folosit doar pentru testare locala. Fisierul era respins la
 // upload ca "fisier corupt", desi era perfect valid — si chiar daca respingerea la upload ar fi
-// fost ocolita, randarea FINALA a videoclipului (buildMemoryBackground -> renderMemorySegment)
+// fost ocolita, randarea FINALA a videoclipului (buildMemoryBackground -> renderShot)
 // foloseste acelasi ffmpeg, deci ar fi esuat identic mai tarziu, mult mai greu de diagnosticat.
 //
 // HEIC nu e ca DNG — nu are o previzualizare JPEG separata incorporata (verificat: niciun tag
@@ -2995,6 +2996,54 @@ app.delete('/api/orders/:orderId/media/multipart/:sessionId', requireOrderToken,
   res.json({ ok: true });
 });
 
+// CORECȚIE (2026-08-24, "iPhone: pagina de materiale se blochează/răspunde greu"): cauza reala
+// gasita aici — acest endpoint semna URL-ul FISIERULUI ORIGINAL pentru orice previzualizare
+// (poza sau video), inclusiv fotografii de 12+ MP direct de pe iPhone. Fiecare card din lista
+// materialelor deja incarcate cerea deci Safari sa decodeze un JPEG/HEIC original la rezolutie
+// completa doar ca sa-l arate la ~60px — cu 6-10 materiale, presiune reala de memorie si
+// blocaje vizibile pe telefon, exact simptomul raportat. Rezolvat cu un thumbnail MIC, generat
+// server-side O SINGURA DATA (cache in acelasi bucket privat, sub o cheie derivata deterministic
+// din cea originala — fara nicio coloana noua in baza de date) si servit de aici mai departe —
+// vezi ensureMediaThumbnail(). Ramane STRICT privat, accesibil DOAR prin acelasi mecanism de URL
+// semnat ca inainte; daca generarea thumbnailului esueaza din orice motiv, cade elegant pe
+// fisierul original (comportamentul vechi), niciodata pe un preview complet lipsa.
+const MEDIA_THUMB_MAX_DIM = 480;
+const mediaThumbInFlight = new Map(); // thumbKey -> Promise — evita generari concurente duplicate ale ACELUIASI thumbnail
+function mediaThumbKeyFor(originalKey) {
+  return originalKey.replace(/^orders\/memories\//, 'orders/memories-thumb/').replace(/\.[^./]+$/, '') + '.jpg';
+}
+async function ensureMediaThumbnail(item) {
+  const thumbKey = mediaThumbKeyFor(item.key);
+  if (mediaThumbInFlight.has(thumbKey)) return mediaThumbInFlight.get(thumbKey);
+  const task = (async () => {
+    if (await storage.privateFileExists(thumbKey)) return thumbKey;
+    // Citim DIRECT din URL-ul semnat (ffmpeg suporta HTTP(S) ca input) — nu descarcam intreg
+    // fisierul original pe disc doar ca sa extragem un cadru mic; pentru video, R2/S3 raspunde
+    // la cereri Range, deci ffmpeg cere STRICT portiunile necesare (headerul + primele cadre),
+    // niciodata sute de MB pentru un singur thumbnail.
+    const sourceUrl = await storage.getSignedDownloadUrl(item.key, 120);
+    const thumbPath = path.join(TEMP_DIR, `media-thumb-${randomUUID()}.jpg`);
+    const scaleFilter = `scale='min(${MEDIA_THUMB_MAX_DIM},iw)':'min(${MEDIA_THUMB_MAX_DIM},ih)':force_original_aspect_ratio=decrease`;
+    try {
+      if (item.type === 'video') {
+        await execFfmpeg(['-y', '-i', sourceUrl, '-ss', '0.1', '-frames:v', '1', '-vf', scaleFilter, thumbPath], { timeout: 45000 });
+      } else {
+        await execFfmpeg(['-y', '-i', sourceUrl, '-vf', scaleFilter, '-q:v', '5', thumbPath], { timeout: 45000 });
+      }
+      await storage.uploadPrivateFile(thumbPath, thumbKey, 'image/jpeg');
+      return thumbKey;
+    } finally {
+      try { if (fs.existsSync(thumbPath)) fs.unlinkSync(thumbPath); } catch (e) { /* best-effort */ }
+    }
+  })();
+  mediaThumbInFlight.set(thumbKey, task);
+  try {
+    return await task;
+  } finally {
+    mediaThumbInFlight.delete(thumbKey);
+  }
+}
+
 // URL semnat, de scurta durata (5 minute), pentru PREVIZUALIZAREA unui material deja
 // incarcat (thumbnail poza / player video) — materialele raman intotdeauna in bucket-ul
 // PRIVAT (amintiri personale ale clientului), deci un preview real necesita un URL semnat
@@ -3012,7 +3061,13 @@ app.get('/api/orders/:orderId/media/:index/preview-url', requireOrderToken, asyn
       return res.status(503).json({ error: 'Previzualizarea necesită stocare cloud activată.' });
     }
     const item = existing[idx];
-    const url = await storage.getSignedDownloadUrl(item.key, 300);
+    let thumbKey = null;
+    try {
+      thumbKey = await ensureMediaThumbnail(item);
+    } catch (err) {
+      thumbKey = null; // generarea a esuat — cadem pe fisierul original mai jos, niciodata fara preview
+    }
+    const url = await storage.getSignedDownloadUrl(thumbKey || item.key, 300);
     res.json({ url, type: item.type });
   } catch (err) {
     next(err);
@@ -5072,20 +5127,35 @@ function stripSpanningNotes(alignedWords) {
   return out;
 }
 
-function srtTimestamp(seconds) {
-  const ms = Math.max(0, Math.round(seconds * 1000));
-  const h = Math.floor(ms / 3600000);
-  const m = Math.floor((ms % 3600000) / 60000);
-  const s = Math.floor((ms % 60000) / 1000);
-  const msRem = ms % 1000;
-  const pad = (n, len) => String(n).padStart(len, '0');
-  return `${pad(h, 2)}:${pad(m, 2)}:${pad(s, 2)},${pad(msRem, 3)}`;
+
+// CORECȚIE (2026-08-24, "textul introductiv al videoclipului e hardcodat in engleza"): textul
+// "For {name}" afisat la inceputul videoclipului cadou trebuie sa reflecte limba REALA a
+// comenzii/melodiei (order.lang, salvata la creare — vezi POST /api/orders), NICIODATA limba
+// curenta a browserului in momentul randarii (server-side, randarea nu ruleaza niciodata in
+// contextul unui browser client — nu exista "limba curenta a browserului" de partea asta,
+// dar mentionam explicit ca sursa ramane STRICT order.lang, nu vreo presupunere implicita).
+// {name} e inlocuit literal cu numele exact introdus de client (pastrat intact, inclusiv
+// diacritice/chirilic/turceste) — escaparea pentru ASS se face separat, la construirea
+// evenimentului de caption (vezi escapeAssText), niciodata aici.
+const INTRO_CAPTION_BY_LANG = {
+  ro: (name) => `Pentru ${name}`,
+  en: (name) => `For ${name}`,
+  de: (name) => `Für ${name}`,
+  es: (name) => `Para ${name}`,
+  it: (name) => `Per ${name}`,
+  fr: (name) => `Pour ${name}`,
+  bg: (name) => `За ${name}`,
+  tr: (name) => `${name} için`
+};
+function buildIntroCaptionText(lang, recipient) {
+  const fn = INTRO_CAPTION_BY_LANG[lang] || INTRO_CAPTION_BY_LANG.en;
+  return fn(recipient);
 }
 
 // Grupeaza cuvintele aliniate in linii de caption, folosind salturile de linie naturale
 // din versuri (nu o limita fixa de cuvinte) — citeste mai natural, respecta structura
 // reala a versurilor scrise de Suno.
-function buildCaptionLines(rawAlignedWords, recipient) {
+function buildCaptionLines(rawAlignedWords, recipient, lang) {
   const alignedWords = stripSpanningNotes(rawAlignedWords);
   const lines = [];
   let buffer = [];
@@ -5119,7 +5189,7 @@ function buildCaptionLines(rawAlignedWords, recipient) {
   const introEnd = lines.length > 0 ? lines[0].start : 3;
   const result = [];
   if (introEnd > 1) {
-    result.push({ start: 0, end: Math.min(introEnd, 5), text: `For ${recipient}` });
+    result.push({ start: 0, end: Math.min(introEnd, 5), text: buildIntroCaptionText(lang, recipient), isIntro: true });
   }
   result.push(...lines);
 
@@ -5139,8 +5209,88 @@ function buildCaptionLines(rawAlignedWords, recipient) {
   return result;
 }
 
-function toSrt(lines) {
-  return lines.map((l, i) => `${i + 1}\n${srtTimestamp(l.start)} --> ${srtTimestamp(l.end)}\n${l.text}\n`).join('\n');
+// ==========================================================================================
+// CORECȚIE (2026-08-24, "versurile sunt prea mari si greoaie"): trecere de la SRT (randat de
+// ffmpeg cu un stil ASS generat implicit, un singur font/marime pentru tot) la un fisier .ass
+// scris explicit — PlayResX/PlayResY controlate exact (720x1280, aceeasi rezolutie ca
+// videoclipul final), DOUA stiluri distincte (Title pentru textul introductiv "Pentru {nume}",
+// Lyrics pentru versuri), contur MULT mai fin (Outline 1, fata de 2 inainte) + umbra discreta
+// in loc de marginea groasa neagra veche, text alb-crem pe zone sigure pentru Reels/TikTok/
+// WhatsApp. Maximum 2 randuri per caption (wrapAssTextTwoLines), spart STRICT la limite de
+// cuvinte, niciodata in mijlocul unui cuvant.
+// ==========================================================================================
+
+// ASS foloseste backslash pentru coduri de control (\N = rand nou, \h etc.) si acolade pentru
+// blocuri de override de stil — un nume/text de client care ar contine astfel de caractere NU
+// trebuie NICIODATA interpretat ca o comanda ASS. Eliminam/inlocuim explicit, nu doar speram
+// ca nu apar (verificat cu teste dedicate — apostrof, doua puncte, procent, backslash, newline).
+function escapeAssText(raw) {
+  return String(raw == null ? '' : raw)
+    .replace(/\\/g, '')
+    .replace(/[\r\n]+/g, ' ')
+    .replace(/\{/g, '(')
+    .replace(/\}/g, ')')
+    .trim();
+}
+
+// Maximum DOUA randuri, sparte STRICT la limite de cuvinte — niciodata in mijlocul unui cuvant,
+// niciodata mai mult de 2 randuri (daca al doilea rand tot depaseste pragul, ramane asa, intreg
+// — corectitudinea versurilor afisate conteaza mai mult decat un prag estetic de lungime).
+const ASS_MAX_CHARS_PER_LINE = 30;
+function wrapAssTextTwoLines(text) {
+  const words = text.split(/\s+/).filter(Boolean);
+  if (words.length === 0) return '';
+  let line1 = '';
+  let i = 0;
+  for (; i < words.length; i++) {
+    const candidate = line1 ? `${line1} ${words[i]}` : words[i];
+    if (line1 && candidate.length > ASS_MAX_CHARS_PER_LINE) break;
+    line1 = candidate;
+  }
+  const line2 = words.slice(i).join(' ');
+  return line2 ? `${line1}\\N${line2}` : line1;
+}
+
+// ASS foloseste H:MM:SS.cc (centisecunde, 2 zecimale) — spre deosebire de SRT (H:MM:SS,mmm).
+function assTimestamp(seconds) {
+  const total = Math.max(0, seconds);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = Math.floor(total % 60);
+  const cs = Math.min(99, Math.round((total - Math.floor(total)) * 100));
+  const pad = (n, len) => String(n).padStart(len, '0');
+  return `${h}:${pad(m, 2)}:${pad(s, 2)}.${pad(cs, 2)}`;
+}
+
+// Stilurile Naluna — text cald (crem, familia --gold-deep a site-ului), contur FIN (Outline 1,
+// fata de 2 inainte) + o umbra discreta (BackColour semi-transparent) in loc de marginea groasa
+// neagra veche. "Title" (textul introductiv) e mai mare, aldin, centrat pe mijlocul cadrului
+// (Alignment 5), afisat scurt la inceput. "Lyrics" e mai mic, curat, jos, in zona sigura pentru
+// interfata Reels/TikTok/WhatsApp (MarginV 150, acelasi prag verificat deja pe productie).
+function toAss(lines) {
+  const header =
+`[Script Info]
+ScriptType: v4.00+
+PlayResX: ${MEMORY_VIDEO_WIDTH}
+PlayResY: ${MEMORY_VIDEO_HEIGHT}
+WrapStyle: 2
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Title,Arial,46,&H00E8F0F5,&H000000FF,&H0016202B,&H80000000,1,0,0,0,100,100,0,0,1,1,1.4,5,60,60,0,1
+Style: Lyrics,Arial,30,&H00E8F0F5,&H000000FF,&H0016202B,&H64000000,0,0,0,0,100,100,0,0,1,1,1,2,60,60,150,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+`;
+  const events = lines.map(l => {
+    const style = l.isIntro ? 'Title' : 'Lyrics';
+    const text = wrapAssTextTwoLines(escapeAssText(l.text));
+    if (!text) return null;
+    return `Dialogue: 0,${assTimestamp(l.start)},${assTimestamp(l.end)},${style},,0,0,0,,${text}`;
+  }).filter(Boolean).join('\n');
+  return header + events + '\n';
 }
 
 // ==========================================================================================
@@ -5164,7 +5314,6 @@ function toSrt(lines) {
 // tonuri calde (nu fundalul deschis al site-ului) — text deschis pe fond inchis se citeste
 // mult mai bine intr-un videoclip decat invers, mai ales pe telefon.
 const VIDEO_BG_COLOR = '0x2B2016'; // maro cald inchis, din aceeasi familie ca --gold-deep
-const VIDEO_TEXT_STYLE = "FontName=Arial,FontSize=18,PrimaryColour=&H00E8F0F6,OutlineColour=&H0016202B,BorderStyle=1,Outline=2,Alignment=2,MarginV=150";
 
 // ==========================================================================================
 // Videoclip cinematic cu memorii (poze/videoclipuri incarcate de client) — Faza 1.
@@ -5173,7 +5322,7 @@ const VIDEO_TEXT_STYLE = "FontName=Arial,FontSize=18,PrimaryColour=&H00E8F0F6,Ou
 // de un singur filter_complex urias (mai rapid de scris, dar mult mai fragil pe un CPU lent
 // ca cel de pe Railway — o eroare intr-un lant complex e mult mai greu de izolat):
 //   1) fiecare element (poza/videoclip) -> un segment TACUT, durata fixa, cu efect Ken Burns
-//      (poze) sau scalare/decupare/bucla (videoclipuri) — renderMemorySegment()
+//      (poze) sau scalare/decupare/bucla (videoclipuri) — renderShot()
 //   2) segmentele -> UN singur fundal video tacut, cu tranzitii crossfade intre ele,
 //      durata TOTALA exact egala cu durata melodiei — concatWithCrossfades()
 //   3) fundalul + audio-ul real + subtitrarile sincronizate -> videoclipul final (aceeasi
@@ -5214,7 +5363,7 @@ async function downloadOrderMedia(order, items) {
 }
 
 // Durata REALA a unui videoclip sursa (secunde) — folosita STRICT ca sa alegem un punct de
-// start mai bun in renderMemorySegment (vezi mai jos), niciodata pentru validare (asta ramane
+// start mai bun in renderShot (vezi mai jos), niciodata pentru validare (asta ramane
 // treaba lui verifyMediaDecodable, la upload). Esec/timeout -> null, apelantul revine automat
 // la comportamentul vechi (start de la 0) — nicio eroare aici nu trebuie sa opreasca randarea.
 async function getVideoSourceDurationSeconds(localPath) {
@@ -5254,29 +5403,37 @@ function computeVideoSegmentStartOffset(index, sourceDurationSeconds, segDuratio
   return { useLoop: false, startOffset };
 }
 
-// Randeaza UN element ca segment TACUT, durata fixa exacta, la rezolutia finala a
-// videoclipului (720x1280). Pozele primesc un zoom lent si subtil (efect Ken Burns, de la
-// 1.0x la 1.12x, centrat) — suficient de discret sa nu para agresiv pe o amintire.
-// Videoclipurile sunt scalate/decupate la acelasi format — vezi computeVideoSegmentStartOffset
-// mai sus pentru alegerea punctului de start.
-async function renderMemorySegment(item, index, segDurationSeconds, order) {
-  const outPath = path.join(TEMP_DIR, `${order.id}-memory-seg-${index}.mp4`);
+// CORECȚIE (2026-08-24, "montajul video e monoton — o singura fotografie poate ramane foarte
+// mult timp"): inlocuieste vechiul renderMemorySegment (UN segment lung per material) —
+// randeaza acum UN SINGUR CADRU (shot) din planul construit de buildShotPlan() (vezi
+// lib/media-analysis.js), la rezolutia finala. Pentru poze, foloseste varianta Ken Burns
+// atribuita ACESTEI aparitii a materialului (shot.kenBurns — aparitii succesive ale aceluiasi
+// material primesc miscari diferite, niciodata aceeasi miscare de doua ori la rand). Pentru
+// videoclipuri, foloseste EXACT computeVideoSegmentStartOffset() de mai sus (NESCHIMBATA,
+// ramane testata de test/video-ios-multi-select-upload.test.js cu semnatura ei originala) —
+// combinam indexul materialului cu numarul aparitiei intr-un singur "index" sintetic, ca
+// aparitii diferite ale ACELUIASI clip sa extraga fragmente diferite, fara sa atingem functia
+// existenta.
+async function renderShot(item, shot, shotIndex, order) {
+  const outPath = path.join(TEMP_DIR, `${order.id}-memory-shot-${shotIndex}.mp4`);
+  const segDurationSeconds = shot.duration;
   const frames = Math.max(1, Math.round(segDurationSeconds * MEMORY_VIDEO_FPS));
 
   if (item.type === 'photo') {
     // pre-scalare la 2x rezolutia finala (acelasi raport 9:16) — da zoompan-ului suficient
-    // "spatiu" sa faca un zoom lent si neted, fara sa mareasca artificial o poza mica
-    const zoomExpr = 'min(zoom+0.0012,1.12)';
+    // "spatiu" sa faca un zoom lent si neted, fara sa mareasca artificial o poza mica.
+    const kb = shot.kenBurns;
     await execFfmpeg([
       '-y', '-loop', '1', '-i', item.localPath,
       '-t', String(segDurationSeconds),
-      '-vf', `scale=${MEMORY_VIDEO_WIDTH * 2}:${MEMORY_VIDEO_HEIGHT * 2}:force_original_aspect_ratio=increase,crop=${MEMORY_VIDEO_WIDTH * 2}:${MEMORY_VIDEO_HEIGHT * 2},zoompan=z='${zoomExpr}':d=${frames}:s=${MEMORY_VIDEO_WIDTH}x${MEMORY_VIDEO_HEIGHT}:fps=${MEMORY_VIDEO_FPS},format=yuv420p`,
+      '-vf', `scale=${MEMORY_VIDEO_WIDTH * 2}:${MEMORY_VIDEO_HEIGHT * 2}:force_original_aspect_ratio=increase,crop=${MEMORY_VIDEO_WIDTH * 2}:${MEMORY_VIDEO_HEIGHT * 2},zoompan=z='${kb.z}':x='${kb.x}':y='${kb.y}':d=${frames}:s=${MEMORY_VIDEO_WIDTH}x${MEMORY_VIDEO_HEIGHT}:fps=${MEMORY_VIDEO_FPS},format=yuv420p`,
       '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '28', '-an',
       outPath
-    ], { timeout: 180000 });
+    ], { timeout: 60000 });
   } else {
     const sourceDuration = await getVideoSourceDurationSeconds(item.localPath);
-    const { useLoop, startOffset } = computeVideoSegmentStartOffset(index, sourceDuration, segDurationSeconds);
+    const syntheticIndex = shot.itemIndex * 97 + shot.occurrence * 31;
+    const { useLoop, startOffset } = computeVideoSegmentStartOffset(syntheticIndex, sourceDuration, segDurationSeconds);
     const inputArgs = useLoop
       ? ['-stream_loop', '-1', '-i', item.localPath]
       : ['-ss', startOffset.toFixed(2), '-i', item.localPath];
@@ -5286,16 +5443,18 @@ async function renderMemorySegment(item, index, segDurationSeconds, order) {
       '-vf', `scale=${MEMORY_VIDEO_WIDTH}:${MEMORY_VIDEO_HEIGHT}:force_original_aspect_ratio=increase,crop=${MEMORY_VIDEO_WIDTH}:${MEMORY_VIDEO_HEIGHT},fps=${MEMORY_VIDEO_FPS},format=yuv420p`,
       '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '28', '-an',
       outPath
-    ], { timeout: 180000 });
+    ], { timeout: 60000 });
   }
   return outPath;
 }
 
-// Concateneaza segmentele tacute intr-un singur fundal, cu tranzitii crossfade (xfade) intre
-// elemente consecutive. Fiecare segment e alocat exact (total + (N-1)*tranzitie) / N secunde
-// (vezi buildMemoryBackground) — asta compenseaza suprapunerea introdusa de fiecare tranzitie,
-// ca durata FINALA a fundalului sa fie exact egala cu durata melodiei, nu mai scurta.
-async function concatWithCrossfades(segmentPaths, segDurations, order) {
+// Concateneaza cadrele tacute intr-un singur fundal, cu tranzitii xfade intre cadre
+// consecutive — TIPUL tranzitiei variaza acum dupa energia sectiunii in care cade granita
+// (shot.transitionOut, vezi buildShotPlan) — fade (cross-dissolve) in momente calme,
+// slideleft in momente energice — nu mai e acelasi crossfade peste tot. Fiecare cadru e
+// alocat exact durata din shot-plan (deja compensata pentru suprapunerea tranzitiilor —
+// vezi buildShotPlan), ca durata FINALA a fundalului sa ramana exact egala cu durata melodiei.
+async function concatWithCrossfades(segmentPaths, shots, order) {
   if (segmentPaths.length === 1) return segmentPaths[0];
 
   const outPath = path.join(TEMP_DIR, `${order.id}-memory-background.mp4`);
@@ -5304,13 +5463,14 @@ async function concatWithCrossfades(segmentPaths, segDurations, order) {
 
   let filter = '';
   let lastLabel = '0:v';
-  let cumulative = segDurations[0];
+  let cumulative = shots[0].duration;
   for (let i = 1; i < segmentPaths.length; i++) {
     const offset = Math.max(0, cumulative - MEMORY_XFADE_SECONDS);
     const outLabel = i === segmentPaths.length - 1 ? 'vout' : `x${i}`;
-    filter += `[${lastLabel}][${i}:v]xfade=transition=fade:duration=${MEMORY_XFADE_SECONDS}:offset=${offset.toFixed(3)}[${outLabel}];`;
+    const transition = shots[i - 1].transitionOut || 'fade';
+    filter += `[${lastLabel}][${i}:v]xfade=transition=${transition}:duration=${MEMORY_XFADE_SECONDS}:offset=${offset.toFixed(3)}[${outLabel}];`;
     lastLabel = outLabel;
-    cumulative += segDurations[i] - MEMORY_XFADE_SECONDS;
+    cumulative += shots[i].duration - MEMORY_XFADE_SECONDS;
   }
   filter = filter.replace(/;$/, '');
 
@@ -5325,9 +5485,15 @@ async function concatWithCrossfades(segmentPaths, segDurations, order) {
   return outPath;
 }
 
-// Construieste fundalul cinematic complet (tacut) pentru comanda — descarca elementele,
-// randeaza fiecare segment, le concateneaza cu tranzitii. Curata singura toate fisierele
-// intermediare proprii (sursele descarcate, segmentele) inainte sa iasa, indiferent de
+// Numarul de cadre randate simultan — CONCURENTA LIMITATA (nu strict secvential, ar fi inutil
+// de lent cu 30-50 cadre scurte; nici nelimitat in paralel, ar suprasolicita CPU-ul deja
+// limitat al containerului Railway — cerinta explicita a clientului).
+const SHOT_RENDER_CONCURRENCY = 3;
+
+// Construieste fundalul cinematic complet (tacut) pentru comanda — descarca elementele O
+// SINGURA DATA (indiferent de cate cadre foloseste fiecare mai departe, vezi buildShotPlan),
+// randeaza fiecare cadru din plan, le concateneaza cu tranzitii. Curata singura toate
+// fisierele intermediare proprii (sursele descarcate, cadrele) inainte sa iasa, indiferent de
 // rezultat — doar fundalul final ramane (returnat apelantului, care il curata la randul lui).
 async function buildMemoryBackground(order, mediaItems, durationSeconds, sectionTimings) {
   const ordered = sortMediaBySection(mediaItems);
@@ -5336,29 +5502,28 @@ async function buildMemoryBackground(order, mediaItems, durationSeconds, section
     const downloaded = await downloadOrderMedia(order, ordered);
     downloaded.forEach(d => cleanupPaths.push(d.localPath));
 
-    const n = downloaded.length;
-    // Faza 2 (implementata): daca exista sectiuni REALE (marcaje Suno, nu presupuneri),
-    // plasam fiecare material CU eticheta de sectiune in fereastra reala corespunzatoare
-    // (cerinta F12 — nu doar sortate global si impartite proportional cu marimea
-    // ferestrelor) — vezi computeSectionAwareSegmentDurations(). FARA date reale
-    // suficiente, revenim explicit la distributia egala, clar etichetata in log ca
-    // fallback, niciodata prezentata drept aliniere reala pe sectiuni.
-    let segDurations = computeSectionAwareSegmentDurations(downloaded, durationSeconds, sectionTimings, MEMORY_XFADE_SECONDS);
-    const usedRealTiming = !!segDurations;
-    if (!segDurations) {
-      const equalDuration = (durationSeconds + (n - 1) * MEMORY_XFADE_SECONDS) / n;
-      segDurations = new Array(n).fill(equalDuration);
-    }
-    perfLog(order.id, 'memory_segment_timing', usedRealTiming ? 'sursa=sectiuni_reale_suno' : 'sursa=distributie_egala_fallback');
+    // SHOT PLAN (2026-08-24) — inlocuieste vechea alocare "un segment lung per material"
+    // (computeSectionAwareSegmentDurations, ramasa neschimbata in lib/media-analysis.js
+    // pentru compatibilitate/teste existente, dar nu mai apelata aici) cu un plan de cadre
+    // SCURTE, posibil multiple per material, cu ritm dupa sectiunea REALA curenta — vezi
+    // comentariul detaliat de la buildShotPlan().
+    const shotPlan = buildShotPlan(downloaded, durationSeconds, sectionTimings, MEMORY_XFADE_SECONDS);
+    if (shotPlan.length === 0) throw new Error('Planul de cadre a rezultat gol — nu pot construi fundalul cinematic.');
+    perfLog(order.id, 'memory_shot_plan', `materiale=${downloaded.length}, cadre=${shotPlan.length}, sectiuni=${(sectionTimings || []).length}`);
 
-    const segments = [];
-    for (let i = 0; i < downloaded.length; i++) {
-      const segPath = await renderMemorySegment(downloaded[i], i, segDurations[i], order);
-      segments.push(segPath);
-      cleanupPaths.push(segPath);
+    const segments = new Array(shotPlan.length);
+    let cursor = 0;
+    async function renderNextShot() {
+      while (cursor < shotPlan.length) {
+        const i = cursor++;
+        const shot = shotPlan[i];
+        segments[i] = await renderShot(downloaded[shot.itemIndex], shot, i, order);
+      }
     }
+    await Promise.all(new Array(Math.min(SHOT_RENDER_CONCURRENCY, shotPlan.length)).fill(0).map(renderNextShot));
+    segments.forEach(p => cleanupPaths.push(p));
 
-    const backgroundPath = await concatWithCrossfades(segments, segDurations, order);
+    const backgroundPath = await concatWithCrossfades(segments, shotPlan, order);
     // fundalul final nu trebuie sters aici daca a fost produs de concat (dar TREBUIE sters
     // daca era un singur segment, caz in care concatWithCrossfades a returnat direct
     // segmentul — deja in cleanupPaths, l-am scoate de acolo ca sa nu-l stergem prea devreme)
@@ -5386,13 +5551,18 @@ async function generateLyricVideo(order, variant, tempFullMp3Path) {
     throw new Error('Raspunsul cu versuri sincronizate e gol sau are o structura neasteptata.');
   }
 
-  const captionLines = buildCaptionLines(body.data.alignedWords, order.recipient || '');
+  // CORECȚIE (2026-08-24, "textul introductiv e hardcodat in engleza"): limba vine STRICT din
+  // order.lang (limba REALA a comenzii/melodiei, salvata la creare) — niciodata dedusa altfel.
+  // buildIntroCaptionText() insasi cade pe engleza DOAR daca order.lang lipseste sau nu e una
+  // din cele 8 limbi suportate (comenzi foarte vechi, dinainte de campul lang) — fallback
+  // explicit si testat, nu o eroare tacuta.
+  const captionLines = buildCaptionLines(body.data.alignedWords, order.recipient || '', order.lang);
   if (captionLines.length === 0) {
     throw new Error('Nicio linie de caption construita din versurile sincronizate.');
   }
 
-  const srtPath = path.join(TEMP_DIR, `${order.id}-${variant.id}-captions.srt`);
-  fs.writeFileSync(srtPath, toSrt(captionLines), 'utf8');
+  const assPath = path.join(TEMP_DIR, `${order.id}-${variant.id}-captions.ass`);
+  fs.writeFileSync(assPath, toAss(captionLines), 'utf8');
 
   const durationSeconds = Math.max(1, Math.ceil(variant.durationSeconds || await getAudioDuration(tempFullMp3Path)));
 
@@ -5407,7 +5577,7 @@ async function generateLyricVideo(order, variant, tempFullMp3Path) {
   // subtitles= foloseste propria sintaxa cu ':' ca separator de optiuni — calea trebuie
   // sa foloseasca '/' (nu '\'), iar orice ':' din cale (litera de disc pe Windows, irelevant
   // pe Linux-ul de productie, dar sigur oricum) trebuie scapat explicit.
-  const srtForFilter = srtPath.replace(/\\/g, '/').replace(/:/g, '\\:');
+  const assForFilter = assPath.replace(/\\/g, '/').replace(/:/g, '\\:');
 
   let memoryBackground = null;
   try {
@@ -5451,7 +5621,7 @@ async function generateLyricVideo(order, variant, tempFullMp3Path) {
       '-y',
       ...videoInputArgs,
       '-i', tempFullMp3Path,
-      '-vf', `subtitles='${srtForFilter}':force_style='${VIDEO_TEXT_STYLE}'`,
+      '-vf', `subtitles='${assForFilter}'`,
       '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '26', '-pix_fmt', 'yuv420p',
       '-c:a', 'aac', '-b:a', '192k',
       '-movflags', '+faststart',
@@ -5459,7 +5629,7 @@ async function generateLyricVideo(order, variant, tempFullMp3Path) {
       tempVideo
     ], { timeout: 600000 });
   } finally {
-    try { fs.unlinkSync(srtPath); } catch (e) { /* best-effort */ }
+    try { fs.unlinkSync(assPath); } catch (e) { /* best-effort */ }
     if (memoryBackground) {
       memoryBackground.cleanupPaths.forEach(p => { try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch (e) { /* best-effort */ } });
       try { if (fs.existsSync(memoryBackground.backgroundPath)) fs.unlinkSync(memoryBackground.backgroundPath); } catch (e) { /* best-effort */ }

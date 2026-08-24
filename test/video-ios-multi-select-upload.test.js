@@ -154,10 +154,16 @@ test('server.js: getVideoSourceDurationSeconds() foloseste ffprobe cu timeout si
   assert.ok(snippet.includes('return null;'));
 });
 
-test('server.js: renderMemorySegment() foloseste computeVideoSegmentStartOffset() pentru videoclipuri, pastrand exact pipeline-ul de scalare/crop existent', () => {
-  const idx = server.indexOf('async function renderMemorySegment(item, index, segDurationSeconds, order) {');
+// CORECȚIE (2026-08-24, "montajul video e monoton"): renderMemorySegment() (UN segment lung
+// per material) a fost inlocuita de renderShot() (UN cadru scurt din shot-plan, posibil mai
+// multe aparitii per material) — vezi test/video-shot-plan-render-real.test.js pentru
+// verificarea REALA (randare efectiva + ffprobe) a noii arhitecturi. computeVideoSegmentStartOffset()
+// insasi ramane NESCHIMBATA (testata mai sus, in acest fisier) — doar apelantul ei s-a mutat.
+test('server.js: renderShot() foloseste computeVideoSegmentStartOffset() pentru videoclipuri, pastrand exact pipeline-ul de scalare/crop existent', () => {
+  const idx = server.indexOf('async function renderShot(item, shot, shotIndex, order) {');
+  assert.notEqual(idx, -1, 'renderShot() trebuie sa existe (inlocuieste renderMemorySegment)');
   const snippet = server.slice(idx, idx + 2200);
-  assert.ok(snippet.includes('computeVideoSegmentStartOffset(index, sourceDuration, segDurationSeconds)'));
+  assert.ok(snippet.includes('computeVideoSegmentStartOffset(syntheticIndex, sourceDuration, segDurationSeconds)'));
   assert.ok(snippet.includes(`scale=\${MEMORY_VIDEO_WIDTH}:\${MEMORY_VIDEO_HEIGHT}:force_original_aspect_ratio=increase,crop=\${MEMORY_VIDEO_WIDTH}:\${MEMORY_VIDEO_HEIGHT}`), 'crop-ul fara deformare trebuie sa ramana neschimbat');
   assert.ok(snippet.includes("'-an'"), 'segmentele video raman FARA sunetul original — pista audio finala e STRICT melodia');
 });
@@ -171,14 +177,25 @@ test('server.js: durata TOTALA a fundalului cinematic ramane exact durata melodi
   assert.ok(server.includes('memoryBackground = await buildMemoryBackground(order, mediaItems, durationSeconds, sectionTimings);'));
 });
 
-test('server.js: alinierea REALA pe sectiuni (marcaje Suno) ramane sursa preferata pentru duratele segmentelor, cu fallback explicit la distributie egala', () => {
-  assert.ok(server.includes('computeSectionAwareSegmentDurations(downloaded, durationSeconds, sectionTimings, MEMORY_XFADE_SECONDS)'));
-  assert.ok(server.includes("usedRealTiming ? 'sursa=sectiuni_reale_suno' : 'sursa=distributie_egala_fallback'"));
+// CORECȚIE (2026-08-24): computeSectionAwareSegmentDurations() (un singur segment lung per
+// material) a fost inlocuita de buildShotPlan() (lib/media-analysis.js) — foloseste ACEEASI
+// sursa reala (sectionTimings, derivate din marcajele Suno), dar produce un plan de cadre
+// SCURTE, cu ritm dupa tipul sectiunii, nu doar durate proportionale cu ferestrele. Functia
+// veche ramane definita/exportata neschimbata (compatibilitate/teste proprii, vezi
+// test/media-analysis.test.js) — doar buildMemoryBackground() nu o mai apeleaza.
+test('server.js: buildMemoryBackground() foloseste buildShotPlan() (plan de cadre, nu un singur segment lung per material), cu sectiunile REALE derivate din marcajele Suno', () => {
+  assert.ok(server.includes('const shotPlan = buildShotPlan(downloaded, durationSeconds, sectionTimings, MEMORY_XFADE_SECONDS);'));
+  assert.ok(server.includes("perfLog(order.id, 'memory_shot_plan',"));
 });
 
-test('server.js: tranzitiile crossfade intre segmente raman neschimbate (xfade, durata scurta MEMORY_XFADE_SECONDS)', () => {
+// CORECȚIE (2026-08-24, "acelasi crossfade peste tot"): tranzitia NU mai e hardcodata 'fade'
+// pentru toate granitele — variaza dupa energia sectiunii (shot.transitionOut, vezi
+// buildShotPlan) — 'fade' in momente calme, 'slideleft' in momente energice. MEMORY_XFADE_SECONDS
+// (durata tranzitiei) ramane neschimbata.
+test('server.js: tranzitiile crossfade variaza acum dupa energia sectiunii (fade/slideleft), durata ramane MEMORY_XFADE_SECONDS neschimbata', () => {
   assert.match(server, /const MEMORY_XFADE_SECONDS = 0\.6;/);
-  assert.ok(server.includes('xfade=transition=fade:duration='));
+  assert.ok(server.includes('const transition = shots[i - 1].transitionOut'));
+  assert.ok(server.includes("xfade=transition=${transition}:duration="));
 });
 
 test('server.js: daca pipeline-ul cinematic esueaza in orice punct, randarea revine automat la fundalul solid dovedit — clientul primeste intotdeauna un videoclip', () => {

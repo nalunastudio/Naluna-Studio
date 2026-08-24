@@ -94,6 +94,11 @@
   }
   .mem-status{ font-size:13px; margin-top:10px; }
   .mem-status.err{ color:var(--error); }
+  .mem-picker-retry-btn{
+    background:none; border:none; padding:0; margin-left:4px; color:var(--gold-deep);
+    font-size:13px; font-weight:600; text-decoration:underline; cursor:pointer;
+    font-family:'Sora',sans-serif;
+  }
 </style>
 </head>
 <body>
@@ -137,6 +142,8 @@
       memories_auto_upload_hint: 'Materialele se încarcă automat. Nu mai trebuie să apeși.',
       memories_upload_timeout: 'Încărcarea durează prea mult — verifică conexiunea și încearcă din nou.',
       memories_no_files_selected: 'Nu am primit niciun fișier de la selector — încearcă din nou (verifică și dacă fotografiile sunt descărcate complet din iCloud).',
+      memories_picker_waiting: 'Așteptăm ca telefonul să pregătească materialul selectat...',
+      memories_picker_retry: 'Renunță și încearcă din nou',
       memories_ios_recovery: 'iPhone-ul nu a trimis materialele către site. Deschide pagina direct în Safari și asigură-te că fotografiile sau videoclipurile sunt descărcate pe telefon.',
       memories_create_error: 'Crearea videoclipului a eșuat. Încearcă din nou',
       plan_standard: '🎵 Pachet Standard', plan_premium: '💿 Pachet Premium', plan_video: '🎬 Cadou video'
@@ -163,6 +170,8 @@
       memories_auto_upload_hint: 'Materials are uploading automatically. No need to tap again.',
       memories_upload_timeout: 'This is taking too long — check your connection and try again.',
       memories_no_files_selected: "We didn't receive any file from the picker — please try again (also check the photos are fully downloaded from iCloud).",
+      memories_picker_waiting: "We're waiting for your phone to prepare the selected file...",
+      memories_picker_retry: 'Cancel and try again',
       memories_ios_recovery: "Your iPhone didn't send the files to the site. Open this page directly in Safari and make sure the photos or videos are fully downloaded on your phone.",
       memories_create_error: 'Creating the video failed. Please try again.',
       plan_standard: '🎵 Standard package', plan_premium: '💿 Premium package', plan_video: '🎬 Video gift'
@@ -189,6 +198,8 @@
       memories_auto_upload_hint: 'Die Materialien werden automatisch hochgeladen. Du musst nicht erneut tippen.',
       memories_upload_timeout: 'Das dauert zu lange — überprüfe deine Verbindung und versuche es erneut.',
       memories_no_files_selected: 'Wir haben keine Datei von der Auswahl erhalten — bitte versuche es erneut (prüfe auch, ob die Fotos vollständig aus iCloud heruntergeladen sind).',
+      memories_picker_waiting: 'Wir warten, bis dein Telefon die ausgewählte Datei vorbereitet...',
+      memories_picker_retry: 'Abbrechen und erneut versuchen',
       memories_ios_recovery: 'Dein iPhone hat die Dateien nicht an die Seite gesendet. Öffne diese Seite direkt in Safari und stelle sicher, dass die Fotos oder Videos vollständig auf dein Telefon heruntergeladen sind.',
       memories_create_error: 'Videoerstellung fehlgeschlagen. Bitte versuche es erneut.',
       plan_standard: '🎵 Standard-Paket', plan_premium: '💿 Premium-Paket', plan_video: '🎬 Video-Geschenk'
@@ -215,6 +226,8 @@
       memories_auto_upload_hint: 'Los materiales se suben automáticamente. No hace falta que vuelvas a tocar.',
       memories_upload_timeout: 'Esto está tardando demasiado — comprueba tu conexión e inténtalo de nuevo.',
       memories_no_files_selected: 'No recibimos ningún archivo del selector — inténtalo de nuevo (comprueba también que las fotos estén completamente descargadas de iCloud).',
+      memories_picker_waiting: 'Estamos esperando a que tu teléfono prepare el archivo seleccionado...',
+      memories_picker_retry: 'Cancelar e intentar de nuevo',
       memories_ios_recovery: 'Tu iPhone no envió los archivos al sitio. Abre esta página directamente en Safari y asegúrate de que las fotos o videos estén completamente descargados en tu teléfono.',
       memories_create_error: 'Error al crear el video. Inténtalo de nuevo.',
       plan_standard: '🎵 Paquete Estándar', plan_premium: '💿 Paquete Premium', plan_video: '🎬 Regalo en video'
@@ -241,6 +254,8 @@
       memories_auto_upload_hint: 'I materiali si caricano automaticamente. Non serve toccare di nuovo.',
       memories_upload_timeout: 'Sta impiegando troppo tempo — controlla la connessione e riprova.',
       memories_no_files_selected: 'Non abbiamo ricevuto alcun file dal selettore — riprova (controlla anche che le foto siano scaricate completamente da iCloud).',
+      memories_picker_waiting: 'Stiamo aspettando che il telefono prepari il file selezionato...',
+      memories_picker_retry: 'Annulla e riprova',
       memories_ios_recovery: 'Il tuo iPhone non ha inviato i file al sito. Apri questa pagina direttamente in Safari e assicurati che le foto o i video siano completamente scaricati sul telefono.',
       memories_create_error: 'Creazione del video non riuscita. Riprova.',
       plan_standard: '🎵 Pacchetto Standard', plan_premium: '💿 Pacchetto Premium', plan_video: '🎬 Regalo video'
@@ -267,6 +282,8 @@
       memories_auto_upload_hint: "Les éléments s'envoient automatiquement. Inutile de retoucher l'écran.",
       memories_upload_timeout: "Cela prend trop de temps — vérifiez votre connexion et réessayez.",
       memories_no_files_selected: "Nous n'avons reçu aucun fichier du sélecteur — réessayez (vérifiez aussi que les photos sont bien téléchargées depuis iCloud).",
+      memories_picker_waiting: "Nous attendons que ton téléphone prépare le fichier sélectionné...",
+      memories_picker_retry: 'Annuler et réessayer',
       memories_ios_recovery: "Votre iPhone n'a pas envoyé les fichiers au site. Ouvrez cette page directement dans Safari et assurez-vous que les photos ou vidéos sont bien téléchargées sur votre téléphone.",
       memories_create_error: 'Échec de la création de la vidéo. Veuillez réessayer.',
       plan_standard: '🎵 Pack Standard', plan_premium: '💿 Pack Premium', plan_video: '🎬 Cadeau vidéo'
@@ -293,6 +310,8 @@
       memories_auto_upload_hint: 'Материалите се качват автоматично. Не е нужно да докосваш отново.',
       memories_upload_timeout: 'Това отнема твърде много време — провери връзката си и опитай отново.',
       memories_no_files_selected: 'Не получихме нито един файл от избора — опитай отново (провери също дали снимките са изтеглени напълно от iCloud).',
+      memories_picker_waiting: 'Изчакваме телефонът ти да подготви избрания файл...',
+      memories_picker_retry: 'Откажи и опитай отново',
       memories_ios_recovery: 'Твоят iPhone не изпрати файловете към сайта. Отвори тази страница директно в Safari и се увери, че снимките или видеата са напълно изтеглени на телефона.',
       memories_create_error: 'Създаването на видеото не бе успешно. Опитай отново.',
       plan_standard: '🎵 Пакет Стандарт', plan_premium: '💿 Пакет Премиум', plan_video: '🎬 Видео подарък'
@@ -319,6 +338,8 @@
       memories_auto_upload_hint: 'Materyaller otomatik olarak yükleniyor. Tekrar dokunmana gerek yok.',
       memories_upload_timeout: 'Bu çok uzun sürüyor — bağlantınızı kontrol edip tekrar deneyin.',
       memories_no_files_selected: "Seçiciden hiçbir dosya alamadık — lütfen tekrar deneyin (fotoğrafların iCloud'dan tamamen indirildiğinden de emin olun).",
+      memories_picker_waiting: 'Telefonunuzun seçilen dosyayı hazırlamasını bekliyoruz...',
+      memories_picker_retry: 'İptal et ve tekrar dene',
       memories_ios_recovery: "iPhone'unuz dosyaları siteye göndermedi. Bu sayfayı doğrudan Safari'de açın ve fotoğrafların veya videoların telefonunuzda tamamen indirildiğinden emin olun.",
       memories_create_error: 'Video oluşturma başarısız oldu. Lütfen tekrar deneyin.',
       plan_standard: '🎵 Standart Paket', plan_premium: '💿 Premium Paket', plan_video: '🎬 Video Hediye'
@@ -840,21 +861,41 @@
     renderQueueList();
     updateMemActionGates();
 
-    // RELANSARE 2026-08-14 ("starea de asteptare dupa selectarea videoclipurilor iPhone"):
-    // eliminat complet timeout-ul orb de 1.2s care declara PREMATUR "iOS nu a predat
-    // fisierele" si timeout-ul de 20s care debloca automat selectorul — iPhone Photos/iCloud
-    // poate avea nevoie de 2-3 minute sa pregateasca un videoclip mare ÎNAINTE ca Safari sa
-    // primeasca evenimentul 'change', iar ambele timeout-uri anterioare declarau eronat esec
-    // exact in acest interval normal, obligand clientul sa apese repetat. Selectorul se
-    // deblocheaza ACUM STRICT la: 'change' real, 'cancel' real, sau o apasare manuala explicita
-    // DUPA PICKER_MANUAL_RECOVERY_MS (recuperare la cerere, niciodata redeschidere automata).
-    // Cat timp asteptam 'change', revenirea in focus/visibilitychange arata STRICT un mesaj
-    // neutru (niciodata eroare) si NU deblocheaza nimic.
+    // CORECȚIE (2026-08-24, "selectorul ramane blocat pana la 5 minute pe iPhone daca Safari
+    // nu emite 'cancel'"): 'change'/'cancel' raman sursa AUTORITATIVA de deblocare (neschimbat
+    // — Photos/iCloud poate avea nevoie legitim de 2-3 minute sa pregateasca un videoclip mare
+    // inainte ca 'change' sa soseasca). Ce s-a adaugat: revenirea in pagina (visibilitychange/
+    // focus/pageshow) declanseaza acum, dupa o scurta fereastra de gratie, o afordanta
+    // VIZIBILA cu buton explicit "Renunță și încearcă din nou" — inainte, acest caz doar
+    // consemna intern (memLog), fara niciun semnal pentru client, care ramanea cu selectorul
+    // blocat fara nicio explicatie pana la plafonul orb (redus acum de la 5 minute la 90s).
     let pickerLocked = false;
     let pickerLockedAt = 0;
-    const PICKER_MANUAL_RECOVERY_MS = 5 * 60 * 1000;
+    const PICKER_MANUAL_RECOVERY_MS = 90 * 1000;
+    const PICKER_RETURN_GRACE_MS = 1500;
     let pickerAwaitingChange = false;
     let pickerOpenToken = 0;
+    let pickerReturnGraceTimer = null;
+    let pickerWaitingMessageShown = false;
+    function clearPickerWaitingMessage() {
+      pickerWaitingMessageShown = false;
+      if (pickerReturnGraceTimer) { clearTimeout(pickerReturnGraceTimer); pickerReturnGraceTimer = null; }
+    }
+    function showPickerWaitingMessage() {
+      if (!pickerAwaitingChange || pickerWaitingMessageShown) return;
+      pickerWaitingMessageShown = true;
+      statusEl.innerHTML = `${escapeHtml(t.memories_picker_waiting)} <button type="button" id="mem-picker-retry-btn" class="mem-picker-retry-btn"></button>`;
+      statusEl.classList.remove('err');
+      const retryBtn = document.getElementById('mem-picker-retry-btn');
+      retryBtn.textContent = t.memories_picker_retry;
+      retryBtn.addEventListener('click', () => {
+        pickerLocked = false;
+        pickerAwaitingChange = false;
+        clearPickerWaitingMessage();
+        statusEl.textContent = '';
+        statusEl.classList.remove('err');
+      });
+    }
     fileInput.addEventListener('click', (e) => {
       if (pickerLocked) {
         if (Date.now() - pickerLockedAt < PICKER_MANUAL_RECOVERY_MS) { e.preventDefault(); return; }
@@ -864,6 +905,7 @@
       pickerLockedAt = Date.now();
       pickerAwaitingChange = true;
       pickerOpenToken++;
+      clearPickerWaitingMessage();
       statusEl.textContent = '';
       statusEl.classList.remove('err');
       memUploadAttemptId = 'a' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -872,22 +914,27 @@
     fileInput.addEventListener('cancel', () => {
       pickerLocked = false;
       pickerAwaitingChange = false;
+      clearPickerWaitingMessage();
       statusEl.textContent = '';
       statusEl.classList.remove('err');
       memLog(orderId, 'picker_cancel', {});
     });
-    // Fara niciun timer — daca revenim in pagina si inca asteptam 'change' (iPhone inca
-    // pregateste materialul), NU aratam nicio eroare si NU deblocam selectorul — doar
-    // consemnam intern (memLog) ca inca asteptam. Daca 'change' a sosit deja intre timp,
-    // pickerAwaitingChange e deja fals si aceasta functie nu face nimic.
+    // Daca revenim in pagina si inca asteptam 'change' (iPhone inca pregateste materialul),
+    // NU deblocam nimic automat — dupa o scurta fereastra de gratie (lasa 'change' sa soseasca
+    // singur, daca era pe cale sa soseasca oricum), aratam afordanta explicita de mai sus.
+    // Daca 'change' a sosit deja intre timp, pickerAwaitingChange e deja fals si nu facem nimic.
     function checkPickerDelivery() {
       if (!pickerAwaitingChange) return;
       memLog(orderId, 'picker_still_awaiting_after_focus_return', { ios: memIsIOS });
+      if (!pickerReturnGraceTimer) {
+        pickerReturnGraceTimer = setTimeout(() => { pickerReturnGraceTimer = null; showPickerWaitingMessage(); }, PICKER_RETURN_GRACE_MS);
+      }
     }
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') checkPickerDelivery();
     });
     window.addEventListener('focus', checkPickerDelivery);
+    window.addEventListener('pageshow', (event) => { if (event.persisted) checkPickerDelivery(); });
 
     let memStatusHintToken = 0;
 

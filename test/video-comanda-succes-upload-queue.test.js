@@ -236,18 +236,24 @@ for (const [name, html] of Object.entries(PAGES)) {
     assert.ok(changeSnippet.includes('pickerLocked = false;'));
   });
 
-  // RELANSARE 2026-08-14: checkPickerDelivery() NU mai declara eroare si NU mai deblocheaza
-  // selectorul dupa un timeout scurt — iPhone Photos/iCloud poate avea nevoie de 2-3 minute sa
-  // pregateasca un videoclip mare inainte de 'change'. RELANSARE ULTERIOARA (aceeasi zi,
-  // "elimina mesajul tehnic despre bifa albastra, iCloud si timpul de asteptare" — cauza reala
-  // a fost deja masurata prin instrumentarea temporara, acum eliminata): checkPickerDelivery()
-  // nu mai afiseaza NICIUN text vizibil, doar consemneaza intern (memLog).
-  test(`${name}: checkPickerDelivery() NU mai declara eroare si NU mai deblocheaza selectorul — nu afiseaza niciun mesaj tehnic, fara niciun timer`, () => {
+  // CORECȚIE (2026-08-24, "selectorul ramane blocat pana la 5 minute pe iPhone, fara niciun
+  // feedback"): checkPickerDelivery() TOT nu deblocheaza singura selectorul si TOT nu marcheaza
+  // nimic ca eroare (neschimbat) — dar acum PROGRAMEAZA (setTimeout, o singura data per revenire
+  // in pagina) afordanta explicita de recuperare (showPickerWaitingMessage), dupa o scurta
+  // fereastra de gratie — inainte, functia doar consemna intern (memLog), fara niciun semnal
+  // pentru client, care ramanea cu selectorul blocat pana la 5 minute fara nicio explicatie.
+  // Deblocarea propriu-zisa ramane STRICT in interiorul handler-ului de click al butonului de
+  // retry (actiune explicita a utilizatorului), niciodata automat din checkPickerDelivery().
+  test(`${name}: checkPickerDelivery() programeaza afordanta explicita de recuperare (cu un timer de gratie), dar NU deblocheaza singura selectorul si NU marcheaza nimic ca eroare`, () => {
     const snippet = extractFunction(html, 'function checkPickerDelivery() {');
-    assert.ok(!/setTimeout/.test(snippet), 'checkPickerDelivery() nu mai trebuie sa foloseasca niciun timer');
-    assert.ok(!snippet.includes("pickerLocked = false"), 'checkPickerDelivery() nu mai trebuie sa deblocheze selectorul');
-    assert.ok(!snippet.includes("classList.add('err')"), 'checkPickerDelivery() nu mai trebuie sa marcheze mesajul ca eroare');
-    assert.ok(!snippet.includes('statusEl.textContent'), 'checkPickerDelivery() nu mai trebuie sa afiseze niciun text vizibil');
+    assert.match(snippet, /setTimeout\(\(\) => \{ pickerReturnGraceTimer = null; showPickerWaitingMessage\(\); \}, PICKER_RETURN_GRACE_MS\)/, 'checkPickerDelivery() trebuie sa programeze afordanta explicita, dupa o fereastra de gratie');
+    assert.ok(!snippet.includes("pickerLocked = false"), 'checkPickerDelivery() insasi nu trebuie sa deblocheze selectorul');
+    assert.ok(!snippet.includes("classList.add('err')"), 'checkPickerDelivery() nu trebuie sa marcheze mesajul ca eroare');
+  });
+
+  test(`${name}: deblocarea reala se intampla STRICT la apasarea explicita a butonului de retry, niciodata automat din checkPickerDelivery()`, () => {
+    const snippet = extractFunction(html, 'function showPickerWaitingMessage() {');
+    assert.match(snippet, /retryBtn\.addEventListener\('click', \(\) => \{\s*pickerLocked = false;/);
   });
 
   test(`${name}: mesajul tehnic vechi despre iPhone/iCloud (memories_ios_preparing) a fost eliminat complet`, () => {

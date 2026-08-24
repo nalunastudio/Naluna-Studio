@@ -113,10 +113,14 @@ for (const [name, html] of Object.entries(PAGES)) {
   //    de 'change', interval in care acel timeout debloca eronat selectorul). Eliberare STRICT
   //    la 'change'/'cancel' real, sau la o apasare manuala explicita dupa un prag rezonabil.
   // -----------------------------------------------------------------------------------------
-  test(`${name}: prima apasare pe selectorul de fisiere blocheaza apasarile duplicate — eliberata STRICT prin actiune, niciodata printr-un timeout orb`, () => {
+  // CORECȚIE (2026-08-24, "selectorul ramane blocat pana la 5 minute pe iPhone, fara niciun
+  // feedback"): plafonul orb a fost redus (90s, de la 5 minute) — recuperarea normala devine
+  // acum o AFORDANTA EXPLICITA ("Renunță și încearcă din nou"), surfacing mult mai devreme
+  // prin visibilitychange/focus/pageshow, niciodata un deblocaj automat/tacut.
+  test(`${name}: prima apasare pe selectorul de fisiere blocheaza apasarile duplicate — eliberata STRICT prin actiune (change/cancel/afordanta explicita), niciodata printr-un timeout orb care deblocheaza singur`, () => {
     assert.ok(html.includes('let pickerLocked = false;'));
     assert.ok(html.includes('pickerLocked = true;'));
-    assert.ok(html.includes('const PICKER_MANUAL_RECOVERY_MS = 5 * 60 * 1000;'), 'trebuie sa existe un prag de recuperare manuala rezonabil (5 minute)');
+    assert.ok(html.includes('const PICKER_MANUAL_RECOVERY_MS = 90 * 1000;'), 'plafonul de recuperare manuala trebuie sa fie 90s (redus fata de vechile 5 minute)');
     assert.ok(!/setTimeout\(\s*\(\)\s*=>\s*\{\s*pickerLocked\s*=\s*false;/.test(html), 'nu mai trebuie sa existe niciun timeout care deblocheaza singur selectorul, fara actiune a utilizatorului');
     assert.ok(!html.includes('pickerLockTimeoutId'), 'variabila timeout-ului orb eliminat nu mai trebuie sa existe');
   });

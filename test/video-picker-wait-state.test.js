@@ -144,9 +144,15 @@ for (const [name, html] of Object.entries(ALL_PAGES)) {
 }
 
 for (const [name, html] of Object.entries(PAGES_WITH_NEUTRAL_MESSAGE)) {
-  test(`${name}: checkPickerDelivery() nu contine niciun setTimeout, nu deblocheaza selectorul si nu marcheaza nimic drept eroare`, () => {
+  // CORECȚIE (2026-08-24, "selectorul ramane blocat pana la 5 minute pe iPhone, fara niciun
+  // feedback"): checkPickerDelivery() ACUM programeaza (setTimeout, o singura data per revenire)
+  // afordanta explicita de recuperare (showPickerWaitingMessage), dupa o scurta fereastra de
+  // gratie — nu mai e o functie complet pasiva. Ramane insa STRICT ea insasi fara deblocare/
+  // eroare — deblocarea reala se intampla doar in interiorul showPickerWaitingMessage(), la
+  // apasarea explicita a butonului de retry (verificat separat mai jos).
+  test(`${name}: checkPickerDelivery() programeaza afordanta explicita de recuperare, dar nu deblocheaza singura selectorul si nu marcheaza nimic drept eroare`, () => {
     const src = extractFunction(html, 'function checkPickerDelivery() {');
-    assert.ok(!src.includes('setTimeout'));
+    assert.match(src, /setTimeout\(\(\) => \{ pickerReturnGraceTimer = null; showPickerWaitingMessage\(\); \}, PICKER_RETURN_GRACE_MS\)/);
     assert.ok(!src.includes('pickerLocked = false'));
     assert.ok(!src.includes('pickerAwaitingChange = false'), 'checkPickerDelivery() nu mai trebuie sa opreasca asteptarea singura — doar "change"/"cancel" fac asta');
     assert.ok(!src.includes("classList.add('err')"));
