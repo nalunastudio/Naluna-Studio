@@ -229,3 +229,46 @@ test('wrapVideoRenderStageError: eroarea CURATA nu contine cai de fisier locale 
     }
   );
 });
+
+// ---------------------------------------------------------------------------------------------
+// CORECȚIE (audit independent, 2026-08-24, runda 2, "curata fisierele intermediare si cand
+// concatWithCrossfades esueaza, nu doar la succes") — bug real: fisierele intermediare create la
+// niveluri ANTERIOARE unui esec ramaneau orfane pe disc, pentru ca vechea curatare se executa
+// DOAR pe calea de succes (dupa `while`), niciodata intr-un `finally`. Testul de mai jos
+// construieste REAL 7 segmente video (peste CONCAT_BATCH_SIZE=5 — garanteaza 2 loturi la nivelul
+// 0), face lotul AL DOILEA sa esueze REAL (fisier corupt), si verifica ca fisierul intermediar
+// creat cu succes de PRIMUL lot (deja pe disc in momentul esecului) e sters, nu doar ca functia
+// arunca eroarea asteptata.
+test('concatWithCrossfades: fisierele intermediare create la un nivel ANTERIOR unui esec sunt curatate si la eroare, nu doar la succes', { skip: !FFMPEG_AVAILABLE && 'ffmpeg/ffprobe indisponibile in acest mediu', timeout: 60000 }, async () => {
+  const dir = path.join(workDir, 'case-cleanup-on-failure');
+  fs.mkdirSync(dir, { recursive: true });
+  const order = { id: 'stress-cleanup-on-failure' };
+
+  // 7 segmente reale scurte (2s fiecare) — primele 5 formeaza lotul 1 (nivel 0), reusit; ultimele
+  // 2 formeaza lotul 2, care va contine un fisier corupt si va esua REAL la concatenare.
+  const segmentPaths = [];
+  for (let i = 0; i < 7; i++) {
+    const p = path.join(dir, `seg${i}.mp4`);
+    if (i === 5) {
+      fs.writeFileSync(p, 'not actually a video file');
+    } else {
+      execFileSync('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', `color=c=${['red', 'green', 'blue'][i % 3]}:s=320x240:d=2`, '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', p]);
+    }
+    segmentPaths.push(p);
+  }
+  const shots = segmentPaths.map(() => ({ duration: 2, transitionOut: 'fade' }));
+
+  await assert.rejects(
+    () => mod.concatWithCrossfades(segmentPaths, shots, order),
+    (err) => {
+      assert.ok(err.stage, 'eroarea trebuie sa fie una CURATA, cu stage setat (wrapVideoRenderStageError)');
+      return true;
+    }
+  );
+
+  // fisierul intermediar al PRIMULUI lot (5 segmente reale, reusit) trebuie sa fi existat la un
+  // moment dat (verificam indirect: niciun fisier "L0-0" ramas dupa apel) — verificam DIRECT ca
+  // niciun fisier de forma `${order.id}-memory-batch-*` nu mai exista in TEMP_DIR dupa esec.
+  const leftover = fs.readdirSync(path.join(workDir, 'render-work')).filter(f => f.includes(order.id) && f.includes('memory-batch'));
+  assert.equal(leftover.length, 0, `niciun fisier intermediar nu trebuie sa ramana pe disc dupa un esec — gasit: ${JSON.stringify(leftover)}`);
+});

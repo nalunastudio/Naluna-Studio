@@ -187,10 +187,12 @@ test('server.js: durata TOTALA a fundalului cinematic ramane exact durata melodi
 // veche ramane definita/exportata neschimbata (compatibilitate/teste proprii, vezi
 // test/media-analysis.test.js) — doar buildMemoryBackground() nu o mai apeleaza.
 test('server.js: buildMemoryBackground() foloseste buildShotPlan() (plan de cadre, nu un singur segment lung per material), cu sectiunile REALE derivate din marcajele Suno', () => {
-  // CORECȚIE (2026-08-24): al cincilea argument, onsetTimes (din extractAudioOnsets), a fost
-  // adaugat — buildShotPlan() foloseste sectiunile/duratele ca inainte, doar ajusteaza fin
+  // CORECȚIE (2026-08-24, runda 2): al cincilea argument, onsetTimes (din extractAudioOnsets), si
+  // al saselea, CONCAT_BATCH_SIZE (necesar ca simularea de aliniere la impuls sa corespunda EXACT
+  // cu reducerea pe loturi din concatWithCrossfades — vezi audit independent, runda 2), au fost
+  // adaugate — buildShotPlan() foloseste sectiunile/duratele ca inainte, doar ajusteaza fin
   // granitele cand exista impulsuri detectate suficient de aproape (vezi lib/media-analysis.js).
-  assert.ok(server.includes('const shotPlan = buildShotPlan(downloaded, durationSeconds, sectionTimings, MEMORY_XFADE_SECONDS, onsetTimes);'));
+  assert.ok(server.includes('const shotPlan = buildShotPlan(downloaded, durationSeconds, sectionTimings, MEMORY_XFADE_SECONDS, onsetTimes, CONCAT_BATCH_SIZE);'));
   assert.ok(server.includes("perfLog(order.id, 'memory_shot_plan',"));
 });
 

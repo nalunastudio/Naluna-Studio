@@ -24,6 +24,7 @@ const {
   detectOnsets,
   snapShotBoundariesToOnsets,
   buildShotPlan,
+  computeRealBoundaryPositions,
   SHOT_PLAN_ONSET_MAX_SNAP_SECONDS
 } = require('../lib/media-analysis');
 
@@ -201,32 +202,42 @@ function fakeMediaItems(count) {
   return new Array(count).fill(0).map((_, i) => ({ itemIndex: i, mediaType: 'photo', section: null }));
 }
 
-test('snapShotBoundariesToOnsets: granitele INTERIOARE se muta la cel mai apropiat impuls aflat in raza permisa; prima/ultima granita raman FIXE', () => {
+test('snapShotBoundariesToOnsets: granitele INTERIOARE se muta la cel mai apropiat impuls aflat in raza permisa (masurat prin pozitia REALA post-xfade, nu suma cumulativa naiva); prima/ultima granita raman FIXE', () => {
   const shots = [
     { start: 0, end: 3, duration: 3 },
     { start: 3, end: 6, duration: 3 },
     { start: 6, end: 9, duration: 3 },
     { start: 9, end: 12, duration: 3 }
   ];
-  // impuls real la 6.2s, foarte aproape de granita 6 (a doua granita interioara)
-  const onsets = [6.2];
-  snapShotBoundariesToOnsets(shots, onsets);
+  const xfade = 0.6;
+  // CORECȚIE (audit independent, runda 2): granita REALA (dupa comprimarea xfade) intre cadrul 1
+  // si 2 NU e suma cumulativa naiva (6) — e computeRealBoundaryPositions()[1]. Impulsul e plasat
+  // langa ACEA pozitie reala, nu langa suma naiva.
+  const realBefore = computeRealBoundaryPositions(shots, xfade, 5);
+  const target = realBefore[1] + 0.2; // in raza de 0.35s
+  snapShotBoundariesToOnsets(shots, [target], xfade, 5);
   assert.equal(shots[0].start, 0, 'inceputul primului cadru trebuie sa ramana 0');
   assert.equal(shots[3].end, 12, 'finalul ultimului cadru trebuie sa ramana neschimbat');
-  assert.ok(Math.abs(shots[1].end - 6.2) < 1e-9, `granita 3->6 trebuie mutata la impuls (6.2), a ramas la ${shots[1].end}`);
+  const realAfter = computeRealBoundaryPositions(shots, xfade, 5);
+  assert.ok(Math.abs(realAfter[1] - target) < 1e-9, `granita reala 1 trebuie mutata la impulsul tinta (${target}), a ramas la ${realAfter[1]}`);
+  assert.ok(Math.abs(realAfter[0] - realBefore[0]) < 1e-9, 'granita reala 0 (neafectata) trebuie sa ramana neschimbata');
+  assert.ok(Math.abs(realAfter[2] - realBefore[2]) < 1e-9, 'granita reala 2 (neafectata) trebuie sa ramana neschimbata');
   assert.equal(shots[1].end, shots[2].start, 'granitele consecutive trebuie sa ramana lipite (fara goluri/suprapuneri)');
-  const totalDuration = shots[shots.length - 1].end - shots[0].start;
+  const totalDuration = shots.reduce((s, sh) => s + sh.duration, 0);
   assert.ok(Math.abs(totalDuration - 12) < 1e-9, 'durata totala trebuie sa ramana EXACT neschimbata');
 });
 
-test('snapShotBoundariesToOnsets: un impuls prea departe (peste SHOT_PLAN_ONSET_MAX_SNAP_SECONDS) NU muta granita', () => {
+test('snapShotBoundariesToOnsets: un impuls prea departe (peste SHOT_PLAN_ONSET_MAX_SNAP_SECONDS) de pozitia REALA NU muta granita', () => {
   const shots = [
     { start: 0, end: 3, duration: 3 },
     { start: 3, end: 6, duration: 3 }
   ];
-  const farOnset = 3 + SHOT_PLAN_ONSET_MAX_SNAP_SECONDS + 0.2;
-  snapShotBoundariesToOnsets(shots, [farOnset]);
-  assert.equal(shots[0].end, 3, 'un impuls prea indepartat nu trebuie sa mute granita');
+  const xfade = 0.6;
+  const realBefore = computeRealBoundaryPositions(shots, xfade, 5);
+  const farOnset = realBefore[0] + SHOT_PLAN_ONSET_MAX_SNAP_SECONDS + 0.2;
+  snapShotBoundariesToOnsets(shots, [farOnset], xfade, 5);
+  const realAfter = computeRealBoundaryPositions(shots, xfade, 5);
+  assert.ok(Math.abs(realAfter[0] - realBefore[0]) < 1e-9, 'un impuls prea indepartat de pozitia reala nu trebuie sa mute granita');
 });
 
 test('snapShotBoundariesToOnsets: fara impulsuri -> planul ramane STRICT neschimbat (fallback explicit)', () => {
@@ -238,39 +249,27 @@ test('snapShotBoundariesToOnsets: fara impulsuri -> planul ramane STRICT neschim
   assert.equal(JSON.stringify(shots), before);
 });
 
-test('buildShotPlan: cu onsetTimes reale (click-track sintetic), granitele cadrelor sunt MASURABIL mai aproape de impulsuri decat fara analiza audio', () => {
-  const durationSeconds = 40;
-  const media = fakeMediaItems(3);
+test('computeRealBoundaryPositions: la 50 de cadre, diferenta fata de suma cumulativa naiva (shots[i].end) e de ordinul zecilor de secunde — motivul EXACT al corectiei (audit independent, runda 2)', () => {
+  const durationSeconds = 200;
+  const media = fakeMediaItems(5);
   const sectionTimings = [{ sectionType: 'full_song', sectionIndex: 0, startTime: 0, endTime: durationSeconds, source: 'fallback' }];
   const xfade = 0.6;
-
-  const planWithoutAudio = buildShotPlan(media, durationSeconds, sectionTimings, xfade);
-  // impulsuri sintetice, plasate DELIBERAT langa cateva din granitele existente fara analiza
-  // audio, dar NU exact pe ele (simuleaza un "beat" real, usor deplasat fata de durata fixa).
-  const boundariesWithoutAudio = planWithoutAudio.slice(0, -1).map(s => s.end);
-  const syntheticOnsets = boundariesWithoutAudio
-    .filter((_, i) => i % 2 === 0) // doar jumatate din granite au un impuls "real" apropiat
-    .map(b => b + 0.15); // impuls la +0.15s fata de granita bazata pe durata fixa
-
-  const planWithAudio = buildShotPlan(media, durationSeconds, sectionTimings, xfade, syntheticOnsets);
-
-  assert.equal(planWithAudio.length, planWithoutAudio.length, 'numarul de cadre trebuie sa ramana IDENTIC — doar pozitia taieturii se ajusteaza, cerinta explicita');
-  const totalWithout = planWithoutAudio[planWithoutAudio.length - 1].end;
-  const totalWith = planWithAudio[planWithAudio.length - 1].end;
-  assert.ok(Math.abs(totalWith - totalWithout) < 1e-6, 'durata totala trebuie sa ramana identica cu/fara analiza audio');
-
-  // masurare directa: pentru fiecare impuls sintetic, distanta pana la CEA MAI APROPIATA granita
-  // interioara trebuie sa fie strict mai mica in planul CU analiza audio decat in cel FARA.
-  function nearestBoundaryDistance(plan, t) {
-    const boundaries = plan.slice(0, -1).map(s => s.end);
-    return Math.min(...boundaries.map(b => Math.abs(b - t)));
-  }
-  let improved = 0;
-  for (const onset of syntheticOnsets) {
-    const distWithout = nearestBoundaryDistance(planWithoutAudio, onset);
-    const distWith = nearestBoundaryDistance(planWithAudio, onset);
-    assert.ok(distWith <= distWithout + 1e-9, `impulsul la ${onset}s trebuie sa fie la fel de aproape sau mai aproape de o granita in planul cu analiza audio (fara=${distWithout}, cu=${distWith})`);
-    if (distWith < distWithout - 1e-6) improved++;
-  }
-  assert.ok(improved > 0, 'cel putin o granita trebuie MASURABIL mutata mai aproape de un impuls real — nu doar acelasi numar de cadre');
+  const plan = buildShotPlan(media, durationSeconds, sectionTimings, xfade); // fara onsets — planul de baza
+  assert.ok(plan.length >= 45, `testul are nevoie de un plan cu multe cadre (~50), a obtinut ${plan.length}`);
+  const naive = plan.slice(0, -1).map(s => s.end);
+  const real = computeRealBoundaryPositions(plan, xfade, 5);
+  const lastDiff = naive[naive.length - 1] - real[real.length - 1];
+  assert.ok(lastDiff > 15, `diferenta la ultima granita trebuie sa fie mare (cauza reala a bug-ului) — a fost doar ${lastDiff.toFixed(2)}s`);
+  // granita 0 (primul boundary, in acelasi lot — nicio compunere pe niveluri inca) trebuie sa
+  // ramana aproape neschimbata — confirma ca diferenta CRESTE odata cu adancimea in ierarhie,
+  // nu e un offset constant aplicat peste tot.
+  assert.ok(Math.abs(naive[0] - real[0]) < 1, 'prima granita (fara compunere pe niveluri) trebuie sa fie aproape neschimbata');
 });
+
+// NOTA: testul care compara STRICT granitele naive (shots[i].end) inainte/dupa aliniere la
+// impuls a fost ELIMINAT (audit independent, runda 2 — era "circular", compara logica interna
+// cu ea insasi, fara nicio dovada ca alinierea corespunde REALITATII din fisierul video randat).
+// Inlocuit de test/video-onset-alignment-real.test.js — randeaza EFECTIV un fundal complet (pana
+// la 50 de cadre), extrage impulsuri REALE dintr-un fisier audio real (click-track WAV) prin
+// ffmpeg, si masoara DIRECT, in MP4-ul rezultat, cat de aproape ajung schimbarile vizuale
+// detectate de click-urile audio cunoscute.

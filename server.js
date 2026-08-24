@@ -4416,6 +4416,60 @@ function orderTracksByCoherence(tracks, order, recipientSnapshot) {
   return [scored[1].t, scored[0].t]; // doar a doua piesa e coerenta -> devine prima incercata
 }
 
+// CORECȚIE (audit independent, 2026-08-24, runda 2, "nu mai livra clientului o varianta care nu
+// trece validarea"): bug real gasit in versiunea anterioara — dupa reincercarea de coerenta,
+// codul inlocuia `built` cu prima piesa PROCESATA TEHNIC cu succes, INDIFERENT daca era sau nu
+// coerenta, si o impingea in builtVariants necondiţionat. Functia de mai jos e SINGURUL punct de
+// decizie acum: incearca pana la doua piese initiale (in ordinea preferata de coerenta), apoi —
+// STRICT pentru versuri scrise de furnizor (customMode:false, fara canonicalLyrics) — O SINGURA
+// reincercare completa (regenerare prompt) daca nicio piesa initiala nu e acceptabila. Returneaza
+// { built: null } daca NIMIC acceptabil nu a putut fi obtinut — apelantul (finalizeVariantsIfNeeded)
+// trateaza asta ca esec al cererii prin fluxul EXISTENT (requestFailures), NICIODATA nu salveaza
+// versuri incoerente sau goale. canonicalLyrics (versuri editate manual de client) ocolesc COMPLET
+// verificarea de coerenta — doar succesul TEHNIC al procesarii audio conteaza pentru ele.
+async function obtainAcceptableVariant(orderId, tracks, taskId, genre, order, recipientSnapshot, canonicalLyrics) {
+  async function attempt(candidateTracks, candidateTaskId) {
+    const ordered = canonicalLyrics ? (candidateTracks || []).slice(0, 2) : orderTracksByCoherence(candidateTracks, order, recipientSnapshot);
+    let lastErr = null;
+    for (const track of ordered) {
+      let candidate;
+      try {
+        candidate = await buildVariantFromTrack(orderId, randomUUID().slice(0, 8), track, candidateTaskId);
+      } catch (err) {
+        lastErr = err;
+        continue; // esec TEHNIC pe aceasta piesa — incearca urmatoarea, daca mai exista una
+      }
+      if (canonicalLyrics) return { built: candidate, lastErr: null };
+      const coherence = (candidate.originalLyrics && candidate.originalLyrics.trim())
+        ? validateLyricsCoherence(order, recipientSnapshot || order, candidate.originalLyrics)
+        : { ok: false, reasons: ['empty_lyrics'] };
+      if (coherence.ok) return { built: candidate, lastErr: null };
+      // piesa procesata TEHNIC cu succes, dar incoerenta/goala — NU o acceptam, continuam
+      // cautarea (nu exista niciun `break` aici — exact bug-ul de fixat).
+    }
+    return { built: null, lastErr };
+  }
+
+  const first = await attempt(tracks, taskId);
+  if (first.built || canonicalLyrics) return first; // canonicalLyrics: fara reincercare de coerenta — un esec tehnic ramane final
+
+  console.warn(`Comanda ${orderId}: nicio piesa acceptabila (versuri goale sau incoerente gramatical/narativ) pentru genul "${genre}" — reincerc o singura data.`);
+  try {
+    const retryOrder = recipientSnapshot ? { ...order, ...recipientSnapshot } : order;
+    const retryPrompt = buildPrompt(retryOrder, '', genre);
+    const retryTaskId = await callMusicProvider(orderId, retryPrompt);
+    const retryResult = await pollForResult(retryTaskId, orderId);
+    if (retryResult.status === SUNO_SUCCESS_STATUS && retryResult.tracks && retryResult.tracks.length) {
+      const second = await attempt(retryResult.tracks, retryTaskId);
+      if (second.built) return second;
+    }
+  } catch (retryErr) {
+    console.error(`Comanda ${orderId}: reincercarea pentru genul "${genre}" a esuat (${retryErr.message}).`);
+  }
+  console.error(`Comanda ${orderId}: nicio piesa acceptabila pentru genul "${genre}" dupa singura reincercare permisa — cererea e tratata ca esuata, NICIO varianta incoerenta nu e salvata.`);
+  return { built: null, lastErr: first.lastErr };
+}
+
 function checkLyricsContainExpectedNames(order, variant) {
   if (!variant || !variant.originalLyrics) return;
   const namesToCheck = [];
@@ -4484,20 +4538,18 @@ async function finalizeVariantsIfNeeded(orderId, requestsInfo, options = {}) {
         requestFailures.push(`genul "${genre}": Suno nu a intors nicio piesa cu audioUrl`);
         continue;
       }
-      let built = null;
-      let lastErr = null;
-      // incearca prima piesa; daca EA esueaza la procesare (descarcare/ffmpeg/upload), a
-      // doua piesa a ACELEIASI cereri devine fallback tehnic — niciodata livrata separat.
-      // (2026-08-24) ordinea e ajustata de orderTracksByCoherence() — DOAR reordonata, niciodata
-      // redusa — vezi definitia ei mai sus pentru motiv.
-      for (const track of orderTracksByCoherence(tracks, claimed, recipientSnapshot)) {
-        try {
-          built = await buildVariantFromTrack(orderId, randomUUID().slice(0, 8), track, taskId);
-          break;
-        } catch (err) {
-          lastErr = err;
-        }
-      }
+      // CORECȚIE (2026-08-13): daca aceasta cerere corespunde unei editari cu versuri exacte,
+      // versurile afisate trebuie sa fie EXACT textul canonic salvat — niciodata ce ar intoarce
+      // Suno. canonicalLyrics ocoleste complet verificarea de coerenta mai jos (obtainAcceptableVariant).
+      const canonicalLyrics = canonicalEditedLyricsFor(sourceVariantIdsInOrder[requestIndex]);
+
+      // ADAUGAT (2026-08-24, audit independent — "nu mai livra clientului o varianta care nu
+      // trece validarea"): obtainAcceptableVariant() e SINGURUL punct de decizie — incearca pana
+      // la doua piese initiale (reordonate dupa coerenta), apoi o SINGURA reincercare completa
+      // daca niciuna nu e acceptabila (fara canonicalLyrics). Returneaza built:null daca NIMIC
+      // acceptabil nu a putut fi obtinut — cererea e tratata ca esuata mai jos (requestFailures),
+      // NICIODATA nu se salveaza versuri incoerente sau goale.
+      const { built, lastErr } = await obtainAcceptableVariant(orderId, tracks, taskId, genre, claimed, recipientSnapshot, canonicalLyrics);
       if (built) {
         built.genre = genre;
         // MODIFICARE STRICTĂ — fluxul Premium: pagina finala de comparare (hotfix 2026-08-10
@@ -4514,103 +4566,17 @@ async function finalizeVariantsIfNeeded(orderId, requestsInfo, options = {}) {
         // recipientSnapshot e identic cu datele principale ale comenzii — nicio schimbare
         // practica fata de inainte.
         if (recipientSnapshot) Object.assign(built, recipientSnapshot);
-        // CORECȚIE (2026-08-13): daca aceasta varianta rezulta dintr-o editare cu versuri
-        // exacte, fortam versurile afisate sa fie EXACT textul canonic salvat — niciodata
-        // ce a intors Suno (track.lyrics, deja atribuit de buildVariantFromTrack mai sus).
-        const canonicalLyrics = canonicalEditedLyricsFor(sourceVariantIdsInOrder[requestIndex]);
         if (canonicalLyrics) {
           built.originalLyrics = canonicalLyrics;
           built.editedLyrics = null;
           built.lyricsUpdatedAt = new Date().toISOString();
-        } else if (!built.originalLyrics || !built.originalLyrics.trim()) {
-          // CORECȚIE (2026-08-13, "verifica inainte de trimitere ca versurile nu sunt goale"):
-          // DOAR pentru versurile scrise de Suno insusi (customMode:false — fara canonicalLyrics,
-          // deci nu e o editare cu versuri exacte ale clientului), o SINGURA reincercare
-          // controlata daca raspunsul nu contine deloc versuri — nu un ciclu nelimitat, nu un
-          // serviciu extern nou, doar acelasi apel catre furnizor, o singura data in plus.
-          // Verificarile de continut/gramatica generale (cuvinte taiate, propozitii fara sens) NU
-          // pot fi detectate fiabil aici, fara analiza semantica reala (risc mare de fals-pozitive
-          // care ar dubla costul in credite fara beneficiu cert) — mitigate DOAR preventiv, prin
-          // instructiunile explicite de mai sus (currentInstruction: "complete words only, no
-          // shortening"). ACTUALIZARE (2026-08-24): un caz SPECIFIC, real si verificabil fara
-          // ambiguitate (persoana/numarul expeditorului deraiat fata de povestea comenzii —
-          // vezi validateLyricsCoherence, mai jos, dupa acest bloc) chiar primeste acum o
-          // reincercare controlata, similara ca structura cu cea de aici pentru versuri goale.
-          console.warn(`Comanda ${orderId}: versuri goale primite de la furnizor pentru genul "${genre}" — reincerc o singura data.`);
-          try {
-            const retryOrder = recipientSnapshot ? { ...claimed, ...recipientSnapshot } : claimed;
-            const retryPrompt = buildPrompt(retryOrder, '', genre);
-            const retryTaskId = await callMusicProvider(orderId, retryPrompt);
-            const retryResult = await pollForResult(retryTaskId, orderId);
-            if (retryResult.status === SUNO_SUCCESS_STATUS && retryResult.tracks && retryResult.tracks.length) {
-              for (const retryTrack of retryResult.tracks.slice(0, 2)) {
-                if (retryTrack.lyrics && retryTrack.lyrics.trim()) {
-                  const retryBuilt = await buildVariantFromTrack(orderId, randomUUID().slice(0, 8), retryTrack, retryTaskId);
-                  if (retryBuilt.originalLyrics && retryBuilt.originalLyrics.trim()) {
-                    built = retryBuilt;
-                    built.genre = genre;
-                    if (songSlot) built.songSlot = songSlot;
-                    if (recipientSnapshot) Object.assign(built, recipientSnapshot);
-                    break;
-                  }
-                }
-              }
-            }
-          } catch (retryErr) {
-            console.error(`Comanda ${orderId}: reincercarea pentru versuri goale a esuat (${retryErr.message}) — continui cu rezultatul original.`);
-          }
         }
-
-        // ADAUGAT (2026-08-24) — "coerenta gramaticala/narativa a versurilor": versurile editate
-        // manual de client (canonicalLyrics) raman STRICT NEATINSE — nicio verificare, nicio
-        // reincercare, exact cerinta explicita. Pentru versurile scrise de furnizor (customMode:
-        // false), validateLyricsCoherence() verifica REAL (nu doar text-search, ca vechiul
-        // checkLyricsContainExpectedNames de mai jos) persoana/numarul expeditorului fata de
-        // povestea comenzii, auto-identificari gresite ("Sunt {nume/rol}", construite de model din
-        // eticheta neutra "Sender: X") si amestecarea datelor intre melodia 1 si 2 (Premium). Daca
-        // esueaza, o SINGURA reincercare controlata si idempotenta (acelasi tipar ca reincercarea
-        // de mai sus pentru versuri goale) — daca reincercarea produce o piesa coerenta, o
-        // folosim; daca nu, livram totusi cea mai buna varianta disponibila (nicio a doua
-        // reincercare — cost limitat), dar semnalam clar, cu console.error (nu warn), ca versurile
-        // raman incoerente dupa reincercare — vizibil direct in logurile serverului pentru
-        // urmarire manuala, niciodata prezentat tacit ca succes deplin.
-        if (!canonicalLyrics && built.originalLyrics && built.originalLyrics.trim()) {
-          let coherence = validateLyricsCoherence(claimed, recipientSnapshot || claimed, built.originalLyrics);
-          if (!coherence.ok) {
-            console.warn(`Comanda ${orderId}: versuri incoerente gramatical/narativ pentru genul "${genre}" (${coherence.reasons.join(', ')}) — reincerc o singura data.`);
-            try {
-              const coherenceRetryOrder = recipientSnapshot ? { ...claimed, ...recipientSnapshot } : claimed;
-              const coherenceRetryPrompt = buildPrompt(coherenceRetryOrder, '', genre);
-              const coherenceRetryTaskId = await callMusicProvider(orderId, coherenceRetryPrompt);
-              const coherenceRetryResult = await pollForResult(coherenceRetryTaskId, orderId);
-              if (coherenceRetryResult.status === SUNO_SUCCESS_STATUS && coherenceRetryResult.tracks && coherenceRetryResult.tracks.length) {
-                const orderedRetryTracks = orderTracksByCoherence(coherenceRetryResult.tracks, claimed, recipientSnapshot);
-                for (const retryTrack of orderedRetryTracks) {
-                  if (!retryTrack.lyrics || !retryTrack.lyrics.trim()) continue;
-                  const retryCoherence = validateLyricsCoherence(claimed, recipientSnapshot || claimed, retryTrack.lyrics);
-                  const coherenceRetryBuilt = await buildVariantFromTrack(orderId, randomUUID().slice(0, 8), retryTrack, coherenceRetryTaskId);
-                  if (coherenceRetryBuilt.originalLyrics && coherenceRetryBuilt.originalLyrics.trim()) {
-                    built = coherenceRetryBuilt;
-                    built.genre = genre;
-                    if (songSlot) built.songSlot = songSlot;
-                    if (recipientSnapshot) Object.assign(built, recipientSnapshot);
-                    coherence = retryCoherence;
-                    break;
-                  }
-                }
-              }
-            } catch (coherenceRetryErr) {
-              console.error(`Comanda ${orderId}: reincercarea pentru coerenta versurilor a esuat (${coherenceRetryErr.message}) — continui cu rezultatul original.`);
-            }
-            if (!coherence.ok) {
-              console.error(`Comanda ${orderId}: versurile raman incoerente gramatical/narativ (${coherence.reasons.join(', ')}) dupa singura reincercare permisa — livrez cea mai buna varianta disponibila; necesita verificare manuala.`);
-            }
-          }
-        }
-
         builtVariants.push(built);
       } else {
-        requestFailures.push(`genul "${genre}": ${lastErr ? lastErr.message : 'motiv necunoscut'}`);
+        const reason = canonicalLyrics
+          ? (lastErr ? lastErr.message : 'motiv necunoscut')
+          : 'nicio piesa cu versuri coerente gramatical/narativ (sau nevide) — nici in incercarea initiala, nici dupa reincercare';
+        requestFailures.push(`genul "${genre}": ${reason}`);
       }
     }
 
@@ -5618,38 +5584,47 @@ async function concatWithCrossfades(segmentPaths, shots, order) {
   let level = 0;
   const intermediates = [];
 
-  while (currentSegments.length > 1) {
-    const nextSegments = [];
-    const nextShots = [];
-    for (let i = 0; i < currentSegments.length; i += CONCAT_BATCH_SIZE) {
-      const batchSegments = currentSegments.slice(i, i + CONCAT_BATCH_SIZE);
-      const batchShots = currentShots.slice(i, i + CONCAT_BATCH_SIZE);
-      const batchTag = `L${level}-${i}`;
-      const merged = await concatBatchWithCrossfades(batchSegments, batchShots, order, batchTag);
-      let mergedDuration;
-      if (batchSegments.length > 1) {
-        intermediates.push(merged); // fisier NOU creat la acest nivel — de curatat mai jos
-        try {
-          mergedDuration = await getVideoSourceDurationSeconds(merged);
-        } catch (err) { /* fallback aritmetic mai jos daca ffprobe esueaza, tranzitoriu */ }
-        if (!mergedDuration) {
-          mergedDuration = batchShots.reduce((s, sh) => s + sh.duration, 0) - (batchShots.length - 1) * MEMORY_XFADE_SECONDS;
+  // CORECȚIE (audit independent, 2026-08-24, runda 2, "curata fisierele intermediare si cand
+  // concatWithCrossfades esueaza"): bug real — daca concatBatchWithCrossfades arunca la un nivel
+  // ULTERIOR (dupa ce alte loturi de la niveluri anterioare au fost deja combinate cu succes),
+  // functia iesea prin exceptie INAINTE sa ajunga la curatarea de mai jos — fisierele
+  // intermediare deja create ramaneau orfane pe disc. try/finally garanteaza curatarea in AMBELE
+  // cazuri (succes SAU eroare), fara sa schimbe nimic din logica de randare/batching in sine.
+  let finalPath = null;
+  try {
+    while (currentSegments.length > 1) {
+      const nextSegments = [];
+      const nextShots = [];
+      for (let i = 0; i < currentSegments.length; i += CONCAT_BATCH_SIZE) {
+        const batchSegments = currentSegments.slice(i, i + CONCAT_BATCH_SIZE);
+        const batchShots = currentShots.slice(i, i + CONCAT_BATCH_SIZE);
+        const batchTag = `L${level}-${i}`;
+        const merged = await concatBatchWithCrossfades(batchSegments, batchShots, order, batchTag);
+        let mergedDuration;
+        if (batchSegments.length > 1) {
+          intermediates.push(merged); // fisier NOU creat la acest nivel — de curatat mai jos
+          try {
+            mergedDuration = await getVideoSourceDurationSeconds(merged);
+          } catch (err) { /* fallback aritmetic mai jos daca ffprobe esueaza, tranzitoriu */ }
+          if (!mergedDuration) {
+            mergedDuration = batchShots.reduce((s, sh) => s + sh.duration, 0) - (batchShots.length - 1) * MEMORY_XFADE_SECONDS;
+          }
+        } else {
+          mergedDuration = batchShots[0].duration;
         }
-      } else {
-        mergedDuration = batchShots[0].duration;
+        nextSegments.push(merged);
+        nextShots.push({ duration: mergedDuration, transitionOut: batchShots[batchShots.length - 1].transitionOut });
       }
-      nextSegments.push(merged);
-      nextShots.push({ duration: mergedDuration, transitionOut: batchShots[batchShots.length - 1].transitionOut });
+      perfLog(order.id, 'memory_concat_level', `nivel=${level}, intrari=${currentSegments.length}, rezultate=${nextSegments.length}, lot_max=${CONCAT_BATCH_SIZE}`);
+      currentSegments = nextSegments;
+      currentShots = nextShots;
+      level++;
     }
-    perfLog(order.id, 'memory_concat_level', `nivel=${level}, intrari=${currentSegments.length}, rezultate=${nextSegments.length}, lot_max=${CONCAT_BATCH_SIZE}`);
-    currentSegments = nextSegments;
-    currentShots = nextShots;
-    level++;
+    finalPath = currentSegments[0];
+    return finalPath;
+  } finally {
+    intermediates.forEach(p => { if (p !== finalPath) { try { fs.unlinkSync(p); } catch (e) { /* best-effort */ } } });
   }
-
-  const finalPath = currentSegments[0];
-  intermediates.forEach(p => { if (p !== finalPath) { try { fs.unlinkSync(p); } catch (e) { /* best-effort */ } } });
-  return finalPath;
 }
 
 // Numarul de cadre randate simultan — CONCURENTA LIMITATA (nu strict secvential, ar fi inutil
@@ -5706,7 +5681,11 @@ async function buildMemoryBackground(order, mediaItems, durationSeconds, section
     // SCURTE, posibil multiple per material, cu ritm dupa sectiunea REALA curenta — vezi
     // comentariul detaliat de la buildShotPlan(). onsetTimes (calculat mai sus) ajusteaza fin
     // granitele deja calculate, cand exista impulsuri detectate suficient de aproape.
-    const shotPlan = buildShotPlan(downloaded, durationSeconds, sectionTimings, MEMORY_XFADE_SECONDS, onsetTimes);
+    // CONCAT_BATCH_SIZE e transmis explicit (2026-08-24, corectie audit runda 2) — aliniere la
+    // impuls simuleaza EXACT reducerea pe loturi din concatWithCrossfades() mai jos; fara acest
+    // parametru, simularea ar presupune gresit un lant liniar (o singura tranzitie intre oricare
+    // doi vecini), nepotrivit cu randarea reala pe niveluri.
+    const shotPlan = buildShotPlan(downloaded, durationSeconds, sectionTimings, MEMORY_XFADE_SECONDS, onsetTimes, CONCAT_BATCH_SIZE);
     if (shotPlan.length === 0) throw new Error('Planul de cadre a rezultat gol — nu pot construi fundalul cinematic.');
     perfLog(order.id, 'memory_shot_plan', `materiale=${downloaded.length}, cadre=${shotPlan.length}, sectiuni=${(sectionTimings || []).length}, onset-uri=${onsetTimes.length}`);
 
@@ -6510,41 +6489,70 @@ const LYRICS_LANGUAGE_NAMES = {
 // mereu UN SINGUR rol structurat "Tu ești: fiica/fiul", niciodata un semnal de plural; iar
 // bug-ul raportat mergea gresit SPRE plural, niciodata invers, deci un fals-pozitiv spre
 // plural ar fi exact directia gresita de evitat).
+// ACTUALIZARE (audit independent, 2026-08-24, runda 2): conectorul de cuvinte ramane specific
+// limbii comenzii (evita fals-pozitive pe nume straine), dar tiparul NU mai cere majuscula
+// initiala (bug real: "mama și tata", scris cu litere mici, ramanea gresit 'singular') — un
+// nume/cuvant format din orice caractere non-spatiu, de o parte si de alta a conectorului. "&"
+// e adaugat ca si conector UNIVERSAL (valabil indiferent de limba comenzii, pe langa cel
+// specific), pentru formulari ca "Maria & Alexandra".
 const SENDER_MODE_CONNECTOR_BY_LANG = {
   ro: 'și|si', en: 'and', de: 'und', es: 'y', it: 'e', fr: 'et', bg: 'и', tr: 've'
+};
+// Expeditori COLECTIVI exprimati printr-un singur cuvant/expresie STANDALONE, fara nicio
+// conjunctie (ex: campul liber "Din partea cui e cântecul" completat direct cu "Copiii" sau
+// "Nepoții", fara sa mentioneze nume individuale) — verificati ca potrivire de CUVANT INTREG
+// (granite \b/spatiu), niciodata substring, ca sa nu prinda gresit un nume propriu care contine
+// intamplator aceleasi litere. Lista limitata deliberat la termeni de familie/grup fara
+// ambiguitate gramaticala clara (exclude intentionat termeni ca "familia"/"family", gramatical
+// SINGULARI desi se refera la mai multe persoane — ar fi un fals-pozitiv garantat spre plural).
+const SENDER_MODE_COLLECTIVE_WORDS = {
+  ro: ['copiii', 'nepoții', 'nepotii', 'nepoatele', 'părinții', 'parintii', 'bunicii', 'frații', 'fratii', 'surorile', 'verii', 'prietenii', 'nașii', 'nasii'],
+  en: ['children', 'grandchildren', 'parents', 'grandparents', 'siblings', 'kids'],
+  de: ['kinder', 'enkelkinder', 'eltern', 'großeltern', 'grosseltern', 'geschwister'],
+  es: ['los hijos', 'los nietos', 'los padres', 'los abuelos'],
+  it: ['i figli', 'i nipoti', 'i genitori', 'i nonni'],
+  fr: ['les enfants', 'les petits-enfants', 'les parents', 'les grands-parents'],
+  bg: ['децата', 'внуците', 'родителите'],
+  tr: ['çocuklar', 'torunlar', 'ebeveynler']
 };
 function resolveSenderMode(senderName, lang) {
   const raw = typeof senderName === 'string' ? senderName.trim() : '';
   if (!raw) return 'singular';
+  const rawLower = raw.toLowerCase();
   const connector = SENDER_MODE_CONNECTOR_BY_LANG[lang] || SENDER_MODE_CONNECTOR_BY_LANG.en;
-  // cere explicit tiparul "Nume <conector-cunoscut-al-limbii-comenzii> Nume" — doua cuvinte cu
-  // majuscula initiala, separate de conectorul EXACT al limbii comenzii (order.lang) — niciodata
-  // conectori din alte limbi (ar creste fals-pozitivele pe nume straine) si niciodata un singur
-  // cuvant care contine intamplator litera/silaba conectorului.
-  let re;
-  try {
-    re = new RegExp(`\\p{Lu}\\S*\\s+(?:${connector})\\s+\\p{Lu}`, 'u');
-  } catch (e) {
-    re = new RegExp(`[A-ZÀ-Ö\\u00d8-\\u01ff]\\S*\\s+(?:${connector})\\s+[A-ZÀ-Ö\\u00d8-\\u01ff]`);
-  }
-  return re.test(raw) ? 'plural' : 'singular';
+  // "Text <conector-cunoscut-al-limbii-comenzii SAU '&'> Text" — CASE-INSENSITIVE (litere mici
+  // valabile), doua cuvinte/expresii separate de conector, niciodata conectori din alte limbi.
+  const re = new RegExp(`\\S+\\s+(?:${connector}|&)\\s+\\S+`, 'iu');
+  if (re.test(raw)) return 'plural';
+  const collectiveWords = SENDER_MODE_COLLECTIVE_WORDS[lang] || SENDER_MODE_COLLECTIVE_WORDS.en;
+  if (collectiveWords.some(w => new RegExp(`(^|\\s)${w}(\\s|$)`, 'i').test(rawLower))) return 'plural';
+  return 'singular';
 }
 
-// Perechi EXACTE (singular, plural) pentru cel mai frecvent mesaj explicit raportat ca fiind
-// alterat gramatical ("te iubesc" -> "te iubim") — cate una pentru fiecare din cele 8 limbi.
-// Folosite STRICT ca ancora de validare (Partea 3 mai jos): daca povestea comenzii contine
-// forma singulara SI expeditorul e singular, versurile generate NU au voie sa contina forma
-// plurala corespunzatoare — semn clar ca modelul a schimbat persoana/numarul in mijlocul
-// melodiei, exact bug-ul raportat.
-const SENDER_PERSON_NUMBER_DRIFT_PAIRS = {
-  ro: [['te iubesc', 'te iubim']],
-  en: [['i love you', 'we love you']],
-  de: [['ich liebe dich', 'wir lieben dich']],
-  es: [['te quiero', 'te queremos']],
-  it: [['ti amo', 'ti amiamo']],
-  fr: [["je t'aime", "nous t'aimons"]],
-  bg: [['обичам те', 'обичаме те']],
-  tr: [['seni seviyorum', 'seni seviyoruz']]
+// Normalizeaza apostroful TIPOGRAFIC (’, U+2019, folosit frecvent de modele text-generation) la
+// apostroful drept (') — necesar ca perechile FR ("je t'aime") sa se potriveasca indiferent de
+// varianta de apostrof folosita real in versurile intoarse de furnizor.
+function normalizeApostrophes(text) {
+  return typeof text === 'string' ? text.replace(/[‘’ʼ]/g, "'") : text;
+}
+
+// ACTUALIZARE (audit independent, 2026-08-24, runda 2): extins dincolo de o SINGURA pereche per
+// limba — fiecare limba are acum DOUA perechi (singular, plural) pentru doua mesaje explicite
+// comune si distincte semantic ("te iubesc" si "mi-e dor de tine"), acoperind mai multe tipare
+// reale de derapaj persoana/numar. Fiecare pereche e folosita ACUM in ambele sensuri: (a)
+// derapaj — forma GRESITA (opusa lui senderMode) apare oriunde in versuri; (b) omisiune —
+// povestea contine explicit mesajul, dar versurile NU contin NICI forma corecta, NICI cea
+// gresita — mesajul obligatoriu a fost pur si simplu omis (cerinta explicita: pastreaza mesajul
+// din poveste, nu doar interzice pluralul).
+const SENDER_PERSON_NUMBER_PHRASE_PAIRS = {
+  ro: [['te iubesc', 'te iubim'], ['mi-e dor de tine', 'ne e dor de tine']],
+  en: [['i love you', 'we love you'], ['i miss you', 'we miss you']],
+  de: [['ich liebe dich', 'wir lieben dich'], ['ich vermisse dich', 'wir vermissen dich']],
+  es: [['te quiero', 'te queremos'], ['te extraño', 'te extrañamos']],
+  it: [['ti amo', 'ti amiamo'], ['mi manchi', 'ci manchi']],
+  fr: [["je t'aime", "nous t'aimons"], ['tu me manques', 'tu nous manques']],
+  bg: [['обичам те', 'обичаме те'], ['липсваш ми', 'липсваш ни']],
+  tr: [['seni seviyorum', 'seni seviyoruz'], ['seni özledim', 'seni özledik']]
 };
 
 // Marcaje "Sunt X"/"I am X" per limba — folosite pentru a detecta constructia gresita gasita
@@ -6578,31 +6586,45 @@ function validateLyricsCoherence(order, recipientSnapshot, lyricsText) {
   const senderName = (recipientSnapshot && 'senderName' in recipientSnapshot) ? recipientSnapshot.senderName : order.senderName;
   const story = (recipientSnapshot && 'story' in recipientSnapshot) ? recipientSnapshot.story : order.story;
   const senderMode = resolveSenderMode(senderName, lang);
-  const lyricsLower = lyrics.toLowerCase();
+  const lyricsLower = normalizeApostrophes(lyrics.toLowerCase());
 
-  // 1) auto-identificare gresita "Sunt X"/"I am X" imediat urmata de numele/rolul expeditorului.
+  // 1) auto-identificare gresita "Sunt X"/"I am X" imediat urmata de numele/rolul expeditorului
+  // — verificata la FIECARE aparitie a marcajului in text (nu doar prima), ca o repetare in
+  // refren, de exemplu, sa nu scape neobservata daca prima aparitie din text era altundeva.
   const hasSender = typeof senderName === 'string' && senderName.trim().length > 0;
   if (hasSender) {
     const senderLower = senderName.trim().toLowerCase();
     const senderFirstWord = senderLower.split(/\s+/)[0];
     const markers = SENDER_SELF_DECLARATION_MARKERS[lang] || SENDER_SELF_DECLARATION_MARKERS.en;
+    outer:
     for (const marker of markers) {
-      const m = lyricsLower.match(marker);
-      if (m && senderFirstWord && lyricsLower.slice(m.index + m[0].length, m.index + m[0].length + senderFirstWord.length + 5).includes(senderFirstWord)) {
-        reasons.push('sender_self_declaration');
-        break;
+      const globalMarker = new RegExp(marker.source, marker.flags.includes('g') ? marker.flags : marker.flags + 'g');
+      let m;
+      while ((m = globalMarker.exec(lyricsLower)) !== null) {
+        if (senderFirstWord && lyricsLower.slice(m.index + m[0].length, m.index + m[0].length + senderFirstWord.length + 5).includes(senderFirstWord)) {
+          reasons.push('sender_self_declaration');
+          break outer;
+        }
+        if (m.index === globalMarker.lastIndex) globalMarker.lastIndex++; // evita bucla infinita pe potriviri de lungime 0
       }
     }
   }
 
-  // 2) derapaj persoana/numar pe mesajul explicit (ex. "te iubesc" -> "te iubim").
-  if (senderMode === 'singular' && typeof story === 'string' && story.trim()) {
-    const storyLower = story.toLowerCase();
-    const pairs = SENDER_PERSON_NUMBER_DRIFT_PAIRS[lang] || [];
-    for (const [singular, plural] of pairs) {
-      if (storyLower.includes(singular) && lyricsLower.includes(plural)) {
+  // 2) derapaj SAU omisiune pe mesajele explicite cunoscute (ex. "te iubesc" -> "te iubim", sau
+  // mesajul lipseste complet din versuri desi apare explicit in poveste).
+  if (typeof story === 'string' && story.trim()) {
+    const storyLower = normalizeApostrophes(story.toLowerCase());
+    const pairs = SENDER_PERSON_NUMBER_PHRASE_PAIRS[lang] || [];
+    for (const [singularForm, pluralForm] of pairs) {
+      const storyHasSingular = storyLower.includes(singularForm);
+      const storyHasPlural = storyLower.includes(pluralForm);
+      if (!storyHasSingular && !storyHasPlural) continue; // mesajul asta nu apare deloc in poveste
+      const expectedForm = senderMode === 'plural' ? pluralForm : singularForm;
+      const wrongForm = senderMode === 'plural' ? singularForm : pluralForm;
+      if (lyricsLower.includes(wrongForm)) {
         reasons.push('explicit_message_person_drift');
-        break;
+      } else if (!lyricsLower.includes(expectedForm)) {
+        reasons.push('explicit_message_omitted');
       }
     }
   }

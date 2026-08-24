@@ -572,8 +572,12 @@ test('server.js: buildVariantFromTrack aloca un ID PROPRIU fiecarei variante noi
   assert.ok(idx !== -1);
   const body = server.slice(idx, idx + 200);
   assert.ok(body.includes('variantId, track, taskId'), 'variantId e primit ca parametru, generat de apelant (randomUUID), niciodata derivat din varianta sursa');
-  const callerIdx = server.indexOf('built = await buildVariantFromTrack(orderId, randomUUID().slice(0, 8), track, taskId);');
-  assert.ok(callerIdx !== -1, 'apelantul (finalizeVariantsIfNeeded) trebuie sa genereze un ID nou, aleator, pentru fiecare varianta construita');
+  // CORECȚIE (2026-08-24, audit independent — "nu mai livra clientului o varianta care nu trece
+  // validarea"): apelul a fost mutat in obtainAcceptableVariant() (helper folosit de
+  // finalizeVariantsIfNeeded), care ramane singurul loc ce construieste variante noi — id-ul
+  // ramane generat identic, randomUUID().slice(0, 8), niciodata reutilizat.
+  const callerIdx = server.indexOf('candidate = await buildVariantFromTrack(orderId, randomUUID().slice(0, 8), track, candidateTaskId);');
+  assert.ok(callerIdx !== -1, 'obtainAcceptableVariant() trebuie sa genereze un ID nou, aleator, pentru fiecare varianta construita');
 });
 
 test('server.js: fisierele audio ale unei variante noi folosesc o cale de storage DERIVATA din noul ID — niciodata acelasi URL/fisier ca varianta originala', () => {
