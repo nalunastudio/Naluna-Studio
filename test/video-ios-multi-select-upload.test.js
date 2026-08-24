@@ -173,8 +173,11 @@ test('server.js: renderShot() foloseste computeVideoSegmentStartOffset() pentru 
 //    crossfade — mecanismul existent NU a fost rescris, doar extins cu extragerea fragmentelor.
 // ---------------------------------------------------------------------------------------------
 test('server.js: durata TOTALA a fundalului cinematic ramane exact durata melodiei — buildMemoryBackground primeste durationSeconds din variantul audio ales', () => {
-  assert.ok(server.includes('async function buildMemoryBackground(order, mediaItems, durationSeconds, sectionTimings) {'));
-  assert.ok(server.includes('memoryBackground = await buildMemoryBackground(order, mediaItems, durationSeconds, sectionTimings);'));
+  // CORECȚIE (2026-08-24, "reel dinamic sincronizat cu melodia"): semnatura a primit un al
+  // cincilea parametru, songFilePath — calea locala a melodiei REALE, pentru analiza audio
+  // (onset/impuls) — vezi extractAudioOnsets(); durationSeconds/sectionTimings raman neschimbate.
+  assert.ok(server.includes('async function buildMemoryBackground(order, mediaItems, durationSeconds, sectionTimings, songFilePath) {'));
+  assert.ok(server.includes('memoryBackground = await buildMemoryBackground(order, mediaItems, durationSeconds, sectionTimings, tempFullMp3Path);'));
 });
 
 // CORECȚIE (2026-08-24): computeSectionAwareSegmentDurations() (un singur segment lung per
@@ -184,7 +187,10 @@ test('server.js: durata TOTALA a fundalului cinematic ramane exact durata melodi
 // veche ramane definita/exportata neschimbata (compatibilitate/teste proprii, vezi
 // test/media-analysis.test.js) — doar buildMemoryBackground() nu o mai apeleaza.
 test('server.js: buildMemoryBackground() foloseste buildShotPlan() (plan de cadre, nu un singur segment lung per material), cu sectiunile REALE derivate din marcajele Suno', () => {
-  assert.ok(server.includes('const shotPlan = buildShotPlan(downloaded, durationSeconds, sectionTimings, MEMORY_XFADE_SECONDS);'));
+  // CORECȚIE (2026-08-24): al cincilea argument, onsetTimes (din extractAudioOnsets), a fost
+  // adaugat — buildShotPlan() foloseste sectiunile/duratele ca inainte, doar ajusteaza fin
+  // granitele cand exista impulsuri detectate suficient de aproape (vezi lib/media-analysis.js).
+  assert.ok(server.includes('const shotPlan = buildShotPlan(downloaded, durationSeconds, sectionTimings, MEMORY_XFADE_SECONDS, onsetTimes);'));
   assert.ok(server.includes("perfLog(order.id, 'memory_shot_plan',"));
 });
 

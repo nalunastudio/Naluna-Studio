@@ -54,9 +54,12 @@ test('nume feminine NECUNOSCUTE (nu in dictionar) care se termina in "a" foloses
   assert.equal(formatRomanianDedication('Petronela'.slice(0)), 'Din partea Petronelei');
 });
 
-test('nume straine/ambigue fara terminatie clara -> formulare neutra "Cu drag, X"', () => {
-  // formatRomanianDedication insusi returneaza null pentru acestea — fallback-ul "Cu drag, X"
-  // e aplicat de apelant (dedication: (s) => formatRomanianDedication(s) || `Cu drag, ${s}`)
+test('nume straine/ambigue fara terminatie clara -> formulare neutra "Din partea: X"', () => {
+  // formatRomanianDedication insusi returneaza null pentru acestea — fallback-ul neutru
+  // (dedication: (s) => formatRomanianDedication(s) || `Din partea: ${s}`) e aplicat de apelant.
+  // CORECȚIE (2026-08-24): fallback-ul era anterior "Cu drag, X" — gresit gramatical pentru
+  // text compus nume+rol introdus la genitiv/dativ (ex. real, raportat live: "Cu drag,
+  // Bunicului Andrei"). "Din partea: X" e o eticheta neutra, corecta indiferent de forma exacta.
   assert.equal(formatRomanianDedication('Kate'), null);
   assert.equal(formatRomanianDedication('Jennifer'), null);
   assert.equal(formatRomanianDedication('Alex Smith'), null); // spatiu -> ambiguu
@@ -86,9 +89,10 @@ test('numele original NU e modificat de functie — doar textul afisat difera', 
 test('melodia-mea.html: dedication (RO) foloseste helper-ul + fallback neutru; celelalte 7 limbi raman simple, neschimbate', () => {
   const html = fs.readFileSync(path.join(__dirname, '..', 'public/melodia-mea.html'), 'utf8');
   assert.ok(
-    html.includes('dedication: (s) => formatRomanianDedication(s) || `Cu drag, ${s}`,'),
-    'RO trebuie sa foloseasca helper-ul gramatical, cu fallback neutru "Cu drag, X"'
+    html.includes('dedication: (s) => formatRomanianDedication(s) || `Din partea: ${s}`,'),
+    'RO trebuie sa foloseasca helper-ul gramatical, cu fallback neutru "Din partea: X" (niciodata "Cu drag, X", gresit gramatical pentru text la genitiv/dativ)'
   );
+  assert.ok(!html.includes('formatRomanianDedication(s) || `Cu drag,'), 'fallback-ul vechi, gresit gramatical, nu mai trebuie sa existe');
   // celelalte 7 limbi raman EXACT formularea lor simpla dinainte — nicio regula romaneasca
   // nu trebuie sa se fi scurs in alta limba.
   assert.ok(html.includes('dedication: (s) => `From ${s}`,'), 'EN neschimbat');

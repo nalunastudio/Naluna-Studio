@@ -44,6 +44,12 @@ function extractFn(name) {
   assert.ok(i < server.length, `nu am gasit functia ${name} in server.js`);
   return server.slice(start, i + 1);
 }
+function extractConst(name) {
+  const idx = server.indexOf(`const ${name} =`);
+  assert.ok(idx !== -1, `nu am gasit constanta ${name} in server.js`);
+  const end = server.indexOf(';', idx);
+  return server.slice(idx, end + 1);
+}
 
 let workDir;
 let mod;
@@ -58,9 +64,13 @@ test.before(() => {
     'const TEMP_DIR = ' + JSON.stringify(renderWorkDir) + ';',
     'const MEMORY_VIDEO_WIDTH = 720; const MEMORY_VIDEO_HEIGHT = 1280; const MEMORY_VIDEO_FPS = 25; const MEMORY_XFADE_SECONDS = 0.6;',
     "async function execFfmpeg(args, options = {}) { return execFileAsync('ffmpeg', ['-hide_banner','-loglevel','error','-nostats',...args], { maxBuffer: 20*1024*1024, ...options }); }",
+    "function perfLog() {}",
+    extractConst('CONCAT_BATCH_SIZE'),
+    extractFn('wrapVideoRenderStageError'),
     extractFn('computeVideoSegmentStartOffset'),
     extractFn('getVideoSourceDurationSeconds'),
     extractFn('renderShot'),
+    extractFn('concatBatchWithCrossfades'),
     extractFn('concatWithCrossfades'),
     'return { renderShot, concatWithCrossfades };'
   ].join('\n\n');

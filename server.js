@@ -81,7 +81,8 @@ const {
   computeSectionAwareSegmentDurations,
   MEMORY_SECTION_ORDER,
   sortMediaBySection,
-  buildShotPlan
+  buildShotPlan,
+  detectOnsets
 } = require('./lib/media-analysis');
 const { getGiftVariant } = require('./lib/entitlements');
 
@@ -4396,6 +4397,25 @@ async function resumeDualTaskPolling(orderId) {
 // impotriva numelui PRIMEI persoane. Variantele fara snapshot propriu (Standard, Video, Premium
 // cu "Aceeași persoană", si orice varianta veche creata inainte de aceasta functionalitate)
 // folosesc automat datele principale ale comenzii, exact ca inainte.
+// CORECȚIE (2026-08-24, "coerenta gramaticala/narativa a versurilor"): reordoneaza (NICIODATA nu
+// reduce) pana la doua piese primite de la furnizor pentru o cerere, punand prima piesa a carei
+// versuri (text brut, validateLyricsCoherence — vezi definitia langa buildPrompt) trec
+// verificarea semantica reala, daca exact una din cele doua o trece. Foloseste STRICT track.lyrics
+// (deja disponibil din raspunsul furnizorului, fara nicio procesare audio) — verificarea ramane
+// ieftina, executata INAINTE de descarcare/ffmpeg/upload (buildVariantFromTrack), niciodata dupa.
+function orderTracksByCoherence(tracks, order, recipientSnapshot) {
+  const list = (tracks || []).slice(0, 2);
+  if (list.length < 2) return list;
+  const scored = list.map(t => {
+    const c = (t && t.lyrics && t.lyrics.trim())
+      ? validateLyricsCoherence(order, recipientSnapshot || order, t.lyrics)
+      : { ok: true, reasons: [] };
+    return { t, ok: c.ok };
+  });
+  if (scored[0].ok || !scored[1].ok) return list; // deja in ordinea buna, sau ambele la fel — nicio schimbare
+  return [scored[1].t, scored[0].t]; // doar a doua piesa e coerenta -> devine prima incercata
+}
+
 function checkLyricsContainExpectedNames(order, variant) {
   if (!variant || !variant.originalLyrics) return;
   const namesToCheck = [];
@@ -4468,7 +4488,9 @@ async function finalizeVariantsIfNeeded(orderId, requestsInfo, options = {}) {
       let lastErr = null;
       // incearca prima piesa; daca EA esueaza la procesare (descarcare/ffmpeg/upload), a
       // doua piesa a ACELEIASI cereri devine fallback tehnic — niciodata livrata separat.
-      for (const track of tracks.slice(0, 2)) {
+      // (2026-08-24) ordinea e ajustata de orderTracksByCoherence() — DOAR reordonata, niciodata
+      // redusa — vezi definitia ei mai sus pentru motiv.
+      for (const track of orderTracksByCoherence(tracks, claimed, recipientSnapshot)) {
         try {
           built = await buildVariantFromTrack(orderId, randomUUID().slice(0, 8), track, taskId);
           break;
@@ -4506,11 +4528,14 @@ async function finalizeVariantsIfNeeded(orderId, requestsInfo, options = {}) {
           // deci nu e o editare cu versuri exacte ale clientului), o SINGURA reincercare
           // controlata daca raspunsul nu contine deloc versuri — nu un ciclu nelimitat, nu un
           // serviciu extern nou, doar acelasi apel catre furnizor, o singura data in plus.
-          // Verificarile de continut/gramatica (cuvinte taiate, propozitii fara sens) NU pot fi
-          // detectate fiabil aici, fara analiza semantica reala (risc mare de fals-pozitive care
-          // ar dubla costul in credite fara beneficiu cert) — mitigate DOAR preventiv, prin
+          // Verificarile de continut/gramatica generale (cuvinte taiate, propozitii fara sens) NU
+          // pot fi detectate fiabil aici, fara analiza semantica reala (risc mare de fals-pozitive
+          // care ar dubla costul in credite fara beneficiu cert) — mitigate DOAR preventiv, prin
           // instructiunile explicite de mai sus (currentInstruction: "complete words only, no
-          // shortening"), niciodata printr-o reincercare oarba pe baza unei euristici nesigure.
+          // shortening"). ACTUALIZARE (2026-08-24): un caz SPECIFIC, real si verificabil fara
+          // ambiguitate (persoana/numarul expeditorului deraiat fata de povestea comenzii —
+          // vezi validateLyricsCoherence, mai jos, dupa acest bloc) chiar primeste acum o
+          // reincercare controlata, similara ca structura cu cea de aici pentru versuri goale.
           console.warn(`Comanda ${orderId}: versuri goale primite de la furnizor pentru genul "${genre}" — reincerc o singura data.`);
           try {
             const retryOrder = recipientSnapshot ? { ...claimed, ...recipientSnapshot } : claimed;
@@ -4535,6 +4560,54 @@ async function finalizeVariantsIfNeeded(orderId, requestsInfo, options = {}) {
             console.error(`Comanda ${orderId}: reincercarea pentru versuri goale a esuat (${retryErr.message}) — continui cu rezultatul original.`);
           }
         }
+
+        // ADAUGAT (2026-08-24) — "coerenta gramaticala/narativa a versurilor": versurile editate
+        // manual de client (canonicalLyrics) raman STRICT NEATINSE — nicio verificare, nicio
+        // reincercare, exact cerinta explicita. Pentru versurile scrise de furnizor (customMode:
+        // false), validateLyricsCoherence() verifica REAL (nu doar text-search, ca vechiul
+        // checkLyricsContainExpectedNames de mai jos) persoana/numarul expeditorului fata de
+        // povestea comenzii, auto-identificari gresite ("Sunt {nume/rol}", construite de model din
+        // eticheta neutra "Sender: X") si amestecarea datelor intre melodia 1 si 2 (Premium). Daca
+        // esueaza, o SINGURA reincercare controlata si idempotenta (acelasi tipar ca reincercarea
+        // de mai sus pentru versuri goale) — daca reincercarea produce o piesa coerenta, o
+        // folosim; daca nu, livram totusi cea mai buna varianta disponibila (nicio a doua
+        // reincercare — cost limitat), dar semnalam clar, cu console.error (nu warn), ca versurile
+        // raman incoerente dupa reincercare — vizibil direct in logurile serverului pentru
+        // urmarire manuala, niciodata prezentat tacit ca succes deplin.
+        if (!canonicalLyrics && built.originalLyrics && built.originalLyrics.trim()) {
+          let coherence = validateLyricsCoherence(claimed, recipientSnapshot || claimed, built.originalLyrics);
+          if (!coherence.ok) {
+            console.warn(`Comanda ${orderId}: versuri incoerente gramatical/narativ pentru genul "${genre}" (${coherence.reasons.join(', ')}) — reincerc o singura data.`);
+            try {
+              const coherenceRetryOrder = recipientSnapshot ? { ...claimed, ...recipientSnapshot } : claimed;
+              const coherenceRetryPrompt = buildPrompt(coherenceRetryOrder, '', genre);
+              const coherenceRetryTaskId = await callMusicProvider(orderId, coherenceRetryPrompt);
+              const coherenceRetryResult = await pollForResult(coherenceRetryTaskId, orderId);
+              if (coherenceRetryResult.status === SUNO_SUCCESS_STATUS && coherenceRetryResult.tracks && coherenceRetryResult.tracks.length) {
+                const orderedRetryTracks = orderTracksByCoherence(coherenceRetryResult.tracks, claimed, recipientSnapshot);
+                for (const retryTrack of orderedRetryTracks) {
+                  if (!retryTrack.lyrics || !retryTrack.lyrics.trim()) continue;
+                  const retryCoherence = validateLyricsCoherence(claimed, recipientSnapshot || claimed, retryTrack.lyrics);
+                  const coherenceRetryBuilt = await buildVariantFromTrack(orderId, randomUUID().slice(0, 8), retryTrack, coherenceRetryTaskId);
+                  if (coherenceRetryBuilt.originalLyrics && coherenceRetryBuilt.originalLyrics.trim()) {
+                    built = coherenceRetryBuilt;
+                    built.genre = genre;
+                    if (songSlot) built.songSlot = songSlot;
+                    if (recipientSnapshot) Object.assign(built, recipientSnapshot);
+                    coherence = retryCoherence;
+                    break;
+                  }
+                }
+              }
+            } catch (coherenceRetryErr) {
+              console.error(`Comanda ${orderId}: reincercarea pentru coerenta versurilor a esuat (${coherenceRetryErr.message}) — continui cu rezultatul original.`);
+            }
+            if (!coherence.ok) {
+              console.error(`Comanda ${orderId}: versurile raman incoerente gramatical/narativ (${coherence.reasons.join(', ')}) dupa singura reincercare permisa — livrez cea mai buna varianta disponibila; necesita verificare manuala.`);
+            }
+          }
+        }
+
         builtVariants.push(built);
       } else {
         requestFailures.push(`genul "${genre}": ${lastErr ? lastErr.message : 'motiv necunoscut'}`);
@@ -5056,8 +5129,16 @@ async function generatePremiumExtras(orderId, options = {}) {
         patch.videoFailedReason = null;
         perfLog(orderId, 'video_ready', `varianta=${variant.id}`);
       } catch (err) {
-        console.error(`Comanda ${orderId}: generarea videoclipului a esuat:`, err.message);
-        patch.videoFailedReason = String(err.message || err).slice(0, 300);
+        // CORECȚIE (2026-08-24, "logheaza sigur, fara secrete/cai expuse clientului"): pana
+        // acum, err.message (stocat NESCHIMBAT in videoFailedReason, camp EXPUS clientului
+        // prin GET /api/orders/:id) putea contine — dupa un esec la descarcarea materialelor —
+        // URL-ul SEMNAT complet (cu semnatura de acces R2 in query string) sau, dupa un esec
+        // ffmpeg, comanda completa plus caile temporare de pe disc. Log-ul COMPLET (util pentru
+        // diagnostic) ramane STRICT server-side (console.error); clientul primeste STRICT un
+        // motiv generic, etichetat cu etapa (err.stage, vezi wrapVideoRenderStageError) daca e
+        // disponibila — niciodata continutul brut al erorii.
+        console.error(`Comanda ${orderId}: generarea videoclipului a esuat:`, err && err.stack ? err.stack : (err && err.message) || err);
+        patch.videoFailedReason = (err && err.stage) ? `Randarea a esuat la etapa: ${err.stage}.` : 'Randarea videoclipului nu a putut fi finalizata.';
       }
     }
 
@@ -5423,13 +5504,17 @@ async function renderShot(item, shot, shotIndex, order) {
     // pre-scalare la 2x rezolutia finala (acelasi raport 9:16) — da zoompan-ului suficient
     // "spatiu" sa faca un zoom lent si neted, fara sa mareasca artificial o poza mica.
     const kb = shot.kenBurns;
-    await execFfmpeg([
-      '-y', '-loop', '1', '-i', item.localPath,
-      '-t', String(segDurationSeconds),
-      '-vf', `scale=${MEMORY_VIDEO_WIDTH * 2}:${MEMORY_VIDEO_HEIGHT * 2}:force_original_aspect_ratio=increase,crop=${MEMORY_VIDEO_WIDTH * 2}:${MEMORY_VIDEO_HEIGHT * 2},zoompan=z='${kb.z}':x='${kb.x}':y='${kb.y}':d=${frames}:s=${MEMORY_VIDEO_WIDTH}x${MEMORY_VIDEO_HEIGHT}:fps=${MEMORY_VIDEO_FPS},format=yuv420p`,
-      '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '28', '-an',
-      outPath
-    ], { timeout: 60000 });
+    try {
+      await execFfmpeg([
+        '-y', '-loop', '1', '-i', item.localPath,
+        '-t', String(segDurationSeconds),
+        '-vf', `scale=${MEMORY_VIDEO_WIDTH * 2}:${MEMORY_VIDEO_HEIGHT * 2}:force_original_aspect_ratio=increase,crop=${MEMORY_VIDEO_WIDTH * 2}:${MEMORY_VIDEO_HEIGHT * 2},zoompan=z='${kb.z}':x='${kb.x}':y='${kb.y}':d=${frames}:s=${MEMORY_VIDEO_WIDTH}x${MEMORY_VIDEO_HEIGHT}:fps=${MEMORY_VIDEO_FPS},format=yuv420p`,
+        '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '28', '-an',
+        outPath
+      ], { timeout: 60000 });
+    } catch (err) {
+      throw wrapVideoRenderStageError(order.id, 'shot_render_photo', err, `cadru=${shotIndex}, material=${shot.itemIndex}`);
+    }
   } else {
     const sourceDuration = await getVideoSourceDurationSeconds(item.localPath);
     const syntheticIndex = shot.itemIndex * 97 + shot.occurrence * 31;
@@ -5437,27 +5522,58 @@ async function renderShot(item, shot, shotIndex, order) {
     const inputArgs = useLoop
       ? ['-stream_loop', '-1', '-i', item.localPath]
       : ['-ss', startOffset.toFixed(2), '-i', item.localPath];
-    await execFfmpeg([
-      '-y', ...inputArgs,
-      '-t', String(segDurationSeconds),
-      '-vf', `scale=${MEMORY_VIDEO_WIDTH}:${MEMORY_VIDEO_HEIGHT}:force_original_aspect_ratio=increase,crop=${MEMORY_VIDEO_WIDTH}:${MEMORY_VIDEO_HEIGHT},fps=${MEMORY_VIDEO_FPS},format=yuv420p`,
-      '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '28', '-an',
-      outPath
-    ], { timeout: 60000 });
+    try {
+      await execFfmpeg([
+        '-y', ...inputArgs,
+        '-t', String(segDurationSeconds),
+        '-vf', `scale=${MEMORY_VIDEO_WIDTH}:${MEMORY_VIDEO_HEIGHT}:force_original_aspect_ratio=increase,crop=${MEMORY_VIDEO_WIDTH}:${MEMORY_VIDEO_HEIGHT},fps=${MEMORY_VIDEO_FPS},format=yuv420p`,
+        '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '28', '-an',
+        outPath
+      ], { timeout: 60000 });
+    } catch (err) {
+      throw wrapVideoRenderStageError(order.id, 'shot_render_video', err, `cadru=${shotIndex}, material=${shot.itemIndex}`);
+    }
   }
   return outPath;
 }
 
-// Concateneaza cadrele tacute intr-un singur fundal, cu tranzitii xfade intre cadre
-// consecutive — TIPUL tranzitiei variaza acum dupa energia sectiunii in care cade granita
-// (shot.transitionOut, vezi buildShotPlan) — fade (cross-dissolve) in momente calme,
-// slideleft in momente energice — nu mai e acelasi crossfade peste tot. Fiecare cadru e
-// alocat exact durata din shot-plan (deja compensata pentru suprapunerea tranzitiilor —
-// vezi buildShotPlan), ca durata FINALA a fundalului sa ramana exact egala cu durata melodiei.
-async function concatWithCrossfades(segmentPaths, shots, order) {
+// CORECȚIE (2026-08-24, "randarea videoclipului esueaza in productie — comanda
+// b091655e-2c9e-4cba-a633-8bf5a4b2b4a8, 5 materiale, 50 de cadre"): cauza EXACTA, confirmata
+// in loguri — concatWithCrossfades() dadea unui SINGUR proces ffmpeg pana la 50 de fisiere de
+// intrare simultan, cu un filter_complex continand pana la 49 de noduri xfade deodata. Randarea
+// cadrelor individuale reusea de fiecare data — eroarea aparea STRICT aici, inainte de
+// memory_background_ready. Inlocuit cu o REDUCERE PE NIVELURI (batch/tree reduction): niciun
+// proces ffmpeg nu mai primeste vreodata mai mult de CONCAT_BATCH_SIZE intrari simultan,
+// indiferent de cate cadre are planul total (pana la SHOT_PLAN_MAX_SHOTS=50). Corectitudinea
+// duratei ramane garantata matematic: reducerea a N frunze la 1 rezultat, prin ORICE grupare
+// ierarhica, foloseste intotdeauna EXACT N-1 tranzitii xfade in total (proprietate standard de
+// reducere in arbore) — exact numarul deja compensat global in buildShotPlan() — deci NU e
+// nevoie sa schimbam compensatia de acolo, doar modul in care ffmpeg e apelat aici.
+const CONCAT_BATCH_SIZE = 5;
+
+// Rezuma SIGUR o eroare ffmpeg esuata (exit code, signal, stderr trunchiat) — logata COMPLET
+// STRICT server-side; eroarea CURATA (fara comanda completa, fara cai de pe disc, fara stderr
+// brut) e singura care se poate propaga mai departe pana la videoFailedReason, camp STOCAT SI
+// EXPUS clientului (vezi GET /api/orders/:id) — inainte, err.message (care pentru un esec
+// execFile contine "Command failed: <comanda completa>" + stderr brut) ajungea acolo neschimbat.
+function wrapVideoRenderStageError(orderId, stage, err, context) {
+  const code = err && typeof err.code !== 'undefined' ? err.code : null;
+  const signal = err && err.signal ? err.signal : null;
+  const stderr = (err && typeof err.stderr === 'string' ? err.stderr : String((err && err.message) || err)).slice(0, 500);
+  console.error(`Comanda ${orderId}: randare video esuata la etapa "${stage}"${context ? ` (${context})` : ''} — exit=${code}, signal=${signal}, stderr=${stderr.replace(/\s+/g, ' ').trim()}`);
+  const clean = new Error(`Randarea videoclipului a esuat la etapa: ${stage}.`);
+  clean.stage = stage;
+  return clean;
+}
+
+// Concateneaza UN LOT marginit (maximum CONCAT_BATCH_SIZE) de cadre consecutive cu xfade —
+// exact algoritmul de dinainte, dar STRICT limitat la un singur lot mic, niciodata la planul
+// intreg. Tranzitiile alterneaza deja intre fade/slideleft dupa energia sectiunii
+// (shot.transitionOut, vezi buildShotPlan) — neschimbat.
+async function concatBatchWithCrossfades(segmentPaths, shots, order, batchTag) {
   if (segmentPaths.length === 1) return segmentPaths[0];
 
-  const outPath = path.join(TEMP_DIR, `${order.id}-memory-background.mp4`);
+  const outPath = path.join(TEMP_DIR, `${order.id}-memory-batch-${batchTag}.mp4`);
   const inputArgs = [];
   segmentPaths.forEach(p => inputArgs.push('-i', p));
 
@@ -5474,15 +5590,66 @@ async function concatWithCrossfades(segmentPaths, shots, order) {
   }
   filter = filter.replace(/;$/, '');
 
-  await execFfmpeg([
-    '-y', ...inputArgs,
-    '-filter_complex', filter,
-    '-map', `[${lastLabel}]`,
-    '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '26',
-    outPath
-  ], { timeout: 900000 });
+  try {
+    await execFfmpeg([
+      '-y', ...inputArgs,
+      '-filter_complex', filter,
+      '-map', `[${lastLabel}]`,
+      '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '26',
+      outPath
+    ], { timeout: 180000 });
+  } catch (err) {
+    throw wrapVideoRenderStageError(order.id, 'concat_batch', err, `lot=${batchTag}, intrari=${segmentPaths.length}`);
+  }
 
   return outPath;
+}
+
+// Punct de intrare NESCHIMBAT pentru apelant (buildMemoryBackground) — reduce planul complet
+// de cadre la un singur fundal, pe niveluri, niciodata cu mai mult de CONCAT_BATCH_SIZE
+// intrari simultan intr-un proces ffmpeg. Durata fiecarui rezultat intermediar e MASURATA REAL
+// (ffprobe), nu propagata aritmetic — evita orice deriva de rotunjire acumulata pe mai multe
+// niveluri, la un cost neglijabil (un apel ffprobe rapid per lot intermediar).
+async function concatWithCrossfades(segmentPaths, shots, order) {
+  if (segmentPaths.length === 1) return segmentPaths[0];
+
+  let currentSegments = segmentPaths;
+  let currentShots = shots;
+  let level = 0;
+  const intermediates = [];
+
+  while (currentSegments.length > 1) {
+    const nextSegments = [];
+    const nextShots = [];
+    for (let i = 0; i < currentSegments.length; i += CONCAT_BATCH_SIZE) {
+      const batchSegments = currentSegments.slice(i, i + CONCAT_BATCH_SIZE);
+      const batchShots = currentShots.slice(i, i + CONCAT_BATCH_SIZE);
+      const batchTag = `L${level}-${i}`;
+      const merged = await concatBatchWithCrossfades(batchSegments, batchShots, order, batchTag);
+      let mergedDuration;
+      if (batchSegments.length > 1) {
+        intermediates.push(merged); // fisier NOU creat la acest nivel — de curatat mai jos
+        try {
+          mergedDuration = await getVideoSourceDurationSeconds(merged);
+        } catch (err) { /* fallback aritmetic mai jos daca ffprobe esueaza, tranzitoriu */ }
+        if (!mergedDuration) {
+          mergedDuration = batchShots.reduce((s, sh) => s + sh.duration, 0) - (batchShots.length - 1) * MEMORY_XFADE_SECONDS;
+        }
+      } else {
+        mergedDuration = batchShots[0].duration;
+      }
+      nextSegments.push(merged);
+      nextShots.push({ duration: mergedDuration, transitionOut: batchShots[batchShots.length - 1].transitionOut });
+    }
+    perfLog(order.id, 'memory_concat_level', `nivel=${level}, intrari=${currentSegments.length}, rezultate=${nextSegments.length}, lot_max=${CONCAT_BATCH_SIZE}`);
+    currentSegments = nextSegments;
+    currentShots = nextShots;
+    level++;
+  }
+
+  const finalPath = currentSegments[0];
+  intermediates.forEach(p => { if (p !== finalPath) { try { fs.unlinkSync(p); } catch (e) { /* best-effort */ } } });
+  return finalPath;
 }
 
 // Numarul de cadre randate simultan — CONCURENTA LIMITATA (nu strict secvential, ar fi inutil
@@ -5490,15 +5657,46 @@ async function concatWithCrossfades(segmentPaths, shots, order) {
 // limitat al containerului Railway — cerinta explicita a clientului).
 const SHOT_RENDER_CONCURRENCY = 3;
 
+// ANALIZA AUDIO REALĂ (2026-08-24, "reel dinamic sincronizat cu melodia") — decodeaza fisierul
+// audio REAL al comenzii (deja descarcat local, tempFullMp3Path) la PCM brut, mono, cu o rata de
+// esantionare redusa deliberat (8kHz — suficienta pentru detectia de energie/impuls, mult mai
+// ieftina de procesat decat originalul), apoi cere lui detectOnsets() (lib/media-analysis.js,
+// functie PURA, testata separat) lista de impulsuri. STRICT local — niciun serviciu extern, doar
+// ffmpeg, deja o dependinta a proiectului. Esec controlat: orice problema (fisier corupt, ffmpeg
+// indisponibil) returneaza [] — apelantul (buildShotPlan) trateaza asta ca fallback explicit pe
+// planul bazat pe sectiuni/durate deja existent, NICIODATA o eroare care ar bloca randarea.
+const ONSET_ANALYSIS_SAMPLE_RATE = 8000;
+async function extractAudioOnsets(audioFilePath, orderId) {
+  try {
+    const { stdout } = await execFfmpeg(
+      ['-i', audioFilePath, '-ac', '1', '-ar', String(ONSET_ANALYSIS_SAMPLE_RATE), '-f', 's16le', 'pipe:1'],
+      { encoding: 'buffer', maxBuffer: 40 * 1024 * 1024, timeout: 60000 }
+    );
+    const buf = stdout;
+    const sampleCount = Math.floor(buf.length / 2);
+    const samples = new Int16Array(sampleCount);
+    for (let i = 0; i < sampleCount; i++) samples[i] = buf.readInt16LE(i * 2);
+    const onsets = detectOnsets(samples, ONSET_ANALYSIS_SAMPLE_RATE);
+    perfLog(orderId, 'memory_audio_onsets', `esantioane=${sampleCount}, onset-uri=${onsets.length}`);
+    return onsets;
+  } catch (err) {
+    console.warn(`Comanda ${orderId}: analiza audio (onset/impuls) a esuat, continui fara aliniere la impuls — ${(err && err.message) || err}`);
+    return [];
+  }
+}
+
 // Construieste fundalul cinematic complet (tacut) pentru comanda — descarca elementele O
 // SINGURA DATA (indiferent de cate cadre foloseste fiecare mai departe, vezi buildShotPlan),
 // randeaza fiecare cadru din plan, le concateneaza cu tranzitii. Curata singura toate
 // fisierele intermediare proprii (sursele descarcate, cadrele) inainte sa iasa, indiferent de
 // rezultat — doar fundalul final ramane (returnat apelantului, care il curata la randul lui).
-async function buildMemoryBackground(order, mediaItems, durationSeconds, sectionTimings) {
+// `songFilePath` (2026-08-24): calea locala a melodiei REALE a comenzii, pentru analiza audio de
+// mai sus — optional (comenzi/cai de apel vechi ramana pe fallback fara aliniere la impuls).
+async function buildMemoryBackground(order, mediaItems, durationSeconds, sectionTimings, songFilePath) {
   const ordered = sortMediaBySection(mediaItems);
   const cleanupPaths = [];
   try {
+    const onsetTimes = songFilePath ? await extractAudioOnsets(songFilePath, order.id) : [];
     const downloaded = await downloadOrderMedia(order, ordered);
     downloaded.forEach(d => cleanupPaths.push(d.localPath));
 
@@ -5506,10 +5704,11 @@ async function buildMemoryBackground(order, mediaItems, durationSeconds, section
     // (computeSectionAwareSegmentDurations, ramasa neschimbata in lib/media-analysis.js
     // pentru compatibilitate/teste existente, dar nu mai apelata aici) cu un plan de cadre
     // SCURTE, posibil multiple per material, cu ritm dupa sectiunea REALA curenta — vezi
-    // comentariul detaliat de la buildShotPlan().
-    const shotPlan = buildShotPlan(downloaded, durationSeconds, sectionTimings, MEMORY_XFADE_SECONDS);
+    // comentariul detaliat de la buildShotPlan(). onsetTimes (calculat mai sus) ajusteaza fin
+    // granitele deja calculate, cand exista impulsuri detectate suficient de aproape.
+    const shotPlan = buildShotPlan(downloaded, durationSeconds, sectionTimings, MEMORY_XFADE_SECONDS, onsetTimes);
     if (shotPlan.length === 0) throw new Error('Planul de cadre a rezultat gol — nu pot construi fundalul cinematic.');
-    perfLog(order.id, 'memory_shot_plan', `materiale=${downloaded.length}, cadre=${shotPlan.length}, sectiuni=${(sectionTimings || []).length}`);
+    perfLog(order.id, 'memory_shot_plan', `materiale=${downloaded.length}, cadre=${shotPlan.length}, sectiuni=${(sectionTimings || []).length}, onset-uri=${onsetTimes.length}`);
 
     const segments = new Array(shotPlan.length);
     let cursor = 0;
@@ -5592,7 +5791,7 @@ async function generateLyricVideo(order, variant, tempFullMp3Path) {
       // pentru video. Fundalul solid ramane folosit DOAR cand clientul chiar nu are
       // materiale incarcate (mediaItems.length === 0) — caz limita pentru comenzi vechi,
       // nu un fallback de eroare.
-      memoryBackground = await buildMemoryBackground(order, mediaItems, durationSeconds, sectionTimings);
+      memoryBackground = await buildMemoryBackground(order, mediaItems, durationSeconds, sectionTimings, tempFullMp3Path);
       perfLog(order.id, 'memory_background_ready', `elemente=${mediaItems.length}`);
     }
 
@@ -6295,6 +6494,136 @@ const LYRICS_LANGUAGE_NAMES = {
   it: 'Italian', fr: 'French', bg: 'Bulgarian', tr: 'Turkish'
 };
 
+// ==========================================================================================
+// COERENTA NARATIVA A EXPEDITORULUI (2026-08-24) — cauza reala raportata: pentru o comanda cu
+// UN SINGUR expeditor ("bunicul Andrei") si un mesaj explicit la persoana I singular ("te
+// iubesc"), versurile generate de Suno (customMode:false, isi scrie singur versurile) treceau
+// la plural in refren ("te iubim") si construiau propozitii gresite gramatical din eticheta
+// Sender ("Sunt Bunicului Andrei"). Sursa unica de adevar pentru "cati expeditori are melodia"
+// e senderMode, calculat AICI, STRICT din campul liber senderName al comenzii (singurul loc
+// unde clientul poate exprima real un expeditor plural, ex. "Maria și Alexandra" — vezi
+// placeholder-ul campului in comanda.html) — NICIODATA din recipientMode (acela descrie
+// DESTINATARUL, un concept complet separat) si NICIODATA din vocePreference==='duet' (acela e
+// doar o preferinta de interpretare vocala/muzicala, nu spune nimic despre cate persoane
+// vorbesc in versuri — un duet poate canta perfect o melodie scrisa la persoana I singular).
+// Fallback implicit: 'singular' — cea mai sigura varianta (senderRole insusi, cand exista, e
+// mereu UN SINGUR rol structurat "Tu ești: fiica/fiul", niciodata un semnal de plural; iar
+// bug-ul raportat mergea gresit SPRE plural, niciodata invers, deci un fals-pozitiv spre
+// plural ar fi exact directia gresita de evitat).
+const SENDER_MODE_CONNECTOR_BY_LANG = {
+  ro: 'și|si', en: 'and', de: 'und', es: 'y', it: 'e', fr: 'et', bg: 'и', tr: 've'
+};
+function resolveSenderMode(senderName, lang) {
+  const raw = typeof senderName === 'string' ? senderName.trim() : '';
+  if (!raw) return 'singular';
+  const connector = SENDER_MODE_CONNECTOR_BY_LANG[lang] || SENDER_MODE_CONNECTOR_BY_LANG.en;
+  // cere explicit tiparul "Nume <conector-cunoscut-al-limbii-comenzii> Nume" — doua cuvinte cu
+  // majuscula initiala, separate de conectorul EXACT al limbii comenzii (order.lang) — niciodata
+  // conectori din alte limbi (ar creste fals-pozitivele pe nume straine) si niciodata un singur
+  // cuvant care contine intamplator litera/silaba conectorului.
+  let re;
+  try {
+    re = new RegExp(`\\p{Lu}\\S*\\s+(?:${connector})\\s+\\p{Lu}`, 'u');
+  } catch (e) {
+    re = new RegExp(`[A-ZÀ-Ö\\u00d8-\\u01ff]\\S*\\s+(?:${connector})\\s+[A-ZÀ-Ö\\u00d8-\\u01ff]`);
+  }
+  return re.test(raw) ? 'plural' : 'singular';
+}
+
+// Perechi EXACTE (singular, plural) pentru cel mai frecvent mesaj explicit raportat ca fiind
+// alterat gramatical ("te iubesc" -> "te iubim") — cate una pentru fiecare din cele 8 limbi.
+// Folosite STRICT ca ancora de validare (Partea 3 mai jos): daca povestea comenzii contine
+// forma singulara SI expeditorul e singular, versurile generate NU au voie sa contina forma
+// plurala corespunzatoare — semn clar ca modelul a schimbat persoana/numarul in mijlocul
+// melodiei, exact bug-ul raportat.
+const SENDER_PERSON_NUMBER_DRIFT_PAIRS = {
+  ro: [['te iubesc', 'te iubim']],
+  en: [['i love you', 'we love you']],
+  de: [['ich liebe dich', 'wir lieben dich']],
+  es: [['te quiero', 'te queremos']],
+  it: [['ti amo', 'ti amiamo']],
+  fr: [["je t'aime", "nous t'aimons"]],
+  bg: [['обичам те', 'обичаме те']],
+  tr: [['seni seviyorum', 'seni seviyoruz']]
+};
+
+// Marcaje "Sunt X"/"I am X" per limba — folosite pentru a detecta constructia gresita gasita
+// real in productie ("Sunt Bunicului Andrei"), unde modelul transforma eticheta neutra
+// "Sender: X" intr-o propozitie de auto-identificare la persoana I, ghicind (adesea gresit)
+// flexiunea gramaticala a numelui/rolului. senderName ramane STRICT o eticheta de identitate —
+// niciodata subiectul unei propozitii "Sunt/I am" construite de model.
+const SENDER_SELF_DECLARATION_MARKERS = {
+  ro: [/\bsunt\s+/i, /\beu\s+sunt\s+/i],
+  en: [/\bi\s*am\s+/i, /\bi'm\s+/i],
+  de: [/\bich\s+bin\s+/i],
+  es: [/\bsoy\s+/i, /\byo\s+soy\s+/i],
+  it: [/\bsono\s+/i, /\bio\s+sono\s+/i],
+  fr: [/\bje\s+suis\s+/i],
+  bg: [/\bаз\s+съм\s+/i],
+  tr: [/\bben(im)?\s+/i]
+};
+
+// Validare semantica REALA a versurilor primite de la furnizor — inlocuieste/completeaza
+// checkLyricsContainExpectedNames (care doar cauta numele si avertizeaza). Returneaza
+// {ok, reasons:[...]} — apelantul (finalizeVariantsIfNeeded) foloseste asta pentru a alege
+// intre doua piese primite, si pentru a decide daca o singura reincercare controlata e
+// necesara. NU se aplica NICIODATA versurilor exacte editate de client (customMode:true) —
+// acelea raman intacte, verbatim, prin design (vezi buildExactLyricsRequest).
+function validateLyricsCoherence(order, recipientSnapshot, lyricsText) {
+  const reasons = [];
+  const lyrics = typeof lyricsText === 'string' ? lyricsText.trim() : '';
+  if (!lyrics) return { ok: true, reasons }; // versuri lipsa - tratat separat (reincercarea existenta pentru versuri goale)
+
+  const lang = (recipientSnapshot && recipientSnapshot.lang) || order.lang;
+  const senderName = (recipientSnapshot && 'senderName' in recipientSnapshot) ? recipientSnapshot.senderName : order.senderName;
+  const story = (recipientSnapshot && 'story' in recipientSnapshot) ? recipientSnapshot.story : order.story;
+  const senderMode = resolveSenderMode(senderName, lang);
+  const lyricsLower = lyrics.toLowerCase();
+
+  // 1) auto-identificare gresita "Sunt X"/"I am X" imediat urmata de numele/rolul expeditorului.
+  const hasSender = typeof senderName === 'string' && senderName.trim().length > 0;
+  if (hasSender) {
+    const senderLower = senderName.trim().toLowerCase();
+    const senderFirstWord = senderLower.split(/\s+/)[0];
+    const markers = SENDER_SELF_DECLARATION_MARKERS[lang] || SENDER_SELF_DECLARATION_MARKERS.en;
+    for (const marker of markers) {
+      const m = lyricsLower.match(marker);
+      if (m && senderFirstWord && lyricsLower.slice(m.index + m[0].length, m.index + m[0].length + senderFirstWord.length + 5).includes(senderFirstWord)) {
+        reasons.push('sender_self_declaration');
+        break;
+      }
+    }
+  }
+
+  // 2) derapaj persoana/numar pe mesajul explicit (ex. "te iubesc" -> "te iubim").
+  if (senderMode === 'singular' && typeof story === 'string' && story.trim()) {
+    const storyLower = story.toLowerCase();
+    const pairs = SENDER_PERSON_NUMBER_DRIFT_PAIRS[lang] || [];
+    for (const [singular, plural] of pairs) {
+      if (storyLower.includes(singular) && lyricsLower.includes(plural)) {
+        reasons.push('explicit_message_person_drift');
+        break;
+      }
+    }
+  }
+
+  // 3) amestecarea datelor intre melodia 1 si melodia 2 (Premium, "Pentru alta persoana") —
+  // numele destinatarului CELEILALTE melodii nu are ce cauta in versurile ACESTEIA, cand cele
+  // doua melodii au destinatari diferiti.
+  if (order.plan === 'premium' && order.song2Target === 'other' && order.occasion2) {
+    const thisRecipient = (recipientSnapshot && recipientSnapshot.recipient) || order.recipient;
+    const otherRecipient = (thisRecipient === order.recipient) ? order.recipient2 : order.recipient;
+    if (otherRecipient && thisRecipient && String(otherRecipient).trim().toLowerCase() !== String(thisRecipient).trim().toLowerCase()) {
+      const otherLower = String(otherRecipient).trim().toLowerCase();
+      if (otherLower.length >= 2 && lyricsLower.includes(otherLower)) {
+        reasons.push('song_data_mixing');
+      }
+    }
+  }
+
+  return { ok: reasons.length === 0, reasons };
+}
+
 function buildPrompt(order, feedback, genreOverride) {
   // Rescris complet (2026-08-03, audit de calitate muzicala) — versiunea anterioara folosea
   // mai ales cuvinte de atmosfera/mood, care se suprapuneau prea mult intre genuri inrudite
@@ -6524,6 +6853,14 @@ function buildPrompt(order, feedback, genreOverride) {
     return useShortInstruction ? instructionNoSenderShort : instructionNoSenderFull;
   }
 
+  // CORECȚIE (2026-08-24, "coerenta gramaticala/narativa a versurilor" — ex. real, raportat live:
+  // expeditor unic "bunicul Andrei", mesaj explicit "te iubesc" la persoana I singular, dar
+  // refrenul generat trecea la plural "te iubim"): senderMode (vezi resolveSenderMode() mai sus,
+  // singura sursa de adevar — NICIODATA dedusa din recipientMode sau din vocePreference 'duet')
+  // alimenteaza indiciul compact adaugat direct in eticheta Sender, mai jos (buildHeadPart1) —
+  // vezi comentariul de acolo pentru motivul plasarii.
+  const senderMode = resolveSenderMode(order.senderName, order.lang);
+
   // Structura NEUTRA, tip "eticheta: valoare" — nu mai construim propozitii posesive in
   // engleza (ex. "Andrei's sotie") care amestecau gramatica engleza cu textul relatiei
   // introdus de client, uneori intr-o alta limba. O lista de etichete e neutra fata de
@@ -6549,7 +6886,18 @@ function buildPrompt(order, feedback, genreOverride) {
     // scurtare de mai jos), nu flag-urile fixe hasSender/hasRelationship calculate o
     // singura data la inceput — altfel, o relatie golita explicit tot ar aparea ca
     // "Relationship: ." (segment gol, in loc sa fie omis complet, irosind spatiu).
-    if (hasSender && snd) lines += ` Sender: ${snd}.`;
+    // CORECȚIE (2026-08-24, "coerenta gramaticala/narativa a versurilor"): contractul de
+    // persoana/numar (vezi resolveSenderMode() mai sus) e ADAUGAT DIRECT in eticheta Sender —
+    // niciodata o propozitie separata — bugetul de prompt (600 caractere, deja extrem de strans,
+    // verificat direct impotriva testelor de acceptare existente) NU face loc unei clauze
+    // separate fara sa elimine povestea in scenarii chiar tipice (nume moderate, poveste
+    // scurta-medie). Plasarea in headPart1 (prima bucata din promptul final — vezi
+    // `prompt = headPart1 + storyFull + headPart2 + feedbackFull` mai jos) o protejeaza de plasa
+    // de siguranta finala (truncateSafely(prompt, 600)) chiar si in cazuri extreme.
+    if (hasSender && snd) {
+      const senderPersonHint = senderMode === 'plural' ? ' (we, not I)' : ' (I, not we)';
+      lines += ` Sender: ${snd}${senderPersonHint}.`;
+    }
     if (hasRelationship && rel) lines += ` Relationship: ${rel}.`;
     return `${styleTags}. Write the song lyrics entirely in ${lyricsLanguage}. ${lines}`;
   }

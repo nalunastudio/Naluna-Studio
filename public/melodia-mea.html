@@ -959,7 +959,17 @@
       notfound_title: 'Nu am găsit această melodie', notfound_sub: 'Linkul poate fi incorect sau incomplet.', notfound_cta: 'Începe o comandă nouă',
       error_title: 'Nu am putut finaliza melodia de această dată', error_sub: 'Nu ai fost taxat.', retry_btn: 'Încearcă din nou', retrying: 'Se reîncearcă...',
       paid_title: 'Melodia ta a fost livrată deja', paid_sub: 'Ai primit deja un email cu linkul de descărcare.',
-      heading: (r) => `Melodia pentru ${r}`, dedication: (s) => formatRomanianDedication(s) || `Cu drag, ${s}`,
+      heading: (r) => `Melodia pentru ${r}`,
+      // CORECȚIE (2026-08-24, "coerenta narativa/afisaj antet" — ex. real, raportat live: antet
+      // afisat "Cu drag, Bunicului Andrei", flexiune de genitiv/dativ incompatibila gramatical cu
+      // "Cu drag,"): formatRomanianDedication() ramane calea principala (nume simplu, confident
+      // identificat -> "Din partea lui Andrei"/"Din partea Mariei"); fallback-ul pentru text
+      // compus (nume+rol, ca "Bunicul Andrei"/"Bunicului Andrei", introdus liber de client — vezi
+      // eticheta campului "Din partea cui e cântecul", care invita firesc raspunsuri la genitiv/
+      // dativ) NU mai construieste o propozitie "Cu drag, X" (care cere nominativ) — foloseste in
+      // schimb o eticheta neutra "Din partea: X", corecta gramatical indiferent de forma exacta
+      // (nominativ SAU genitiv/dativ) in care clientul a scris textul, fara nicio flexiune ghicita.
+      dedication: (s) => formatRomanianDedication(s) || `Din partea: ${s}`,
       variant_main_label: 'Varianta principală', variant_gift_label: '🎁 A doua melodie, cadou pentru tine',
       variant_gift_note: 'După plată vei putea descărca ambele melodii complete.',
       genre_emotional: 'Emoțional', genre_suflet: 'De suflet', genre_acustic: 'Acustic / Folk', genre_petrecere: 'Muzică de petrecere', genre_balada: 'Baladă', genre_manele: 'Manele de jale', genre_copii: 'Pentru copii', genre_populara: 'Populară', genre_rock: 'Rock', genre_colind: 'Colind', genre_modern: 'Modern', genre_hiphop: 'Hip-hop', genre_manele_suflet: 'Manele de suflet', genre_motivational: 'Motivațional', genre_pop: 'Pop',
