@@ -56,6 +56,25 @@ function ffprobeStream(filePath, streamSelector, entry) {
   return out;
 }
 
+function extractConst(name) {
+  const idx = server.indexOf(`const ${name} =`);
+  assert.ok(idx !== -1, `nu am gasit constanta ${name} in server.js`);
+  const end = server.indexOf(';', idx);
+  const literal = server.slice(idx, end + 1);
+  return new Function(`${literal}\nreturn ${name};`)();
+}
+
+// CORECȚIE (2026-08-29, "verificare ca MP4-ul final e H.264/AAC, yuv420p, SAR 1, faststart"):
+// moov INAINTEA mdat (faststart) verificat DIRECT pe octetii fisierului — ffprobe nu expune
+// pozitia relativa a atomilor MP4, doar continutul lor.
+function moovBeforeMdat(filePath) {
+  const buf = fs.readFileSync(filePath);
+  const moovIdx = buf.indexOf(Buffer.from('moov'));
+  const mdatIdx = buf.indexOf(Buffer.from('mdat'));
+  assert.ok(moovIdx !== -1 && mdatIdx !== -1, 'fisierul trebuie sa contina ambii atomi moov/mdat');
+  return moovIdx < mdatIdx;
+}
+
 // Extrage VIDEO_PREVIEW_SECONDS DIRECT din server.js — daca cineva schimba constanta mai
 // tarziu, acest test foloseste automat noua valoare reala, niciodata un "25" hardcodat separat.
 function getVideoPreviewSeconds() {
@@ -140,9 +159,17 @@ test('server.js: mux-ul final din generateLyricVideo include EXPLICIT -pix_fmt y
   assert.ok(snippet.includes("'-c:a', 'aac'"), 'lipseste codec-ul audio AAC din mux-ul final');
 });
 
-test('ffmpeg + ffprobe (REAL): un fisier mixat cu ACELEASI flaguri ca generateLyricVideo (h264/aac/yuv420p/faststart) e cu adevarat compatibil mobil', { skip: !FFMPEG_AVAILABLE && 'ffmpeg/ffprobe indisponibile in acest mediu' }, () => {
+test('ffmpeg + ffprobe (REAL): un fisier mixat cu ACELEASI flaguri REALE, curente, ca generateLyricVideo (h264/aac/yuv420p/SAR 1:1/faststart/BT.709) e cu adevarat compatibil Safari/iPhone', { skip: !FFMPEG_AVAILABLE && 'ffmpeg/ffprobe indisponibile in acest mediu' }, () => {
   const outPath = path.join(workDir, 'final-mux.mp4');
   const audioSeconds = 12.5;
+  // CORECȚIE (2026-08-29): flagurile sunt acum extrase DINAMIC din server.js (rezolutie/preset/
+  // CRF curente), niciodata hardcodate — testul ramane corect si dupa o schimbare viitoare de
+  // calitate/rezolutie a pipeline-ului.
+  const width = extractConst('MEMORY_VIDEO_WIDTH');
+  const height = extractConst('MEMORY_VIDEO_HEIGHT');
+  const preset = extractConst('VIDEO_ENCODE_PRESET');
+  const finalCrf = extractConst('VIDEO_FINAL_CRF');
+  const bt709TagArgs = extractConst('VIDEO_BT709_TAG_ARGS');
 
   // Fundal usor MAI LUNG decat coloana sonora (13s vs 12.5s) — mimeaza scenariul real din
   // productie, unde concatWithCrossfades() construieste deja fundalul la o durata aproape
@@ -151,9 +178,10 @@ test('ffmpeg + ffprobe (REAL): un fisier mixat cu ACELEASI flaguri ca generateLy
   // taiere (spre deosebire de un fundal mult mai lung, unde -shortest nu garanteaza taiere
   // la cadru exact — verificat direct mai jos in acest fisier, comportament ffmpeg real).
   ffmpeg([
-    '-f', 'lavfi', '-i', 'color=c=0x2B2016:s=720x1280:d=13',
+    '-f', 'lavfi', '-i', `color=c=0x2B2016:s=${width}x${height}:d=13`,
     '-f', 'lavfi', '-i', `sine=frequency=440:duration=${audioSeconds}`,
-    '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '26', '-pix_fmt', 'yuv420p',
+    '-c:v', 'libx264', '-preset', preset, '-crf', String(finalCrf), '-pix_fmt', 'yuv420p',
+    ...bt709TagArgs,
     '-c:a', 'aac', '-b:a', '192k',
     '-movflags', '+faststart',
     '-shortest',
@@ -163,11 +191,16 @@ test('ffmpeg + ffprobe (REAL): un fisier mixat cu ACELEASI flaguri ca generateLy
   const videoCodec = ffprobeStream(outPath, 'v:0', 'codec_name');
   const pixFmt = ffprobeStream(outPath, 'v:0', 'pix_fmt');
   const audioCodec = ffprobeStream(outPath, 'a:0', 'codec_name');
+  const sar = ffprobeStream(outPath, 'v:0', 'sample_aspect_ratio');
+  const colorPrimaries = ffprobeStream(outPath, 'v:0', 'color_primaries');
   const duration = ffprobeDuration(outPath);
 
   assert.equal(videoCodec, 'h264', `codecul video trebuie sa fie H.264, a fost ${videoCodec}`);
   assert.equal(pixFmt, 'yuv420p', `subesantionarea de crominanta trebuie sa fie yuv420p, a fost ${pixFmt}`);
   assert.equal(audioCodec, 'aac', `codecul audio trebuie sa fie AAC, a fost ${audioCodec}`);
+  assert.ok(sar === '1:1' || sar === 'N/A', `SAR trebuie sa fie 1:1 (pixeli patrati) — fara deformare pe Safari/iPhone, a fost ${sar}`);
+  assert.equal(colorPrimaries, 'bt709', `spatiul de culoare trebuie etichetat explicit BT.709, a fost ${colorPrimaries}`);
+  assert.ok(moovBeforeMdat(outPath), 'atomul moov trebuie sa fie INAINTE de mdat (faststart real, nu doar flag-ul cerut) — necesar ca Reels/WhatsApp/Safari sa poata incepe reda inainte de descarcarea completa');
   assert.ok(Math.abs(duration - audioSeconds) < 1.2, `durata finala (-shortest) trebuie sa ramana apropiata de durata coloanei sonore (${audioSeconds}s) cand fundalul e aproape la fel de lung, a fost ${duration}s`);
 });
 

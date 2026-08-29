@@ -19,6 +19,11 @@ const melodiaMea = read('public/melodia-mea.html');
 const comanda = read('public/comanda.html');
 const comandaMea = read('public/comanda-mea.html');
 const succes = read('public/succes.html');
+// CORECȚIE (2026-08-29, "pagina separata pentru selectarea si incarcarea media"): meniul de
+// materiale (upload/coada/picker-lock) descris in acest fisier a fost MUTAT din melodia-mea.html
+// in public/amintiri-video.html — testele care verifica STRICT acest meniu sunt retargetate;
+// melodia-mea.html ramane STRICT pentru butonul care navigheaza catre noua pagina.
+const amintiriVideo = read('public/amintiri-video.html');
 
 // ---------------------------------------------------------------------------------------------
 // 1. Generarea melodiei nu mai e conditionata de materiale — nici server-side, nici in fluxul
@@ -82,49 +87,50 @@ test('melodia-mea.html: cuvantul "Standard" nu e afisat niciodata clientului in 
 // 4. Butonul "Adaugă amintirile pentru videoclipul cadou" apare STRICT dupa stabilirea
 //    versiunii finale si dezvaluie meniul EXISTENT de upload, neschimbat.
 // ---------------------------------------------------------------------------------------------
-test('melodia-mea.html: butonul de materiale exista, plasat imediat inainte de #memories-section, folosind stilul existent (.btn-cta-orange)', () => {
+// CORECȚIE (2026-08-29, "pagina separata pentru selectarea si incarcarea media"): butonul
+// ramane in aceeasi pozitie/aspect (STRICT inaintea #video-status-msg, stilul .btn-cta-orange
+// neschimbat) — dar nu mai dezvaluie un meniu inline, ci navigheaza catre /amintiri-video.html.
+test('melodia-mea.html: butonul de materiale exista, plasat imediat inainte de #video-status-msg, folosind stilul existent (.btn-cta-orange)', () => {
   const ctaIdx = melodiaMea.indexOf('id="memories-cta"');
   assert.notEqual(ctaIdx, -1);
-  const sectionIdx = melodiaMea.indexOf('id="memories-section"', ctaIdx);
-  assert.notEqual(sectionIdx, -1);
-  assert.ok(sectionIdx - ctaIdx < 500, 'butonul trebuie sa fie STRICT langa (imediat inaintea) sectiunii de materiale');
-  const block = melodiaMea.slice(ctaIdx, sectionIdx);
+  const statusIdx = melodiaMea.indexOf('id="video-status-msg"', ctaIdx);
+  assert.notEqual(statusIdx, -1);
+  assert.ok(statusIdx - ctaIdx < 500, 'butonul trebuie sa fie STRICT langa (imediat inaintea) mesajului de stare video');
+  const block = melodiaMea.slice(ctaIdx, statusIdx);
   assert.ok(block.includes('class="btn-cta-orange"'), 'trebuie sa reutilizeze stilul existent, nu un buton nou');
 });
 
-test('melodia-mea.html: updateMemoriesCta() ascunde STRICT butonul si sectiunea de materiale cat timp versiunea finala nu e stabilita (pendingVariantChoice)', () => {
+test('melodia-mea.html: updateMemoriesCta() ascunde STRICT butonul cat timp versiunea finala nu e stabilita (pendingVariantChoice)', () => {
   const idx = melodiaMea.indexOf('function updateMemoriesCta(order, pendingVariantChoice) {');
   assert.notEqual(idx, -1);
   const end = melodiaMea.indexOf('\n  }', idx);
   const snippet = melodiaMea.slice(idx, end);
-  assert.ok(snippet.includes('if (pendingVariantChoice) {'));
-  assert.ok(/ctaWrap\.style\.display = 'none';[\s\S]*section\.style\.display = 'none';/.test(snippet));
+  assert.ok(snippet.includes("ctaWrap.style.display = pendingVariantChoice ? 'none' : 'block';"));
 });
 
-test('melodia-mea.html: apasarea butonului dezvaluie STRICT meniul EXISTENT de materiale (#memories-section) si deplaseaza pagina lin, fara sa deschida automat galeria', () => {
+test("melodia-mea.html: apasarea butonului navigheaza (aceeasi fila) catre /amintiri-video.html, cu id si token, fara popup", () => {
   const idx = melodiaMea.indexOf("document.getElementById('memories-cta-btn').addEventListener('click'");
   assert.notEqual(idx, -1);
   const snippet = melodiaMea.slice(idx, idx + 400);
-  assert.ok(snippet.includes('renderMemories(currentOrder)'), 'trebuie sa reutilizeze STRICT renderMemories() existent, nicio logica noua de upload');
-  assert.ok(snippet.includes("scrollIntoView({ behavior: 'smooth'"), 'deplasarea catre sectiune trebuie sa fie lina, fara animatii complicate');
-  assert.ok(!snippet.includes('.click()'), 'nu trebuie sa deschida automat selectorul de fisiere din acest handler');
+  assert.ok(snippet.includes('window.location.href = `/amintiri-video.html?id='), 'trebuie sa navigheze, aceeasi fila, catre noua pagina dedicata');
+  assert.ok(!snippet.includes("window.open("), 'nu trebuie sa deschida niciun popup/tab nou');
 });
 
-test('melodia-mea.html: meniul de materiale (#memories-section) e STRICT cel existent, neschimbat structural — acelasi input, aceleasi limite (3-10)', () => {
-  assert.ok(melodiaMea.includes('const MEM_MIN = 3;'));
-  assert.ok(melodiaMea.includes('const MEM_MAX = 10;'));
-  assert.ok(melodiaMea.includes('<input type="file" id="mem-file-input" multiple accept="image/*,video/*">'));
+test('amintiri-video.html: meniul de materiale e STRICT cel existent, neschimbat structural — acelasi input, aceleasi limite (3-10)', () => {
+  assert.ok(amintiriVideo.includes('const MEM_MIN = 3;'));
+  assert.ok(amintiriVideo.includes('const MEM_MAX = 10;'));
+  assert.ok(amintiriVideo.includes('<input type="file" id="mem-file-input" multiple accept="image/*,video/*"'));
 });
 
 // ---------------------------------------------------------------------------------------------
 // 5. Materialele se confirma automat (fara pas manual suplimentar) si declanseaza randarea
 //    videoclipului STRICT pentru varianta finala aleasa — asocierea cu melodia corecta.
 // ---------------------------------------------------------------------------------------------
-test('melodia-mea.html: confirmarea materialelor foloseste STRICT endpointul existent /media/confirm, fara niciun endpoint nou', () => {
-  const idx = melodiaMea.indexOf('async function maybeAutoConfirmMedia(order, gateOk) {');
+test('amintiri-video.html: confirmarea materialelor foloseste STRICT endpointul existent /media/confirm, fara niciun endpoint nou', () => {
+  const idx = amintiriVideo.indexOf('async function maybeAutoConfirmMedia(order, gateOk) {');
   assert.notEqual(idx, -1);
-  const end = melodiaMea.indexOf('\n  }', idx);
-  const snippet = melodiaMea.slice(idx, end);
+  const end = amintiriVideo.indexOf('\n  }', idx);
+  const snippet = amintiriVideo.slice(idx, end);
   assert.ok(snippet.includes('/media/confirm'));
   assert.ok(snippet.includes("method: 'POST'"));
 });
@@ -143,10 +149,10 @@ test('server.js: triggerVideoGeneration foloseste STRICT order.selectedVariantId
 // 6. Comenzile video vechi, cu materiale deja incarcate, isi pastreaza materialele — nicio
 //    migrare distructiva, niciun element R2 sters.
 // ---------------------------------------------------------------------------------------------
-test('melodia-mea.html: renderMemories() afiseaza intotdeauna materialele DEJA existente (order.uploadedMedia), fara sa oblige reincarcarea', () => {
-  assert.ok(melodiaMea.includes('function renderExistingList(order) {'));
-  const idx = melodiaMea.indexOf('function renderMemories(order) {');
-  const snippet = melodiaMea.slice(idx, idx + 400);
+test('amintiri-video.html: renderMemories() afiseaza intotdeauna materialele DEJA existente (order.uploadedMedia), fara sa oblige reincarcarea', () => {
+  assert.ok(amintiriVideo.includes('function renderExistingList(order) {'));
+  const idx = amintiriVideo.indexOf('function renderMemories(order) {');
+  const snippet = amintiriVideo.slice(idx, idx + 400);
   assert.ok(snippet.includes('renderExistingList(order)'));
 });
 
@@ -158,7 +164,7 @@ test('server.js: nicio operatie de stergere in masa a obiectelor R2 sau migrare 
 // 7. mediaDebug (Runda 9) si mesajul tehnic despre bifa albastra/iCloud/timp de asteptare
 //    (Rundele 7-8) sunt eliminate complet, din toate cele 3 pagini si din server.js.
 // ---------------------------------------------------------------------------------------------
-const PAGES = { 'melodia-mea.html': melodiaMea, 'comanda-mea.html': comandaMea, 'succes.html': succes };
+const PAGES = { 'melodia-mea.html': melodiaMea, 'amintiri-video.html': amintiriVideo, 'comanda-mea.html': comandaMea, 'succes.html': succes };
 for (const [name, html] of Object.entries(PAGES)) {
   test(`${name}: mediaDebug (panou, parametru, instrumentare) a fost eliminat complet`, () => {
     assert.ok(!/mediaDebug/i.test(html), `${name} nu mai trebuie sa contina nicio referinta la mediaDebug`);
@@ -221,21 +227,21 @@ test('melodia-mea.html: fluxul Premium (renderPremiumFlow) ramane complet separa
   assert.ok(melodiaMea.includes("if (order.plan === 'premium') {\n      renderPremiumFlow(order, isResume);\n      return;\n    }"));
 });
 
-test('melodia-mea.html: uploadul multipart direct catre R2 (Round 6) ramane neschimbat', () => {
-  assert.ok(melodiaMea.includes('async function startMultipartUpload(entry) {'));
-  assert.ok(melodiaMea.includes('function uploadOnePart('));
-  assert.ok(melodiaMea.includes('const MEM_MULTIPART_THRESHOLD_BYTES = 20 * 1024 * 1024;'));
+test('amintiri-video.html: uploadul multipart direct catre R2 (Round 6) ramane neschimbat', () => {
+  assert.ok(amintiriVideo.includes('async function startMultipartUpload(entry) {'));
+  assert.ok(amintiriVideo.includes('function uploadOnePart('));
+  assert.ok(amintiriVideo.includes('const MEM_MULTIPART_THRESHOLD_BYTES = 20 * 1024 * 1024;'));
 });
 
 // CORECȚIE (2026-08-24, "selectorul ramane blocat pana la 5 minute pe iPhone"): plafonul ORB
 // de recuperare automata a fost redus (afordanta EXPLICITA — vezi showPickerWaitingMessage —
 // devine acum calea normala de recuperare, surfacing dupa PICKER_RETURN_GRACE_MS, mult mai
 // devreme decat plafonul orb). 'change'/'cancel' raman autoritatea, neschimbate.
-test('melodia-mea.html: logica de blocare/deblocare a selectorului (picker lock) foloseste acum un plafon orb mult mai scurt, plus o afordanta explicita de recuperare', () => {
-  assert.ok(melodiaMea.includes('const PICKER_MANUAL_RECOVERY_MS = 90 * 1000;'));
-  assert.ok(!melodiaMea.includes('const PICKER_MANUAL_RECOVERY_MS = 5 * 60 * 1000;'), 'vechiul plafon de 5 minute nu mai trebuie sa existe');
-  assert.ok(!melodiaMea.includes('pickerLockTimeoutId'));
-  assert.ok(melodiaMea.includes('function showPickerWaitingMessage() {'), 'afordanta explicita de recuperare trebuie sa existe');
+test('amintiri-video.html: logica de blocare/deblocare a selectorului (picker lock) foloseste acum un plafon orb mult mai scurt, plus o afordanta explicita de recuperare', () => {
+  assert.ok(amintiriVideo.includes('const PICKER_MANUAL_RECOVERY_MS = 90 * 1000;'));
+  assert.ok(!amintiriVideo.includes('const PICKER_MANUAL_RECOVERY_MS = 5 * 60 * 1000;'), 'vechiul plafon de 5 minute nu mai trebuie sa existe');
+  assert.ok(!amintiriVideo.includes('pickerLockTimeoutId'));
+  assert.ok(amintiriVideo.includes('function showPickerWaitingMessage() {'), 'afordanta explicita de recuperare trebuie sa existe');
 });
 
 // ---------------------------------------------------------------------------------------------

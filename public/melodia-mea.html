@@ -668,47 +668,19 @@
              in updateStandardEditMenuVisibility(). -->
         <div id="edits-info-msg" style="font-size:13px; color:var(--text-secondary); margin-top:10px;"></div>
 
-        <!-- RELANSARE (2026-08-14, "materialele se incarca DUPA ce melodia finala e stabilita"):
-             pachetul "Cadou video" nu mai cere materiale inainte de generarea melodiei — acest
-             buton apare STRICT dupa ce versiunea finala e stabilita (aceeasi conditie care
-             activeaza deja plata, vezi renderContent/updateMemoriesCta), si dezvaluie EXACT
-             acelasi widget de materiale (#memories-section) de mai jos, neschimbat. -->
+        <!-- CORECȚIE (2026-08-29, "pagina separata pentru selectarea si incarcarea media"):
+             pachetul "Cadou video" — acest buton apare STRICT dupa ce versiunea finala e
+             stabilita (aceeasi conditie care activeaza deja plata, vezi renderContent/
+             updateMemoriesCta), EXACT ca inainte — dar acum NAVIGHEAZA (aceeasi fila, fara
+             popup) catre pagina dedicata /amintiri-video.html, in loc sa extinda inline
+             selectorul de fisiere/lista/coada/progresul de incarcare pe aceasta pagina.
+             Motiv: pe iPhone, selectorul nativ Photos are nevoie de timp real sa pregateasca
+             materialele mari/din iCloud — o pagina separata, dedicata STRICT acestui pas,
+             poate da feedback clar si ramane deschisa/responsive pana la finalul incarcarii,
+             fara sa concureze cu playerul melodiei/versurile/plata de pe aceasta pagina. -->
         <div id="memories-cta" style="display:none; text-align:center; margin:22px 0 8px;">
           <button type="button" class="btn-cta-orange" id="memories-cta-btn" style="max-width:none; width:100%; justify-content:center;"></button>
           <p id="memories-cta-sub" style="font-size:13px; color:var(--text-secondary); margin-top:10px;"></p>
-        </div>
-
-        <div class="memories" id="memories-section" style="display:none;">
-          <h2 id="memories-title"></h2>
-          <p class="memories-sub" id="memories-sub"></p>
-          <p class="memories-meta" id="memories-meta"></p>
-          <p class="memories-count" id="memories-count"></p>
-          <div class="mem-list" id="mem-uploaded-list"></div>
-          <p class="mem-batch-status" id="mem-batch-status"></p>
-          <div class="mem-list" id="mem-staged-list"></div>
-          <!-- CORECȚIE (2026-08-14, "Articolele nu pot fi încărcate" pe iPhone): acceptul
-               vechi enumera explicit fiecare MIME (inclusiv "image/x-adobe-dng", un tip
-               NESTANDARD, neinregistrat, plus extensia redundanta ".dng") — Safari/iOS poate
-               esua sa initializeze corect selectorul nativ PHPicker cand primeste o lista
-               "accept" cu un MIME pe care nu il recunoaste, aratand exact eroarea nativa
-               raportata ("Articolele nu pot fi încărcate"), pentru SELECTIA INTREAGA, nu doar
-               pentru fisierul DNG — reprodus indirect: cu wildcard-uri simple ("image/*,
-               video/*"), pe care iOS le intelege garantat, problema dispare. Validarea REALA
-               de continut (magic bytes + decodare ffprobe, vezi POST /media in server.js) NU
-               depinde deloc de acest atribut — ramane STRICT server-side, neschimbata; DNG
-               ramane acceptat, identificat prin fallback pe extensie (inferMediaType). -->
-          <input type="file" id="mem-file-input" multiple accept="image/*,video/*">
-          <p class="mem-status" id="mem-status"></p>
-        </div>
-
-        <!-- RELANSARE (2026-08-14, "butonul pentru crearea videoclipului"): apare STRICT cand
-             toate conditiile sunt indeplinite simultan (vezi updateVideoStatusUI) — versiunea
-             finala stabilita, minimum 3 materiale confirmate, niciun upload in curs, nicio
-             eroare nerezolvata, SI niciun job video pornit inca (videoStatus==='none'). O
-             singura apasare -> POST /create-video (deja idempotent server-side). -->
-        <div id="gift-video-create" style="display:none; text-align:center; margin-top:16px;">
-          <button type="button" class="btn-cta-orange" id="gift-video-create-btn" style="max-width:none; width:100%; justify-content:center;"></button>
-          <p id="gift-video-create-sub" style="font-size:13px; color:var(--text-secondary); margin-top:10px;"></p>
         </div>
 
         <div id="video-status-msg" class="video-status-msg" style="display:none;"></div>
@@ -1647,8 +1619,6 @@
     document.getElementById('voice-change-hint').textContent = t.voice_change_hint;
     document.getElementById('memories-cta-btn').textContent = t.memories_cta_title;
     document.getElementById('memories-cta-sub').textContent = t.memories_cta_sub;
-    document.getElementById('gift-video-create-btn').textContent = t.gift_video_create_btn;
-    document.getElementById('gift-video-create-sub').textContent = t.gift_video_create_sub;
   }
 
   // -------- afiseaza si permite schimbarea preferintei de voce (Partea 4) — schimbarea
@@ -2396,938 +2366,23 @@
     }
   });
 
-  // ==========================================================================================
-  // Amintii (poze/videoclipuri) pentru pachetul video. RELANSARE 2026-08-06:
-  //   - fiecare fisier se incarca INDIVIDUAL, imediat ce e ales — nu mai exista un buton
-  //     "Incarca" separat pentru un lot intreg. Un fisier care esueaza NU afecteaza deloc
-  //     fisierele deja incarcate cu succes (raman salvate), si poate fi reincercat singur;
-  //   - fiecare fisier are propriul progres real (XMLHttpRequest, nu fetch — fetch nu expune
-  //     progres de upload), propria stare ("Se încarcă"/"Încărcat"/"Eroare") si mesaj de eroare;
-  //   - thumbnail real pentru poze, player pentru video — pentru fisierele inca in curs de
-  //     incarcare, direct din fisierul local (URL.createObjectURL); pentru cele deja urcate,
-  //     printr-un URL semnat de scurta durata (bucket-ul e privat, vezi endpoint-ul dedicat);
-  //   - reordonare prin drag-and-drop SI prin butoane sus/jos (alternativa accesibila pentru
-  //     mobil/tastatura), persistata server-side (PUT /media/reorder).
-  // ==========================================================================================
-  let uploadQueue = []; // { localId, file, section, status, progress, errorMsg, thumbUrl, xhr }
-  let memOrderRef = null;
-  const thumbCache = new Map(); // index-ul din uploadedMedia -> URL semnat (evita re-cereri la fiecare randare)
-
-  // CORECȚIE (2026-08-14, "un MIME type gol nu elimină fișierul valid"): Safari iOS poate
-  // raporta file.type gol pentru unele videoclipuri (mai ales cele nematerializate complet
-  // din iCloud in momentul selecției) — fallback pe extensia numelui de fișier, exact aceeași
-  // logică folosită deja server-side (inferMediaType in lib/media-analysis.js), STRICT pentru
-  // afișarea corectă a iconiței locale (🎬 vs 🖼️) — validarea REALĂ de conținut rămâne
-  // server-side, neschimbată, indiferent de ce raportează browserul.
-  const VIDEO_EXTENSIONS = ['.mp4', '.m4v', '.mov', '.webm'];
-  function isVideoFile(file) {
-    if (file.type.startsWith('video')) return true;
-    if (file.type) return false; // tip declarat explicit, dar nu video -> e o fotografie
-    const match = String(file.name || '').match(/\.[^./\\]+$/);
-    return !!match && VIDEO_EXTENSIONS.includes(match[0].toLowerCase());
-  }
-
-  function renderMemories(order) {
-    memOrderRef = order;
-    const section = document.getElementById('memories-section');
-    document.getElementById('memories-title').textContent = t.memories_title;
-    document.getElementById('memories-sub').textContent = t.memories_sub;
-    document.getElementById('memories-meta').textContent = t.memories_meta(MEM_MIN, MEM_MAX);
-    renderExistingList(order);
-    renderQueueList();
-    updateMemoriesCountAndGates(order);
-    section.style.display = 'block';
-  }
-
-  const MEM_MIN = 3;
-  const MEM_MAX = 10;
-
-  // CORECȚIE (2026-08-14, "selecția nativă și lista Naluna trebuie să aibă exact același
-  // număr de materiale"): numărul afișat conta STRICT materialele deja confirmate de server
-  // (order.uploadedMedia) — cât timp restul selecției era încă în coadă/se încărca (normal,
-  // mai ales pentru videoclipuri mari), clientul vedea un număr mai mic decât cel selectat
-  // efectiv în iOS, dând impresia că fișiere "au dispărut", deși erau doar în curs de
-  // procesare. Textul include acum explicit și câte materiale mai sunt în curs de încărcare,
-  // ca numărul total vizibil (confirmate + în curs) să reflecte imediat întreaga selecție.
-  function updateMemoriesCountAndGates(order) {
-    const total = (order.uploadedMedia || []).length;
-    const pendingCount = uploadQueue.filter(q => q.status === 'uploading' || q.status === 'pending' || q.status === 'processing').length;
-    const uploading = pendingCount > 0;
-    const hasUnresolvedError = uploadQueue.some(q => q.status === 'error');
-    const countEl = document.getElementById('memories-count');
-    const ok = total >= MEM_MIN && total <= MEM_MAX;
-    countEl.textContent = t.memories_count(total, MEM_MIN, MEM_MAX, pendingCount);
-    countEl.className = 'memories-count ' + (ok ? 'ok' : 'warn');
-
-    maybeAutoConfirmMedia(order, ok && !uploading && !hasUnresolvedError);
-  }
-
-  // RELANSARE (2026-08-14, "materialele se incarca DUPA ce melodia finala e stabilita"): dupa
-  // mutarea acestei etape la finalul fluxului muzical, melodia (varianta finala) exista deja —
-  // nu mai e nevoie de un buton separat "Continuă și creează cadoul", care pornea INAINTE
-  // generarea melodiei. Aici confirmam AUTOMAT, in fundal, selectia curenta de materiale de
-  // fiecare data cand devine valida (intre MEM_MIN si MEM_MAX, fara uploaduri in curs si fara
-  // erori nerezolvate) — server-side, POST /media/confirm e deja idempotent, iar
-  // triggerVideoGeneration porneste STRICT daca varianta finala (order.selectedVariantId) e deja
-  // stabilita (vezi comentariul din server.js). Cheia e chiar order.mediaConfirmedAt: serverul
-  // il reseteaza la NULL la ORICE modificare reala a materialelor (vezi mutateOrderMediaAtomically
-  // in db.js) — deci "e adevarat" inseamna deja confirmat pentru selectia curenta, iar orice
-  // schimbare ulterioara (upload nou, stergere, reordonare) il aduce inapoi la null, declansand
-  // automat o reconfirmare (si, daca e cazul, o re-randare a videoclipului).
-  let mediaConfirmInFlight = false;
-  // CORECȚIE (2026-08-24, "/media/confirm poate esua fara mesaj sau retry"): un esec tranzitoriu
-  // aici (retea, 5xx) bloca butonul "Creează videoclipul" sa apara VREODATA, fara nicio eroare
-  // vizibila si fara nicio noua incercare programata — doar o schimbare ulterioara REALA a
-  // materialelor (upload/stergere/reordonare) mai declansa o reincercare. Acum reincercam si noi
-  // insine, cu backoff, de cateva ori, chiar daca clientul nu mai atinge nimic.
-  let mediaConfirmRetryCount = 0;
-  let mediaConfirmRetryTimer = null;
-  const MEDIA_CONFIRM_MAX_RETRIES = 6;
-  async function maybeAutoConfirmMedia(order, gateOk) {
-    if (order.plan !== 'video' || !gateOk || mediaConfirmInFlight || order.mediaConfirmedAt) return;
-    if (mediaConfirmRetryTimer) return; // deja programata o reincercare, nu duplicam cererea
-    mediaConfirmInFlight = true;
-    try {
-      const res = await fetch(`/api/orders/${orderId}/media/confirm`, {
-        method: 'POST',
-        headers: { 'X-Access-Token': accessToken }
-      });
-      if (res.ok) {
-        mediaConfirmRetryCount = 0;
-        // Marcam local imediat (nu doar server-side) — evita cereri redundante la urmatoarele
-        // re-randari ale cozii, care pot folosi referinta locala memOrderRef/currentOrder, nu
-        // neaparat un fetch proaspat.
-        const confirmedAt = new Date().toISOString();
-        order.mediaConfirmedAt = confirmedAt;
-        if (memOrderRef) memOrderRef.mediaConfirmedAt = confirmedAt;
-        if (currentOrder) currentOrder.mediaConfirmedAt = confirmedAt;
-        refreshVideoStatusOnly();
-      } else if (mediaConfirmRetryCount < MEDIA_CONFIRM_MAX_RETRIES) {
-        mediaConfirmRetryCount++;
-        mediaConfirmRetryTimer = setTimeout(() => { mediaConfirmRetryTimer = null; maybeAutoConfirmMedia(order, gateOk); }, Math.min(3000 * mediaConfirmRetryCount, 15000));
-      }
-    } catch (e) {
-      if (mediaConfirmRetryCount < MEDIA_CONFIRM_MAX_RETRIES) {
-        mediaConfirmRetryCount++;
-        mediaConfirmRetryTimer = setTimeout(() => { mediaConfirmRetryTimer = null; maybeAutoConfirmMedia(order, gateOk); }, Math.min(3000 * mediaConfirmRetryCount, 15000));
-      }
-    }
-    mediaConfirmInFlight = false;
-  }
-
-  async function fetchThumbUrl(index) {
-    if (thumbCache.has(index)) return thumbCache.get(index);
-    try {
-      const res = await fetch(`/api/orders/${orderId}/media/${index}/preview-url`, {
-        headers: { 'X-Access-Token': accessToken }
-      });
-      if (!res.ok) return null;
-      const data = await res.json();
-      thumbCache.set(index, data.url);
-      return data.url;
-    } catch (e) {
-      return null;
-    }
-  }
-
-  // CORECȚIE (2026-08-14, "poziționare complet automată"): dropdown-ul de preferință de
-  // sectiune ("Fără preferință"/"Început"/"Strofa 1"/"Refren"/"Strofa 2"/"Final") a fost
-  // eliminat — pozitionarea materialelor in montaj e acum STRICT automata (vezi
-  // computeSectionAwareSegmentDurations/sortMediaBySection in lib/media-analysis.js, care
-  // trateaza deja gratios `section: null` prin distributie proportionala pe sectiunile reale
-  // ale melodiei, in ordinea selectiei clientului — nicio schimbare necesara acolo). Ordinea
-  // ramane ajustabila prin sageti sus/jos si drag-and-drop (neschimbate, NU sunt preferinte
-  // de sectiune — sunt ordinea narativa de baza a materialelor).
-  function renderExistingList(order) {
-    const uploaded = order.uploadedMedia || [];
-    const uploadedList = document.getElementById('mem-uploaded-list');
-    uploadedList.innerHTML = uploaded.map((m, i) => `
-      <div class="mem-item" draggable="true" data-existing-index="${i}">
-        <span class="mem-thumb" data-thumb-index="${i}">${m.type === 'photo' ? '🖼️' : '🎬'}</span>
-        <div class="mem-actions">
-          <button type="button" class="mem-move-up" data-move-up="${i}" title="${t.memories_move_up}" ${i === 0 ? 'disabled' : ''}>↑</button>
-          <button type="button" class="mem-move-down" data-move-down="${i}" title="${t.memories_move_down}" ${i === uploaded.length - 1 ? 'disabled' : ''}>↓</button>
-          <button type="button" class="mem-remove" data-remove-index="${i}" title="${t.memories_remove}">${t.memories_remove}</button>
-        </div>
-      </div>
-    `).join('');
-
-    // RELANSARE (2026-08-14, "daca un thumbnail nu poate fi generat pe iPhone, afiseaza
-    // pictograma corespunzatoare — nu lasa un card gol"): elementul porneste DEJA cu iconita
-    // (🖼️/🎬, mai sus) — inlocuita cu thumbnail-ul real STRICT daca URL-ul semnat exista SI
-    // media chiar reuseste sa se incarce (onerror pastreaza explicit iconita initiala, nu un
-    // card gol/spart). Materialul ramane oricum vizibil in aceasta lista STRICT dupa ce
-    // serverul l-a confirmat (renderExistingList porneste DOAR din order.uploadedMedia, deja
-    // salvat) — nu exista nicio cale prin care un card de aici sa reprezinte un upload doar
-    // "local", neconfirmat.
-    uploadedList.querySelectorAll('[data-thumb-index]').forEach(async (el) => {
-      const idx = Number(el.dataset.thumbIndex);
-      const item = uploaded[idx];
-      const fallbackIcon = item.type === 'photo' ? '🖼️' : '🎬';
-      const url = await fetchThumbUrl(idx);
-      if (!url) { el.textContent = fallbackIcon; return; }
-      const mediaEl = document.createElement(item.type === 'photo' ? 'img' : 'video');
-      mediaEl.src = url;
-      if (item.type === 'photo') {
-        mediaEl.alt = '';
-        mediaEl.loading = 'lazy';
-      } else {
-        mediaEl.muted = true;
-        mediaEl.playsInline = true;
-        mediaEl.preload = 'metadata';
-      }
-      mediaEl.addEventListener('error', () => { el.textContent = fallbackIcon; });
-      el.innerHTML = '';
-      el.appendChild(mediaEl);
-    });
-
-    uploadedList.querySelectorAll('button[data-remove-index]').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        btn.disabled = true;
-        try {
-          await fetch(`/api/orders/${orderId}/media/${btn.dataset.removeIndex}`, {
-            method: 'DELETE',
-            headers: { 'X-Access-Token': accessToken }
-          });
-          thumbCache.clear();
-          await refreshOrderMedia();
-        } catch (e) {
-          btn.disabled = false;
-        }
-      });
-    });
-
-    uploadedList.querySelectorAll('[data-move-up], [data-move-down]').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const total = uploaded.length;
-        const from = Number(btn.dataset.moveUp !== undefined && btn.dataset.moveUp !== '' ? btn.dataset.moveUp : btn.dataset.moveDown);
-        const to = btn.dataset.moveUp !== undefined && btn.dataset.moveUp !== '' ? from - 1 : from + 1;
-        if (to < 0 || to >= total) return;
-        await reorderExisting(swapArrayIndices(total, from, to));
-      });
-    });
-
-    // Drag and drop — alternativa la butoanele sus/jos, pentru desktop.
-    let dragFrom = null;
-    uploadedList.querySelectorAll('[data-existing-index]').forEach(el => {
-      el.addEventListener('dragstart', () => { dragFrom = Number(el.dataset.existingIndex); el.classList.add('dragging'); });
-      el.addEventListener('dragend', () => el.classList.remove('dragging'));
-      el.addEventListener('dragover', (e) => { e.preventDefault(); el.classList.add('drag-over'); });
-      el.addEventListener('dragleave', () => el.classList.remove('drag-over'));
-      el.addEventListener('drop', async (e) => {
-        e.preventDefault();
-        el.classList.remove('drag-over');
-        const dragTo = Number(el.dataset.existingIndex);
-        if (dragFrom === null || dragFrom === dragTo) return;
-        await reorderExisting(moveArrayIndex(uploaded.length, dragFrom, dragTo));
-        dragFrom = null;
-      });
-    });
-  }
-
-  function swapArrayIndices(length, a, b) {
-    const order = Array.from({ length }, (_, i) => i);
-    [order[a], order[b]] = [order[b], order[a]];
-    return order;
-  }
-  function moveArrayIndex(length, from, to) {
-    const order = Array.from({ length }, (_, i) => i);
-    const [moved] = order.splice(from, 1);
-    order.splice(to, 0, moved);
-    return order;
-  }
-
-  async function reorderExisting(newOrderIndices) {
-    thumbCache.clear();
-    try {
-      await fetch(`/api/orders/${orderId}/media/reorder`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'X-Access-Token': accessToken },
-        body: JSON.stringify({ order: newOrderIndices })
-      });
-    } catch (e) { /* refresh-ul de mai jos reflecta oricum starea reala de pe server */ }
-    await refreshOrderMedia();
-  }
-
-  // Reia doar starea materialelor (nu tot loadOrder — evita sa resetam alta stare a paginii,
-  // ex. varianta audio selectata) — folosit dupa fiecare actiune asupra materialelor.
-  async function refreshOrderMedia() {
-    try {
-      const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}?token=${encodeURIComponent(accessToken)}`);
-      if (!res.ok) return;
-      const fresh = await res.json();
-      if (memOrderRef) memOrderRef.uploadedMedia = fresh.uploadedMedia;
-      if (currentOrder) currentOrder.uploadedMedia = fresh.uploadedMedia;
-      renderExistingList(fresh);
-      updateMemoriesCountAndGates(fresh);
-    } catch (e) { /* urmatorul poll/refresh manual va corecta */ }
-  }
 
   // ==========================================================================================
-  // RELANSARE 2026-08-14 ("cardurile apar greu/inegal, unele goale, interfata raspunde greu"):
-  // dovada masurata — renderQueueList() (rebuild COMPLET, prin innerHTML, cu re-instalarea TUTUROR
-  // listenerelor) rula la FIECARE eveniment xhr.upload.onprogress, adica de zeci de ori pe secunda
-  // cu mai multe uploaduri simultane. Inlocuit cu: randare COMPLETA doar la schimbari STRUCTURALE
-  // (fisier adaugat/eliminat) — renderQueueList()/renderQueueRow(); actualizari de progres FAC
-  // DOAR un patch direct pe randul afectat (patchQueueRowProgress), throttled la un singur update
-  // pe frame prin requestAnimationFrame (scheduleProgressUpdate) — niciodata mai mult de o
-  // reconstructie vizuala per frame, indiferent de cate evenimente de progres sosesc intre timp.
-  // ==========================================================================================
-  function renderQueueRowInner(q) {
-    const pct = q.status === 'processing' ? 100 : q.progress;
-    return `
-      <span class="mem-thumb">${isVideoFile(q.file) ? '🎬' : (q.thumbUrl ? `<img src="${q.thumbUrl}" alt="" loading="lazy" decoding="async">` : '🖼️')}</span>
-      <div class="mem-info">
-        <span class="mem-name">${escapeHtml(q.file.name)}</span>
-        <span class="mem-meta ${q.status === 'error' ? 'err' : ''}">${
-          q.status === 'uploading' ? t.memories_uploading_pct(q.progress)
-          : q.status === 'processing' ? t.memories_processing
-          : q.status === 'pending' ? t.memories_queued
-          : q.status === 'error' ? (q.errorMsg || t.memories_upload_error)
-          : t.memories_uploaded
-        }</span>
-        ${(q.status === 'uploading' || q.status === 'processing') ? `<div class="mem-progress-track"><div class="mem-progress-fill" style="width:${pct}%"></div></div>` : ''}
-      </div>
-      <div class="mem-actions">
-        ${q.status === 'error' ? `<button type="button" class="mem-retry" data-retry-id="${q.localId}">${t.memories_retry}</button>` : ''}
-        <button type="button" class="mem-remove" data-queue-remove="${q.localId}" title="${t.memories_remove}" ${(q.status === 'uploading' || q.status === 'processing') ? 'disabled' : ''}>${t.memories_remove}</button>
-      </div>
-    `;
-  }
-
-  // ==========================================================================================
-  // CORECȚIE (2026-08-24, "iPhone: selectarea/afișarea materialelor se blochează sau răspunde
-  // foarte greu"): thumbnailuri MICI, generate client-side, unul câte unul (concurență 1 — nu
-  // decodăm mai multe fotografii originale simultan), fără codificare base64 sau FileReader pe
-  // fișierul complet (fără "read as data URL", fără arrayBuffer()). createImageBitmap({resizeWidth})
-  // lasă browserul (adesea accelerat hardware) să decodeze DIRECT la o rezoluție mică, în loc să decodeze fotografia
-  // originală întreagă doar ca să o arate la ~60px. Rezultatul e desenat pe un <canvas> mic și
-  // convertit într-un blob — thumbUrl-ul afișat e deci mereu un fișier MIC, niciodată originalul.
-  // Dacă browserul nu suportă createImageBitmap (sau decodarea eșuează pentru un format
-  // particular), cade tăcut pe iconița 🖼️ deja afișată — nu blochează restul cozii.
-  // ==========================================================================================
-  const LOCAL_THUMB_MAX_DIM = 240;
-  const LOCAL_THUMB_CONCURRENCY = 1;
-  let localThumbQueue = [];
-  let localThumbActive = 0;
-  function scheduleLocalThumbnail(entry) {
-    localThumbQueue.push(entry);
-    pumpLocalThumbQueue();
-  }
-  function pumpLocalThumbQueue() {
-    while (localThumbActive < LOCAL_THUMB_CONCURRENCY && localThumbQueue.length > 0) {
-      const entry = localThumbQueue.shift();
-      // Fisierul a fost deja eliminat din coada de upload (utilizatorul l-a sters) inainte sa
-      // apuce randul — nu mai are rost sa generam un thumbnail pentru el.
-      if (!uploadQueue.includes(entry)) continue;
-      localThumbActive++;
-      generateLocalThumbnail(entry).finally(() => {
-        localThumbActive--;
-        pumpLocalThumbQueue();
-      });
-    }
-  }
-  async function generateLocalThumbnail(entry) {
-    if (typeof createImageBitmap !== 'function') return; // browser vechi/neobisnuit — ramane pe iconita
-    let bitmap = null;
-    try {
-      bitmap = await createImageBitmap(entry.file, { resizeWidth: LOCAL_THUMB_MAX_DIM, resizeQuality: 'medium' });
-      const canvas = document.createElement('canvas');
-      canvas.width = bitmap.width;
-      canvas.height = bitmap.height;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(bitmap, 0, 0);
-      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.82));
-      if (!blob) return;
-      // Fisierul a putut fi eliminat din coada CAT TIMP thumbnailul se genera (decodarea poate
-      // dura cateva sute de ms) — nu mai atingem un rand care nu mai exista.
-      if (!uploadQueue.includes(entry)) return;
-      entry.thumbUrl = URL.createObjectURL(blob);
-      patchQueueRowThumb(entry);
-    } catch (err) {
-      // format nesuportat/decodare esuata — ramane pe iconita 🖼️, niciodata o eroare vizibila
-    } finally {
-      if (bitmap && typeof bitmap.close === 'function') bitmap.close();
-    }
-  }
-  // Patch DIRECT al iconitei unui singur rand, fara sa reconstruiasca restul cardului (acelasi
-  // principiu ca patchQueueRowProgress mai jos) — thumbnailurile sosesc asincron, unul cate
-  // unul, mult dupa randarea initiala a listei.
-  function patchQueueRowThumb(entry) {
-    const row = document.querySelector(`#mem-staged-list [data-queue-id="${entry.localId}"]`);
-    if (!row) return;
-    const thumbEl = row.querySelector('.mem-thumb');
-    if (!thumbEl || isVideoFile(entry.file)) return;
-    thumbEl.innerHTML = `<img src="${entry.thumbUrl}" alt="" loading="lazy" decoding="async">`;
-  }
-
-  function wireQueueRow(row, entry) {
-    const retryBtn = row.querySelector('[data-retry-id]');
-    if (retryBtn) retryBtn.addEventListener('click', () => {
-      // Retry-ul reintra in coada cu CONCURENTA LIMITATA (nu porneste imediat, direct) —
-      // altfel reincercarea mai multor fisiere esuate deodata ar putea depasi din nou
-      // limita de uploaduri simultane, exact problema pe care coada o previne.
-      entry.status = 'pending';
-      entry.errorMsg = null;
-      renderQueueRow(entry);
-      processUploadQueue();
-    });
-    const removeBtn = row.querySelector('[data-queue-remove]');
-    if (removeBtn) removeBtn.addEventListener('click', () => {
-      const idx = uploadQueue.findIndex(q => q.localId === entry.localId);
-      if (idx === -1) return;
-      entry.abortRequested = true;
-      if (entry.xhr) entry.xhr.abort();
-      // Un upload multipart activ are potential mai multe PUT-uri directe catre R2 in zbor
-      // simultan (pana la MEM_MAX_PARALLEL_PARTS) — toate trebuie oprite, nu doar unul.
-      if (entry.activePartXhrs) Object.values(entry.activePartXhrs).forEach(xhr => { try { xhr.abort(); } catch (e) {} });
-      // Abandoneaza explicit sesiunea multipart la R2 — fara asta, fragmentele deja urcate
-      // ar ramane facturate la nesfarsit ca un upload multipart niciodata finalizat.
-      if (entry.multipartSessionId) {
-        fetch(`/api/orders/${orderId}/media/multipart/${entry.multipartSessionId}`, {
-          method: 'DELETE', headers: { 'X-Access-Token': accessToken }
-        }).catch(() => {});
-      }
-      if (entry.thumbUrl) URL.revokeObjectURL(entry.thumbUrl);
-      uploadQueue.splice(idx, 1);
-      processUploadQueue();
-      renderQueueList();
-    });
-  }
-
-  // Randare COMPLETA — STRICT la schimbari structurale (lungimea cozii se schimba: fisier
-  // adaugat sau eliminat). NICIODATA apelata dintr-un tick de progres.
-  function renderQueueList() {
-    const el = document.getElementById('mem-staged-list');
-    el.innerHTML = uploadQueue.map(q => `<div class="mem-item" data-queue-id="${q.localId}">${renderQueueRowInner(q)}</div>`).join('');
-    el.querySelectorAll('[data-queue-id]').forEach(row => {
-      const entry = uploadQueue.find(q => q.localId === row.dataset.queueId);
-      if (entry) wireQueueRow(row, entry);
-    });
-    renderBatchStatus();
-    if (memOrderRef) updateMemoriesCountAndGates(memOrderRef);
-  }
-
-  // Rebuild al UNUI SINGUR rand (tranzitie de stare: pending->uploading, ->processing, ->error)
-  // — nu atinge restul cozii. Cade pe randarea completa doar daca randul nu mai exista (caz rar).
-  function renderQueueRow(entry) {
-    const row = document.querySelector(`#mem-staged-list [data-queue-id="${entry.localId}"]`);
-    if (!row) { renderQueueList(); return; }
-    row.innerHTML = renderQueueRowInner(entry);
-    wireQueueRow(row, entry);
-    renderBatchStatus();
-    if (memOrderRef) updateMemoriesCountAndGates(memOrderRef);
-  }
-
-  // Patch DIRECT — actualizeaza STRICT bara si textul de procent ale unui singur material,
-  // fara sa reconstruiasca vreun element (fara innerHTML, fara re-instalare de listenere).
-  // Daca elementele nu exista inca (primul tick dupa 'pending'), cade o SINGURA data pe
-  // renderQueueRow() (rebuild al unui singur rand, nu al listei intregi).
-  function patchQueueRowProgress(entry) {
-    const row = document.querySelector(`#mem-staged-list [data-queue-id="${entry.localId}"]`);
-    if (!row) return;
-    const fill = row.querySelector('.mem-progress-fill');
-    const meta = row.querySelector('.mem-meta');
-    if (!fill || !meta) { renderQueueRow(entry); return; }
-    fill.style.width = (entry.status === 'processing' ? 100 : entry.progress) + '%';
-    meta.textContent = entry.status === 'processing' ? t.memories_processing : t.memories_uploading_pct(entry.progress);
-    meta.classList.remove('err');
-  }
-
-  let progressRafScheduled = false;
-  const pendingProgressIds = new Set();
-  function scheduleProgressUpdate(entry) {
-    pendingProgressIds.add(entry.localId);
-    if (progressRafScheduled) return;
-    progressRafScheduled = true;
-    requestAnimationFrame(() => {
-      progressRafScheduled = false;
-      const ids = Array.from(pendingProgressIds);
-      pendingProgressIds.clear();
-      ids.forEach(id => {
-        const e = uploadQueue.find(q => q.localId === id);
-        if (e) patchQueueRowProgress(e);
-      });
-      renderBatchStatus();
-    });
-  }
-
-  // Progres GLOBAL, discret, deasupra listei — "Se încarcă 3 din 8 materiale — 42%", apoi
-  // "8 materiale încărcate — poți continua" STRICT dupa ce serverul a confirmat fiecare
-  // material (memBatchDoneCount creste NUMAI la succesul confirmat de server, niciodata la
-  // selectia locala) — vezi startSingleUpload()/startMultipartUpload().
-  let memBatchTotal = 0;
-  let memBatchDoneCount = 0;
-  function renderBatchStatus() {
-    const el = document.getElementById('mem-batch-status');
-    if (!el) return;
-    const active = uploadQueue.filter(q => q.status !== 'error');
-    if (memBatchTotal === 0) { el.textContent = ''; return; }
-    if (active.length === 0) {
-      el.textContent = memBatchDoneCount > 0 ? t.memories_batch_done(memBatchDoneCount) : '';
-      return;
-    }
-    const inFlightSum = active.reduce((s, q) => s + (q.status === 'processing' ? 100 : (q.progress || 0)), 0);
-    const overallPct = Math.min(100, Math.round(((memBatchDoneCount * 100) + inFlightSum) / memBatchTotal));
-    el.textContent = t.memories_batch_progress(memBatchDoneCount, memBatchTotal, overallPct);
-  }
-
-  // ==========================================================================================
-  // RELANSARE 2026-08-14 ("nu reincarca toata comanda dupa fiecare fisier"): dovada masurata —
-  // xhr.onload apela `await refreshOrderMedia()` dupa FIECARE fisier reusit individual; pentru
-  // 8 materiale, asta insemna 8 cereri + 8 re-randari ale listei de materiale existente, in timp
-  // ce alte uploaduri erau inca active. Inlocuit cu o SINGURA sincronizare, debounced (700ms) si
-  // "single-flight" — daca o sincronizare e deja in curs cand mai termina un fisier, NU pornim
-  // una noua in paralel, doar marcam ca mai e nevoie de inca una, care porneste STRICT dupa ce
-  // cea curenta se termina (niciodata doua simultan, niciodata un raspuns mai vechi suprascriind
-  // unul mai nou — cererile raman strict secventiale).
-  // ==========================================================================================
-  let memSyncTimer = null;
-  let memSyncInFlight = false;
-  let memSyncAgainNeeded = false;
-  function scheduleMemSync() {
-    memSyncAgainNeeded = true;
-    if (memSyncTimer || memSyncInFlight) return;
-    memSyncTimer = setTimeout(runMemSync, 700);
-  }
-  async function runMemSync() {
-    memSyncTimer = null;
-    if (memSyncInFlight || !memSyncAgainNeeded) return;
-    memSyncAgainNeeded = false;
-    memSyncInFlight = true;
-    try {
-      await refreshOrderMedia();
-    } finally {
-      memSyncInFlight = false;
-      if (memSyncAgainNeeded) memSyncTimer = setTimeout(runMemSync, 700);
-    }
-  }
-
-  // ==========================================================================================
-  // HOTFIX 2026-08-07: uploadurile de pe iPhone (Safari iOS) esuau COMPLET (0 din 6 materiale
-  // salvate) — cauza radacina confirmata: fiecare fisier ales pornea propriul XMLHttpRequest
-  // IMEDIAT, in paralel, fara nicio limita de concurenta. Coada de mai jos limiteaza explicit
-  // la MAX_CONCURRENT_UPLOADS incarcari simultane — restul asteapta in starea 'pending' pana
-  // se elibereaza un loc.
-  // ==========================================================================================
-  const MAX_CONCURRENT_UPLOADS = 2;
-  const UPLOAD_TIMEOUT_MS = 900000;
-  // Prag peste care un videoclip foloseste uploadul MULTIPART DIRECT catre R2 (vezi
-  // startMultipartUpload) in loc de un singur POST — identic cu
-  // ORDER_MEDIA_MULTIPART_THRESHOLD_BYTES din server.js.
-  const MEM_MULTIPART_THRESHOLD_BYTES = 20 * 1024 * 1024;
-  const MEM_PART_RETRY_LIMIT = 5;
-  const MEM_MAX_PARALLEL_PARTS = 2;
-
-  function processUploadQueue() {
-    const active = uploadQueue.filter(q => q.status === 'uploading' || q.status === 'processing').length;
-    let slots = MAX_CONCURRENT_UPLOADS - active;
-    if (slots <= 0) return;
-    for (const entry of uploadQueue) {
-      if (slots <= 0) break;
-      if (entry.status === 'pending') {
-        startUpload(entry);
-        slots--;
-      }
-    }
-  }
-
-  function startUpload(entry) {
-    entry.abortRequested = false;
-    if (isVideoFile(entry.file) && entry.file.size > MEM_MULTIPART_THRESHOLD_BYTES) {
-      startMultipartUpload(entry);
-    } else {
-      startSingleUpload(entry);
-    }
-  }
-
-  function startSingleUpload(entry) {
-    entry.status = 'uploading';
-    entry.progress = 0;
-    entry.errorMsg = null;
-    renderQueueRow(entry);
-
-    const formData = new FormData();
-    formData.append('media', entry.file);
-    formData.append('sections', JSON.stringify([entry.section || '']));
-
-    const xhr = new XMLHttpRequest();
-    entry.xhr = xhr;
-    xhr.open('POST', `/api/orders/${orderId}/media`);
-    xhr.setRequestHeader('X-Access-Token', accessToken);
-    xhr.timeout = UPLOAD_TIMEOUT_MS;
-    xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable) {
-        const pct = Math.round((e.loaded / e.total) * 100);
-        entry.progress = pct;
-        if (pct >= 100 && entry.status === 'uploading') entry.status = 'processing';
-        scheduleProgressUpdate(entry);
-      }
-    };
-    xhr.onload = () => {
-      let data = null;
-      try { data = JSON.parse(xhr.responseText); } catch (e) { /* raspuns invalid */ }
-      const failedEntry = data && Array.isArray(data.failed) ? data.failed[0] : null;
-      const succeeded = data && Array.isArray(data.uploaded) && data.uploaded.length > 0;
-      if (xhr.status >= 200 && xhr.status < 300 && succeeded) {
-        if (entry.thumbUrl) URL.revokeObjectURL(entry.thumbUrl);
-        uploadQueue = uploadQueue.filter(q => q.localId !== entry.localId);
-        memBatchDoneCount++;
-        renderQueueList();
-        processUploadQueue();
-        scheduleMemSync();
-      } else {
-        entry.status = 'error';
-        entry.errorMsg = (failedEntry && failedEntry.reason) || (data && data.error) || t.memories_upload_error;
-        renderQueueRow(entry);
-        processUploadQueue();
-      }
-    };
-    xhr.onerror = () => {
-      entry.status = 'error';
-      entry.errorMsg = t.memories_upload_error;
-      renderQueueRow(entry);
-      processUploadQueue();
-    };
-    // Fara acest handler, un raspuns care nu ajunge niciodata (retea instabila, proxy care
-    // taie conexiunea tacit) lasa fisierul blocat la nesfarsit in starea "Se incarca..." —
-    // exact simptomul raportat ("nu apare un mesaj suficient de clar"). Un timeout explicit
-    // garanteaza o stare finala (eroare, cu retry disponibil), niciodata un spinner etern.
-    xhr.ontimeout = () => {
-      entry.status = 'error';
-      entry.errorMsg = t.memories_upload_timeout;
-      renderQueueRow(entry);
-      processUploadQueue();
-    };
-    xhr.onabort = () => { processUploadQueue(); /* eliminat explicit de client — doar eliberam locul din coada */ };
-    xhr.send(formData);
-  }
-
-  // ==========================================================================================
-  // RELANSARE 2026-08-14 ("codul live nu demonstreaza un upload multipart direct din browser
-  // catre R2 — pentru un videoclip de 500MB rezulta ~84 de cereri succesive [prin Railway]"):
-  // inlocuit complet mecanismul anterior (fragmente relansate PRIN acest server) cu upload
-  // multipart DIRECT catre R2 — fiecare fragment e trimis printr-un PUT direct catre un URL
-  // semnat (Railway autorizeaza si intoarce URL-ul, dar nu vede niciodata continutul), cu
-  // maximum MEM_MAX_PARALLEL_PARTS fragmente simultane. Retry STRICT per fragment (niciodata
-  // de la inceputul fisierului). Vezi server.js pentru detaliile complete si limita onesta.
-  // ==========================================================================================
-  function uploadOnePart(entry, partNumber, blob, onProgress) {
-    return new Promise((resolve, reject) => {
-      let attempt = 0;
-      const tryOnce = async () => {
-        if (entry.abortRequested) { reject(new Error('aborted')); return; }
-        try {
-          const urlRes = await fetch(`/api/orders/${orderId}/media/multipart/${entry.multipartSessionId}/part-url`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-Access-Token': accessToken },
-            body: JSON.stringify({ partNumber })
-          });
-          const urlData = await urlRes.json().catch(() => ({}));
-          if (!urlRes.ok || !urlData.url) { retryOrFail(); return; }
-          const xhr = new XMLHttpRequest();
-          entry.activePartXhrs = entry.activePartXhrs || {};
-          entry.activePartXhrs[partNumber] = xhr;
-          // PUT DIRECT catre R2 — niciun header al aplicatiei (X-Access-Token etc.) nu se
-          // trimite aici, autentificarea e STRICT prin semnatura din URL.
-          xhr.open('PUT', urlData.url);
-          xhr.timeout = UPLOAD_TIMEOUT_MS;
-          xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded); };
-          xhr.onload = () => {
-            delete entry.activePartXhrs[partNumber];
-            if (xhr.status >= 200 && xhr.status < 300) {
-              const etag = xhr.getResponseHeader('ETag');
-              if (!etag) { retryOrFail(); return; }
-              onProgress(blob.size);
-              resolve(etag);
-            } else { retryOrFail(); }
-          };
-          xhr.onerror = () => { delete entry.activePartXhrs[partNumber]; retryOrFail(); };
-          xhr.ontimeout = () => { delete entry.activePartXhrs[partNumber]; retryOrFail(); };
-          xhr.onabort = () => { delete entry.activePartXhrs[partNumber]; reject(new Error('aborted')); };
-          xhr.send(blob);
-        } catch (err) {
-          retryOrFail();
-        }
-      };
-      const retryOrFail = () => {
-        attempt++;
-        if (entry.abortRequested) { reject(new Error('aborted')); return; }
-        if (attempt > MEM_PART_RETRY_LIMIT) { reject(new Error('part failed')); return; }
-        onProgress(0);
-        setTimeout(tryOnce, Math.min(1000 * attempt, 5000));
-      };
-      tryOnce();
-    });
-  }
-
-  async function startMultipartUpload(entry) {
-    entry.status = 'uploading';
-    entry.progress = 0;
-    entry.errorMsg = null;
-    renderQueueRow(entry);
-    try {
-      const initRes = await fetch(`/api/orders/${orderId}/media/multipart/init`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Access-Token': accessToken },
-        body: JSON.stringify({ filename: entry.file.name, size: entry.file.size, mimeType: entry.file.type || '', section: entry.section || '' })
-      });
-      const initData = await initRes.json().catch(() => ({}));
-      if (!initRes.ok || !initData.sessionId) throw new Error(initData.error || 'init failed');
-      entry.multipartSessionId = initData.sessionId;
-      const partSize = initData.partSize || (10 * 1024 * 1024);
-      const totalBytes = entry.file.size;
-      const totalParts = Math.max(1, Math.ceil(totalBytes / partSize));
-
-      const partBytesSent = new Array(totalParts + 1).fill(0);
-      function reportProgress() {
-        const sum = partBytesSent.reduce((a, b) => a + b, 0);
-        entry.progress = Math.min(99, Math.round((sum / totalBytes) * 100));
-        scheduleProgressUpdate(entry);
-      }
-
-      // Coada interna cu maximum MEM_MAX_PARALLEL_PARTS fragmente active simultan — un
-      // fragment care esueaza definitiv (dupa reincercari) opreste doar acest fisier, nu
-      // afecteaza celelalte materiale din coada principala.
-      const completedParts = await new Promise((resolveAll, rejectAll) => {
-        const results = [];
-        let nextPartNumber = 1;
-        let active = 0;
-        let firstError = null;
-        function pump() {
-          if (firstError) { rejectAll(firstError); return; }
-          if (results.length === totalParts) { resolveAll(results); return; }
-          while (active < MEM_MAX_PARALLEL_PARTS && nextPartNumber <= totalParts) {
-            const partNumber = nextPartNumber++;
-            const start = (partNumber - 1) * partSize;
-            const end = Math.min(start + partSize, totalBytes);
-            const blob = entry.file.slice(start, end);
-            active++;
-            uploadOnePart(entry, partNumber, blob, (loaded) => { partBytesSent[partNumber] = loaded; reportProgress(); })
-              .then(etag => { active--; results.push({ partNumber, etag }); pump(); })
-              .catch(err => { active--; firstError = firstError || err; pump(); });
-          }
-        }
-        pump();
-      });
-
-      if (entry.abortRequested) return;
-      entry.status = 'processing';
-      scheduleProgressUpdate(entry);
-      completedParts.sort((a, b) => a.partNumber - b.partNumber);
-      const completeRes = await fetch(`/api/orders/${orderId}/media/multipart/${entry.multipartSessionId}/complete`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Access-Token': accessToken },
-        body: JSON.stringify({ parts: completedParts })
-      });
-      const data = await completeRes.json().catch(() => ({}));
-      const succeeded = data && Array.isArray(data.uploaded) && data.uploaded.length > 0;
-      if (completeRes.ok && succeeded) {
-        uploadQueue = uploadQueue.filter(q => q.localId !== entry.localId);
-        memBatchDoneCount++;
-        renderQueueList();
-        processUploadQueue();
-        scheduleMemSync();
-      } else {
-        const failedEntry = data && Array.isArray(data.failed) ? data.failed[0] : null;
-        entry.status = 'error';
-        entry.errorMsg = (failedEntry && failedEntry.reason) || (data && data.error) || t.memories_upload_error;
-        renderQueueRow(entry);
-        processUploadQueue();
-      }
-    } catch (err) {
-      if (entry.abortRequested) return;
-      entry.status = 'error';
-      entry.errorMsg = t.memories_upload_error;
-      renderQueueRow(entry);
-      processUploadQueue();
-    }
-  }
-
-  const memFileInput = document.getElementById('mem-file-input');
-  const memStatusEl = document.getElementById('mem-status');
-
-  // CORECȚIE (2026-08-24, "selectorul rămâne blocat până la 5 minute pe iPhone dacă Safari nu
-  // emite 'cancel'"): 'change'/'cancel' rămân sursa AUTORITATIVĂ de deblocare (neschimbat —
-  // Photos/iCloud poate avea nevoie legitim de 2-3 minute să pregătească un videoclip mare
-  // înainte ca 'change' să sosească, iar un timeout orb ar debloca greșit exact în acel
-  // interval normal, cum s-a întâmplat înainte). Ce s-a adăugat acum: 'visibilitychange'/
-  // 'focus'/'pageshow' NU mai deblochează nimic automat și NU redeschid galeria — ele
-  // declanșează STRICT o mică fereastră de grație (PICKER_RETURN_GRACE_MS) după care, dacă tot
-  // nu a sosit 'change'/'cancel', afișăm un mesaj vizibil cu un buton EXPLICIT "Renunță și
-  // încearcă din nou" — clientul decide singur, în câteva secunde, în loc să lovească un
-  // selector care nu răspunde timp de 5 minute fără nicio explicație. Plasa de siguranță
-  // complet automată (PICKER_MANUAL_RECOVERY_MS) rămâne, dar redusă — afordanța explicită de
-  // mai sus e acum calea normală de recuperare, nu ultimul resort.
-  let pickerLocked = false;
-  let pickerLockedAt = 0;
-  const PICKER_MANUAL_RECOVERY_MS = 90 * 1000;
-  const PICKER_RETURN_GRACE_MS = 1500;
-  let pickerReturnGraceTimer = null;
-  let pickerWaitingMessageShown = false;
-
-  function clearPickerWaitingMessage() {
-    pickerWaitingMessageShown = false;
-    if (pickerReturnGraceTimer) { clearTimeout(pickerReturnGraceTimer); pickerReturnGraceTimer = null; }
-  }
-  function showPickerWaitingMessage() {
-    if (!pickerLocked || pickerWaitingMessageShown) return;
-    pickerWaitingMessageShown = true;
-    memStatusEl.innerHTML = `${escapeHtml(t.memories_picker_waiting)} <button type="button" id="mem-picker-retry-btn" class="mem-picker-retry-btn"></button>`;
-    memStatusEl.className = 'mem-status';
-    const retryBtn = document.getElementById('mem-picker-retry-btn');
-    retryBtn.textContent = t.memories_picker_retry;
-    retryBtn.addEventListener('click', () => {
-      pickerLocked = false;
-      clearPickerWaitingMessage();
-      memStatusEl.textContent = '';
-      memStatusEl.className = 'mem-status';
-    });
-  }
-  function handlePickerPossibleReturn() {
-    if (!pickerLocked || pickerReturnGraceTimer) return;
-    pickerReturnGraceTimer = setTimeout(() => {
-      pickerReturnGraceTimer = null;
-      showPickerWaitingMessage();
-    }, PICKER_RETURN_GRACE_MS);
-  }
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) handlePickerPossibleReturn(); });
-  window.addEventListener('focus', handlePickerPossibleReturn);
-  window.addEventListener('pageshow', (event) => { if (event.persisted) handlePickerPossibleReturn(); });
-
-  memFileInput.addEventListener('click', (e) => {
-    if (pickerLocked && Date.now() - pickerLockedAt < PICKER_MANUAL_RECOVERY_MS) {
-      e.preventDefault();
-      return;
-    }
-    pickerLocked = true;
-    pickerLockedAt = Date.now();
-    clearPickerWaitingMessage();
-  });
-  memFileInput.addEventListener('cancel', () => {
-    pickerLocked = false;
-    clearPickerWaitingMessage();
-  });
-
-  let memStatusHintToken = 0;
-
-  memFileInput.addEventListener('change', () => {
-    pickerLocked = false;
-    clearPickerWaitingMessage();
-    const files = Array.from(memFileInput.files);
-    memFileInput.value = '';
-    // INCIDENT 2026-08-07 (Cadou video, iPhone): un client a raportat ca a selectat si
-    // confirmat fotografii in selectorul nativ, dar "nu s-au incarcat" — fara nicio urma pe
-    // server (nicio cerere POST /media nu a ajuns niciodata). Reprodus cu codul curent (fisiere
-    // reale, exact acest flux) fara nicio eroare, deci nu am putut demonstra o cauza de cod —
-    // dar handler-ul de mai jos nu dadea NICIUN semnal vizibil daca FileList-ul intors de
-    // selector era gol — adaugam un mesaj vizibil explicit pentru acest caz.
-    if (files.length === 0) {
-      memStatusEl.textContent = t.memories_no_files_selected;
-      memStatusEl.className = 'mem-status err';
-      return;
-    }
-    // RELANSARE 2026-08-14 ("aratǎ clar: materialele se incarca automat, nu mai trebuie sa
-    // apesi"): mesaj tranzitoriu (4s), inlocuit de progresul global (memories-batch-status)
-    // imediat ce acesta are ceva de aratat — un token previne ca acest timeout intarziat sa
-    // stearga un mesaj de eroare mai nou aparut intre timp.
-    memStatusEl.textContent = t.memories_auto_upload_hint;
-    memStatusEl.className = 'mem-status';
-    const hintToken = ++memStatusHintToken;
-    setTimeout(() => { if (memStatusHintToken === hintToken) memStatusEl.textContent = ''; }, 4000);
-
-    memBatchTotal += files.length;
-
-    // CORECȚIE (2026-08-14, "iPhone: bifa albastră din selector nu continua fluxul"): fiecare
-    // fișier e adăugat în coadă independent, izolat cu try/catch — dacă UN SINGUR fișier din
-    // selecție ridică o excepție la construirea intrării (ex. URL.createObjectURL eșuează pentru
-    // un blob particular), restul fișierelor selectate NU mai trebuie pierdute tăcut, iar
-    // renderQueueList()/processUploadQueue() de mai jos tot trebuie să ruleze. thumbUrl se
-    // creează STRICT pentru fotografii — un singur URL.createObjectURL() per fișier, refolosit
-    // intre randari (patchQueueRowProgress nu il recreeaza niciodata), revocat doar la eliminare.
-    const newEntries = [];
-    files.forEach(file => {
-      try {
-        const entry = {
-          localId: 'q' + Math.random().toString(36).slice(2),
-          file,
-          section: null,
-          status: 'pending',
-          progress: 0,
-          errorMsg: null,
-          // CORECȚIE (2026-08-24, "iPhone: pagina se blochează/răspunde greu"): NU mai folosim
-          // URL.createObjectURL(file) direct pe fișierul original ca thumbnail — afișarea lui
-          // într-un <img> tot forța Safari să decodeze o fotografie originală (12+ MP pe un
-          // iPhone modern) doar ca să arate un pătrat de ~60px. thumbUrl pornește gol (iconița
-          // 🖼️ rămâne vizibilă imediat) și e populat ASINCRON, controlat, unul câte unul, cu un
-          // thumbnail MIC generat client-side (vezi scheduleLocalThumbnail mai jos) — niciodată
-          // sincron în acest handler.
-          thumbUrl: null,
-          xhr: null,
-          multipartSessionId: null,
-          abortRequested: false
-        };
-        uploadQueue.push(entry);
-        newEntries.push(entry);
-      } catch (err) {
-        uploadQueue.push({
-          localId: 'q' + Math.random().toString(36).slice(2),
-          file,
-          section: null,
-          status: 'error',
-          progress: 0,
-          errorMsg: t.memories_upload_error,
-          thumbUrl: null,
-          xhr: null,
-          multipartSessionId: null,
-          abortRequested: false
-        });
-      }
-    });
-    // Toate cardurile intra IMEDIAT in interfata (randare completa, o singura data, sincron —
-    // nu asteapta thumbnailuri/metadate/raspunsul serverului), apoi uploadul porneste automat.
-    renderQueueList();
-    processUploadQueue();
-    // Thumbnailurile (STRICT pentru fotografii — videoclipurile pastreaza iconita 🎬, nu se
-    // incearca niciodata generarea unui cadru din ele local) pornesc DUPA randarea si dupa ce
-    // uploadul e deja pornit — nu blocheaza niciuna din cele doua.
-    newEntries.forEach(entry => { if (!isVideoFile(entry.file)) scheduleLocalThumbnail(entry); });
-  });
-
-  // ==========================================================================================
-  // RELANSARE (2026-08-14, "materialele se incarca DUPA ce melodia finala e stabilita"):
-  // pachetul "Cadou video" nu mai cere materiale inainte de generarea melodiei — acest buton
+  // CORECȚIE (2026-08-29, "pagina separata pentru selectarea si incarcarea media"): butonul
   // ("Adaugă amintirile pentru videoclipul cadou") apare STRICT dupa ce versiunea finala a
   // melodiei e stabilita (vezi updateMemoriesCta, apelat din renderContent cu aceeasi conditie
-  // care activeaza deja plata: !pendingVariantChoice). O singura apasare dezvaluie EXACT
-  // acelasi widget de materiale (#memories-section, neschimbat) si deplaseaza lin pagina catre
-  // el — nu se deschide niciodata automat galeria fara aceasta actiune explicita a clientului.
+  // care activeaza deja plata: !pendingVariantChoice) — NESCHIMBAT. O singura apasare
+  // NAVIGHEAZA (aceeasi fila, fara popup) catre pagina dedicata /amintiri-video.html, care
+  // reconstruieste independent starea materialelor deja confirmate din comanda — nu se mai
+  // extinde inline niciun selector/lista/coada pe aceasta pagina.
   // ==========================================================================================
-  let memoriesRevealed = false;
   document.getElementById('memories-cta-btn').addEventListener('click', () => {
-    memoriesRevealed = true;
-    document.getElementById('memories-cta').style.display = 'none';
-    if (currentOrder) renderMemories(currentOrder);
-    document.getElementById('memories-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    window.location.href = `/amintiri-video.html?id=${encodeURIComponent(orderId)}&token=${encodeURIComponent(accessToken)}`;
   });
 
   function updateMemoriesCta(order, pendingVariantChoice) {
     const ctaWrap = document.getElementById('memories-cta');
-    const section = document.getElementById('memories-section');
-    if (pendingVariantChoice) {
-      // Versiunea finala inca nu e stabilita (alegere in curs intre initiala/editata) — nici
-      // butonul, nici widget-ul de materiale nu trebuie sa fie vizibile inca.
-      ctaWrap.style.display = 'none';
-      section.style.display = 'none';
-      return;
-    }
-    if (memoriesRevealed) {
-      ctaWrap.style.display = 'none';
-      renderMemories(order);
-    } else {
-      ctaWrap.style.display = 'block';
-      section.style.display = 'none';
-    }
+    ctaWrap.style.display = pendingVariantChoice ? 'none' : 'block';
   }
 
   // ==========================================================================================
@@ -3415,17 +2470,14 @@
 
   function updateVideoStatusUI(order, pendingVariantChoice) {
     const el = document.getElementById('video-status-msg');
-    const createWrap = document.getElementById('gift-video-create');
     if (order.plan !== 'video') {
       el.style.display = 'none';
-      createWrap.style.display = 'none';
       document.getElementById('gift-video-section').style.display = 'none';
       return;
     }
 
     if (order.videoStatus === 'ready') {
       el.style.display = 'none';
-      createWrap.style.display = 'none';
       checkoutBtn.disabled = false;
       videoCreationInFlight = false;
       showGiftVideoPreview(order);
@@ -3440,17 +2492,13 @@
     const jobActiveOrPending = order.videoStatus === 'generating' || order.videoStatus === 'stale' || order.videoStatus === 'failed' || videoCreationInFlight;
 
     if (!jobActiveOrPending) {
-      // Niciun job, niciunul cerut inca — butonul de creare apare STRICT dupa stabilirea
-      // versiunii finale, cu materialele confirmate de server (order.mediaConfirmedAt —
-      // resetat la null de server la ORICE modificare reala a materialelor, vezi
-      // mutateOrderMediaAtomically in db.js) SI fara uploaduri active/erori nerezolvate in
-      // coada LOCALA chiar acum.
+      // CORECȚIE (2026-08-29, "pagina separata pentru materiale/creare"): butonul de creare
+      // video nu mai exista pe aceasta pagina (mutat pe /amintiri-video.html, singurul loc
+      // unde clientul confirma materialele SI apasa "Creează videoclipul") — cat timp niciun
+      // job nu e activ/cerut inca, aici nu mai e nimic de afisat.
       el.style.display = 'none';
-      const mediaReady = !pendingVariantChoice && !!order.mediaConfirmedAt && uploadQueue.length === 0;
-      createWrap.style.display = mediaReady ? 'block' : 'none';
       return;
     }
-    createWrap.style.display = 'none';
 
     const messages = {
       generating: { title: t.gift_video_processing_title, text: t.gift_video_processing_text, state: t.gift_video_state_creating },
@@ -3562,54 +2610,6 @@
       armVideoPoll(Math.min(5000 * videoPollFailCount, 30000));
     }
   }
-
-  // O SINGURA apasare = un SINGUR job video (cerinta explicita) — butonul se dezactiveaza
-  // IMEDIAT, sincron, la primul click, inainte de orice cerere de retea; POST /create-video e
-  // oricum idempotent server-side (isVideoLockActive/videoKey+videoPreviewKey), dar dublu-tapul
-  // NU trebuie sa depinda STRICT de acea garda — previne si cererea a doua sa mai plece deloc.
-  // CORECȚIE (2026-08-24, "cauza reala pentru care clientul ramane la Se creează
-  // videoclipul"): raspunsul POST /create-video NU mai e ignorat — vechea versiune facea
-  // "await fetch(...)" fara sa verifice niciodata res.ok/status, deci un 4xx/5xx (validare,
-  // 409 job deja activ dintr-un motiv real, 500 tranzitoriu) trecea complet neobservat:
-  // butonul ramanea dezactivat, videoCreationInFlight ramanea true PENTRU TOTDEAUNA (se
-  // reseteaza STRICT pe 'ready'/'failed', niciodata pe eroarea acestei cereri), iar clientul
-  // vedea "În așteptare"/"Se creează videoclipul" la nesfarsit desi serverul nu pornise (sau
-  // nu putuse porni) niciun job. Acum: navigam catre pagina dedicata de procesare STRICT dupa
-  // ce serverul confirma acceptarea (200/202, SAU 409 — job deja activ real, tot un caz de
-  // "asteapta pe pagina de procesare"); orice alt raspuns (sau eroare de retea) ne pastreaza
-  // pe aceasta pagina, reactiveaza butonul si afiseaza eroarea tradusa, exact ca sa poata
-  // incerca din nou imediat, fara reincarcare.
-  let giftVideoCreateRequested = false;
-  document.getElementById('gift-video-create-btn').addEventListener('click', async () => {
-    if (giftVideoCreateRequested) return;
-    giftVideoCreateRequested = true;
-    const btn = document.getElementById('gift-video-create-btn');
-    const statusEl = document.getElementById('video-status-msg');
-    btn.disabled = true;
-    statusEl.style.display = 'none';
-    let res = null;
-    try {
-      res = await fetch(`/api/orders/${orderId}/create-video`, {
-        method: 'POST',
-        headers: { 'X-Access-Token': accessToken }
-      });
-    } catch (e) { /* res ramane null -> ramura de eroare de mai jos */ }
-
-    if (res && (res.ok || res.status === 409)) {
-      window.location.href = `/se-creeaza-video.html?id=${encodeURIComponent(orderId)}&token=${encodeURIComponent(accessToken)}`;
-      return;
-    }
-
-    let message = t.msg_try_again;
-    if (res) {
-      try { const data = await res.json(); if (data && data.error) message = data.error; } catch (e) { /* body nu era JSON valid, pastram mesajul implicit */ }
-    }
-    statusEl.className = 'video-status-msg failed';
-    statusEl.textContent = t.msg_error_prefix + message;
-    statusEl.style.display = 'block';
-    btn.disabled = false;
-    giftVideoCreateRequested = false;
-  });
 
   // ULTIMUL FINISAJ (hotfix 2026-08-08): centralizeaza TOATA logica de vizibilitate legata de
   // fluxul de editare Standard (meniul pliabil INAINTE de editare + ecranul de alegere DUPA
@@ -3731,16 +2731,14 @@
 
     // RELANSARE (2026-08-14, "cand meniul de editare e deschis, ascunde complet sectiunea
     // media si mesajul despre editarea gratuita"): STRICT pachetul video (Standard nu are
-    // sectiune media). Meniul DESCHIS ascunde ambele — materialele deja selectate NU sunt
-    // sterse (memOrderRef/uploadQueue raman neatinse), doar sectiunea vizuala se ascunde;
-    // uploadurile in desfasurare continua nestingherite in fundal (vezi processUploadQueue,
-    // neschimbat). Meniul INCHIS (fara editare, sau dupa "Renunță") reafiseaza sectiunea
-    // media EXACT ca inainte de editare — melodia initiala ramane versiunea aleasa.
+    // sectiune media). Meniul DESCHIS ascunde butonul catre pagina de materiale — materialele
+    // deja confirmate raman neatinse pe server, doar butonul vizual se ascunde. Meniul INCHIS
+    // (fara editare, sau dupa "Renunță") reafiseaza butonul EXACT ca inainte de editare —
+    // melodia initiala ramane versiunea aleasa.
     if (order.plan === 'video') {
       document.getElementById('edits-info-msg').style.display = menuExpanded ? 'none' : '';
       if (menuExpanded) {
         document.getElementById('memories-cta').style.display = 'none';
-        document.getElementById('memories-section').style.display = 'none';
       } else {
         updateMemoriesCta(order, pendingVariantChoice);
       }
@@ -3863,7 +2861,7 @@
     document.getElementById('standard-choice-section').style.display = 'none';
     document.getElementById('standard-preedit-toggle-wrap').style.display = 'none';
     document.getElementById('standard-preedit-checkout-slot-collapsed').style.display = 'none';
-    document.getElementById('memories-section').style.display = 'none';
+    document.getElementById('memories-cta').style.display = 'none';
     document.getElementById('gift-video-section').style.display = 'none';
     document.getElementById('variants-wrap').innerHTML = '';
 
@@ -4552,7 +3550,6 @@
       updateMemoriesCta(order, pendingVariantChoice);
     } else {
       document.getElementById('memories-cta').style.display = 'none';
-      document.getElementById('memories-section').style.display = 'none';
     }
 
     showState('content-state');

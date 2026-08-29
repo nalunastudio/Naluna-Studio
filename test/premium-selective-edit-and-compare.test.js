@@ -319,11 +319,15 @@ test('server.js: handleLegacyRegenerate (variantId singular) ramane STRICT ramur
 // display:none implicit in HTML, vizibilitatea lor era controlata STRICT de
 // updateStandardEditMenuVisibility(), niciodata apelata pentru Premium) ramanea vizibil SUB
 // butoanele noi "Edit the lyrics"/"Continue to payment" pe pagina de rezultat.
-test('melodia-mea.html: renderPremiumFlow ascunde explicit TOATE containerele originale Standard/Video (edit-menu-fields, confirm-row, standard-choice-section, memories-section etc.) — fara ele nu au display:none implicit in HTML', () => {
+// CORECȚIE (2026-08-29, "pagina separata pentru selectarea si incarcarea media"): #memories-
+// section a fost eliminat din melodia-mea.html (widgetul de materiale s-a mutat pe
+// /amintiri-video.html) — containerul ramas de ascuns pentru pachetul video e acum STRICT
+// #memories-cta (butonul care naviga catre noua pagina).
+test('melodia-mea.html: renderPremiumFlow ascunde explicit TOATE containerele originale Standard/Video (edit-menu-fields, confirm-row, standard-choice-section, memories-cta etc.) — fara ele nu au display:none implicit in HTML', () => {
   const start = melodia.indexOf('function renderPremiumFlow(order, isResumeFlag) {');
   const end = melodia.indexOf('function renderPremiumResultView(order) {');
   const body = melodia.slice(start, end);
-  ['edit-menu-fields', 'confirm-row', 'standard-choice-section', 'standard-preedit-toggle-wrap', 'standard-preedit-checkout-slot-collapsed', 'memories-section', 'gift-video-section'].forEach(id => {
+  ['edit-menu-fields', 'confirm-row', 'standard-choice-section', 'standard-preedit-toggle-wrap', 'standard-preedit-checkout-slot-collapsed', 'memories-cta', 'gift-video-section'].forEach(id => {
     assert.ok(body.includes(`getElementById('${id}').style.display = 'none';`), `${id} trebuie ascuns explicit in renderPremiumFlow`);
   });
 });

@@ -22,6 +22,12 @@ const storageSrc = read('storage.js');
 const melodiaMea = read('public/melodia-mea.html');
 const comandaMea = read('public/comanda-mea.html');
 const succes = read('public/succes.html');
+// CORECȚIE (2026-08-29, "pagina separata pentru selectarea si incarcarea media"): widgetul de
+// materiale pentru pachetul Cadou video, testat mai jos, a fost MUTAT din melodia-mea.html in
+// public/amintiri-video.html — testele care verifica STRICT acest widget sunt retargetate catre
+// noua pagina; melodia-mea.html ramane folosit STRICT pentru asertiile despre selectorul de gen
+// (functionalitate separata, neatinsa).
+const amintiriVideo = read('public/amintiri-video.html');
 const mediaAnalysis = require('../lib/media-analysis');
 
 // ---------------------------------------------------------------------------------------------
@@ -29,6 +35,7 @@ const mediaAnalysis = require('../lib/media-analysis');
 // ---------------------------------------------------------------------------------------------
 [
   ['public/melodia-mea.html', melodiaMea],
+  ['public/amintiri-video.html', amintiriVideo],
   ['public/comanda-mea.html', comandaMea],
   ['public/succes.html', succes]
 ].forEach(([file, html]) => {
@@ -43,23 +50,26 @@ test('comanda-mea.html si succes.html: widgetul de materiale nu mai contine nici
   assert.ok(!succes.includes('<select'));
 });
 
-test('melodia-mea.html: widgetul de materiale (renderExistingList/renderQueueList) nu mai contine niciun <select> — selecturile ramase in pagina sunt STRICT pentru genul melodiei (edit-genre-select, premium-edit-song1/2-genre), neatinse', () => {
+test('amintiri-video.html: widgetul de materiale (renderExistingList/renderQueueList) nu mai contine niciun <select>', () => {
   ['function renderExistingList(order) {', 'function renderQueueList() {'].forEach(marker => {
-    const idx = melodiaMea.indexOf(marker);
+    const idx = amintiriVideo.indexOf(marker);
     assert.notEqual(idx, -1, `functia "${marker}" trebuie sa existe`);
-    const end = melodiaMea.indexOf('\n  }\n', idx);
-    const snippet = melodiaMea.slice(idx, end);
+    const end = amintiriVideo.indexOf('\n  }\n', idx);
+    const snippet = amintiriVideo.slice(idx, end);
     assert.ok(!snippet.includes('<select'), `"${marker}" nu mai trebuie sa randeze niciun <select>`);
   });
+});
+
+test('melodia-mea.html: selectorul de gen (functionalitate separata, neatinsa de mutarea widgetului de materiale) ramane', () => {
   assert.ok(melodiaMea.includes('<select id="edit-genre-select">'), 'selectorul de gen (functionalitate separata) trebuie sa ramana neatins');
 });
 
-test('melodia-mea.html: functia sectionSelectHtml() (helper-ul dropdown-ului) a fost eliminata complet', () => {
-  assert.ok(!melodiaMea.includes('function sectionSelectHtml'));
+test('amintiri-video.html: functia sectionSelectHtml() (helper-ul dropdown-ului) a fost eliminata complet', () => {
+  assert.ok(!amintiriVideo.includes('function sectionSelectHtml'));
 });
 
-test('melodia-mea.html: PUT /media/:index/section nu mai e apelat de client (fara wiring pe niciun <select>) — endpointul server-side ramane, pentru compatibilitate cu integrari vechi, dar nu mai e folosit din UI', () => {
-  assert.ok(!melodiaMea.includes("method: 'PUT',\n            headers: { 'Content-Type': 'application/json', 'X-Access-Token': accessToken },\n            body: JSON.stringify({ section:"));
+test('amintiri-video.html: PUT /media/:index/section nu mai e apelat de client (fara wiring pe niciun <select>) — endpointul server-side ramane, pentru compatibilitate cu integrari vechi, dar nu mai e folosit din UI', () => {
+  assert.ok(!amintiriVideo.includes("method: 'PUT',\n            headers: { 'Content-Type': 'application/json', 'X-Access-Token': accessToken },\n            body: JSON.stringify({ section:"));
   assert.ok(server.includes("app.put('/api/orders/:orderId/media/:index/section'"), 'endpointul server-side ramane definit, pentru compatibilitate — nu se sterge nimic din backend');
 });
 
@@ -67,10 +77,10 @@ test('melodia-mea.html: PUT /media/:index/section nu mai e apelat de client (far
 // 2. Absenta preferintelor NU blocheaza continuarea — gating-ul ramane STRICT pe numarul de
 //    materiale confirmate si starea cozii de upload, niciodata pe `section`.
 // ---------------------------------------------------------------------------------------------
-test('melodia-mea.html: updateMemoriesCountAndGates() NU verifica deloc `section` — gateaza STRICT pe numarul de materiale si starea uploadurilor', () => {
-  const idx = melodiaMea.indexOf('function updateMemoriesCountAndGates(order) {');
-  const end = melodiaMea.indexOf('\n  }', idx);
-  const snippet = melodiaMea.slice(idx, end);
+test('amintiri-video.html: updateMemoriesCountAndGates() NU verifica deloc `section` — gateaza STRICT pe numarul de materiale si starea uploadurilor', () => {
+  const idx = amintiriVideo.indexOf('function updateMemoriesCountAndGates(order) {');
+  const end = amintiriVideo.indexOf('\n  }', idx);
+  const snippet = amintiriVideo.slice(idx, end);
   assert.ok(!snippet.includes('.section'), 'gating-ul nu trebuie sa depinda de vreo preferinta de sectiune');
   assert.ok(snippet.includes('const ok = total >= MEM_MIN && total <= MEM_MAX;'));
 });
@@ -144,9 +154,9 @@ test('storage.js: uploadPrivateFile()/uploadPublicFile() folosesc fs.createReadS
   assert.ok(!storageSrc.includes(".toString('base64')"), 'niciun fisier media nu trebuie transformat vreodata in base64');
 });
 
-test('melodia-mea.html: selectia clientului NU e niciodata transformata in base64 — FormData/XHR trimite fisierul RAW, fisierul e citit doar pentru thumbnail-uri (imagini) prin URL.createObjectURL, niciodata FileReader.readAsDataURL', () => {
-  assert.ok(!melodiaMea.includes('readAsDataURL'));
-  assert.ok(melodiaMea.includes("formData.append('media', entry.file);"), 'fisierul RAW (nu o copie transformata) trebuie trimis direct');
+test('amintiri-video.html: selectia clientului NU e niciodata transformata in base64 — FormData/XHR trimite fisierul RAW, fisierul e citit doar pentru thumbnail-uri (imagini) prin createImageBitmap, niciodata FileReader.readAsDataURL', () => {
+  assert.ok(!amintiriVideo.includes('readAsDataURL'));
+  assert.ok(amintiriVideo.includes("formData.append('media', entry.file);"), 'fisierul RAW (nu o copie transformata) trebuie trimis direct');
 });
 
 test('server.js: UPLOAD_TIMEOUT_MS-ul functional pentru validare (ffprobe) ramane rezonabil de scurt implicit (probe de metadata, nu decodare completa — nu creste odata cu dimensiunea fisierului)', () => {
@@ -158,8 +168,8 @@ test('server.js: UPLOAD_TIMEOUT_MS-ul functional pentru validare (ffprobe) raman
   assert.ok(server.includes('], { timeout: timeoutMs });'));
 });
 
-test('melodia-mea.html: UPLOAD_TIMEOUT_MS (client, XHR per fisier) marit generos, pentru fisiere mari pe conexiuni mobile mai lente', () => {
-  assert.match(melodiaMea, /const UPLOAD_TIMEOUT_MS = 900000;/);
+test('amintiri-video.html: UPLOAD_TIMEOUT_MS (client, XHR per fisier) marit generos, pentru fisiere mari pe conexiuni mobile mai lente', () => {
+  assert.match(amintiriVideo, /const UPLOAD_TIMEOUT_MS = 900000;/);
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -211,10 +221,10 @@ test('verificare reala: un fisier de 300MB si unul de 500MB (create ca fisiere r
 // ---------------------------------------------------------------------------------------------
 // 7. Sintaxa ramane valida in toate fisierele atinse; celelalte pachete raman neatinse.
 // ---------------------------------------------------------------------------------------------
-test('server.js, melodia-mea.html, comanda-mea.html, succes.html: raman sintactic valide', () => {
+test('server.js, melodia-mea.html, amintiri-video.html, comanda-mea.html, succes.html: raman sintactic valide', () => {
   const { execSync } = require('node:child_process');
   execSync('node --check server.js', { cwd: path.join(__dirname, '..') });
-  [melodiaMea, comandaMea, succes].forEach(html => {
+  [melodiaMea, amintiriVideo, comandaMea, succes].forEach(html => {
     const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)];
     scripts.forEach(m => { new Function(m[1]); });
   });

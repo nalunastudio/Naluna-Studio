@@ -25,8 +25,13 @@ const PAGES_WITH_NEUTRAL_MESSAGE = {
   'comanda-mea.html': read('public/comanda-mea.html'),
   'succes.html': read('public/succes.html')
 };
+// CORECȚIE (2026-08-29, "pagina separata pentru selectarea si incarcarea media"): mecanismul
+// simplu de blocare/deblocare a selectorului (pickerLocked/PICKER_MANUAL_RECOVERY_MS), testat
+// aici pentru pachetul Cadou video, a fost MUTAT din melodia-mea.html in
+// public/amintiri-video.html — retargetat STRICT aceasta pagina; comanda-mea.html/succes.html
+// (checkPickerDelivery, mecanism distinct) raman NEATINSE.
 const ALL_PAGES = {
-  'melodia-mea.html': read('public/melodia-mea.html'),
+  'amintiri-video.html': read('public/amintiri-video.html'),
   ...PAGES_WITH_NEUTRAL_MESSAGE
 };
 
@@ -135,7 +140,7 @@ for (const [name, html] of Object.entries(ALL_PAGES)) {
   });
 
   test(`${name}: handler-ul de 'change' NU verifica deloc durata scursa (pickerLockedAt) — proceseaza fisierele indiferent cat timp a durat pregatirea lor`, () => {
-    const changeMarker = name === 'melodia-mea.html' ? "memFileInput.addEventListener('change', () => {" : "fileInput.addEventListener('change', () => {";
+    const changeMarker = name === 'amintiri-video.html' ? "memFileInput.addEventListener('change', () => {" : "fileInput.addEventListener('change', () => {";
     const idx = html.indexOf(changeMarker);
     assert.notEqual(idx, -1);
     const snippet = html.slice(idx, idx + 300);
@@ -186,7 +191,7 @@ for (const [name, html] of Object.entries(PAGES_WITH_NEUTRAL_MESSAGE)) {
 // -------------------------------------------------------------------------------------------
 for (const [name, html] of Object.entries(ALL_PAGES)) {
   test(`${name}: dupa 'change', renderQueueList() (toate cardurile) ruleaza SINCRON, inainte de processUploadQueue() — neschimbat de aceasta corectie`, () => {
-    const changeMarker = name === 'melodia-mea.html' ? "memFileInput.addEventListener('change', () => {" : "fileInput.addEventListener('change', () => {";
+    const changeMarker = name === 'amintiri-video.html' ? "memFileInput.addEventListener('change', () => {" : "fileInput.addEventListener('change', () => {";
     const idx = html.indexOf(changeMarker);
     const renderIdx = html.indexOf('renderQueueList();', idx);
     const processIdx = html.indexOf('processUploadQueue();', idx);

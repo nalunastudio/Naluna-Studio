@@ -24,6 +24,12 @@ function read(relPath) {
 
 const server = read('server.js');
 const melodiaMea = read('public/melodia-mea.html');
+// CORECȚIE (2026-08-29, "pagina separata pentru selectarea si incarcarea media"): coada de
+// materiale + butonul "Creează videoclipul meu cadou" (testate mai jos) au fost MUTATE din
+// melodia-mea.html in public/amintiri-video.html — retargetat STRICT aceasta pagina pentru
+// asertiile despre widget; melodia-mea.html pastreaza STRICT meniul de editare/starea video/
+// previzualizarea finala.
+const amintiriVideo = read('public/amintiri-video.html');
 
 function extractFunction(src, marker) {
   const start = src.indexOf(marker);
@@ -40,13 +46,12 @@ function extractFunction(src, marker) {
 // 1. COMPORTAMENTUL MENIULUI DE EDITARE — ascunde sectiunea media + textul despre editarea
 //    gratuita cat timp meniul e deschis; le reafiseaza la inchidere (fara regenerare).
 // ---------------------------------------------------------------------------------------------
-test('melodia-mea.html: meniul de editare deschis (menuExpanded) ascunde STRICT sectiunea media si textul despre editarea gratuita, pentru pachetul video', () => {
+test('melodia-mea.html: meniul de editare deschis (menuExpanded) ascunde STRICT butonul de materiale si textul despre editarea gratuita, pentru pachetul video', () => {
   const idx = melodiaMea.indexOf("function updateStandardEditMenuVisibility(order, pendingVariantChoice) {");
   const body = extractFunction(melodiaMea, "function updateStandardEditMenuVisibility(order, pendingVariantChoice) {");
   assert.ok(body.includes("if (order.plan === 'video') {"));
   assert.ok(body.includes("document.getElementById('edits-info-msg').style.display = menuExpanded ? 'none' : '';"));
   assert.ok(body.includes("document.getElementById('memories-cta').style.display = 'none';"));
-  assert.ok(body.includes("document.getElementById('memories-section').style.display = 'none';"));
 });
 
 test('melodia-mea.html: inchiderea meniului (fara regenerare) reafiseaza sectiunea media prin updateMemoriesCta — melodia initiala ramane versiunea aleasa', () => {
@@ -81,35 +86,31 @@ test('melodia-mea.html: dupa o regenerare REALA (ecranul de comparare), sectiune
   assert.ok(snippet.includes("if (order.plan === 'video') updateMemoriesCta(order, pendingVariantChoice);"));
 });
 
-test('melodia-mea.html: updateMemoriesCta() ascunde sectiunea media STRICT cat timp pendingVariantChoice e adevarat', () => {
+test('melodia-mea.html: updateMemoriesCta() ascunde butonul de materiale STRICT cat timp pendingVariantChoice e adevarat', () => {
   const body = extractFunction(melodiaMea, 'function updateMemoriesCta(order, pendingVariantChoice) {');
-  assert.ok(body.includes('if (pendingVariantChoice) {'));
-  const idx = body.indexOf('if (pendingVariantChoice) {');
-  const snippet = body.slice(idx, idx + 300);
-  assert.ok(snippet.includes("ctaWrap.style.display = 'none';"));
-  assert.ok(snippet.includes("section.style.display = 'none';"));
+  assert.ok(body.includes("ctaWrap.style.display = pendingVariantChoice ? 'none' : 'block';"));
 });
 
 // ---------------------------------------------------------------------------------------------
 // 2. CLARITATEA INCARCARII — starea "Încărcat" e confirmata STRICT server-side; thumbnail-urile
 //    esuate cad pe pictograma, niciodata pe un card gol.
 // ---------------------------------------------------------------------------------------------
-test('melodia-mea.html: lista de materiale CONFIRMATE (mem-uploaded-list) se construieste STRICT din order.uploadedMedia (confirmat de server) — nu din coada locala', () => {
-  const body = extractFunction(melodiaMea, 'function renderExistingList(order) {');
+test('amintiri-video.html: lista de materiale CONFIRMATE (mem-uploaded-list) se construieste STRICT din order.uploadedMedia (confirmat de server) — nu din coada locala', () => {
+  const body = extractFunction(amintiriVideo, 'function renderExistingList(order) {');
   assert.ok(body.includes('const uploaded = order.uploadedMedia || [];'));
   assert.ok(!body.includes('uploadQueue'), 'lista de materiale confirmate nu trebuie sa foloseasca deloc coada locala de upload');
 });
 
-test('melodia-mea.html: thumbnail-ul care esueaza la incarcare (onerror) revine STRICT la pictograma — niciodata un card gol', () => {
-  const body = extractFunction(melodiaMea, 'function renderExistingList(order) {');
+test('amintiri-video.html: thumbnail-ul care esueaza la incarcare (onerror) revine STRICT la pictograma — niciodata un card gol', () => {
+  const body = extractFunction(amintiriVideo, 'function renderExistingList(order) {');
   const idx = body.indexOf('[data-thumb-index]');
   const snippet = body.slice(idx, idx + 900);
   assert.ok(snippet.includes("mediaEl.addEventListener('error'"));
   assert.ok(snippet.includes('fallbackIcon'));
 });
 
-test('melodia-mea.html: coada locala de upload afiseaza STRICT cele 5 stari cerute (pending/uploading/processing/error/implicit=incarcat)', () => {
-  const body = extractFunction(melodiaMea, 'function renderQueueRowInner(q) {');
+test('amintiri-video.html: coada locala de upload afiseaza STRICT cele 5 stari cerute (pending/uploading/processing/error/implicit=incarcat)', () => {
+  const body = extractFunction(amintiriVideo, 'function renderQueueRowInner(q) {');
   assert.ok(body.includes("q.status === 'uploading' ? t.memories_uploading_pct(q.progress)"));
   assert.ok(body.includes("q.status === 'processing' ? t.memories_processing"));
   assert.ok(body.includes("q.status === 'pending' ? t.memories_queued"));
@@ -117,8 +118,8 @@ test('melodia-mea.html: coada locala de upload afiseaza STRICT cele 5 stari ceru
   assert.ok(body.includes('t.memories_uploaded'));
 });
 
-test('melodia-mea.html: un material devine "confirmat" STRICT dupa raspunsul cu succes al serverului — este eliminat din coada locala si sincronizat cu order.uploadedMedia (scheduleMemSync), niciodata marcat "Încărcat" doar local', () => {
-  const body = extractFunction(melodiaMea, 'function startSingleUpload(entry) {');
+test('amintiri-video.html: un material devine "confirmat" STRICT dupa raspunsul cu succes al serverului — este eliminat din coada locala si sincronizat cu order.uploadedMedia (scheduleMemSync), niciodata marcat "Încărcat" doar local', () => {
+  const body = extractFunction(amintiriVideo, 'function startSingleUpload(entry) {');
   assert.ok(body.includes('uploadQueue = uploadQueue.filter(q => q.localId !== entry.localId);'));
   assert.ok(body.includes('scheduleMemSync();'));
 });
@@ -127,25 +128,28 @@ test('melodia-mea.html: un material devine "confirmat" STRICT dupa raspunsul cu 
 // 3. BUTONUL DE CREARE — apare STRICT cand toate conditiile sunt indeplinite simultan; o
 //    singura apasare = un singur job.
 // ---------------------------------------------------------------------------------------------
-test('melodia-mea.html: butonul de creare a videoclipului exista, plasat langa zona de stare video, folosind stilul existent (.btn-cta-orange)', () => {
-  assert.ok(melodiaMea.includes('id="gift-video-create"'));
-  assert.ok(melodiaMea.includes('id="gift-video-create-btn"'));
-  const idx = melodiaMea.indexOf('id="gift-video-create"');
-  const snippet = melodiaMea.slice(idx, idx + 400);
+// CORECȚIE (2026-08-29, "pagina separata pentru selectarea si incarcarea media"): butonul
+// "Creează videoclipul meu cadou" a fost MUTAT pe /amintiri-video.html (acelasi id, acelasi
+// stil .btn-cta-orange) — el apare STRICT dupa ce materialele sunt confirmate de server pe
+// ACEA pagina; melodia-mea.html nu mai porneste niciodata randarea.
+test('amintiri-video.html: butonul de creare a videoclipului exista, folosind stilul existent (.btn-cta-orange)', () => {
+  assert.ok(amintiriVideo.includes('id="gift-video-create"'));
+  assert.ok(amintiriVideo.includes('id="gift-video-create-btn"'));
+  const idx = amintiriVideo.indexOf('id="gift-video-create"');
+  const snippet = amintiriVideo.slice(idx, idx + 400);
   assert.ok(snippet.includes('class="btn-cta-orange"'));
 });
 
-test('melodia-mea.html: updateVideoStatusUI() ofera butonul de creare STRICT cand nu exista niciun job activ/cerut, versiunea finala e stabilita, materialele sunt confirmate de server SI coada locala e goala', () => {
-  const body = extractFunction(melodiaMea, 'function updateVideoStatusUI(order, pendingVariantChoice) {');
-  assert.ok(body.includes('const jobActiveOrPending = order.videoStatus === \'generating\' || order.videoStatus === \'stale\' || order.videoStatus === \'failed\' || videoCreationInFlight;'));
-  assert.ok(body.includes('if (!jobActiveOrPending) {'));
-  assert.ok(body.includes('const mediaReady = !pendingVariantChoice && !!order.mediaConfirmedAt && uploadQueue.length === 0;'));
+test('amintiri-video.html: updateCreateButtonVisibility() ofera butonul de creare STRICT cand nu exista niciun job activ, materialele sunt confirmate de server SI coada locala e goala', () => {
+  const body = extractFunction(amintiriVideo, 'function updateCreateButtonVisibility(order, gateOk) {');
+  assert.ok(body.includes("if (order.videoStatus && order.videoStatus !== 'none' && order.videoStatus !== 'failed') {"), 'trebuie sa ascunda butonul cat timp exista deja un job activ/gata');
+  assert.ok(body.includes('const mediaReady = gateOk && !!order.mediaConfirmedAt && uploadQueue.length === 0;'));
 });
 
-test('melodia-mea.html: apasarea butonului de creare foloseste un flag local (giftVideoCreateRequested) care blocheaza sincron a doua cerere — dublu-tapul nu porneste doua joburi', () => {
-  const idx = melodiaMea.indexOf("document.getElementById('gift-video-create-btn').addEventListener('click'");
+test('amintiri-video.html: apasarea butonului de creare foloseste un flag local (giftVideoCreateRequested) care blocheaza sincron a doua cerere — dublu-tapul nu porneste doua joburi', () => {
+  const idx = amintiriVideo.indexOf("document.getElementById('gift-video-create-btn').addEventListener('click'");
   assert.notEqual(idx, -1);
-  const snippet = melodiaMea.slice(idx, idx + 600);
+  const snippet = amintiriVideo.slice(idx, idx + 600);
   assert.ok(snippet.includes('if (giftVideoCreateRequested) return;'));
   assert.ok(snippet.includes('giftVideoCreateRequested = true;'));
   assert.ok(snippet.includes('btn.disabled = true;'));
@@ -325,9 +329,9 @@ test('melodia-mea.html: fluxul Premium (renderPremiumFlow) ramane complet separa
   assert.ok(melodiaMea.includes('function renderPremiumFlow(order, isResumeFlag) {'));
 });
 
-test('melodia-mea.html: uploadul multipart direct catre R2 (Round 6) ramane neschimbat — nu e cauza demonstrata a acestei runde', () => {
-  assert.ok(melodiaMea.includes('async function startMultipartUpload(entry) {'));
-  assert.ok(melodiaMea.includes('const MEM_MULTIPART_THRESHOLD_BYTES = 20 * 1024 * 1024;'));
+test('amintiri-video.html: uploadul multipart direct catre R2 (Round 6) ramane neschimbat — nu e cauza demonstrata a acestei runde', () => {
+  assert.ok(amintiriVideo.includes('async function startMultipartUpload(entry) {'));
+  assert.ok(amintiriVideo.includes('const MEM_MULTIPART_THRESHOLD_BYTES = 20 * 1024 * 1024;'));
 });
 
 test('storage.js: functiile multipart/CORS raman neschimbate', () => {
@@ -339,9 +343,11 @@ test('storage.js: functiile multipart/CORS raman neschimbate', () => {
 // ---------------------------------------------------------------------------------------------
 // 11. Sintaxa ramane valida.
 // ---------------------------------------------------------------------------------------------
-test('melodia-mea.html: ramane sintactic valid dupa Runda 11', () => {
-  const scripts = [...melodiaMea.matchAll(/<script>([\s\S]*?)<\/script>/g)];
-  scripts.forEach(m => { new Function(m[1]); });
+test('melodia-mea.html, amintiri-video.html: raman sintactic valide dupa Runda 11', () => {
+  [melodiaMea, amintiriVideo].forEach(html => {
+    const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)];
+    scripts.forEach(m => { new Function(m[1]); });
+  });
 });
 
 test('server.js: ramane sintactic valid dupa Runda 11', () => {

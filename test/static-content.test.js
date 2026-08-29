@@ -116,8 +116,10 @@ test('scenariul 17: emailul de livrare include link direct catre videoclip pentr
 // investigatie live in productie, vezi raportul hotfix pentru detalii complete).
 // ==========================================================================================
 
+// CORECȚIE (2026-08-29, "pagina separata pentru selectarea si incarcarea media"): coada de
+// incarcare testata aici a fost MUTATA din melodia-mea.html in public/amintiri-video.html.
 test('hotfix upload iPhone: coada de incarcare limiteaza concurenta explicit (nu porneste toate fisierele deodata)', () => {
-  const html = read('public/melodia-mea.html');
+  const html = read('public/amintiri-video.html');
   assert.ok(html.includes('MAX_CONCURRENT_UPLOADS'), 'trebuie sa existe o limita explicita de uploaduri simultane');
   assert.ok(html.includes('processUploadQueue'), 'trebuie sa existe o functie care porneste doar cate un numar limitat de uploaduri deodata');
   assert.ok(
@@ -127,7 +129,7 @@ test('hotfix upload iPhone: coada de incarcare limiteaza concurenta explicit (nu
 });
 
 test('hotfix upload iPhone: fiecare upload are un timeout explicit, niciodata spinner etern', () => {
-  const html = read('public/melodia-mea.html');
+  const html = read('public/amintiri-video.html');
   assert.ok(html.includes('xhr.timeout'), 'trebuie setat un timeout explicit pe XMLHttpRequest');
   assert.ok(html.includes('xhr.ontimeout'), 'timeoutul trebuie sa produca o stare finala de eroare, nu ramane blocat');
 });

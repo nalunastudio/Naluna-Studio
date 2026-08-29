@@ -15,8 +15,13 @@ function read(relPath) {
   return fs.readFileSync(path.join(__dirname, '..', relPath), 'utf8');
 }
 
+// CORECȚIE (2026-08-29, "pagina separata pentru selectarea si incarcarea media"): uploaderul
+// multipart direct-catre-R2 testat aici pentru pachetul Cadou video a fost MUTAT din
+// melodia-mea.html in public/amintiri-video.html — retargetat STRICT aceasta pagina;
+// comanda-mea.html si succes.html au propriile copii NEATINSE ale aceluiasi mecanism, folosite
+// de fluxuri complet distincte (neschimbate in aceasta corectie).
 const PAGES = {
-  'melodia-mea.html': read('public/melodia-mea.html'),
+  'amintiri-video.html': read('public/amintiri-video.html'),
   'comanda-mea.html': read('public/comanda-mea.html'),
   'succes.html': read('public/succes.html')
 };
@@ -247,7 +252,7 @@ test('server.js: nicio ruta multipart nu ocoleste requireOrderToken si nicio che
   assert.ok(!server.includes('S3_SECRET_ACCESS_KEY') || server.match(/S3_SECRET_ACCESS_KEY/g).length <= 1, 'server.js nu trebuie sa manipuleze direct cheia secreta R2 (asta ramane in storage.js)');
 });
 
-test('server.js, melodia-mea.html, comanda-mea.html, succes.html, storage.js: raman sintactic valide dupa corectiile Rundei 6', () => {
+test('server.js, amintiri-video.html, comanda-mea.html, succes.html, storage.js: raman sintactic valide dupa corectiile Rundei 6', () => {
   assert.doesNotThrow(() => { require('node:child_process').execSync(`node --check "${path.join(__dirname, '..', 'server.js')}"`); });
   assert.doesNotThrow(() => { require('node:child_process').execSync(`node --check "${path.join(__dirname, '..', 'storage.js')}"`); });
   for (const [name, html] of Object.entries(PAGES)) {

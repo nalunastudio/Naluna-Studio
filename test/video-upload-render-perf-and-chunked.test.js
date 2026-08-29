@@ -24,8 +24,12 @@ function read(relPath) {
   return fs.readFileSync(path.join(__dirname, '..', relPath), 'utf8');
 }
 
+// CORECȚIE (2026-08-29, "pagina separata pentru selectarea si incarcarea media"): coada de
+// upload/progres/sincronizare testata aici pentru pachetul Cadou video a fost MUTATA din
+// melodia-mea.html in public/amintiri-video.html — retargetat STRICT aceasta pagina;
+// comanda-mea.html/succes.html au propriile copii NEATINSE, folosite de fluxuri distincte.
 const PAGES = {
-  'melodia-mea.html': read('public/melodia-mea.html'),
+  'amintiri-video.html': read('public/amintiri-video.html'),
   'comanda-mea.html': read('public/comanda-mea.html'),
   'succes.html': read('public/succes.html')
 };
@@ -47,7 +51,7 @@ for (const [name, html] of Object.entries(PAGES)) {
   //    inainte de orice raspuns de retea (nu asteapta thumbnailuri/metadate/server).
   // -----------------------------------------------------------------------------------------
   test(`${name}: dupa 'change', renderQueueList() (rebuild COMPLET al intregii selectii) e apelat SINCRON, inainte de processUploadQueue()`, () => {
-    const changeMarker = name === 'melodia-mea.html' ? "memFileInput.addEventListener('change', () => {" : "fileInput.addEventListener('change', () => {";
+    const changeMarker = name === 'amintiri-video.html' ? "memFileInput.addEventListener('change', () => {" : "fileInput.addEventListener('change', () => {";
     const idx = html.indexOf(changeMarker);
     assert.notEqual(idx, -1);
     const renderIdx = html.indexOf('renderQueueList();', idx);
@@ -139,7 +143,7 @@ for (const [name, html] of Object.entries(PAGES)) {
   });
 
   test(`${name}: memBatchDoneCount creste STRICT la succesul confirmat de server (in xhr.onload / completeRes), niciodata in handler-ul de 'change'`, () => {
-    const changeMarker = name === 'melodia-mea.html' ? "memFileInput.addEventListener('change', () => {" : "fileInput.addEventListener('change', () => {";
+    const changeMarker = name === 'amintiri-video.html' ? "memFileInput.addEventListener('change', () => {" : "fileInput.addEventListener('change', () => {";
     const changeIdx = html.indexOf(changeMarker);
     const changeEnd = html.indexOf('\n  });', changeIdx);
     const changeSnippet = html.slice(changeIdx, changeEnd === -1 ? changeIdx + 3000 : changeEnd);
@@ -169,7 +173,7 @@ for (const [name, html] of Object.entries(PAGES)) {
 
 const server = read('server.js');
 
-test('server.js, melodia-mea.html, comanda-mea.html, succes.html: raman sintactic valide dupa corectiile Rundei 5', () => {
+test('server.js, amintiri-video.html, comanda-mea.html, succes.html: raman sintactic valide dupa corectiile Rundei 5', () => {
   assert.doesNotThrow(() => { require('node:child_process').execSync(`node --check "${path.join(__dirname, '..', 'server.js')}"`); });
   for (const [name, html] of Object.entries(PAGES)) {
     const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)];

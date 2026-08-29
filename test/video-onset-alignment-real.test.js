@@ -86,7 +86,14 @@ test.before(() => {
     "const path = require('path');",
     "const fs = require('fs');",
     'const TEMP_DIR = ' + JSON.stringify(renderWorkDir) + ';',
-    'const MEMORY_VIDEO_WIDTH = 720; const MEMORY_VIDEO_HEIGHT = 1280; const MEMORY_VIDEO_FPS = 25; const MEMORY_XFADE_SECONDS = 0.6;',
+    // CORECȚIE (2026-08-29): rezolutia/fps/preset/CRF sunt extrase DINAMIC din server.js (nu mai
+    // hardcodate la vechea rezolutie 720x1280/25fps).
+    extractConst('MEMORY_VIDEO_WIDTH'),
+    extractConst('MEMORY_VIDEO_HEIGHT'),
+    extractConst('MEMORY_VIDEO_FPS'),
+    extractConst('MEMORY_XFADE_SECONDS'),
+    extractConst('VIDEO_ENCODE_PRESET'),
+    extractConst('VIDEO_INTERMEDIATE_CRF'),
     extractConst('CONCAT_BATCH_SIZE'),
     "async function execFfmpeg(args, options = {}) { return realExecFileAsync('ffmpeg', ['-hide_banner','-loglevel','error','-nostats',...args], { maxBuffer: 40*1024*1024, ...options }); }",
     "function perfLog() {}",
@@ -95,10 +102,14 @@ test.before(() => {
     extractFn('wrapVideoRenderStageError'),
     extractFn('computeVideoSegmentStartOffset'),
     extractFn('getVideoSourceDurationSeconds'),
+    extractConst('HDR_COLOR_TRANSFER_VALUES'),
+    extractFn('detectHdrVideo'),
+    extractConst('HDR_TONEMAP_FILTER'),
+    extractFn('buildHdrToneMapFilterIfNeeded'),
     extractFn('renderShot'),
     extractFn('concatBatchWithCrossfades'),
     extractFn('concatWithCrossfades'),
-    'return { renderShot, concatWithCrossfades, extractAudioOnsets, CONCAT_BATCH_SIZE };'
+    'return { renderShot, concatWithCrossfades, extractAudioOnsets, CONCAT_BATCH_SIZE, MEMORY_VIDEO_WIDTH, MEMORY_VIDEO_HEIGHT, MEMORY_VIDEO_FPS };'
   ].join('\n\n');
 
   mod = new Function('realExecFileAsync', 'require', finalSrc)(realExecFileAsync, require);

@@ -62,17 +62,29 @@ test.before(() => {
     "const path = require('path');",
     "const fs = require('fs');",
     'const TEMP_DIR = ' + JSON.stringify(renderWorkDir) + ';',
-    'const MEMORY_VIDEO_WIDTH = 720; const MEMORY_VIDEO_HEIGHT = 1280; const MEMORY_VIDEO_FPS = 25; const MEMORY_XFADE_SECONDS = 0.6;',
+    // CORECȚIE (2026-08-29): rezolutia/fps/preset/CRF sunt extrase DINAMIC din server.js (nu mai
+    // hardcodate la vechea rezolutie 720x1280/25fps) — testul ramane corect automat la orice
+    // schimbare viitoare de rezolutie/calitate a pipeline-ului, fara sa mai trebuiasca actualizat.
+    extractConst('MEMORY_VIDEO_WIDTH'),
+    extractConst('MEMORY_VIDEO_HEIGHT'),
+    extractConst('MEMORY_VIDEO_FPS'),
+    extractConst('MEMORY_XFADE_SECONDS'),
+    extractConst('VIDEO_ENCODE_PRESET'),
+    extractConst('VIDEO_INTERMEDIATE_CRF'),
     "async function execFfmpeg(args, options = {}) { return execFileAsync('ffmpeg', ['-hide_banner','-loglevel','error','-nostats',...args], { maxBuffer: 20*1024*1024, ...options }); }",
     "function perfLog() {}",
     extractConst('CONCAT_BATCH_SIZE'),
     extractFn('wrapVideoRenderStageError'),
     extractFn('computeVideoSegmentStartOffset'),
     extractFn('getVideoSourceDurationSeconds'),
+    extractConst('HDR_COLOR_TRANSFER_VALUES'),
+    extractFn('detectHdrVideo'),
+    extractConst('HDR_TONEMAP_FILTER'),
+    extractFn('buildHdrToneMapFilterIfNeeded'),
     extractFn('renderShot'),
     extractFn('concatBatchWithCrossfades'),
     extractFn('concatWithCrossfades'),
-    'return { renderShot, concatWithCrossfades };'
+    'return { renderShot, concatWithCrossfades, MEMORY_VIDEO_WIDTH, MEMORY_VIDEO_HEIGHT, MEMORY_VIDEO_FPS };'
   ].join('\n\n');
   mod = new Function('execFileAsync', 'require', src)(execFileAsync, require);
 });
@@ -174,8 +186,8 @@ test('RANDARE REALA (3 poze + 1 video, fallback fara sectiuni): toate cele 4 mat
 
   const duration = ffprobeDuration(bg);
   assert.ok(Math.abs(duration - durationSeconds) < 0.5, `durata finala trebuie sa fie ~${durationSeconds}s, a fost ${duration}s`);
-  assert.equal(ffprobeStream(bg, 'v:0', 'width'), '720');
-  assert.equal(ffprobeStream(bg, 'v:0', 'height'), '1280');
+  assert.equal(ffprobeStream(bg, 'v:0', 'width'), String(mod.MEMORY_VIDEO_WIDTH));
+  assert.equal(ffprobeStream(bg, 'v:0', 'height'), String(mod.MEMORY_VIDEO_HEIGHT));
 
   // Esantioane de culoare REALE — confirma ca materialul CORECT apare la timpul asteptat din
   // plan (nu doar ca planul "spune" asta pe hartie). Esantionate din zona REAL "pura" a

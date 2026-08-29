@@ -23,7 +23,11 @@ function read(relPath) {
   return fs.readFileSync(path.join(__dirname, '..', relPath), 'utf8');
 }
 
-const melodiaMea = read('public/melodia-mea.html');
+// CORECȚIE (2026-08-29, "pagina separata pentru selectarea si incarcarea media"): intreaga
+// logica de upload/coada/thumbnailuri testata in acest fisier a fost MUTATA din melodia-mea.html
+// in public/amintiri-video.html (pagina dedicata materialelor pentru pachetul Cadou video) —
+// retargetat STRICT sursa citita, fara sa slabim nicio asertie existenta.
+const melodiaMea = read('public/amintiri-video.html');
 
 function extractFunction(src, marker) {
   const start = src.indexOf(marker);
@@ -41,7 +45,7 @@ function extractFunction(src, marker) {
 // 1. Niciun text vizibil nu mai mentioneaza 150MB, in nicio limba — verificat STRICT pe
 //    memories_meta (hint-ul static), care fusese uitat in runda anterioara.
 // ---------------------------------------------------------------------------------------------
-test('melodia-mea.html: memories_meta (hint-ul static "Între 3 și 10 materiale...") nu mai contine "150MB" in nicio limba', () => {
+test('amintiri-video.html: memories_meta (hint-ul static "Între 3 și 10 materiale...") nu mai contine "150MB" in nicio limba', () => {
   const occurrences = (melodiaMea.match(/memories_meta: \(min, max\) => `[^`]*`/g) || []);
   assert.equal(occurrences.length, 8, 'trebuie sa existe exact 8 definitii memories_meta (una per limba)');
   occurrences.forEach(block => {
@@ -49,7 +53,7 @@ test('melodia-mea.html: memories_meta (hint-ul static "Între 3 și 10 materiale
   });
 });
 
-test('melodia-mea.html: memories_meta (RO) foloseste exact formatul cerut, fara nicio limita arbitrara noua', () => {
+test('amintiri-video.html: memories_meta (RO) foloseste exact formatul cerut, fara nicio limita arbitrara noua', () => {
   const idx = melodiaMea.indexOf('memories_meta: (min, max) => `Între');
   const end = melodiaMea.indexOf('`,', idx);
   const text = melodiaMea.slice(idx, end + 1);
@@ -101,7 +105,7 @@ test('memories_count: functia primeste acum 4 parametri (n, min, max, pending), 
   assert.equal(occurrences, 8, 'toate cele 8 limbi trebuie sa accepte parametrul "pending"');
 });
 
-test('melodia-mea.html: updateMemoriesCountAndGates() calculeaza si transmite numarul de materiale in curs (uploading/pending) catre memories_count()', () => {
+test('amintiri-video.html: updateMemoriesCountAndGates() calculeaza si transmite numarul de materiale in curs (uploading/pending) catre memories_count()', () => {
   const idx = melodiaMea.indexOf('function updateMemoriesCountAndGates(order) {');
   const end = melodiaMea.indexOf('\n  }', idx);
   const snippet = melodiaMea.slice(idx, end);
@@ -146,7 +150,7 @@ test('isVideoFile(): fisier cu MIME explicit "image/heic" ramane fotografie, ind
   assert.equal(isVideoFile({ type: 'image/heic', name: 'poza.heic' }), false);
 });
 
-test('melodia-mea.html: renderQueueRowInner() foloseste isVideoFile() (nu file.type.startsWith direct) pentru iconita din coada', () => {
+test('amintiri-video.html: renderQueueRowInner() foloseste isVideoFile() (nu file.type.startsWith direct) pentru iconita din coada', () => {
   const idx = melodiaMea.indexOf('function renderQueueRowInner(q) {');
   assert.notEqual(idx, -1);
   const snippet = melodiaMea.slice(idx, idx + 500);
@@ -158,7 +162,7 @@ test('melodia-mea.html: renderQueueRowInner() foloseste isVideoFile() (nu file.t
 // 4. Capturarea intregii selectii — verificare structurala a handler-ului de `change`:
 //    fiecare fisier din FileList e adaugat necondiționat in coada, indiferent de tip.
 // ---------------------------------------------------------------------------------------------
-test('melodia-mea.html: handler-ul de change NU filtreaza dupa tip (photo/video) — fiecare fisier din FileList primeste o intrare in coada, fara exceptie', () => {
+test('amintiri-video.html: handler-ul de change NU filtreaza dupa tip (photo/video) — fiecare fisier din FileList primeste o intrare in coada, fara exceptie', () => {
   const idx = melodiaMea.indexOf("memFileInput.addEventListener('change'");
   const end = melodiaMea.indexOf('processUploadQueue();', idx);
   const snippet = melodiaMea.slice(idx, end);
@@ -167,14 +171,14 @@ test('melodia-mea.html: handler-ul de change NU filtreaza dupa tip (photo/video)
   assert.ok(!/if\s*\(\s*file\.type/.test(snippet), 'nu trebuie sa existe nicio conditie care exclude fisiere dupa tip inainte de a le adauga in coada');
 });
 
-test('melodia-mea.html: FileList e copiat SINCRON intr-un array stabil (Array.from), inainte de orice alta operatie — nicio referinta pastrata la FileList-ul original peste operatii asincrone', () => {
+test('amintiri-video.html: FileList e copiat SINCRON intr-un array stabil (Array.from), inainte de orice alta operatie — nicio referinta pastrata la FileList-ul original peste operatii asincrone', () => {
   const idx = melodiaMea.indexOf("memFileInput.addEventListener('change', () => {");
   assert.notEqual(idx, -1, 'handler-ul trebuie sa ramana sincron (nu async), garantand ca Array.from ruleaza imediat, in acelasi tick cu evenimentul');
   const snippet = melodiaMea.slice(idx, idx + 250);
   assert.ok(snippet.includes('const files = Array.from(memFileInput.files);'));
 });
 
-test('melodia-mea.html: inputul e resetat DUPA copierea completa a FileList-ului (memFileInput.value dupa Array.from), niciodata inainte', () => {
+test('amintiri-video.html: inputul e resetat DUPA copierea completa a FileList-ului (memFileInput.value dupa Array.from), niciodata inainte', () => {
   const idx = melodiaMea.indexOf('const files = Array.from(memFileInput.files);');
   const resetIdx = melodiaMea.indexOf("memFileInput.value = '';", idx);
   const between = melodiaMea.slice(idx, resetIdx);
@@ -183,7 +187,7 @@ test('melodia-mea.html: inputul e resetat DUPA copierea completa a FileList-ului
   assert.ok(!/if\s*\(|for\s*\(|files\.forEach|\.push\(/.test(between.replace(/mediaDebugLog\([^)]*\)/g, '')), 'intre copiere si resetare nu trebuie sa existe alta logica decat diagnosticul');
 });
 
-test('melodia-mea.html: eroarea la construirea unei intrari (try/catch per fisier) NU scoate fisierul din lot — e adaugat in coada cu status "error", vizibil, cu retry', () => {
+test('amintiri-video.html: eroarea la construirea unei intrari (try/catch per fisier) NU scoate fisierul din lot — e adaugat in coada cu status "error", vizibil, cu retry', () => {
   const idx = melodiaMea.indexOf('files.forEach(file => {');
   const end = melodiaMea.indexOf('processUploadQueue();', idx);
   const snippet = melodiaMea.slice(idx, end);
@@ -198,7 +202,7 @@ test('melodia-mea.html: eroarea la construirea unei intrari (try/catch per fisie
 // 5. Un singur input, un singur eveniment de confirmare — fara selectoare separate pentru
 //    fotografii/videoclipuri, fara `capture`.
 // ---------------------------------------------------------------------------------------------
-test('melodia-mea.html: inputul ramane unic, "multiple", accepta simultan image/* si video/*, fara atributul capture', () => {
+test('amintiri-video.html: inputul ramane unic, "multiple", accepta simultan image/* si video/*, fara atributul capture', () => {
   const inputMatch = melodiaMea.match(/<input type="file"[^>]*>/);
   assert.ok(inputMatch);
   const tag = inputMatch[0];
@@ -212,7 +216,7 @@ test('melodia-mea.html: inputul ramane unic, "multiple", accepta simultan image/
 // ---------------------------------------------------------------------------------------------
 // 6. Sintaxa ramane valida; Standard/Premium neatinse.
 // ---------------------------------------------------------------------------------------------
-test('melodia-mea.html: ramane sintactic valid', () => {
+test('amintiri-video.html: ramane sintactic valid', () => {
   const scripts = [...melodiaMea.matchAll(/<script>([\s\S]*?)<\/script>/g)];
   scripts.forEach(m => { new Function(m[1]); });
 });

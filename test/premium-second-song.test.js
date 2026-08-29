@@ -95,21 +95,38 @@ test('comanda.html: beneficiile Premium se randeaza in ACELASI bloc comun (#bene
   assert.match(comanda, /<div class="benefits-list" id="benefits-list"><\/div>/);
 });
 
-test('comanda.html: la incarcarea initiala, blocul de beneficii ramane gol pana la selectarea explicita a unui pachet (planExplicitlySelected)', () => {
-  assert.match(comanda, /let planExplicitlySelected = false;/);
-  assert.match(comanda, /if \(planExplicitlySelected\) renderBenefits\(selectedPlan\.id\);/);
-  // selectPlan() (click/Enter/Space) seteaza flag-ul la true INAINTE de a randa beneficiile.
+// CORECȚIE (2026-08-29, "pachetul Standard — conținut vizibil din prima"): versiunea anterioara
+// ascundea intentionat beneficiile la incarcare (planExplicitlySelected=false), desi cardul
+// Standard e deja vizual activ in HTML (.plan.active, aria-selected="true") si selectedPlan
+// porneste implicit pe 'standard' — clientul trebuia sa dea un al doilea click doar ca sa vada
+// ce include pachetul deja "ales". Flag-ul planExplicitlySelected a fost eliminat complet;
+// renderBenefits(selectedPlan.id) se apeleaza acum NECONDIȚIONAT la initializare (dupa
+// restoreDraft(), care poate schimba selectedPlan la Premium/Video inainte de acest apel).
+test('comanda.html: la incarcarea initiala, beneficiile planului CURENT SELECTAT (Standard implicit, sau planul restaurat din draft) sunt vizibile IMEDIAT, fara niciun click', () => {
+  assert.ok(!comanda.includes('planExplicitlySelected'), 'flag-ul vechi, care intarzia afisarea beneficiilor, nu mai trebuie sa existe');
+  assert.match(comanda, /applyLang\(currentLang\);\s*\/\/[^\n]*\n(\s*\/\/[^\n]*\n)*\s*renderBenefits\(selectedPlan\.id\);/, 'renderBenefits(selectedPlan.id) trebuie apelat neconditionat la initializare, dupa applyLang()');
+  // selectPlan() (click/Enter/Space) randeaza direct beneficiile, fara niciun flag intermediar.
   const start = comanda.indexOf('function selectPlan(p) {');
   const snippet = comanda.slice(start, start + 700);
-  assert.match(snippet, /planExplicitlySelected = true;\s*renderBenefits\(selectedPlan\.id\);/);
+  assert.match(snippet, /renderBenefits\(selectedPlan\.id\);/);
+  assert.ok(!snippet.includes('planExplicitlySelected'));
 });
 
-test('comanda.html: restaurarea draftului cu un plan salvat marcheaza selectia ca explicita (beneficiile corecte se randeaza la initializare, fara ecranul vechi de sumar)', () => {
+test('comanda.html: cardul Standard e activ implicit in HTML (.plan.active, aria-selected="true") si selectedPlan porneste pe "standard" — sursa reala a beneficiilor vizibile din prima', () => {
+  assert.match(comanda, /<div class="plan active" data-plan="standard" data-price="15" role="radio" aria-selected="true"/);
+  assert.match(comanda, /let selectedPlan = \{ id: 'standard', price: 15, label: 'Standard' \};/);
+});
+
+test('comanda.html: restaurarea unui draft cu Premium/Video randeaza beneficiile ACELUI pachet la initializare (fara ecranul vechi de sumar), fara niciun flag intermediar', () => {
   const start = comanda.indexOf('function restoreDraft() {');
   const end = comanda.indexOf('\n  }', comanda.indexOf('updateGenerateButtonLabel();', start));
   const snippet = comanda.slice(start, end);
-  assert.match(snippet, /planExplicitlySelected = true;/);
+  assert.ok(!snippet.includes('planExplicitlySelected'));
   assert.ok(!snippet.includes('renderPremiumSummaryBenefits'), 'restaurarea nu mai trebuie sa deschida fostul sumar Premium');
+  // restoreDraft() insusi NU apeleaza renderBenefits() (doar seteaza selectedPlan) — apelul
+  // neconditionat de la initializare (testat mai sus) ruleaza DUPA restoreDraft(), deci foloseste
+  // deja planul corect restaurat.
+  assert.match(snippet, /selectedPlan = \{\s*id: planEl\.dataset\.plan,/);
 });
 
 // ---------------------------------------------------------------------------------------------

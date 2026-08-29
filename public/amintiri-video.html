@@ -1,0 +1,1380 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Amintirile tale pentru videoclip — NALUNA</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;1,9..144,400&family=Sora:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  /* ==========================================================================================
+     PAGINA SEPARATA pentru selectarea/incarcarea materialelor (2026-08-29) — cerinta explicita:
+     "Pagina separata pentru selectarea si incarcarea media", exclusiv pentru pachetul Cadou
+     video. Reutilizeaza EXACT variabilele si clasele CSS (:root, .card, .btn*, .memories/.mem-*)
+     din public/melodia-mea.html — NICIO culoare/font/design nou, doar acelasi limbaj vizual,
+     pe o pagina de sine statatoare, mai simpla (fara playerul melodiei, versuri, editare, plata).
+     ========================================================================================== */
+  :root{
+    --bg:#FAF8F5; --bg-secondary:#F8F6F2; --surface:#FDFCFA;
+    --text:#2B2B2B; --text-secondary:#6B6B6B;
+    --gold:#A8834B; --gold-soft:#C9A876; --gold-deep:#8B6D3F; --line:#E8E2D6;
+    --success:#5F8F6E; --error:#B3574A;
+    --orange:#F5A623; --orange-deep:#C97F14; --orange-text:#3B2A16;
+  }
+  *{box-sizing:border-box;}
+  html, body{ min-height:100%; }
+  body{
+    background:var(--bg); color:var(--text); font-family:'Sora', sans-serif;
+    min-height:100vh; margin:0; padding:48px 20px; position:relative; overflow-x:hidden;
+    line-height:1.6;
+  }
+  @media (prefers-reduced-motion: reduce){
+    *{ animation-duration:0.01ms !important; animation-iteration-count:1 !important; transition-duration:0.01ms !important; }
+  }
+  .ambient-wash{
+    position:fixed; inset:0; z-index:0; pointer-events:none;
+    background:
+      radial-gradient(circle at 18% 20%, rgba(168,131,75,.08), transparent 45%),
+      radial-gradient(circle at 85% 80%, rgba(168,131,75,.07), transparent 50%);
+  }
+  .page-wrap{ max-width:680px; margin:0 auto; position:relative; z-index:1; }
+  .card{
+    background:rgba(253,252,250,.68);
+    backdrop-filter:blur(18px) saturate(140%);
+    -webkit-backdrop-filter:blur(18px) saturate(140%);
+    border:1px solid rgba(255,255,255,.5);
+    border-radius:26px;
+    padding:48px 40px;
+    box-shadow:0 24px 60px -20px rgba(139,109,63,.18), 0 2px 8px rgba(43,43,43,.05);
+  }
+  @media (max-width: 480px){ .card{ padding:32px 22px; } }
+  .logo-mark{ width:44px; margin:0 auto 24px; display:block; opacity:.92; }
+  h1.display{ font-family:'Fraunces', serif; font-weight:400; font-size:24px; text-align:center; letter-spacing:-.01em; margin-bottom:6px; }
+  p.sub{ color:var(--text-secondary); font-size:14px; text-align:center; margin-bottom:26px; }
+  .spinner-wrap{ position:relative; width:64px; height:64px; margin:0 auto 22px; }
+  .spinner-glow{
+    position:absolute; inset:-14px; border-radius:50%;
+    background:radial-gradient(circle, rgba(168,131,75,.2), rgba(168,131,75,0) 70%);
+    animation:glow 3.4s ease-in-out infinite;
+  }
+  @keyframes glow{ 0%,100%{ opacity:.55; transform:scale(1); } 50%{ opacity:1; transform:scale(1.1); } }
+  .spinner{
+    position:absolute; inset:0; border-radius:50%;
+    border:2px solid var(--line); border-top-color:var(--gold); border-right-color:var(--gold-soft);
+    animation:spin 2.6s linear infinite;
+  }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+  .btn{
+    display:inline-flex; align-items:center; justify-content:center; gap:8px;
+    padding:13px 24px; border-radius:999px; font-size:14px; font-weight:500;
+    border:1px solid transparent; cursor:pointer; text-decoration:none;
+    transition:transform .2s ease, box-shadow .2s ease, background-color .2s ease, border-color .2s ease;
+  }
+  .btn:hover{ transform:translateY(-1px); }
+  .btn:disabled{ opacity:.55; cursor:default; transform:none; }
+  .btn-primary{ background:var(--text); color:var(--bg); }
+  .btn-primary:hover{ background:var(--gold-deep); box-shadow:0 12px 28px -10px rgba(139,109,63,.45); }
+  .btn-ghost{ border-color:var(--line); color:var(--text); background:transparent; }
+  .btn-ghost:hover{ border-color:var(--gold); color:var(--gold-deep); }
+  .btn-cta-orange{
+    width:100%; max-width:420px; min-height:56px;
+    padding:14px 24px; font-size:16px; font-weight:700; border-radius:14px;
+    background:var(--orange); color:var(--orange-text); border:none;
+    box-shadow:0 10px 24px -8px rgba(245,166,35,.55);
+  }
+  .btn-cta-orange:hover{ background:var(--orange-deep); box-shadow:0 12px 28px -8px rgba(201,127,20,.55); }
+  .btn-cta-orange:focus-visible{ outline:3px solid var(--orange-deep); outline-offset:2px; }
+  .btn-cta-orange:disabled{ opacity:.6; box-shadow:none; }
+
+  .back-link-row{ text-align:center; margin-bottom:18px; }
+  .back-link{ font-size:13px; color:var(--text-secondary); text-decoration:none; }
+  .back-link:hover{ color:var(--gold-deep); text-decoration:underline; }
+
+  /* Explicatia PERMANENTA despre timpul de pregatire pe iPhone/iCloud — cerinta explicita
+     (2026-08-29): vizibila TOT TIMPUL inaintea selectorului, in toate limbile, niciodata doar
+     un tooltip/mesaj tranzitoriu. */
+  .iphone-hint{
+    background:linear-gradient(180deg, rgba(168,131,75,.09), rgba(168,131,75,.03));
+    border:1px solid var(--gold-soft); border-radius:14px;
+    padding:14px 16px; margin-bottom:16px; font-size:13px; color:var(--text-secondary); line-height:1.55;
+  }
+  .iphone-hint strong{ color:var(--gold-deep); }
+
+  .memories{ margin:0 0 22px; padding:20px; background:var(--surface); border:1px solid var(--line); border-radius:16px; }
+  .memories h2{ font-family:'Fraunces', serif; font-weight:400; font-size:17px; margin:0 0 6px; }
+  .memories-sub{ font-size:13px; color:var(--text-secondary); margin-bottom:14px; }
+  .memories-meta{ font-size:12px; color:var(--text-secondary); margin:0 0 14px; line-height:1.6; }
+  .memories-count{ font-size:12px; font-weight:600; margin-bottom:10px; }
+  .mem-batch-status{ font-size:12px; font-weight:600; color:var(--gold-deep); margin:2px 0 10px; min-height:15px; }
+  .memories-count.ok{ color:var(--success); }
+  .memories-count.warn{ color:var(--gold-deep); }
+  .mem-list{ display:flex; flex-direction:column; gap:8px; margin-bottom:12px; }
+  .mem-item{
+    display:flex; align-items:center; gap:10px;
+    background:var(--bg-secondary); border:1px solid var(--line); border-radius:10px;
+    padding:8px 10px; font-size:13px; cursor:grab;
+  }
+  .mem-item.dragging{ opacity:.4; }
+  .mem-item.drag-over{ border-color:var(--gold); }
+  .mem-thumb{
+    flex-shrink:0; width:44px; height:44px; border-radius:8px; overflow:hidden;
+    background:var(--line); display:flex; align-items:center; justify-content:center; font-size:18px;
+  }
+  .mem-thumb img, .mem-thumb video{ width:100%; height:100%; object-fit:cover; display:block; }
+  .mem-info{ flex:1; min-width:0; }
+  .mem-item .mem-name{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:block; }
+  .mem-item .mem-meta{ font-size:11px; color:var(--text-secondary); margin-top:2px; }
+  .mem-item .mem-meta.err{ color:var(--error); }
+  .mem-progress-track{ background:var(--line); border-radius:999px; height:4px; overflow:hidden; margin-top:5px; }
+  .mem-progress-fill{ background:var(--gold); height:100%; border-radius:999px; transition:width .2s ease; }
+  .mem-actions{ display:flex; align-items:center; gap:2px; flex-shrink:0; }
+  .mem-actions button{
+    background:none; border:none; cursor:pointer; line-height:1; padding:4px 6px;
+    color:var(--text-secondary); font-size:14px; border-radius:6px;
+  }
+  .mem-actions button:hover{ background:rgba(43,43,43,.06); }
+  .mem-actions button:disabled{ opacity:.35; cursor:default; }
+  .mem-actions .mem-remove{ color:var(--error); font-size:16px; }
+  .mem-actions .mem-retry{ color:var(--gold-deep); font-size:12px; font-weight:600; }
+  #mem-file-input{
+    display:block; width:100%; font-size:13px; margin-bottom:10px;
+    font-family:'Sora',sans-serif; color:var(--text-secondary);
+  }
+  #mem-file-input:disabled{ opacity:.5; }
+  .mem-status{ font-size:13px; margin-top:10px; }
+  .mem-status.err{ color:var(--error); }
+  .mem-picker-retry-btn{
+    background:none; border:none; padding:0; margin-left:4px; color:var(--gold-deep);
+    font-size:13px; font-weight:600; text-decoration:underline; cursor:pointer;
+    font-family:'Sora',sans-serif;
+  }
+  .create-video-wrap{ text-align:center; margin-top:10px; }
+  .create-video-sub{ font-size:13px; color:var(--text-secondary); margin-top:10px; }
+  .create-video-error{ font-size:13px; color:var(--error); margin-top:10px; }
+</style>
+</head>
+<body>
+<div class="ambient-wash"></div>
+<div class="page-wrap">
+  <div class="card" id="main-card">
+    <img class="logo-mark" src="/logo.svg" alt="NALUNA">
+
+    <div id="loading-state">
+      <div class="spinner-wrap"><div class="spinner-glow"></div><div class="spinner"></div></div>
+      <p class="sub" id="loading-msg">Se încarcă...</p>
+    </div>
+
+    <div id="notfound-state" style="display:none; text-align:center;">
+      <h1 class="display" id="notfound-title"></h1>
+      <p class="sub" id="notfound-sub"></p>
+      <a class="btn btn-primary" href="/index.html" id="notfound-link"></a>
+    </div>
+
+    <div id="not-eligible-state" style="display:none; text-align:center;">
+      <h1 class="display" id="not-eligible-title"></h1>
+      <p class="sub" id="not-eligible-sub"></p>
+    </div>
+
+    <div id="content-state" style="display:none;">
+      <div class="back-link-row">
+        <a class="back-link" id="back-link" href="#"></a>
+      </div>
+      <h1 class="display" id="memories-title"></h1>
+      <p class="sub" id="memories-sub" style="margin-bottom:14px;"></p>
+
+      <div class="iphone-hint" id="iphone-hint" role="note"></div>
+
+      <div class="memories" id="memories-section">
+        <p class="memories-meta" id="memories-meta"></p>
+        <p class="memories-count" id="memories-count" aria-live="polite"></p>
+        <div class="mem-list" id="mem-uploaded-list"></div>
+        <p class="mem-batch-status" id="mem-batch-status" aria-live="polite"></p>
+        <div class="mem-list" id="mem-staged-list" aria-live="polite" aria-busy="false"></div>
+        <!-- CORECȚIE (2026-08-14, "Articolele nu pot fi încărcate" pe iPhone): accept simplu, cu
+             wildcard-uri ("image/*, video/*") — Safari/iOS poate esua sa initializeze corect
+             selectorul nativ cu o lista lunga de MIME-uri explicite. Validarea REALA de continut
+             (magic bytes + decodare ffprobe) ramane STRICT server-side, neschimbata. -->
+        <input type="file" id="mem-file-input" multiple accept="image/*,video/*" aria-label="Selectează poze și videoclipuri">
+        <p class="mem-status" id="mem-status" role="status" aria-live="assertive" aria-busy="false"></p>
+      </div>
+
+      <div class="create-video-wrap" id="gift-video-create" style="display:none;">
+        <button type="button" class="btn-cta-orange" id="gift-video-create-btn"></button>
+        <p class="create-video-sub" id="gift-video-create-sub"></p>
+        <p class="create-video-error" id="gift-video-create-error" style="display:none;"></p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ==========================================================================================
+  // Traduceri — STRICT subsetul necesar acestei pagini (nume/functii identice cu cele deja
+  // existente in melodia-mea.html, pentru ACELEASI chei — sursa unica de adevar ramane server-
+  // side order.lang, niciodata limba curenta a browserului).
+  // ==========================================================================================
+  const T = {
+    ro: {
+      loading: 'Se încarcă...',
+      notfound_title: 'Nu am găsit această comandă', notfound_sub: 'Linkul poate fi incorect sau incomplet.', notfound_cta: 'Începe o comandă nouă',
+      not_eligible_title: 'Această pagină nu este disponibilă pentru comanda ta',
+      not_eligible_sub: 'Materialele pentru videoclip pot fi adăugate doar pentru pachetul Cadou video, după ce melodia finală este stabilită.',
+      back_link: '← Înapoi la melodia mea',
+      memories_title: 'Adaugă pozele și videoclipurile tale',
+      memories_sub: 'Adaugă între 3 și 10 poze sau clipuri video — le vom transforma într-un videoclip sincronizat cu melodia ta.',
+      memories_meta: (min, max) => `Între ${min} și ${max} materiale • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • orice combinație de poze și videoclipuri`,
+      memories_count: (n, min, max, pending) => (n < min ? `${n} din minimum ${min} materiale` : n > max ? `Prea multe materiale (${n}/${max})` : `${n} materiale — gata de continuare`) + (pending > 0 ? ` (${pending} în curs de încărcare)` : ''),
+      memories_uploading: 'Se încarcă...', memories_queued: 'În așteptare...', memories_uploaded: 'Încărcat', memories_remove: '✕', memories_retry: 'Reîncearcă',
+      memories_processing: 'Se procesează',
+      memories_uploading_pct: (pct) => `Se încarcă — ${pct}%`,
+      memories_batch_progress: (done, total, pct) => `Se încarcă ${done} din ${total} materiale — ${pct}%`,
+      memories_batch_done: (n) => `${n} materiale încărcate — poți continua`,
+      memories_auto_upload_hint: 'Materialele se încarcă automat. Nu mai trebuie să apeși.',
+      memories_upload_timeout: 'Încărcarea durează prea mult — verifică conexiunea și încearcă din nou.',
+      memories_no_files_selected: 'Nu am primit niciun fișier de la selector — încearcă din nou (verifică și dacă fotografiile sunt descărcate complet din iCloud).',
+      memories_picker_waiting: 'Așteptăm ca telefonul să pregătească materialul selectat...',
+      memories_picker_retry: 'Renunță și încearcă din nou',
+      memories_move_up: 'Mută mai sus', memories_move_down: 'Mută mai jos',
+      memories_upload_error: 'Încărcarea a eșuat. Încearcă din nou',
+      memories_iphone_hint: 'După ce apeși bifa albastră, telefonul poate avea nevoie de un minut sau mai mult pentru a pregăti videoclipurile, mai ales dacă sunt în iCloud. Așteaptă și nu apăsa bifa în mod repetat. Încărcarea va începe automat.',
+      memories_picker_preparing: 'Telefonul pregătește selecția…',
+      memories_received_count: (n) => `Am primit ${n} materiale. Se pregătesc și se încarcă automat. Nu închide pagina.`,
+      memories_confirm_failed: 'Nu am putut confirma materialele. Verifică conexiunea și încearcă din nou.',
+      gift_video_create_btn: 'Creează videoclipul meu cadou', gift_video_create_sub: 'Vom transforma amintirile tale într-un videoclip sincronizat cu melodia aleasă.',
+      msg_try_again: 'încearcă din nou', msg_error_prefix: 'Eroare: '
+    },
+    en: {
+      loading: 'Loading...',
+      notfound_title: 'We could not find this order', notfound_sub: 'The link may be incorrect or incomplete.', notfound_cta: 'Start a new order',
+      not_eligible_title: "This page isn't available for your order",
+      not_eligible_sub: 'Video materials can only be added for the Gift Video package, after the final song has been set.',
+      back_link: '← Back to my song',
+      memories_title: 'Add your photos & videos',
+      memories_sub: "Add 3 to 10 photos or video clips — we'll weave them into a video synced to your song.",
+      memories_meta: (min, max) => `${min} to ${max} items • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • any mix of photos and videos`,
+      memories_count: (n, min, max, pending) => (n < min ? `${n} of at least ${min} items` : n > max ? `Too many items (${n}/${max})` : `${n} items — ready to continue`) + (pending > 0 ? ` (${pending} uploading)` : ''),
+      memories_uploading: 'Uploading...', memories_queued: 'Queued...', memories_uploaded: 'Uploaded', memories_remove: '✕', memories_retry: 'Retry',
+      memories_processing: 'Processing',
+      memories_uploading_pct: (pct) => `Uploading — ${pct}%`,
+      memories_batch_progress: (done, total, pct) => `Uploading ${done} of ${total} materials — ${pct}%`,
+      memories_batch_done: (n) => `${n} materials uploaded — you can continue`,
+      memories_auto_upload_hint: 'Materials are uploading automatically. No need to tap again.',
+      memories_upload_timeout: 'This is taking too long — check your connection and try again.',
+      memories_no_files_selected: "We didn't receive any file from the picker — please try again (also check the photos are fully downloaded from iCloud).",
+      memories_picker_waiting: "We're waiting for your phone to prepare the selected file...",
+      memories_picker_retry: 'Cancel and try again',
+      memories_move_up: 'Move up', memories_move_down: 'Move down',
+      memories_upload_error: 'Upload failed. Please try again.',
+      memories_iphone_hint: "After you tap the blue checkmark, your phone may need a minute or more to prepare the videos, especially if they're in iCloud. Please wait and don't tap it repeatedly — the upload will start automatically.",
+      memories_picker_preparing: 'Your phone is preparing the selection…',
+      memories_received_count: (n) => `We received ${n} item${n === 1 ? '' : 's'}. They're being prepared and uploaded automatically. Don't close this page.`,
+      memories_confirm_failed: "We couldn't confirm your materials. Check your connection and try again.",
+      gift_video_create_btn: 'Create my gift video', gift_video_create_sub: "We'll turn your memories into a video synced to the song you chose.",
+      msg_try_again: 'please try again.', msg_error_prefix: 'Error: '
+    },
+    de: {
+      loading: 'Lädt...',
+      notfound_title: 'Wir konnten diese Bestellung nicht finden', notfound_sub: 'Der Link ist möglicherweise falsch oder unvollständig.', notfound_cta: 'Neue Bestellung starten',
+      not_eligible_title: 'Diese Seite ist für deine Bestellung nicht verfügbar',
+      not_eligible_sub: 'Videomaterialien können nur für das Geschenkvideo-Paket hinzugefügt werden, nachdem das endgültige Lied feststeht.',
+      back_link: '← Zurück zu meinem Lied',
+      memories_title: 'Füge deine Fotos & Videos hinzu',
+      memories_sub: 'Füge 3 bis 10 Fotos oder Videoclips hinzu — wir verweben sie zu einem Video, das genau auf dein Lied abgestimmt ist.',
+      memories_meta: (min, max) => `${min} bis ${max} Elemente • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • jede Mischung aus Fotos und Videos`,
+      memories_count: (n, min, max, pending) => (n < min ? `${n} von mindestens ${min} Elementen` : n > max ? `Zu viele Elemente (${n}/${max})` : `${n} Elemente — bereit zum Fortfahren`) + (pending > 0 ? ` (${pending} werden hochgeladen)` : ''),
+      memories_uploading: 'Wird hochgeladen...', memories_queued: 'In Warteschlange...', memories_uploaded: 'Hochgeladen', memories_remove: '✕', memories_retry: 'Erneut versuchen',
+      memories_processing: 'Wird verarbeitet',
+      memories_uploading_pct: (pct) => `Wird hochgeladen — ${pct}%`,
+      memories_batch_progress: (done, total, pct) => `${done} von ${total} Materialien werden hochgeladen — ${pct}%`,
+      memories_batch_done: (n) => `${n} Materialien hochgeladen — du kannst fortfahren`,
+      memories_auto_upload_hint: 'Die Materialien werden automatisch hochgeladen. Du musst nicht erneut tippen.',
+      memories_upload_timeout: 'Das dauert zu lange — überprüfe deine Verbindung und versuche es erneut.',
+      memories_no_files_selected: 'Wir haben keine Datei von der Auswahl erhalten — bitte versuche es erneut (prüfe auch, ob die Fotos vollständig aus iCloud heruntergeladen sind).',
+      memories_picker_waiting: 'Wir warten, bis dein Telefon die ausgewählte Datei vorbereitet...',
+      memories_picker_retry: 'Abbrechen und erneut versuchen',
+      memories_move_up: 'Nach oben', memories_move_down: 'Nach unten',
+      memories_upload_error: 'Hochladen fehlgeschlagen. Bitte versuche es erneut.',
+      memories_iphone_hint: 'Nachdem du auf das blaue Häkchen tippst, braucht dein Telefon möglicherweise eine Minute oder länger, um die Videos vorzubereiten, besonders wenn sie in iCloud liegen. Bitte warte und tippe nicht wiederholt darauf — der Upload startet automatisch.',
+      memories_picker_preparing: 'Dein Telefon bereitet die Auswahl vor…',
+      memories_received_count: (n) => `Wir haben ${n} Elemente erhalten. Sie werden automatisch vorbereitet und hochgeladen. Schließe diese Seite nicht.`,
+      memories_confirm_failed: 'Wir konnten deine Materialien nicht bestätigen. Überprüfe deine Verbindung und versuche es erneut.',
+      gift_video_create_btn: 'Mein Geschenkvideo erstellen', gift_video_create_sub: 'Wir verwandeln deine Erinnerungen in ein Video, das auf dein gewähltes Lied abgestimmt ist.',
+      msg_try_again: 'bitte versuche es erneut.', msg_error_prefix: 'Fehler: '
+    },
+    es: {
+      loading: 'Cargando...',
+      notfound_title: 'No encontramos este pedido', notfound_sub: 'El enlace puede ser incorrecto o incompleto.', notfound_cta: 'Empezar un nuevo pedido',
+      not_eligible_title: 'Esta página no está disponible para tu pedido',
+      not_eligible_sub: 'Los materiales de video solo se pueden añadir para el paquete Video de regalo, después de establecer la canción final.',
+      back_link: '← Volver a mi canción',
+      memories_title: 'Añade tus fotos y videos',
+      memories_sub: 'Añade entre 3 y 10 fotos o clips de video — los combinaremos en un video sincronizado con tu canción.',
+      memories_meta: (min, max) => `Entre ${min} y ${max} elementos • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • cualquier combinación de fotos y videos`,
+      memories_count: (n, min, max, pending) => (n < min ? `${n} de al menos ${min} elementos` : n > max ? `Demasiados elementos (${n}/${max})` : `${n} elementos — listo para continuar`) + (pending > 0 ? ` (${pending} subiendo)` : ''),
+      memories_uploading: 'Subiendo...', memories_queued: 'En espera...', memories_uploaded: 'Subido', memories_remove: '✕', memories_retry: 'Reintentar',
+      memories_processing: 'Procesando',
+      memories_uploading_pct: (pct) => `Subiendo — ${pct}%`,
+      memories_batch_progress: (done, total, pct) => `Subiendo ${done} de ${total} materiales — ${pct}%`,
+      memories_batch_done: (n) => `${n} materiales subidos — puedes continuar`,
+      memories_auto_upload_hint: 'Los materiales se suben automáticamente. No hace falta que vuelvas a tocar.',
+      memories_upload_timeout: 'Esto está tardando demasiado — comprueba tu conexión e inténtalo de nuevo.',
+      memories_no_files_selected: 'No recibimos ningún archivo del selector — inténtalo de nuevo (comprueba también que las fotos estén completamente descargadas de iCloud).',
+      memories_picker_waiting: 'Estamos esperando a que tu teléfono prepare el archivo seleccionado...',
+      memories_picker_retry: 'Cancelar e intentar de nuevo',
+      memories_move_up: 'Subir', memories_move_down: 'Bajar',
+      memories_upload_error: 'Error al subir. Inténtalo de nuevo.',
+      memories_iphone_hint: 'Después de tocar la marca azul, tu teléfono puede necesitar un minuto o más para preparar los videos, especialmente si están en iCloud. Espera y no toques repetidamente — la subida comenzará automáticamente.',
+      memories_picker_preparing: 'Tu teléfono está preparando la selección…',
+      memories_received_count: (n) => `Recibimos ${n} elementos. Se están preparando y subiendo automáticamente. No cierres esta página.`,
+      memories_confirm_failed: 'No pudimos confirmar tus materiales. Comprueba tu conexión e inténtalo de nuevo.',
+      gift_video_create_btn: 'Crear mi video de regalo', gift_video_create_sub: 'Convertiremos tus recuerdos en un video sincronizado con la canción elegida.',
+      msg_try_again: 'inténtalo de nuevo.', msg_error_prefix: 'Error: '
+    },
+    it: {
+      loading: 'Caricamento...',
+      notfound_title: 'Non abbiamo trovato questo ordine', notfound_sub: 'Il link potrebbe essere errato o incompleto.', notfound_cta: 'Inizia un nuovo ordine',
+      not_eligible_title: 'Questa pagina non è disponibile per il tuo ordine',
+      not_eligible_sub: 'I materiali video possono essere aggiunti solo per il pacchetto Video regalo, dopo che la canzone finale è stata stabilita.',
+      back_link: '← Torna alla mia canzone',
+      memories_title: 'Aggiungi le tue foto e i tuoi video',
+      memories_sub: 'Aggiungi da 3 a 10 foto o clip video: le trasformeremo in un video sincronizzato con la tua canzone.',
+      memories_meta: (min, max) => `Da ${min} a ${max} elementi • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • qualsiasi combinazione di foto e video`,
+      memories_count: (n, min, max, pending) => (n < min ? `${n} di almeno ${min} elementi` : n > max ? `Troppi elementi (${n}/${max})` : `${n} elementi — pronto per continuare`) + (pending > 0 ? ` (${pending} in caricamento)` : ''),
+      memories_uploading: 'Caricamento...', memories_queued: 'In attesa...', memories_uploaded: 'Caricato', memories_remove: '✕', memories_retry: 'Riprova',
+      memories_processing: 'Elaborazione',
+      memories_uploading_pct: (pct) => `Caricamento — ${pct}%`,
+      memories_batch_progress: (done, total, pct) => `Caricamento di ${done} su ${total} materiali — ${pct}%`,
+      memories_batch_done: (n) => `${n} materiali caricati — puoi continuare`,
+      memories_auto_upload_hint: 'I materiali si caricano automaticamente. Non serve toccare di nuovo.',
+      memories_upload_timeout: 'Sta impiegando troppo tempo — controlla la connessione e riprova.',
+      memories_no_files_selected: 'Non abbiamo ricevuto alcun file dal selettore — riprova (controlla anche che le foto siano scaricate completamente da iCloud).',
+      memories_picker_waiting: 'Stiamo aspettando che il telefono prepari il file selezionato...',
+      memories_picker_retry: 'Annulla e riprova',
+      memories_move_up: 'Sposta su', memories_move_down: 'Sposta giù',
+      memories_upload_error: 'Caricamento non riuscito. Riprova.',
+      memories_iphone_hint: 'Dopo aver toccato il segno di spunta blu, il telefono potrebbe impiegare un minuto o più per preparare i video, soprattutto se sono su iCloud. Attendi e non toccarlo ripetutamente — il caricamento inizierà automaticamente.',
+      memories_picker_preparing: 'Il telefono sta preparando la selezione…',
+      memories_received_count: (n) => `Abbiamo ricevuto ${n} elementi. Vengono preparati e caricati automaticamente. Non chiudere questa pagina.`,
+      memories_confirm_failed: 'Non siamo riusciti a confermare i materiali. Controlla la connessione e riprova.',
+      gift_video_create_btn: 'Crea il mio video regalo', gift_video_create_sub: 'Trasformeremo i tuoi ricordi in un video sincronizzato con la canzone scelta.',
+      msg_try_again: 'riprova.', msg_error_prefix: 'Errore: '
+    },
+    fr: {
+      loading: 'Chargement...',
+      notfound_title: "Nous n'avons pas trouvé cette commande", notfound_sub: 'Le lien est peut-être incorrect ou incomplet.', notfound_cta: 'Commencer une nouvelle commande',
+      not_eligible_title: "Cette page n'est pas disponible pour votre commande",
+      not_eligible_sub: "Les éléments vidéo ne peuvent être ajoutés que pour le forfait Vidéo cadeau, une fois la chanson finale établie.",
+      back_link: '← Retour à ma chanson',
+      memories_title: 'Ajoutez vos photos et vidéos',
+      memories_sub: 'Ajoutez 3 à 10 photos ou clips vidéo — nous les intégrerons dans une vidéo synchronisée avec votre chanson.',
+      memories_meta: (min, max) => `${min} à ${max} éléments • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • tout mélange de photos et vidéos`,
+      memories_count: (n, min, max, pending) => (n < min ? `${n} sur au moins ${min} éléments` : n > max ? `Trop d'éléments (${n}/${max})` : `${n} éléments — prêt à continuer`) + (pending > 0 ? ` (${pending} en cours d'envoi)` : ''),
+      memories_uploading: 'Envoi en cours...', memories_queued: 'En attente...', memories_uploaded: 'Envoyé', memories_remove: '✕', memories_retry: 'Réessayer',
+      memories_processing: 'Traitement en cours',
+      memories_uploading_pct: (pct) => `Envoi — ${pct}%`,
+      memories_batch_progress: (done, total, pct) => `Envoi de ${done} sur ${total} éléments — ${pct}%`,
+      memories_batch_done: (n) => `${n} éléments envoyés — vous pouvez continuer`,
+      memories_auto_upload_hint: "Les éléments s'envoient automatiquement. Inutile de retoucher l'écran.",
+      memories_upload_timeout: 'Cela prend trop de temps — vérifiez votre connexion et réessayez.',
+      memories_no_files_selected: "Nous n'avons reçu aucun fichier du sélecteur — réessayez (vérifiez aussi que les photos sont bien téléchargées depuis iCloud).",
+      memories_picker_waiting: 'Nous attendons que ton téléphone prépare le fichier sélectionné...',
+      memories_picker_retry: 'Annuler et réessayer',
+      memories_move_up: 'Monter', memories_move_down: 'Descendre',
+      memories_upload_error: "Échec de l'envoi. Veuillez réessayer.",
+      memories_iphone_hint: "Après avoir touché la coche bleue, votre téléphone peut avoir besoin d'une minute ou plus pour préparer les vidéos, surtout si elles sont sur iCloud. Attendez et ne la touchez pas plusieurs fois — l'envoi commencera automatiquement.",
+      memories_picker_preparing: 'Votre téléphone prépare la sélection…',
+      memories_received_count: (n) => `Nous avons reçu ${n} éléments. Ils sont en cours de préparation et d'envoi automatique. Ne fermez pas cette page.`,
+      memories_confirm_failed: "Nous n'avons pas pu confirmer vos éléments. Vérifiez votre connexion et réessayez.",
+      gift_video_create_btn: 'Créer ma vidéo cadeau', gift_video_create_sub: 'Nous transformerons tes souvenirs en une vidéo synchronisée avec la chanson choisie.',
+      msg_try_again: 'veuillez réessayer.', msg_error_prefix: 'Erreur : '
+    },
+    bg: {
+      loading: 'Зареждане...',
+      notfound_title: 'Не открихме тази поръчка', notfound_sub: 'Връзката може да е грешна или непълна.', notfound_cta: 'Започни нова поръчка',
+      not_eligible_title: 'Тази страница не е налична за твоята поръчка',
+      not_eligible_sub: 'Видео материали могат да се добавят само за пакета Видео подарък, след като финалната песен е установена.',
+      back_link: '← Обратно към моята песен',
+      memories_title: 'Добави своите снимки и видеа',
+      memories_sub: 'Добави между 3 и 10 снимки или видеоклипа — ще ги превърнем във видео, синхронизирано с твоята песен.',
+      memories_meta: (min, max) => `Между ${min} и ${max} материала • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • всякаква комбинация от снимки и видеа`,
+      memories_count: (n, min, max, pending) => (n < min ? `${n} от поне ${min} материала` : n > max ? `Твърде много материали (${n}/${max})` : `${n} материала — готово за продължаване`) + (pending > 0 ? ` (${pending} се качват)` : ''),
+      memories_uploading: 'Качване...', memories_queued: 'На изчакване...', memories_uploaded: 'Качено', memories_remove: '✕', memories_retry: 'Опитай отново',
+      memories_processing: 'Обработва се',
+      memories_uploading_pct: (pct) => `Качване — ${pct}%`,
+      memories_batch_progress: (done, total, pct) => `Качване на ${done} от ${total} материала — ${pct}%`,
+      memories_batch_done: (n) => `${n} материала качени — можеш да продължиш`,
+      memories_auto_upload_hint: 'Материалите се качват автоматично. Не е нужно да докосваш отново.',
+      memories_upload_timeout: 'Това отнема твърде много време — провери връзката си и опитай отново.',
+      memories_no_files_selected: 'Не получихме нито един файл от избора — опитай отново (провери също дали снимките са изтеглени напълно от iCloud).',
+      memories_picker_waiting: 'Изчакваме телефонът ти да подготви избрания файл...',
+      memories_picker_retry: 'Откажи и опитай отново',
+      memories_move_up: 'Премести нагоре', memories_move_down: 'Премести надолу',
+      memories_upload_error: 'Качването не бе успешно. Опитай отново.',
+      memories_iphone_hint: 'След като докоснеш синята отметка, телефонът може да се нуждае от минута или повече, за да подготви видеата, особено ако са в iCloud. Изчакай и не докосвай многократно — качването ще започне автоматично.',
+      memories_picker_preparing: 'Телефонът ти подготвя селекцията…',
+      memories_received_count: (n) => `Получихме ${n} материала. Подготвят се и се качват автоматично. Не затваряй тази страница.`,
+      memories_confirm_failed: 'Не успяхме да потвърдим материалите. Провери връзката си и опитай отново.',
+      gift_video_create_btn: 'Създай моето видео подарък', gift_video_create_sub: 'Ще превърнем спомените ти във видео, синхронизирано с избраната песен.',
+      msg_try_again: 'опитай отново.', msg_error_prefix: 'Грешка: '
+    },
+    tr: {
+      loading: 'Yükleniyor...',
+      notfound_title: 'Bu siparişi bulamadık', notfound_sub: 'Bağlantı hatalı veya eksik olabilir.', notfound_cta: 'Yeni bir sipariş başlat',
+      not_eligible_title: 'Bu sayfa siparişiniz için kullanılamaz',
+      not_eligible_sub: 'Video materyalleri yalnızca Hediye Video paketi için ve final şarkı belirlendikten sonra eklenebilir.',
+      back_link: '← Şarkıma geri dön',
+      memories_title: 'Fotoğraflarınızı ve videolarınızı ekleyin',
+      memories_sub: '3 ile 10 arası fotoğraf veya video klip ekleyin — bunları şarkınızla senkronize bir videoya dönüştürelim.',
+      memories_meta: (min, max) => `${min} ile ${max} arası öğe • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • fotoğraf ve video karışımı kabul edilir`,
+      memories_count: (n, min, max, pending) => (n < min ? `${n} / en az ${min} öğe` : n > max ? `Çok fazla öğe (${n}/${max})` : `${n} öğe — devam etmeye hazır`) + (pending > 0 ? ` (${pending} yükleniyor)` : ''),
+      memories_uploading: 'Yükleniyor...', memories_queued: 'Sırada...', memories_uploaded: 'Yüklendi', memories_remove: '✕', memories_retry: 'Tekrar dene',
+      memories_processing: 'İşleniyor',
+      memories_uploading_pct: (pct) => `Yükleniyor — ${pct}%`,
+      memories_batch_progress: (done, total, pct) => `${total} dosyadan ${done} tanesi yükleniyor — ${pct}%`,
+      memories_batch_done: (n) => `${n} materyal yüklendi — devam edebilirsin`,
+      memories_auto_upload_hint: 'Materyaller otomatik olarak yükleniyor. Tekrar dokunmana gerek yok.',
+      memories_upload_timeout: 'Bu çok uzun sürüyor — bağlantınızı kontrol edip tekrar deneyin.',
+      memories_no_files_selected: "Seçiciden hiçbir dosya alamadık — lütfen tekrar deneyin (fotoğrafların iCloud'dan tamamen indirildiğinden de emin olun).",
+      memories_picker_waiting: 'Telefonunuzun seçilen dosyayı hazırlamasını bekliyoruz...',
+      memories_picker_retry: 'İptal et ve tekrar dene',
+      memories_move_up: 'Yukarı taşı', memories_move_down: 'Aşağı taşı',
+      memories_upload_error: 'Yükleme başarısız oldu. Lütfen tekrar deneyin.',
+      memories_iphone_hint: "Mavi onay işaretine dokunduktan sonra, telefonunuzun videoları hazırlaması bir dakika veya daha uzun sürebilir, özellikle iCloud'daysalar. Lütfen bekleyin ve tekrar tekrar dokunmayın — yükleme otomatik olarak başlayacaktır.",
+      memories_picker_preparing: 'Telefonunuz seçimi hazırlıyor…',
+      memories_received_count: (n) => `${n} öğe alındı. Otomatik olarak hazırlanıyor ve yükleniyor. Bu sayfayı kapatmayın.`,
+      memories_confirm_failed: 'Materyallerinizi onaylayamadık. Bağlantınızı kontrol edip tekrar deneyin.',
+      gift_video_create_btn: 'Hediye videomu oluştur', gift_video_create_sub: 'Anılarınızı seçtiğiniz şarkıyla senkronize bir videoya dönüştüreceğiz.',
+      msg_try_again: 'lütfen tekrar deneyin.', msg_error_prefix: 'Hata: '
+    }
+  };
+  const supportedLangs = ['ro', 'en', 'de', 'es', 'it', 'fr', 'bg', 'tr'];
+  let lang = 'ro';
+  let t = T.ro;
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  const orderId = params.get('id');
+  const accessToken = params.get('token') || localStorage.getItem('nds_access_token') || '';
+
+  if (!orderId) { window.location.href = '/index.html'; }
+
+  const states = ['loading-state', 'notfound-state', 'not-eligible-state', 'content-state'];
+  function showState(name) {
+    states.forEach(s => { document.getElementById(s).style.display = (s === name) ? 'block' : 'none'; });
+  }
+
+  function applyStaticTexts() {
+    document.getElementById('loading-msg').textContent = t.loading;
+    document.getElementById('notfound-title').textContent = t.notfound_title;
+    document.getElementById('notfound-sub').textContent = t.notfound_sub;
+    document.getElementById('notfound-link').textContent = t.notfound_cta;
+    document.getElementById('not-eligible-title').textContent = t.not_eligible_title;
+    document.getElementById('not-eligible-sub').textContent = t.not_eligible_sub;
+    const back = document.getElementById('back-link');
+    back.textContent = t.back_link;
+    back.href = `/melodia-mea.html?id=${encodeURIComponent(orderId || '')}&token=${encodeURIComponent(accessToken)}`;
+    document.getElementById('memories-title').textContent = t.memories_title;
+    document.getElementById('memories-sub').textContent = t.memories_sub;
+    document.getElementById('memories-meta').textContent = t.memories_meta(MEM_MIN, MEM_MAX);
+    document.getElementById('iphone-hint').innerHTML = `<strong>📱</strong> ${escapeHtml(t.memories_iphone_hint)}`;
+    document.getElementById('gift-video-create-btn').textContent = t.gift_video_create_btn;
+    document.getElementById('gift-video-create-sub').textContent = t.gift_video_create_sub;
+  }
+
+  // ==========================================================================================
+  // Amintiri (poze/videoclipuri) pentru pachetul video — MUTAT integral din melodia-mea.html
+  // (2026-08-29, "pagina separata pentru selectarea si incarcarea media"), logica de upload
+  // NESCHIMBATA (aceleasi endpointuri /media, /media/confirm, /media/multipart/*, /media/reorder,
+  // /media/:index — maximum 2 uploaduri simultane, retry per fisier/fragment, thumbnailuri cu
+  // concurenta limitata) — DOAR bootstrap-ul paginii e nou (comanda + token validate independent,
+  // fara playerul melodiei/versuri/checkout).
+  // ==========================================================================================
+  let uploadQueue = [];
+  let memOrderRef = null;
+  const thumbCache = new Map();
+
+  const VIDEO_EXTENSIONS = ['.mp4', '.m4v', '.mov', '.webm'];
+  function isVideoFile(file) {
+    if (file.type.startsWith('video')) return true;
+    if (file.type) return false;
+    const match = String(file.name || '').match(/\.[^./\\]+$/);
+    return !!match && VIDEO_EXTENSIONS.includes(match[0].toLowerCase());
+  }
+
+  const MEM_MIN = 3;
+  const MEM_MAX = 10;
+
+  function renderMemories(order) {
+    memOrderRef = order;
+    renderExistingList(order);
+    renderQueueList();
+    updateMemoriesCountAndGates(order);
+  }
+
+  function updateMemoriesCountAndGates(order) {
+    const total = (order.uploadedMedia || []).length;
+    const pendingCount = uploadQueue.filter(q => q.status === 'uploading' || q.status === 'pending' || q.status === 'processing').length;
+    const uploading = pendingCount > 0;
+    const hasUnresolvedError = uploadQueue.some(q => q.status === 'error');
+    const countEl = document.getElementById('memories-count');
+    const ok = total >= MEM_MIN && total <= MEM_MAX;
+    countEl.textContent = t.memories_count(total, MEM_MIN, MEM_MAX, pendingCount);
+    countEl.className = 'memories-count ' + (ok ? 'ok' : 'warn');
+    updateCreateButtonVisibility(order, ok && !uploading && !hasUnresolvedError);
+    maybeAutoConfirmMedia(order, ok && !uploading && !hasUnresolvedError);
+  }
+
+  // Vizibilitatea butonului "Creează videoclipul" — mediaReady inseamna EXACT aceeasi conditie
+  // ca in melodia-mea.html (order.mediaConfirmedAt setat de server SI nicio coada locala activa).
+  function updateCreateButtonVisibility(order, gateOk) {
+    const wrap = document.getElementById('gift-video-create');
+    if (order.videoStatus && order.videoStatus !== 'none' && order.videoStatus !== 'failed') {
+      // job deja activ/gata — nu mai afisam butonul de creare pe aceasta pagina (previne o a
+      // doua cerere in paralel); clientul e oricum redirectionat la incarcare (vezi loadOrder).
+      wrap.style.display = 'none';
+      return;
+    }
+    const mediaReady = gateOk && !!order.mediaConfirmedAt && uploadQueue.length === 0;
+    wrap.style.display = mediaReady ? 'block' : 'none';
+  }
+
+  let mediaConfirmInFlight = false;
+  let mediaConfirmRetryCount = 0;
+  let mediaConfirmRetryTimer = null;
+  const MEDIA_CONFIRM_MAX_RETRIES = 6;
+  async function maybeAutoConfirmMedia(order, gateOk) {
+    if (!gateOk || mediaConfirmInFlight || order.mediaConfirmedAt) return;
+    if (mediaConfirmRetryTimer) return;
+    mediaConfirmInFlight = true;
+    try {
+      const res = await fetch(`/api/orders/${orderId}/media/confirm`, {
+        method: 'POST',
+        headers: { 'X-Access-Token': accessToken }
+      });
+      if (res.ok) {
+        mediaConfirmRetryCount = 0;
+        const confirmedAt = new Date().toISOString();
+        order.mediaConfirmedAt = confirmedAt;
+        if (memOrderRef) memOrderRef.mediaConfirmedAt = confirmedAt;
+        hideConfirmFailedMessage();
+        updateCreateButtonVisibility(order, true);
+      } else if (mediaConfirmRetryCount < MEDIA_CONFIRM_MAX_RETRIES) {
+        mediaConfirmRetryCount++;
+        mediaConfirmRetryTimer = setTimeout(() => { mediaConfirmRetryTimer = null; maybeAutoConfirmMedia(order, gateOk); }, Math.min(3000 * mediaConfirmRetryCount, 15000));
+      } else {
+        showConfirmFailedMessage(order, gateOk);
+      }
+    } catch (e) {
+      if (mediaConfirmRetryCount < MEDIA_CONFIRM_MAX_RETRIES) {
+        mediaConfirmRetryCount++;
+        mediaConfirmRetryTimer = setTimeout(() => { mediaConfirmRetryTimer = null; maybeAutoConfirmMedia(order, gateOk); }, Math.min(3000 * mediaConfirmRetryCount, 15000));
+      } else {
+        showConfirmFailedMessage(order, gateOk);
+      }
+    }
+    mediaConfirmInFlight = false;
+  }
+
+  // CORECȚIE (2026-08-29, "daca toate incercarile de /media/confirm esueaza, afiseaza o eroare
+  // localizata si un buton functional de retry"): inainte, epuizarea retry-urilor era complet
+  // tacuta — clientul ramanea fara nicio explicatie si fara nicio actiune posibila.
+  function showConfirmFailedMessage(order, gateOk) {
+    const el = document.getElementById('gift-video-create-error');
+    el.innerHTML = '';
+    el.appendChild(document.createTextNode(t.memories_confirm_failed + ' '));
+    const retryBtn = document.createElement('button');
+    retryBtn.type = 'button';
+    retryBtn.className = 'mem-picker-retry-btn';
+    retryBtn.textContent = t.memories_retry;
+    retryBtn.addEventListener('click', () => {
+      mediaConfirmRetryCount = 0;
+      hideConfirmFailedMessage();
+      maybeAutoConfirmMedia(order, gateOk);
+    });
+    el.appendChild(retryBtn);
+    el.style.display = 'block';
+  }
+  function hideConfirmFailedMessage() {
+    const el = document.getElementById('gift-video-create-error');
+    el.style.display = 'none';
+    el.innerHTML = '';
+  }
+
+  async function fetchThumbUrl(index) {
+    if (thumbCache.has(index)) return thumbCache.get(index);
+    try {
+      const res = await fetch(`/api/orders/${orderId}/media/${index}/preview-url`, {
+        headers: { 'X-Access-Token': accessToken }
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      thumbCache.set(index, data.url);
+      return data.url;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function renderExistingList(order) {
+    const uploaded = order.uploadedMedia || [];
+    const uploadedList = document.getElementById('mem-uploaded-list');
+    uploadedList.innerHTML = uploaded.map((m, i) => `
+      <div class="mem-item" draggable="true" data-existing-index="${i}">
+        <span class="mem-thumb" data-thumb-index="${i}">${m.type === 'photo' ? '🖼️' : '🎬'}</span>
+        <div class="mem-actions">
+          <button type="button" class="mem-move-up" data-move-up="${i}" title="${t.memories_move_up}" ${i === 0 ? 'disabled' : ''}>↑</button>
+          <button type="button" class="mem-move-down" data-move-down="${i}" title="${t.memories_move_down}" ${i === uploaded.length - 1 ? 'disabled' : ''}>↓</button>
+          <button type="button" class="mem-remove" data-remove-index="${i}" title="${t.memories_remove}">${t.memories_remove}</button>
+        </div>
+      </div>
+    `).join('');
+
+    uploadedList.querySelectorAll('[data-thumb-index]').forEach(async (el) => {
+      const idx = Number(el.dataset.thumbIndex);
+      const item = uploaded[idx];
+      const fallbackIcon = item.type === 'photo' ? '🖼️' : '🎬';
+      const url = await fetchThumbUrl(idx);
+      if (!url) { el.textContent = fallbackIcon; return; }
+      const mediaEl = document.createElement(item.type === 'photo' ? 'img' : 'video');
+      mediaEl.src = url;
+      if (item.type === 'photo') {
+        mediaEl.alt = '';
+        mediaEl.loading = 'lazy';
+      } else {
+        mediaEl.muted = true;
+        mediaEl.playsInline = true;
+        mediaEl.preload = 'metadata';
+      }
+      mediaEl.addEventListener('error', () => { el.textContent = fallbackIcon; });
+      el.innerHTML = '';
+      el.appendChild(mediaEl);
+    });
+
+    uploadedList.querySelectorAll('button[data-remove-index]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        try {
+          await fetch(`/api/orders/${orderId}/media/${btn.dataset.removeIndex}`, {
+            method: 'DELETE',
+            headers: { 'X-Access-Token': accessToken }
+          });
+          thumbCache.clear();
+          await refreshOrderMedia();
+        } catch (e) {
+          btn.disabled = false;
+        }
+      });
+    });
+
+    uploadedList.querySelectorAll('[data-move-up], [data-move-down]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const total = uploaded.length;
+        const from = Number(btn.dataset.moveUp !== undefined && btn.dataset.moveUp !== '' ? btn.dataset.moveUp : btn.dataset.moveDown);
+        const to = btn.dataset.moveUp !== undefined && btn.dataset.moveUp !== '' ? from - 1 : from + 1;
+        if (to < 0 || to >= total) return;
+        await reorderExisting(swapArrayIndices(total, from, to));
+      });
+    });
+
+    let dragFrom = null;
+    uploadedList.querySelectorAll('[data-existing-index]').forEach(el => {
+      el.addEventListener('dragstart', () => { dragFrom = Number(el.dataset.existingIndex); el.classList.add('dragging'); });
+      el.addEventListener('dragend', () => el.classList.remove('dragging'));
+      el.addEventListener('dragover', (e) => { e.preventDefault(); el.classList.add('drag-over'); });
+      el.addEventListener('dragleave', () => el.classList.remove('drag-over'));
+      el.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        el.classList.remove('drag-over');
+        const dragTo = Number(el.dataset.existingIndex);
+        if (dragFrom === null || dragFrom === dragTo) return;
+        await reorderExisting(moveArrayIndex(uploaded.length, dragFrom, dragTo));
+        dragFrom = null;
+      });
+    });
+  }
+
+  function swapArrayIndices(length, a, b) {
+    const order = Array.from({ length }, (_, i) => i);
+    [order[a], order[b]] = [order[b], order[a]];
+    return order;
+  }
+  function moveArrayIndex(length, from, to) {
+    const order = Array.from({ length }, (_, i) => i);
+    const [moved] = order.splice(from, 1);
+    order.splice(to, 0, moved);
+    return order;
+  }
+
+  async function reorderExisting(newOrderIndices) {
+    thumbCache.clear();
+    try {
+      await fetch(`/api/orders/${orderId}/media/reorder`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'X-Access-Token': accessToken },
+        body: JSON.stringify({ order: newOrderIndices })
+      });
+    } catch (e) { /* refresh-ul de mai jos reflecta oricum starea reala de pe server */ }
+    await refreshOrderMedia();
+  }
+
+  async function refreshOrderMedia() {
+    try {
+      const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}?token=${encodeURIComponent(accessToken)}`);
+      if (!res.ok) return;
+      const fresh = await res.json();
+      if (memOrderRef) memOrderRef.uploadedMedia = fresh.uploadedMedia;
+      renderExistingList(fresh);
+      updateMemoriesCountAndGates(fresh);
+    } catch (e) { /* urmatorul poll/refresh manual va corecta */ }
+  }
+
+  function renderQueueRowInner(q) {
+    const pct = q.status === 'processing' ? 100 : q.progress;
+    return `
+      <span class="mem-thumb">${isVideoFile(q.file) ? '🎬' : (q.thumbUrl ? `<img src="${q.thumbUrl}" alt="" loading="lazy" decoding="async">` : '🖼️')}</span>
+      <div class="mem-info">
+        <span class="mem-name">${escapeHtml(q.file.name)}</span>
+        <span class="mem-meta ${q.status === 'error' ? 'err' : ''}">${
+          q.status === 'uploading' ? t.memories_uploading_pct(q.progress)
+          : q.status === 'processing' ? t.memories_processing
+          : q.status === 'pending' ? t.memories_queued
+          : q.status === 'error' ? (q.errorMsg || t.memories_upload_error)
+          : t.memories_uploaded
+        }</span>
+        ${(q.status === 'uploading' || q.status === 'processing') ? `<div class="mem-progress-track"><div class="mem-progress-fill" style="width:${pct}%"></div></div>` : ''}
+      </div>
+      <div class="mem-actions">
+        ${q.status === 'error' ? `<button type="button" class="mem-retry" data-retry-id="${q.localId}">${t.memories_retry}</button>` : ''}
+        <button type="button" class="mem-remove" data-queue-remove="${q.localId}" title="${t.memories_remove}" ${(q.status === 'uploading' || q.status === 'processing') ? 'disabled' : ''}>${t.memories_remove}</button>
+      </div>
+    `;
+  }
+
+  const LOCAL_THUMB_MAX_DIM = 240;
+  const LOCAL_THUMB_CONCURRENCY = 1;
+  let localThumbQueue = [];
+  let localThumbActive = 0;
+  function scheduleLocalThumbnail(entry) {
+    localThumbQueue.push(entry);
+    pumpLocalThumbQueue();
+  }
+  function pumpLocalThumbQueue() {
+    while (localThumbActive < LOCAL_THUMB_CONCURRENCY && localThumbQueue.length > 0) {
+      const entry = localThumbQueue.shift();
+      if (!uploadQueue.includes(entry)) continue;
+      localThumbActive++;
+      generateLocalThumbnail(entry).finally(() => {
+        localThumbActive--;
+        pumpLocalThumbQueue();
+      });
+    }
+  }
+  async function generateLocalThumbnail(entry) {
+    if (typeof createImageBitmap !== 'function') return;
+    let bitmap = null;
+    try {
+      bitmap = await createImageBitmap(entry.file, { resizeWidth: LOCAL_THUMB_MAX_DIM, resizeQuality: 'medium' });
+      const canvas = document.createElement('canvas');
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(bitmap, 0, 0);
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.82));
+      if (!blob) return;
+      if (!uploadQueue.includes(entry)) return;
+      entry.thumbUrl = URL.createObjectURL(blob);
+      patchQueueRowThumb(entry);
+    } catch (err) {
+      // format nesuportat/decodare esuata — ramane pe iconita 🖼️, niciodata o eroare vizibila
+    } finally {
+      if (bitmap && typeof bitmap.close === 'function') bitmap.close();
+    }
+  }
+  function patchQueueRowThumb(entry) {
+    const row = document.querySelector(`#mem-staged-list [data-queue-id="${entry.localId}"]`);
+    if (!row) return;
+    const thumbEl = row.querySelector('.mem-thumb');
+    if (!thumbEl || isVideoFile(entry.file)) return;
+    thumbEl.innerHTML = `<img src="${entry.thumbUrl}" alt="" loading="lazy" decoding="async">`;
+  }
+
+  function wireQueueRow(row, entry) {
+    const retryBtn = row.querySelector('[data-retry-id]');
+    if (retryBtn) retryBtn.addEventListener('click', () => {
+      entry.status = 'pending';
+      entry.errorMsg = null;
+      renderQueueRow(entry);
+      processUploadQueue();
+    });
+    const removeBtn = row.querySelector('[data-queue-remove]');
+    if (removeBtn) removeBtn.addEventListener('click', () => {
+      const idx = uploadQueue.findIndex(q => q.localId === entry.localId);
+      if (idx === -1) return;
+      entry.abortRequested = true;
+      if (entry.xhr) entry.xhr.abort();
+      if (entry.activePartXhrs) Object.values(entry.activePartXhrs).forEach(xhr => { try { xhr.abort(); } catch (e) {} });
+      if (entry.multipartSessionId) {
+        fetch(`/api/orders/${orderId}/media/multipart/${entry.multipartSessionId}`, {
+          method: 'DELETE', headers: { 'X-Access-Token': accessToken }
+        }).catch(() => {});
+      }
+      if (entry.thumbUrl) URL.revokeObjectURL(entry.thumbUrl);
+      uploadQueue.splice(idx, 1);
+      processUploadQueue();
+      renderQueueList();
+      updateBatchActiveState();
+    });
+  }
+
+  function renderQueueList() {
+    const el = document.getElementById('mem-staged-list');
+    el.innerHTML = uploadQueue.map(q => `<div class="mem-item" data-queue-id="${q.localId}">${renderQueueRowInner(q)}</div>`).join('');
+    el.querySelectorAll('[data-queue-id]').forEach(row => {
+      const entry = uploadQueue.find(q => q.localId === row.dataset.queueId);
+      if (entry) wireQueueRow(row, entry);
+    });
+    renderBatchStatus();
+    if (memOrderRef) updateMemoriesCountAndGates(memOrderRef);
+    updateBatchActiveState();
+  }
+
+  function renderQueueRow(entry) {
+    const row = document.querySelector(`#mem-staged-list [data-queue-id="${entry.localId}"]`);
+    if (!row) { renderQueueList(); return; }
+    row.innerHTML = renderQueueRowInner(entry);
+    wireQueueRow(row, entry);
+    renderBatchStatus();
+    if (memOrderRef) updateMemoriesCountAndGates(memOrderRef);
+  }
+
+  function patchQueueRowProgress(entry) {
+    const row = document.querySelector(`#mem-staged-list [data-queue-id="${entry.localId}"]`);
+    if (!row) return;
+    const fill = row.querySelector('.mem-progress-fill');
+    const meta = row.querySelector('.mem-meta');
+    if (!fill || !meta) { renderQueueRow(entry); return; }
+    fill.style.width = (entry.status === 'processing' ? 100 : entry.progress) + '%';
+    meta.textContent = entry.status === 'processing' ? t.memories_processing : t.memories_uploading_pct(entry.progress);
+    meta.classList.remove('err');
+  }
+
+  let progressRafScheduled = false;
+  const pendingProgressIds = new Set();
+  function scheduleProgressUpdate(entry) {
+    pendingProgressIds.add(entry.localId);
+    if (progressRafScheduled) return;
+    progressRafScheduled = true;
+    requestAnimationFrame(() => {
+      progressRafScheduled = false;
+      const ids = Array.from(pendingProgressIds);
+      pendingProgressIds.clear();
+      ids.forEach(id => {
+        const e = uploadQueue.find(q => q.localId === id);
+        if (e) patchQueueRowProgress(e);
+      });
+      renderBatchStatus();
+    });
+  }
+
+  let memBatchTotal = 0;
+  let memBatchDoneCount = 0;
+  function renderBatchStatus() {
+    const el = document.getElementById('mem-batch-status');
+    if (!el) return;
+    const active = uploadQueue.filter(q => q.status !== 'error');
+    if (memBatchTotal === 0) { el.textContent = ''; return; }
+    if (active.length === 0) {
+      el.textContent = memBatchDoneCount > 0 ? t.memories_batch_done(memBatchDoneCount) : '';
+      return;
+    }
+    const inFlightSum = active.reduce((s, q) => s + (q.status === 'processing' ? 100 : (q.progress || 0)), 0);
+    const overallPct = Math.min(100, Math.round(((memBatchDoneCount * 100) + inFlightSum) / memBatchTotal));
+    el.textContent = t.memories_batch_progress(memBatchDoneCount, memBatchTotal, overallPct);
+  }
+
+  // CORECȚIE (2026-08-29, "blocheaza selectiile duplicate cat timp lotul este activ"): selectorul
+  // ramane dezactivat (nu doar "lock" pe click) cat timp exista materiale in coada (incarcare/
+  // procesare/eroare nerezolvata) — reactivat automat cand coada se goleste (toate reusite sau
+  // eliminate). aria-busy urmeaza aceeasi stare, pentru cititoarele de ecran.
+  function updateBatchActiveState() {
+    const active = uploadQueue.length > 0;
+    memFileInput.disabled = active;
+    document.getElementById('mem-staged-list').setAttribute('aria-busy', active ? 'true' : 'false');
+    document.getElementById('mem-status').setAttribute('aria-busy', active ? 'true' : 'false');
+  }
+
+  let memSyncTimer = null;
+  let memSyncInFlight = false;
+  let memSyncAgainNeeded = false;
+  function scheduleMemSync() {
+    memSyncAgainNeeded = true;
+    if (memSyncTimer || memSyncInFlight) return;
+    memSyncTimer = setTimeout(runMemSync, 700);
+  }
+  async function runMemSync() {
+    memSyncTimer = null;
+    if (memSyncInFlight || !memSyncAgainNeeded) return;
+    memSyncAgainNeeded = false;
+    memSyncInFlight = true;
+    try {
+      await refreshOrderMedia();
+    } finally {
+      memSyncInFlight = false;
+      if (memSyncAgainNeeded) memSyncTimer = setTimeout(runMemSync, 700);
+    }
+  }
+
+  const MAX_CONCURRENT_UPLOADS = 2;
+  const UPLOAD_TIMEOUT_MS = 900000;
+  const MEM_MULTIPART_THRESHOLD_BYTES = 20 * 1024 * 1024;
+  const MEM_PART_RETRY_LIMIT = 5;
+  const MEM_MAX_PARALLEL_PARTS = 2;
+
+  function processUploadQueue() {
+    const active = uploadQueue.filter(q => q.status === 'uploading' || q.status === 'processing').length;
+    let slots = MAX_CONCURRENT_UPLOADS - active;
+    if (slots <= 0) return;
+    for (const entry of uploadQueue) {
+      if (slots <= 0) break;
+      if (entry.status === 'pending') {
+        startUpload(entry);
+        slots--;
+      }
+    }
+  }
+
+  function startUpload(entry) {
+    entry.abortRequested = false;
+    if (isVideoFile(entry.file) && entry.file.size > MEM_MULTIPART_THRESHOLD_BYTES) {
+      startMultipartUpload(entry);
+    } else {
+      startSingleUpload(entry);
+    }
+  }
+
+  function startSingleUpload(entry) {
+    entry.status = 'uploading';
+    entry.progress = 0;
+    entry.errorMsg = null;
+    renderQueueRow(entry);
+
+    const formData = new FormData();
+    formData.append('media', entry.file);
+    formData.append('sections', JSON.stringify([entry.section || '']));
+
+    const xhr = new XMLHttpRequest();
+    entry.xhr = xhr;
+    xhr.open('POST', `/api/orders/${orderId}/media`);
+    xhr.setRequestHeader('X-Access-Token', accessToken);
+    xhr.timeout = UPLOAD_TIMEOUT_MS;
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) {
+        const pct = Math.round((e.loaded / e.total) * 100);
+        entry.progress = pct;
+        if (pct >= 100 && entry.status === 'uploading') entry.status = 'processing';
+        scheduleProgressUpdate(entry);
+      }
+    };
+    xhr.onload = () => {
+      let data = null;
+      try { data = JSON.parse(xhr.responseText); } catch (e) { /* raspuns invalid */ }
+      const failedEntry = data && Array.isArray(data.failed) ? data.failed[0] : null;
+      const succeeded = data && Array.isArray(data.uploaded) && data.uploaded.length > 0;
+      if (xhr.status >= 200 && xhr.status < 300 && succeeded) {
+        if (entry.thumbUrl) URL.revokeObjectURL(entry.thumbUrl);
+        uploadQueue = uploadQueue.filter(q => q.localId !== entry.localId);
+        memBatchDoneCount++;
+        renderQueueList();
+        processUploadQueue();
+        scheduleMemSync();
+      } else {
+        entry.status = 'error';
+        entry.errorMsg = (failedEntry && failedEntry.reason) || (data && data.error) || t.memories_upload_error;
+        renderQueueRow(entry);
+        processUploadQueue();
+      }
+    };
+    xhr.onerror = () => {
+      entry.status = 'error';
+      entry.errorMsg = t.memories_upload_error;
+      renderQueueRow(entry);
+      processUploadQueue();
+    };
+    xhr.ontimeout = () => {
+      entry.status = 'error';
+      entry.errorMsg = t.memories_upload_timeout;
+      renderQueueRow(entry);
+      processUploadQueue();
+    };
+    xhr.onabort = () => { processUploadQueue(); };
+    xhr.send(formData);
+  }
+
+  function uploadOnePart(entry, partNumber, blob, onProgress) {
+    return new Promise((resolve, reject) => {
+      let attempt = 0;
+      const tryOnce = async () => {
+        if (entry.abortRequested) { reject(new Error('aborted')); return; }
+        try {
+          const urlRes = await fetch(`/api/orders/${orderId}/media/multipart/${entry.multipartSessionId}/part-url`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Access-Token': accessToken },
+            body: JSON.stringify({ partNumber })
+          });
+          const urlData = await urlRes.json().catch(() => ({}));
+          if (!urlRes.ok || !urlData.url) { retryOrFail(); return; }
+          const xhr = new XMLHttpRequest();
+          entry.activePartXhrs = entry.activePartXhrs || {};
+          entry.activePartXhrs[partNumber] = xhr;
+          xhr.open('PUT', urlData.url);
+          xhr.timeout = UPLOAD_TIMEOUT_MS;
+          xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded); };
+          xhr.onload = () => {
+            delete entry.activePartXhrs[partNumber];
+            if (xhr.status >= 200 && xhr.status < 300) {
+              const etag = xhr.getResponseHeader('ETag');
+              if (!etag) { retryOrFail(); return; }
+              onProgress(blob.size);
+              resolve(etag);
+            } else { retryOrFail(); }
+          };
+          xhr.onerror = () => { delete entry.activePartXhrs[partNumber]; retryOrFail(); };
+          xhr.ontimeout = () => { delete entry.activePartXhrs[partNumber]; retryOrFail(); };
+          xhr.onabort = () => { delete entry.activePartXhrs[partNumber]; reject(new Error('aborted')); };
+          xhr.send(blob);
+        } catch (err) {
+          retryOrFail();
+        }
+      };
+      const retryOrFail = () => {
+        attempt++;
+        if (entry.abortRequested) { reject(new Error('aborted')); return; }
+        if (attempt > MEM_PART_RETRY_LIMIT) { reject(new Error('part failed')); return; }
+        onProgress(0);
+        setTimeout(tryOnce, Math.min(1000 * attempt, 5000));
+      };
+      tryOnce();
+    });
+  }
+
+  async function startMultipartUpload(entry) {
+    entry.status = 'uploading';
+    entry.progress = 0;
+    entry.errorMsg = null;
+    renderQueueRow(entry);
+    try {
+      const initRes = await fetch(`/api/orders/${orderId}/media/multipart/init`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Access-Token': accessToken },
+        body: JSON.stringify({ filename: entry.file.name, size: entry.file.size, mimeType: entry.file.type || '', section: entry.section || '' })
+      });
+      const initData = await initRes.json().catch(() => ({}));
+      if (!initRes.ok || !initData.sessionId) throw new Error(initData.error || 'init failed');
+      entry.multipartSessionId = initData.sessionId;
+      const partSize = initData.partSize || (10 * 1024 * 1024);
+      const totalBytes = entry.file.size;
+      const totalParts = Math.max(1, Math.ceil(totalBytes / partSize));
+
+      const partBytesSent = new Array(totalParts + 1).fill(0);
+      function reportProgress() {
+        const sum = partBytesSent.reduce((a, b) => a + b, 0);
+        entry.progress = Math.min(99, Math.round((sum / totalBytes) * 100));
+        scheduleProgressUpdate(entry);
+      }
+
+      const completedParts = await new Promise((resolveAll, rejectAll) => {
+        const results = [];
+        let nextPartNumber = 1;
+        let active = 0;
+        let firstError = null;
+        function pump() {
+          if (firstError) { rejectAll(firstError); return; }
+          if (results.length === totalParts) { resolveAll(results); return; }
+          while (active < MEM_MAX_PARALLEL_PARTS && nextPartNumber <= totalParts) {
+            const partNumber = nextPartNumber++;
+            const start = (partNumber - 1) * partSize;
+            const end = Math.min(start + partSize, totalBytes);
+            const blob = entry.file.slice(start, end);
+            active++;
+            uploadOnePart(entry, partNumber, blob, (loaded) => { partBytesSent[partNumber] = loaded; reportProgress(); })
+              .then(etag => { active--; results.push({ partNumber, etag }); pump(); })
+              .catch(err => { active--; firstError = firstError || err; pump(); });
+          }
+        }
+        pump();
+      });
+
+      if (entry.abortRequested) return;
+      entry.status = 'processing';
+      scheduleProgressUpdate(entry);
+      completedParts.sort((a, b) => a.partNumber - b.partNumber);
+      const completeRes = await fetch(`/api/orders/${orderId}/media/multipart/${entry.multipartSessionId}/complete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Access-Token': accessToken },
+        body: JSON.stringify({ parts: completedParts })
+      });
+      const data = await completeRes.json().catch(() => ({}));
+      const succeeded = data && Array.isArray(data.uploaded) && data.uploaded.length > 0;
+      if (completeRes.ok && succeeded) {
+        uploadQueue = uploadQueue.filter(q => q.localId !== entry.localId);
+        memBatchDoneCount++;
+        renderQueueList();
+        processUploadQueue();
+        scheduleMemSync();
+      } else {
+        const failedEntry = data && Array.isArray(data.failed) ? data.failed[0] : null;
+        entry.status = 'error';
+        entry.errorMsg = (failedEntry && failedEntry.reason) || (data && data.error) || t.memories_upload_error;
+        renderQueueRow(entry);
+        processUploadQueue();
+      }
+    } catch (err) {
+      if (entry.abortRequested) return;
+      entry.status = 'error';
+      entry.errorMsg = t.memories_upload_error;
+      renderQueueRow(entry);
+      processUploadQueue();
+    }
+  }
+
+  const memFileInput = document.getElementById('mem-file-input');
+  const memStatusEl = document.getElementById('mem-status');
+
+  // ==========================================================================================
+  // FEEDBACK IMEDIAT PE IPHONE (2026-08-29) — cerinta explicita: site-ul nu poate controla
+  // selectorul nativ Photos, dar TREBUIE sa dea feedback vizibil IMEDIAT la fiecare pas:
+  //  (1) pointerdown/click -> stare vizibila "Telefonul pregatește selecția…" INSTANT;
+  //  (2) intoarcere posibila din Photos (visibilitychange/focus/pageshow) -> starea de
+  //      asteptare/recuperare apare IMEDIAT, FARA intarzierea anterioara de 1.5s;
+  //  (3) 'change' -> mesaj sincron cu numarul REAL de materiale primite, toate randurile intra
+  //      in "În așteptare" INAINTE de thumbnailuri/upload (un frame de grație intre randare si
+  //      procesarea grea, ca browserul sa apuce sa picteze feedback-ul);
+  //  (4) selectorul ramane dezactivat cat timp lotul e activ (updateBatchActiveState mai sus);
+  //  (5) anulare/niciun 'change' -> lock eliberat corect, actiune clara de reincercare.
+  // ==========================================================================================
+  let pickerLocked = false;
+  let pickerLockedAt = 0;
+  const PICKER_MANUAL_RECOVERY_MS = 90 * 1000;
+  let pickerWaitingMessageShown = false;
+  let pickerPreparingMessageShown = false;
+
+  function clearPickerMessages() {
+    pickerWaitingMessageShown = false;
+    pickerPreparingMessageShown = false;
+  }
+  function showPickerPreparingMessage() {
+    if (pickerPreparingMessageShown) return;
+    pickerPreparingMessageShown = true;
+    memStatusEl.textContent = t.memories_picker_preparing;
+    memStatusEl.className = 'mem-status';
+  }
+  function showPickerWaitingMessage() {
+    if (!pickerLocked || pickerWaitingMessageShown) return;
+    pickerWaitingMessageShown = true;
+    memStatusEl.innerHTML = `${escapeHtml(t.memories_picker_waiting)} <button type="button" id="mem-picker-retry-btn" class="mem-picker-retry-btn"></button>`;
+    memStatusEl.className = 'mem-status';
+    const retryBtn = document.getElementById('mem-picker-retry-btn');
+    retryBtn.textContent = t.memories_picker_retry;
+    retryBtn.addEventListener('click', () => {
+      pickerLocked = false;
+      clearPickerMessages();
+      memStatusEl.textContent = '';
+      memStatusEl.className = 'mem-status';
+      memFileInput.disabled = uploadQueue.length > 0;
+    });
+  }
+  // CORECȚIE (2026-08-29): afiseaza IMEDIAT starea de asteptare la intoarcere — FARA
+  // intarzierea de 1.5s folosita anterior (PICKER_RETURN_GRACE_MS) — cerinta explicita.
+  function handlePickerPossibleReturn() {
+    if (!pickerLocked) return;
+    showPickerWaitingMessage();
+  }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) handlePickerPossibleReturn(); });
+  window.addEventListener('focus', handlePickerPossibleReturn);
+  window.addEventListener('pageshow', (event) => { if (event.persisted) handlePickerPossibleReturn(); });
+
+  // pointerdown SI click — pointerdown ajunge de regula inaintea evenimentului 'click' pe
+  // touch/iOS, deci feedback-ul apare cat mai devreme posibil; ambele apeleaza acelasi handler
+  // idempotent (verificarea pickerLocked/pickerLockedAt previne dubla initializare).
+  function handlePickerOpenAttempt(e) {
+    if (memFileInput.disabled) { if (e && e.preventDefault) e.preventDefault(); return; }
+    if (pickerLocked && Date.now() - pickerLockedAt < PICKER_MANUAL_RECOVERY_MS) {
+      if (e && e.type === 'click') e.preventDefault();
+      return;
+    }
+    pickerLocked = true;
+    pickerLockedAt = Date.now();
+    clearPickerMessages();
+    showPickerPreparingMessage();
+  }
+  memFileInput.addEventListener('pointerdown', handlePickerOpenAttempt);
+  memFileInput.addEventListener('click', handlePickerOpenAttempt);
+  memFileInput.addEventListener('cancel', () => {
+    pickerLocked = false;
+    clearPickerMessages();
+    memStatusEl.textContent = '';
+    memStatusEl.className = 'mem-status';
+  });
+
+  memFileInput.addEventListener('change', () => {
+    pickerLocked = false;
+    clearPickerMessages();
+    const files = Array.from(memFileInput.files);
+    memFileInput.value = '';
+    if (files.length === 0) {
+      memStatusEl.textContent = t.memories_no_files_selected;
+      memStatusEl.className = 'mem-status err';
+      return;
+    }
+    // Mesaj SINCRON, cu numarul REAL de materiale primite — cerinta explicita (2026-08-29):
+    // "Am primit N materiale. Se pregătesc și se încarcă automat. Nu închide pagina."
+    memStatusEl.textContent = t.memories_received_count(files.length);
+    memStatusEl.className = 'mem-status';
+
+    memBatchTotal += files.length;
+
+    const newEntries = [];
+    files.forEach(file => {
+      try {
+        const entry = {
+          localId: 'q' + Math.random().toString(36).slice(2),
+          file,
+          section: null,
+          status: 'pending',
+          progress: 0,
+          errorMsg: null,
+          thumbUrl: null,
+          xhr: null,
+          multipartSessionId: null,
+          abortRequested: false
+        };
+        uploadQueue.push(entry);
+        newEntries.push(entry);
+      } catch (err) {
+        uploadQueue.push({
+          localId: 'q' + Math.random().toString(36).slice(2),
+          file,
+          section: null,
+          status: 'error',
+          progress: 0,
+          errorMsg: t.memories_upload_error,
+          thumbUrl: null,
+          xhr: null,
+          multipartSessionId: null,
+          abortRequested: false
+        });
+      }
+    });
+    // Toate randurile intra IMEDIAT, sincron, in interfata — inainte de orice operatiune
+    // costisitoare (thumbnailuri/upload). updateBatchActiveState() (in renderQueueList) blocheaza
+    // selectorul chiar in acest tick, sincron cu randarea.
+    renderQueueList();
+    // CORECȚIE (2026-08-29, "lasa browserului cel putin un frame sa picteze feedbackul inainte
+    // de procesarea mai grea"): thumbnailurile si pornirea uploadurilor asteapta explicit un
+    // requestAnimationFrame dupa randarea sincrona de mai sus, ca browserul sa apuce sa
+    // deseneze cele N randuri INAINTE sa inceapa munca grea (decodare imagini, XHR).
+    requestAnimationFrame(() => {
+      processUploadQueue();
+      newEntries.forEach(entry => { if (!isVideoFile(entry.file)) scheduleLocalThumbnail(entry); });
+    });
+  });
+
+  // Avertizare best-effort la parasirea paginii cat timp un upload e activ — cerinta explicita.
+  window.addEventListener('beforeunload', (e) => {
+    if (uploadQueue.some(q => q.status === 'uploading' || q.status === 'processing')) {
+      e.preventDefault();
+      e.returnValue = '';
+    }
+  });
+
+  // ==========================================================================================
+  // Butonul "Creează videoclipul" — MUTAT din melodia-mea.html (2026-08-29): acelasi endpoint
+  // (POST /create-video) si aceeasi navigare catre pagina EXISTENTA de procesare
+  // (se-creeaza-video.html) la 2xx SAU 409 (job deja activ, tot un caz de "asteapta pe pagina
+  // de procesare") — previne cereri duplicate la double-tap prin dezactivarea SINCRONA a
+  // butonului la primul click, inainte de orice cerere de retea. NU porneste randarea automat
+  // la ultimul upload — STRICT la aceasta apasare explicita.
+  // ==========================================================================================
+  let giftVideoCreateRequested = false;
+  document.getElementById('gift-video-create-btn').addEventListener('click', async () => {
+    if (giftVideoCreateRequested) return;
+    giftVideoCreateRequested = true;
+    const btn = document.getElementById('gift-video-create-btn');
+    btn.disabled = true;
+    hideConfirmFailedMessage();
+    let res = null;
+    try {
+      res = await fetch(`/api/orders/${orderId}/create-video`, {
+        method: 'POST',
+        headers: { 'X-Access-Token': accessToken }
+      });
+    } catch (e) { /* res ramane null -> ramura de eroare de mai jos */ }
+
+    if (res && (res.ok || res.status === 409)) {
+      window.location.href = `/se-creeaza-video.html?id=${encodeURIComponent(orderId)}&token=${encodeURIComponent(accessToken)}`;
+      return;
+    }
+
+    let message = t.msg_try_again;
+    if (res) {
+      try { const data = await res.json(); if (data && data.error) message = data.error; } catch (e) { /* body nu era JSON valid */ }
+    }
+    const errEl = document.getElementById('gift-video-create-error');
+    errEl.textContent = t.msg_error_prefix + message;
+    errEl.style.display = 'block';
+    btn.disabled = false;
+    giftVideoCreateRequested = false;
+  });
+
+  // ==========================================================================================
+  // Bootstrap — validare STRICTA: comanda + token reale, plan='video', varianta finala deja
+  // stabilita (aceeasi conditie ca #memories-cta din melodia-mea.html). Daca videoclipul e deja
+  // gata sau in curs, redirectionam catre pagina corecta (preview final / procesare) — pagina
+  // de upload nu are sens de aratat in acele cazuri.
+  // ==========================================================================================
+  async function loadOrder() {
+    try {
+      const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}?token=${encodeURIComponent(accessToken)}`);
+      if (!res.ok) {
+        showState('notfound-state');
+        return;
+      }
+      const order = await res.json();
+      lang = supportedLangs.includes(order.lang) ? order.lang : 'ro';
+      t = T[lang];
+      applyStaticTexts();
+
+      const pendingVariantChoice = !order.selectedVariantId && (order.variants || []).length > 1;
+      const eligible = order.plan === 'video' && !!order.selectedVariantId && !pendingVariantChoice
+        && ['preview_ready', 'ready'].includes(order.status);
+      if (!eligible) {
+        showState('not-eligible-state');
+        return;
+      }
+      if (order.videoStatus === 'ready') {
+        window.location.href = `/melodia-mea.html?id=${encodeURIComponent(orderId)}&token=${encodeURIComponent(accessToken)}`;
+        return;
+      }
+      if (order.videoStatus === 'generating' || order.videoStatus === 'stale') {
+        window.location.href = `/se-creeaza-video.html?id=${encodeURIComponent(orderId)}&token=${encodeURIComponent(accessToken)}`;
+        return;
+      }
+
+      renderMemories(order);
+      showState('content-state');
+    } catch (err) {
+      applyStaticTexts();
+      showState('notfound-state');
+    }
+  }
+
+  applyStaticTexts();
+  loadOrder();
+</script>
+</body>
+</html>

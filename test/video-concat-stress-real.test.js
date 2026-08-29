@@ -65,7 +65,15 @@ test.before(() => {
     "const path = require('path');",
     "const fs = require('fs');",
     'const TEMP_DIR = ' + JSON.stringify(renderWorkDir) + ';',
-    'const MEMORY_VIDEO_WIDTH = 720; const MEMORY_VIDEO_HEIGHT = 1280; const MEMORY_VIDEO_FPS = 25; const MEMORY_XFADE_SECONDS = 0.6;',
+    // CORECȚIE (2026-08-29): rezolutia/fps/preset/CRF sunt extrase DINAMIC din server.js (nu mai
+    // hardcodate la vechea rezolutie 720x1280/25fps) — testul de stres ramane valid la orice
+    // rezolutie/calitate curenta a pipeline-ului, fara sa mai trebuiasca actualizat manual.
+    extractConst('MEMORY_VIDEO_WIDTH'),
+    extractConst('MEMORY_VIDEO_HEIGHT'),
+    extractConst('MEMORY_VIDEO_FPS'),
+    extractConst('MEMORY_XFADE_SECONDS'),
+    extractConst('VIDEO_ENCODE_PRESET'),
+    extractConst('VIDEO_INTERMEDIATE_CRF'),
     extractConst('CONCAT_BATCH_SIZE'),
     // execFfmpeg INSTRUMENTAT — executa REAL ffmpeg (aceeasi cale ca in productie), dar
     // inregistreaza si numarul de "-i" (intrari) per apel, ca testul sa poata dovedi masurabil
@@ -74,11 +82,15 @@ test.before(() => {
     extractFn('wrapVideoRenderStageError'),
     extractFn('computeVideoSegmentStartOffset'),
     extractFn('getVideoSourceDurationSeconds'),
+    extractConst('HDR_COLOR_TRANSFER_VALUES'),
+    extractFn('detectHdrVideo'),
+    extractConst('HDR_TONEMAP_FILTER'),
+    extractFn('buildHdrToneMapFilterIfNeeded'),
     extractFn('renderShot'),
     extractFn('concatBatchWithCrossfades'),
     extractFn('concatWithCrossfades'),
     "function perfLog() {}",
-    'return { renderShot, concatWithCrossfades, CONCAT_BATCH_SIZE };'
+    'return { renderShot, concatWithCrossfades, CONCAT_BATCH_SIZE, MEMORY_VIDEO_WIDTH, MEMORY_VIDEO_HEIGHT, MEMORY_VIDEO_FPS };'
   ].join('\n\n');
 
   ffmpegCalls = [];
@@ -167,8 +179,15 @@ test('STRES REAL (200s, ~50 cadre, 3 poze + 1 video): randarea completa reuseste
 
   const duration = ffprobeDuration(bg);
   assert.ok(Math.abs(duration - durationSeconds) < 1.0, `durata finala trebuie sa fie ~${durationSeconds}s (compensata corect prin reducerea pe niveluri), a fost ${duration}s`);
-  assert.equal(ffprobeStream(bg, 'v:0', 'width'), '720');
-  assert.equal(ffprobeStream(bg, 'v:0', 'height'), '1280');
+  assert.equal(ffprobeStream(bg, 'v:0', 'width'), String(mod.MEMORY_VIDEO_WIDTH));
+  assert.equal(ffprobeStream(bg, 'v:0', 'height'), String(mod.MEMORY_VIDEO_HEIGHT));
+
+  // CERINTA 10 (acceptance): randarea (fundal, 50 cadre, 1080x1920) trebuie sa se incadreze
+  // CONFORTABIL in lock-ul de randare video de 20 minute (db.claimVideoRender) — masuram REAL,
+  // nu presupunem. Aceasta masuratoare acopera shot-render + concat pe loturi (partea dominanta
+  // ca numar de procese ffmpeg); mux-ul final (fundal+audio+subtitrari) e benchmark-uit separat.
+  const VIDEO_RENDER_LOCK_MS = 20 * 60 * 1000;
+  assert.ok(elapsedMs < VIDEO_RENDER_LOCK_MS * 0.5, `randarea (fundal, ${shotPlan.length} cadre, ${mod.MEMORY_VIDEO_WIDTH}x${mod.MEMORY_VIDEO_HEIGHT}) trebuie sa lase o marja larga fata de lock-ul de 20 minute — a durat ${(elapsedMs / 1000).toFixed(1)}s`);
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -206,6 +225,9 @@ test('STRES REAL (200s, 5 materiale — 3 poze + 2 video, ca in comanda esuata r
   // Toate cele 5 materiale trebuie sa fi fost folosite macar o data — nu doar o parte a lor.
   const usedItems = new Set(shotPlan.map(s => s.itemIndex));
   assert.equal(usedItems.size, 5, `toate cele 5 materiale trebuie folosite in plan, doar ${usedItems.size} au aparut`);
+
+  const VIDEO_RENDER_LOCK_MS = 20 * 60 * 1000;
+  assert.ok(elapsedMs < VIDEO_RENDER_LOCK_MS * 0.5, `randarea (fundal, ${shotPlan.length} cadre, ${mod.MEMORY_VIDEO_WIDTH}x${mod.MEMORY_VIDEO_HEIGHT}, 5 materiale) trebuie sa lase o marja larga fata de lock-ul de 20 minute — a durat ${(elapsedMs / 1000).toFixed(1)}s`);
 });
 
 // ---------------------------------------------------------------------------------------------

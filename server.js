@@ -5175,85 +5175,73 @@ function stripSpanningNotes(alignedWords) {
 }
 
 
-// CORECȚIE (2026-08-24, "textul introductiv al videoclipului e hardcodat in engleza"): textul
-// "For {name}" afisat la inceputul videoclipului cadou trebuie sa reflecte limba REALA a
-// comenzii/melodiei (order.lang, salvata la creare — vezi POST /api/orders), NICIODATA limba
-// curenta a browserului in momentul randarii (server-side, randarea nu ruleaza niciodata in
-// contextul unui browser client — nu exista "limba curenta a browserului" de partea asta,
-// dar mentionam explicit ca sursa ramane STRICT order.lang, nu vreo presupunere implicita).
-// {name} e inlocuit literal cu numele exact introdus de client (pastrat intact, inclusiv
-// diacritice/chirilic/turceste) — escaparea pentru ASS se face separat, la construirea
-// evenimentului de caption (vezi escapeAssText), niciodata aici.
-const INTRO_CAPTION_BY_LANG = {
-  ro: (name) => `Pentru ${name}`,
-  en: (name) => `For ${name}`,
-  de: (name) => `Für ${name}`,
-  es: (name) => `Para ${name}`,
-  it: (name) => `Per ${name}`,
-  fr: (name) => `Pour ${name}`,
-  bg: (name) => `За ${name}`,
-  tr: (name) => `${name} için`
-};
-function buildIntroCaptionText(lang, recipient) {
-  const fn = INTRO_CAPTION_BY_LANG[lang] || INTRO_CAPTION_BY_LANG.en;
-  return fn(recipient);
-}
+// CORECȚIE (2026-08-29, "eliminarea completa a introului 'Pentru Maria' si sincronizarea
+// versurilor"): cue-ul introductiv ("Pentru {nume}"/"For {nume}"), afisat intre secunda 0 si
+// primul cuvant cantat, a fost ELIMINAT COMPLET — nu ascuns cu CSS, nu inlocuit cu alt titlu.
+// Videoclipul contine acum STRICT versurile provenite din alinierea reala (alignedWords) —
+// niciun text inventat sau aproximativ. INTRO_CAPTION_BY_LANG/buildIntroCaptionText (codul care
+// construia acel text) au fost sterse — nu mai sunt apelate de nicaieri.
+//
+// Sincronizarea cue-urilor de mai jos respecta acum EXPLICIT:
+//  - un cue incepe EXACT la startS-ul primului cuvant cantat din el si se termina EXACT la
+//    endS-ul ultimului — fara preroll, fara postroll;
+//  - o pauza mare intre doua cuvinte consecutive (CAPTION_PAUSE_SPLIT_SECONDS) desparte cue-ul
+//    in doua, in loc sa tina propozitia pe ecran peste o pauza instrumentala reala;
+//  - limita veche, arbitrara, de durata TOTALA a unei linii (MAX_LINE_DISPLAY_S = 7s, care putea
+//    taia un vers legitim, mai lung, inainte sa se termine cantat) a fost ELIMINATA — inlocuita
+//    cu o plasa de siguranta per-CUVANT (MAX_SINGLE_WORD_HOLD_SECONDS), care clampeaza STRICT
+//    durata unui singur cuvant cu o anomalie de aliniere (ex. real, gasit in date Suno: un cuvant
+//    cu startS=0.58, endS=14.04), fara sa afecteze linii legitime, mai lungi, formate din mai
+//    multe cuvinte cu durate normale.
+const MAX_SINGLE_WORD_HOLD_SECONDS = 4;
+const CAPTION_PAUSE_SPLIT_SECONDS = 1.0;
 
 // Grupeaza cuvintele aliniate in linii de caption, folosind salturile de linie naturale
 // din versuri (nu o limita fixa de cuvinte) — citeste mai natural, respecta structura
-// reala a versurilor scrise de Suno.
-function buildCaptionLines(rawAlignedWords, recipient, lang) {
+// reala a versurilor scrise de Suno. O pauza mare INTRE doua cuvinte (chiar fara salt de
+// linie explicit) desparte de asemenea cue-ul — vezi CAPTION_PAUSE_SPLIT_SECONDS mai sus.
+function buildCaptionLines(rawAlignedWords) {
   const alignedWords = stripSpanningNotes(rawAlignedWords);
   const lines = [];
   let buffer = [];
   let bufferStart = null;
-  let lastRealEnd = null;
+  let bufferEnd = null; // endS (clampat) al ULTIMULUI cuvant real deja adaugat in buffer
 
-  function flush(endS) {
+  function flush() {
     if (buffer.length === 0) return;
     // join('') NU join(' ') — fiecare token Suno isi contine deja propriul spatiu final
     // acolo unde e cazul ("the ", "morning ") — un join fortat cu spatiu ar produce
     // "you' ve" in loc de "you've" la contractii, verificat direct pe date reale.
     const text = buffer.join('').replace(/\s+/g, ' ').trim();
-    if (text) lines.push({ start: bufferStart, end: endS, text });
+    if (text) lines.push({ start: bufferStart, end: bufferEnd, text });
     buffer = [];
     bufferStart = null;
+    bufferEnd = null;
   }
 
   for (const w of alignedWords) {
-    if (!w || w.success !== true || typeof w.startS !== 'number') continue;
+    if (!w || w.success !== true || typeof w.startS !== 'number' || typeof w.endS !== 'number') continue;
     const hasNewline = /\n/.test(w.word);
     const clean = w.word.replace(/\n/g, ' ');
     if (clean.trim()) {
+      const safeEndS = Math.min(w.endS, w.startS + MAX_SINGLE_WORD_HOLD_SECONDS);
+      if (bufferStart !== null && (w.startS - bufferEnd) > CAPTION_PAUSE_SPLIT_SECONDS) {
+        flush(); // pauza mare fata de cuvantul anterior -> cue nou, nu tinem textul peste pauza
+      }
       if (bufferStart === null) bufferStart = w.startS;
       buffer.push(clean);
-      lastRealEnd = w.endS;
+      bufferEnd = safeEndS;
     }
-    if (hasNewline) flush(w.endS);
+    if (hasNewline) flush();
   }
-  flush(lastRealEnd || bufferStart);
+  flush();
 
-  const introEnd = lines.length > 0 ? lines[0].start : 3;
-  const result = [];
-  if (introEnd > 1) {
-    result.push({ start: 0, end: Math.min(introEnd, 5), text: buildIntroCaptionText(lang, recipient), isIntro: true });
+  // preveni suprapunerea: end-ul unei linii nu trece peste start-ul urmatoarei (poate ramane
+  // relevant daca doua cuvinte consecutive au timestamp-uri usor suprapuse in datele Suno).
+  for (let i = 0; i < lines.length - 1; i++) {
+    if (lines[i].end > lines[i + 1].start) lines[i].end = lines[i + 1].start;
   }
-  result.push(...lines);
-
-  // preveni suprapunerea: end-ul unei linii nu trece peste start-ul urmatoarei
-  for (let i = 0; i < result.length - 1; i++) {
-    if (result[i].end > result[i + 1].start) result[i].end = result[i + 1].start;
-  }
-  // plasa de siguranta impotriva anomaliilor de aliniere Suno — verificat direct pe date
-  // reale ca API-ul poate raporta un endS aberant pentru un cuvant (un singur cuvant cu
-  // startS=0.58, endS=14.04 — aproape sigur un artefact, nu o nota reala tinuta 13+ secunde).
-  // Fara aceasta limita, o astfel de anomalie ar "inghetha" o linie de subtitrare pe ecran
-  // mult mai mult decat e firesc pentru cate cuvinte contine.
-  const MAX_LINE_DISPLAY_S = 7;
-  for (const l of result) {
-    if (l.end - l.start > MAX_LINE_DISPLAY_S) l.end = l.start + MAX_LINE_DISPLAY_S;
-  }
-  return result;
+  return lines;
 }
 
 // ==========================================================================================
@@ -5309,12 +5297,33 @@ function assTimestamp(seconds) {
   return `${h}:${pad(m, 2)}:${pad(s, 2)}.${pad(cs, 2)}`;
 }
 
-// Stilurile Naluna — text cald (crem, familia --gold-deep a site-ului), contur FIN (Outline 1,
+// Stilul Naluna — text cald (crem, familia --gold-deep a site-ului), contur FIN (Outline 1,
 // fata de 2 inainte) + o umbra discreta (BackColour semi-transparent) in loc de marginea groasa
-// neagra veche. "Title" (textul introductiv) e mai mare, aldin, centrat pe mijlocul cadrului
-// (Alignment 5), afisat scurt la inceput. "Lyrics" e mai mic, curat, jos, in zona sigura pentru
-// interfata Reels/TikTok/WhatsApp (MarginV 150, acelasi prag verificat deja pe productie).
+// neagra veche. "Lyrics" e singurul stil ramas (2026-08-29: stilul "Title", folosit STRICT de
+// cue-ul introductiv eliminat complet — vezi comentariul de la buildCaptionLines — a fost sters,
+// era cod mort dupa eliminarea introului), mic, curat, jos, in zona sigura pentru interfata
+// Reels/TikTok/WhatsApp.
+//
+// CORECȚIE (2026-08-29, "scaleaza proportional stilul ASS la 1080x1920"): Fontsize/Outline/
+// Shadow/MarginL/MarginR/MarginV de mai jos au fost STABILITE VIZUAL la rezolutia originala de
+// referinta (720 latime) — PlayResX/PlayResY de mai sus urmaresc DEJA dinamic rezolutia REALA
+// (MEMORY_VIDEO_WIDTH/HEIGHT, niciodata hardcodate), ceea ce inseamna ca libass interpreteaza
+// aceste numere STRICT ca pixeli in spatiul PlayRes curent — la 1080x1920 (1.5x mai mare),
+// aceleasi numere absolute ar produce text vizibil MAI MIC ca proportie din cadru (exact bugul
+// de evitat aici). ASS_STYLE_SCALE de mai jos aplica ACELASI factor de scalare ca rezolutia
+// insasi (MEMORY_VIDEO_WIDTH / ASS_STYLE_REFERENCE_WIDTH), pastrand deci EXACT aspectul vizual
+// fin, deja validat, indiferent de rezolutia finala aleasa.
+const ASS_STYLE_REFERENCE_WIDTH = 720; // latimea pentru care Fontsize=30/MarginV=150/etc. au fost alese vizual
+const ASS_STYLE_SCALE = MEMORY_VIDEO_WIDTH / ASS_STYLE_REFERENCE_WIDTH;
+function scaledAssStyleValue(referenceValue) {
+  return Math.round(referenceValue * ASS_STYLE_SCALE * 10) / 10; // o zecimala — suficient pentru Outline/Shadow
+}
 function toAss(lines) {
+  const fontSize = scaledAssStyleValue(30);
+  const outline = scaledAssStyleValue(1);
+  const shadow = scaledAssStyleValue(1);
+  const marginLR = scaledAssStyleValue(60);
+  const marginV = scaledAssStyleValue(150);
   const header =
 `[Script Info]
 ScriptType: v4.00+
@@ -5325,17 +5334,15 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Title,Arial,46,&H00E8F0F5,&H000000FF,&H0016202B,&H80000000,1,0,0,0,100,100,0,0,1,1,1.4,5,60,60,0,1
-Style: Lyrics,Arial,30,&H00E8F0F5,&H000000FF,&H0016202B,&H64000000,0,0,0,0,100,100,0,0,1,1,1,2,60,60,150,1
+Style: Lyrics,Arial,${fontSize},&H00E8F0F5,&H000000FF,&H0016202B,&H64000000,0,0,0,0,100,100,0,0,1,${outline},${shadow},2,${marginLR},${marginLR},${marginV},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 `;
   const events = lines.map(l => {
-    const style = l.isIntro ? 'Title' : 'Lyrics';
     const text = wrapAssTextTwoLines(escapeAssText(l.text));
     if (!text) return null;
-    return `Dialogue: 0,${assTimestamp(l.start)},${assTimestamp(l.end)},${style},,0,0,0,,${text}`;
+    return `Dialogue: 0,${assTimestamp(l.start)},${assTimestamp(l.end)},Lyrics,,0,0,0,,${text}`;
   }).filter(Boolean).join('\n');
   return header + events + '\n';
 }
@@ -5388,10 +5395,58 @@ const VIDEO_BG_COLOR = '0x2B2016'; // maro cald inchis, din aceeasi familie ca -
 // din sectiunile detectate de Suno, nu doar din ordine.
 // ==========================================================================================
 
-const MEMORY_VIDEO_WIDTH = 720;
-const MEMORY_VIDEO_HEIGHT = 1280;
-const MEMORY_VIDEO_FPS = 25;
+// CORECȚIE (2026-08-29, "calitate video clara, potrivita pentru iPhone/Reels"): rezolutia
+// finala trece de la 720x1280/25fps la 1080x1920/30fps — pe TOT pipeline-ul (fiecare cadru
+// individual, fiecare nivel de concat, fundalul solid de rezerva, fisierul final), nu doar un
+// upscale la ultimul pas. Motivul degradarii vizuale raportate NU era rezolutia joasa in sine —
+// era combinatia rezolutie joasa + pana la 5 treceri succesive de reencodare lossy, toate cu
+// CRF 26-28 (compresie vizibila, compusa la fiecare trecere).
+//
+// ALEGEREA PRESET-ULUI, EXPLICATA (benchmark local, cerinta explicita "valori stabilite prin
+// benchmark"): cerinta sugereaza ca punct de PORNIRE preset veryfast/superfast — testat direct
+// aici, pe continut REALIST (nu culoare solida, care ascunde complet costul real al unui preset
+// mai lent): la 1080x1920, veryfast/CRF18 s-a dovedit 4.3x MAI LENT decat vechiul ultrafast/
+// CRF26 pe continut cu detaliu/miscare reala (testsrc2, 30s, măsurat: 6049ms vs 1398ms la
+// 720x1280 ultrafast). Railway are deja o istorie documentata (vezi comentariul de la mux-ul
+// final, mai jos) de a fi mult mai lent decat masina de dezvoltare pe exact acest tip de
+// operatie (~15fps masurat direct in productie, vs sute de fps local) — un multiplicator de 4.3x
+// aplicat peste acel 15fps ar aduce randarea unei melodii de 200s aproape de sau peste cele 20
+// de minute ale lock-ului de randare (db.claimVideoRender), risc INACCEPTABIL (ar putea permite
+// o a doua randare "paralela" pentru aceeasi comanda, dupa expirarea gresita a lock-ului).
+// Testat apoi ALTERNATIVA REALA: pastrarea preset-ului "ultrafast" (dovedit sigur pe Railway),
+// combinata STRICT cu o scadere mare a CRF (26/28 -> 18-19) — masurat direct: cost de timp
+// SUPLIMENTAR de sub 3% (2941ms vs 3019ms pe acelasi test de 30s), pentru un bitrate de aproape
+// 1.5x mai mare (calitate vizuala mult mai apropiata de sursa — CRF, nu preset-ul, e principalul
+// parametru care controleaza fidelitatea vizuala tinta; preset-ul afecteaza in principal
+// EFICIENTA compresiei la acea fidelitate, nu fidelitatea insasi). Aceasta e alegerea facuta mai
+// jos — o abatere JUSTIFICATA, prin masuratori reale, de la sugestia initiala de preset, exact
+// ce cerinta insasi permite ("punct de pornire rezonabil", nu o valoare obligatorie).
+const MEMORY_VIDEO_WIDTH = 1080;
+const MEMORY_VIDEO_HEIGHT = 1920;
+const MEMORY_VIDEO_FPS = 30;
 const MEMORY_XFADE_SECONDS = 0.6; // tranzitie scurta — eleganta, fara sa incarce randarea
+
+// Preset x264 comun pentru TOATE etapele de randare video (cadre individuale, concat pe loturi,
+// mux final) — "ultrafast", NESCHIMBAT fata de inainte si dovedit sigur pe Railway (vezi
+// comentariul detaliat de mai sus) — imbunatatirea reala de calitate vine STRICT din CRF-urile
+// mult mai mici de mai jos, la un cost de timp masurat sub 3%, niciodata dintr-un preset mai lent.
+const VIDEO_ENCODE_PRESET = 'ultrafast';
+// CRF pentru etape INTERMEDIARE (cadre individuale randate de renderShot() si loturile combinate
+// de concatBatchWithCrossfades()) — aproape vizual-lossless, pentru ca aceste fisiere sunt
+// reencodate INCA O DATA la pasul urmator (concat/mux); o pierdere mica aici s-ar compune cu
+// urmatoarea trecere. Inlocuieste vechiul CRF 28 (cadre)/26 (concat pe loturi).
+const VIDEO_INTERMEDIATE_CRF = 18;
+// CRF pentru mux-ul FINAL (fundal + audio + subtitrari, singura trecere care produce fisierul
+// livrat clientului) — usor mai comprimat decat intermediarele (fisierul final nu mai e
+// reencodat niciodata dupa asta), dar tot mult peste vechiul CRF 26.
+const VIDEO_FINAL_CRF = 19;
+
+// Etichetare EXPLICITA BT.709 pe iesire — verificat direct (empiric): libx264 nu scrie fiabil
+// color_primaries/color_trc in bitstream doar din -color_primaries/-color_trc generice; are
+// nevoie de VUI setat prin -x264-params. Folosit (1) intotdeauna la mux-ul final (fisierul
+// livrat clientului) si (2) la orice cadru unde s-a aplicat tonemapping HDR->SDR (vezi
+// buildHdrToneMapFilterIfNeeded/renderShot).
+const VIDEO_BT709_TAG_ARGS = ['-color_primaries', 'bt709', '-color_trc', 'bt709', '-colorspace', 'bt709', '-x264-params', 'colorprim=bt709:transfer=bt709:colormatrix=bt709'];
 
 // Descarca toate elementele uploadedMedia ale comenzii din bucket-ul PRIVAT, in fisiere
 // locale temporare. O eroare la orice element opreste tot pipeline-ul cinematic — apelantul
@@ -5423,6 +5478,63 @@ async function getVideoSourceDurationSeconds(localPath) {
   } catch (err) {
     return null;
   }
+}
+
+// CORECȚIE (2026-08-29, "verifica prin ffprobe daca materialele iPhone de test sunt SDR sau
+// HDR"): detectie REALA (nu presupusa) a materialelor video HDR (BT.2020 + PQ/HLG — Dolby
+// Vision se semnaleaza pe acelasi transfer PQ, deci acopera si acel caz) — inspecteaza
+// color_transfer/color_primaries ale FISIERULUI REAL, niciodata dedus din extensie/nume.
+// Esec controlat: orice problema la ffprobe (fisier corupt, camp lipsa/necunoscut la un
+// videoclip vechi fara metadate de culoare) => tratat STRICT ca SDR — nu aplicam niciodata
+// tonemapping "din prudenta" pe un fisier SDR (cerinta explicita), si nu blocam randarea.
+const HDR_COLOR_TRANSFER_VALUES = new Set(['smpte2084', 'arib-std-b67']); // PQ (HDR10/Dolby Vision), HLG
+async function detectHdrVideo(localPath) {
+  try {
+    // CORECȚIE (2026-08-29, bug REAL gasit prin verificare directa): "-of
+    // default=noprint_wrappers=1:nokey=1" (FARA nume de camp) intoarce valorile in ORDINEA
+    // INTERNA CANONICA a ffprobe, NICIODATA in ordinea ceruta in -show_entries — verificat
+    // direct: pentru "stream=color_transfer,color_primaries,color_space", ffprobe a intors
+    // efectiv color_space/color_transfer/color_primaries (alta ordine), ceea ce ar fi facut
+    // destructurarea pozitionala (varianta anterioara a acestei functii) sa citeasca valorile
+    // GRESIT — un fisier HDR real ar fi fost clasificat SDR, niciodata tonemapat. Solutia:
+    // "-of default=noprint_wrappers=1" (CU nume de camp, "cheie=valoare") — parsat aici dupa
+    // NUME, imun la orice ordine interna a ffprobe.
+    const { stdout } = await execFileAsync('ffprobe', [
+      '-v', 'error', '-select_streams', 'v:0',
+      '-show_entries', 'stream=color_transfer,color_primaries,color_space',
+      '-of', 'default=noprint_wrappers=1', localPath
+    ], { timeout: 15000 });
+    const fields = {};
+    stdout.trim().split('\n').forEach(line => {
+      const eqIdx = line.indexOf('=');
+      if (eqIdx === -1) return;
+      fields[line.slice(0, eqIdx).trim()] = line.slice(eqIdx + 1).trim();
+    });
+    const colorTransfer = fields.color_transfer || null;
+    const colorPrimaries = fields.color_primaries || null;
+    const colorSpace = fields.color_space || null;
+    const isHdr = HDR_COLOR_TRANSFER_VALUES.has(colorTransfer) || colorPrimaries === 'bt2020';
+    return { isHdr, colorTransfer, colorPrimaries, colorSpace };
+  } catch (err) {
+    return { isHdr: false, colorTransfer: null, colorPrimaries: null, colorSpace: null };
+  }
+}
+
+// Lant STANDARD de tonemapping HDR->SDR, STRICT cu filtre deja disponibile in imaginea ffmpeg
+// (libzimg — zscale, deja verificat prezent) — niciun serviciu extern, niciun cost de licenta
+// suplimentar. zscale la spatiu liniar -> tonemap operator Hable (echilibrat perceptual, fara
+// desaturare suplimentara) -> zscale inapoi la BT.709/interval TV, gata pentru scalarea si
+// formatul yuv420p aplicate imediat dupa (vezi renderShot()).
+const HDR_TONEMAP_FILTER = 'zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv';
+
+// Returneaza filtrul de tonemapping STRICT daca sursa e cu adevarat HDR — null (niciun filtru)
+// pentru orice material SDR, marea majoritate a cazurilor reale. Logat explicit (perfLog) cand
+// se aplica, pentru vizibilitate directa in productie daca un client chiar incarca material HDR.
+async function buildHdrToneMapFilterIfNeeded(localPath, orderId, shotIndex) {
+  const info = await detectHdrVideo(localPath);
+  if (!info.isHdr) return null;
+  perfLog(orderId, 'memory_hdr_tonemap', `cadru=${shotIndex}, color_transfer=${info.colorTransfer}, color_primaries=${info.colorPrimaries}`);
+  return HDR_TONEMAP_FILTER;
 }
 
 // CORECȚIE (2026-08-14, "nu selecta accidental numai primul fragment al fiecarui clip"):
@@ -5469,15 +5581,17 @@ async function renderShot(item, shot, shotIndex, order) {
   if (item.type === 'photo') {
     // pre-scalare la 2x rezolutia finala (acelasi raport 9:16) — da zoompan-ului suficient
     // "spatiu" sa faca un zoom lent si neted, fara sa mareasca artificial o poza mica.
+    // CORECȚIE (2026-08-29): flags=lanczos adaugat explicit la scalare — scalare de calitate
+    // (nu bilinear implicit) — vizibil mai clara la fotografii cu detalii fine.
     const kb = shot.kenBurns;
     try {
       await execFfmpeg([
         '-y', '-loop', '1', '-i', item.localPath,
         '-t', String(segDurationSeconds),
-        '-vf', `scale=${MEMORY_VIDEO_WIDTH * 2}:${MEMORY_VIDEO_HEIGHT * 2}:force_original_aspect_ratio=increase,crop=${MEMORY_VIDEO_WIDTH * 2}:${MEMORY_VIDEO_HEIGHT * 2},zoompan=z='${kb.z}':x='${kb.x}':y='${kb.y}':d=${frames}:s=${MEMORY_VIDEO_WIDTH}x${MEMORY_VIDEO_HEIGHT}:fps=${MEMORY_VIDEO_FPS},format=yuv420p`,
-        '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '28', '-an',
+        '-vf', `scale=${MEMORY_VIDEO_WIDTH * 2}:${MEMORY_VIDEO_HEIGHT * 2}:force_original_aspect_ratio=increase:flags=lanczos,crop=${MEMORY_VIDEO_WIDTH * 2}:${MEMORY_VIDEO_HEIGHT * 2},zoompan=z='${kb.z}':x='${kb.x}':y='${kb.y}':d=${frames}:s=${MEMORY_VIDEO_WIDTH}x${MEMORY_VIDEO_HEIGHT}:fps=${MEMORY_VIDEO_FPS},format=yuv420p`,
+        '-c:v', 'libx264', '-preset', VIDEO_ENCODE_PRESET, '-crf', String(VIDEO_INTERMEDIATE_CRF), '-an',
         outPath
-      ], { timeout: 60000 });
+      ], { timeout: 120000 });
     } catch (err) {
       throw wrapVideoRenderStageError(order.id, 'shot_render_photo', err, `cadru=${shotIndex}, material=${shot.itemIndex}`);
     }
@@ -5488,14 +5602,31 @@ async function renderShot(item, shot, shotIndex, order) {
     const inputArgs = useLoop
       ? ['-stream_loop', '-1', '-i', item.localPath]
       : ['-ss', startOffset.toFixed(2), '-i', item.localPath];
+    // CORECȚIE (2026-08-29, "verifica prin ffprobe daca materialele iPhone sunt SDR sau HDR"):
+    // tonemapping CONDITIONAT — aplicat STRICT daca sursa e cu adevarat HDR (BT.2020/PQ/HLG),
+    // niciodata pentru materiale SDR (marea majoritate). Vezi buildHdrToneMapFilter() mai jos.
+    const hdrFilter = await buildHdrToneMapFilterIfNeeded(item.localPath, order.id, shotIndex);
+    const scaleFilter = `scale=${MEMORY_VIDEO_WIDTH}:${MEMORY_VIDEO_HEIGHT}:force_original_aspect_ratio=increase:flags=lanczos,crop=${MEMORY_VIDEO_WIDTH}:${MEMORY_VIDEO_HEIGHT},fps=${MEMORY_VIDEO_FPS}`;
+    const vf = hdrFilter ? `${hdrFilter},${scaleFilter},format=yuv420p` : `${scaleFilter},format=yuv420p`;
+    // etichetare EXPLICITA BT.709 pe iesire — obligatorie dupa tonemapping (fara ea, cadrul
+    // ar ramane marcat implicit cu spatiul de culoare al containerului implicit ffmpeg,
+    // niciodata "corect etichetat" cum cere cerinta explicita); aplicata STRICT cand chiar am
+    // tonemapat (sursa era cu adevarat HDR) — niciodata suprascrisa "din prudenta" pe SDR.
+    // NOTA (verificat direct, empiric): libx264 NU scrie fiabil color_primaries/color_trc in
+    // bitstream doar din optiunile generice -color_primaries/-color_trc (desi -colorspace
+    // singur functiona) — necesita explicit -x264-params cu VUI (colorprim/transfer/
+    // colormatrix), vezi VIDEO_BT709_TAG_ARGS mai jos, singura combinatie confirmata sa produca
+    // un fisier unde ffprobe raporteaza real color_primaries=bt709/color_transfer=bt709.
+    const colorTagArgs = hdrFilter ? VIDEO_BT709_TAG_ARGS : [];
     try {
       await execFfmpeg([
         '-y', ...inputArgs,
         '-t', String(segDurationSeconds),
-        '-vf', `scale=${MEMORY_VIDEO_WIDTH}:${MEMORY_VIDEO_HEIGHT}:force_original_aspect_ratio=increase,crop=${MEMORY_VIDEO_WIDTH}:${MEMORY_VIDEO_HEIGHT},fps=${MEMORY_VIDEO_FPS},format=yuv420p`,
-        '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '28', '-an',
+        '-vf', vf,
+        '-c:v', 'libx264', '-preset', VIDEO_ENCODE_PRESET, '-crf', String(VIDEO_INTERMEDIATE_CRF), '-an',
+        ...colorTagArgs,
         outPath
-      ], { timeout: 60000 });
+      ], { timeout: 120000 });
     } catch (err) {
       throw wrapVideoRenderStageError(order.id, 'shot_render_video', err, `cadru=${shotIndex}, material=${shot.itemIndex}`);
     }
@@ -5561,9 +5692,9 @@ async function concatBatchWithCrossfades(segmentPaths, shots, order, batchTag) {
       '-y', ...inputArgs,
       '-filter_complex', filter,
       '-map', `[${lastLabel}]`,
-      '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '26',
+      '-c:v', 'libx264', '-preset', VIDEO_ENCODE_PRESET, '-crf', String(VIDEO_INTERMEDIATE_CRF),
       outPath
-    ], { timeout: 180000 });
+    ], { timeout: 240000 });
   } catch (err) {
     throw wrapVideoRenderStageError(order.id, 'concat_batch', err, `lot=${batchTag}, intrari=${segmentPaths.length}`);
   }
@@ -5729,12 +5860,10 @@ async function generateLyricVideo(order, variant, tempFullMp3Path) {
     throw new Error('Raspunsul cu versuri sincronizate e gol sau are o structura neasteptata.');
   }
 
-  // CORECȚIE (2026-08-24, "textul introductiv e hardcodat in engleza"): limba vine STRICT din
-  // order.lang (limba REALA a comenzii/melodiei, salvata la creare) — niciodata dedusa altfel.
-  // buildIntroCaptionText() insasi cade pe engleza DOAR daca order.lang lipseste sau nu e una
-  // din cele 8 limbi suportate (comenzi foarte vechi, dinainte de campul lang) — fallback
-  // explicit si testat, nu o eroare tacuta.
-  const captionLines = buildCaptionLines(body.data.alignedWords, order.recipient || '', order.lang);
+  // CORECȚIE (2026-08-29): buildCaptionLines() nu mai primeste recipient/lang — cue-ul
+  // introductiv care le folosea a fost eliminat complet (vezi comentariul de la
+  // buildCaptionLines). Videoclipul contine acum STRICT versurile din alinierea reala.
+  const captionLines = buildCaptionLines(body.data.alignedWords);
   if (captionLines.length === 0) {
     throw new Error('Nicio linie de caption construita din versurile sincronizate.');
   }
@@ -5776,14 +5905,17 @@ async function generateLyricVideo(order, variant, tempFullMp3Path) {
 
     // Verificat direct pe Railway (2026-08-03, comanda 59ae99f9, plata reala): libass,
     // subtitrarile si fonturile functioneaza corect pe containerul de productie — encodarea
-    // CHIAR pornea si avansa (frame=45, fps~15) cand a fost omorata de limita de 180000ms.
-    // CPU-ul containerului Railway e mult mai lent decat masina locala de test (unde acelasi
-    // videoclip a durat ~40s) — la ~15fps reale, un videoclip de 4 minute la 25fps/1080x1920
-    // are nevoie de 400+ secunde, nu 180. Solutie: rezolutie mai mica (720x1280 — mult mai
-    // putini pixeli de encodat, tot suficient de buna pentru telefon/social), preset
-    // "ultrafast" (semnificativ mai rapid decat "veryfast", cu compresie usor mai slaba —
-    // acceptabil, viteza conteaza mai mult decat marimea fisierului aici), si un timeout
-    // mult mai generos (10 minute) — sigur, ruleaza complet asincron, nu blocheaza nimic.
+    // CHIAR pornea si avansa (frame=45, fps~15) cand a fost omorata de limita de 180000ms (3
+    // minute, la momentul acelei masuratori). Estimarea de atunci — un videoclip de 4 minute la
+    // 25fps/1080x1920 are nevoie de 400+ secunde, nu 180 — a dus initial la o coborare temporara
+    // la 720x1280. CORECȚIE (2026-08-29, "calitate video clara"): revenire la 1080x1920, de data
+    // asta SIGUR — timeout-ul de mai jos e deja 600000ms (10 minute, marit ulterior acelei
+    // masuratori initiale), suficient pentru estimarea originala de 400+s chiar la un cantec de 4
+    // minute; preset-ul ramane "ultrafast" (VIDEO_ENCODE_PRESET, NESCHIMBAT ca viteza fata de
+    // masuratoarea originala — vezi comentariul detaliat de la declararea lui, mai sus, pentru
+    // motivul exact pentru care preset-ul nu a fost schimbat desi cerinta initiala sugera
+    // "veryfast/superfast"). Calitatea vine STRICT din CRF mult mai mic (VIDEO_FINAL_CRF=19 fata
+    // de vechiul 26), care NU modifica semnificativ timpul de encodare (benchmark direct: sub 3%).
     const videoInputArgs = memoryBackground
       ? ['-i', memoryBackground.backgroundPath]
       : ['-f', 'lavfi', '-i', `color=c=${VIDEO_BG_COLOR}:s=${MEMORY_VIDEO_WIDTH}x${MEMORY_VIDEO_HEIGHT}:d=${durationSeconds}`];
@@ -5795,12 +5927,18 @@ async function generateLyricVideo(order, variant, tempFullMp3Path) {
     // fisierului — necesar ca Reels/WhatsApp/browserul mobil sa poata incepe reda inainte ca
     // fisierul intreg sa fie descarcat. Previzualizarea (taiata mai jos cu -c copy din acest
     // fisier) mosteneste automat ambele proprietati, fara nicio schimbare suplimentara acolo.
+    // CORECȚIE (2026-08-29): etichetare EXPLICITA BT.709 pe fisierul FINAL, intotdeauna — nu doar
+    // cand un cadru anume a fost tonemapat din HDR (vezi buildHdrToneMapFilterIfNeeded) — sursele
+    // SDR sunt deja, de fapt, in BT.709, dar containerul MP4 nu avea NICIUN tag de spatiu de
+    // culoare explicit inainte de aceasta corectie; playerele stricte (unele browsere mobile)
+    // pot interpreta gresit un flux fara tag, mai ales dupa un lant de reencodari.
     await execFfmpeg([
       '-y',
       ...videoInputArgs,
       '-i', tempFullMp3Path,
       '-vf', `subtitles='${assForFilter}'`,
-      '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '26', '-pix_fmt', 'yuv420p',
+      '-c:v', 'libx264', '-preset', VIDEO_ENCODE_PRESET, '-crf', String(VIDEO_FINAL_CRF), '-pix_fmt', 'yuv420p',
+      ...VIDEO_BT709_TAG_ARGS,
       '-c:a', 'aac', '-b:a', '192k',
       '-movflags', '+faststart',
       '-shortest',

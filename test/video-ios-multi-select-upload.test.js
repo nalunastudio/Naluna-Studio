@@ -23,7 +23,11 @@ function read(relPath) {
 }
 
 const server = read('server.js');
-const melodiaMea = read('public/melodia-mea.html');
+// CORECȚIE (2026-08-29, "pagina separata pentru selectarea si incarcarea media"): inputul de
+// fisiere pentru pachetul Cadou video, testat aici, a fost MUTAT din melodia-mea.html in
+// public/amintiri-video.html — retargetat STRICT aceasta pagina; comanda-mea.html/succes.html
+// au propriile copii NEATINSE.
+const melodiaMea = read('public/amintiri-video.html');
 const comandaMea = read('public/comanda-mea.html');
 const succes = read('public/succes.html');
 
@@ -32,7 +36,7 @@ const succes = read('public/succes.html');
 //    care ofera widgetul de materiale pentru "Cadou video".
 // ---------------------------------------------------------------------------------------------
 [
-  ['public/melodia-mea.html', melodiaMea],
+  ['public/amintiri-video.html', melodiaMea],
   ['public/comanda-mea.html', comandaMea],
   ['public/succes.html', succes]
 ].forEach(([file, html]) => {
@@ -162,9 +166,12 @@ test('server.js: getVideoSourceDurationSeconds() foloseste ffprobe cu timeout si
 test('server.js: renderShot() foloseste computeVideoSegmentStartOffset() pentru videoclipuri, pastrand exact pipeline-ul de scalare/crop existent', () => {
   const idx = server.indexOf('async function renderShot(item, shot, shotIndex, order) {');
   assert.notEqual(idx, -1, 'renderShot() trebuie sa existe (inlocuieste renderMemorySegment)');
-  const snippet = server.slice(idx, idx + 2200);
+  const snippet = server.slice(idx, idx + 3200);
   assert.ok(snippet.includes('computeVideoSegmentStartOffset(syntheticIndex, sourceDuration, segDurationSeconds)'));
-  assert.ok(snippet.includes(`scale=\${MEMORY_VIDEO_WIDTH}:\${MEMORY_VIDEO_HEIGHT}:force_original_aspect_ratio=increase,crop=\${MEMORY_VIDEO_WIDTH}:\${MEMORY_VIDEO_HEIGHT}`), 'crop-ul fara deformare trebuie sa ramana neschimbat');
+  // CORECȚIE (2026-08-29, "calitate video clara"): scalarea foloseste acum explicit Lanczos
+  // (flags=lanczos) — scalare de calitate, nu bilinear implicit — dincolo de asta, crop-ul
+  // fara deformare ramane exact acelasi.
+  assert.ok(snippet.includes(`scale=\${MEMORY_VIDEO_WIDTH}:\${MEMORY_VIDEO_HEIGHT}:force_original_aspect_ratio=increase:flags=lanczos,crop=\${MEMORY_VIDEO_WIDTH}:\${MEMORY_VIDEO_HEIGHT}`), 'crop-ul fara deformare trebuie sa ramana neschimbat, cu scalare Lanczos adaugata');
   assert.ok(snippet.includes("'-an'"), 'segmentele video raman FARA sunetul original — pista audio finala e STRICT melodia');
 });
 
@@ -230,7 +237,7 @@ test('server.js: PLAN_PRICES si PLAN_VARIANT_COUNT raman exact neschimbate fata 
 // ---------------------------------------------------------------------------------------------
 // 7. Sintaxa ramane valida in toate fisierele atinse.
 // ---------------------------------------------------------------------------------------------
-test('server.js, melodia-mea.html, comanda-mea.html, succes.html: raman sintactic valide', () => {
+test('server.js, amintiri-video.html, comanda-mea.html, succes.html: raman sintactic valide', () => {
   const { execSync } = require('node:child_process');
   execSync('node --check server.js', { cwd: path.join(__dirname, '..') });
   [melodiaMea, comandaMea, succes].forEach(html => {

@@ -3169,11 +3169,6 @@
   const sumTotal = document.getElementById('sum-total');
   const benefitsListEl = document.getElementById('benefits-list');
   let selectedPlan = { id: 'standard', price: 15, label: 'Standard' };
-  // Adevarul despre ce sa afiseze blocul de beneficii la incarcare: NIMIC pana cand clientul
-  // alege explicit un pachet (click/Enter/Space) sau pana cand un draft salvat anterior aduce
-  // deja un plan ales — cardul Standard ramane vizual "activ" implicit (neschimbat), dar asta
-  // NU inseamna ca a fost ales explicit.
-  let planExplicitlySelected = false;
 
   // Beneficiile REALE ale pachetului curent — sursa unica e obiectul de traduceri
   // (t.benefits_standard/premium/video), acelasi obiect din care se randeaza si restul
@@ -3209,7 +3204,6 @@
     };
     sumPlan.textContent = selectedPlan.label;
     sumTotal.textContent = '£' + selectedPlan.price;
-    planExplicitlySelected = true;
     renderBenefits(selectedPlan.id);
     updateGenerateButtonLabel();
     updateGenre2Visibility();
@@ -3442,7 +3436,6 @@
         };
         sumPlan.textContent = selectedPlan.label;
         sumTotal.textContent = '£' + selectedPlan.price;
-        planExplicitlySelected = true;
         updateGenerateButtonLabel();
       }
     }
@@ -3467,10 +3460,12 @@
   form.addEventListener('input', saveDraft);
 
   applyLang(currentLang);
-  // Vizita noua (niciun draft cu plan salvat, nicio selectie explicita inca): blocul de
-  // beneficii ramane gol pana la selectarea explicita a unui pachet (click/Enter/Space) — vezi
-  // planExplicitlySelected, setat in selectPlan()/restoreDraft().
-  if (planExplicitlySelected) renderBenefits(selectedPlan.id);
+  // CORECȚIE (2026-08-29, "pachetul Standard — conținut vizibil din prima"): beneficiile
+  // pachetului CURENT SELECTAT (Standard implicit, sau planul restaurat din draft de
+  // restoreDraft() mai sus) sunt randate imediat la incarcare, fara sa astepte un click — cardul
+  // Standard e deja vizual activ in HTML (.plan.active, aria-selected="true"), deci ascunderea
+  // beneficiilor lui pana la un al doilea click era o inconsecventa, nu o alegere intentionata.
+  renderBenefits(selectedPlan.id);
   updateGenerateButtonLabel();
   updateGenre2Visibility();
   showStep(restoredStep);

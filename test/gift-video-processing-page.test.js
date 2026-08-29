@@ -20,6 +20,11 @@ function read(relPath) {
 const server = read('server.js');
 const melodia = read('public/melodia-mea.html');
 const processingPage = read('public/se-creeaza-video.html');
+// CORECȚIE (2026-08-29, "pagina separata pentru selectarea si incarcarea media"): butonul
+// "Creează videoclipul meu cadou" si maybeAutoConfirmMedia() au fost MUTATE din melodia-mea.html
+// in public/amintiri-video.html — retargetat STRICT aceasta pagina; butonul Retry (job
+// videoStatus=failed) ramane in melodia-mea.html (parte din mesajul de stare video, neatins).
+const amintiriVideo = read('public/amintiri-video.html');
 
 // ---------------------------------------------------------------------------------------------
 // 1) server.js — rezervarea (claim) e separata de randare si ASTEPTATA inainte de raspuns.
@@ -59,19 +64,18 @@ test('server.js: randarea propriu-zisa (runVideoRenderJob) ramane fire-and-forge
 // ---------------------------------------------------------------------------------------------
 // 2) melodia-mea.html — butonul de creare verifica raspunsul, nu mai ramane blocat la eroare.
 // ---------------------------------------------------------------------------------------------
-test('melodia-mea.html: click pe gift-video-create-btn verifica res.ok SAU res.status===409 inainte sa navigheze catre pagina dedicata — orice alt raspuns (sau eroare de retea) ramane pe pagina curenta', () => {
-  const idx = melodia.indexOf("document.getElementById('gift-video-create-btn').addEventListener('click'");
+test('amintiri-video.html: click pe gift-video-create-btn verifica res.ok SAU res.status===409 inainte sa navigheze catre pagina dedicata — orice alt raspuns (sau eroare de retea) ramane pe pagina curenta', () => {
+  const idx = amintiriVideo.indexOf("document.getElementById('gift-video-create-btn').addEventListener('click'");
   assert.ok(idx !== -1);
-  const snippet = melodia.slice(idx, idx + 1800);
+  const snippet = amintiriVideo.slice(idx, idx + 1800);
   assert.match(snippet, /if \(res && \(res\.ok \|\| res\.status === 409\)\) \{/);
   assert.match(snippet, /window\.location\.href = `\/se-creeaza-video\.html\?id=\$\{encodeURIComponent\(orderId\)\}&token=\$\{encodeURIComponent\(accessToken\)\}`;/);
 });
 
-test('melodia-mea.html: la eroare (raspuns non-ok/non-409 SAU eroare de retea), butonul de creare e reactivat si mesajul de eroare tradus e afisat — NU mai ramane "videoCreationInFlight" blocat la nesfarsit', () => {
-  const idx = melodia.indexOf("document.getElementById('gift-video-create-btn').addEventListener('click'");
-  const snippet = melodia.slice(idx, idx + 2200);
-  assert.ok(!snippet.includes('videoCreationInFlight = true;'), 'handler-ul nu mai trebuie sa fixeze optimist videoCreationInFlight inainte de a verifica raspunsul real');
-  assert.match(snippet, /statusEl\.textContent = t\.msg_error_prefix \+ message;/);
+test('amintiri-video.html: la eroare (raspuns non-ok/non-409 SAU eroare de retea), butonul de creare e reactivat si mesajul de eroare tradus e afisat', () => {
+  const idx = amintiriVideo.indexOf("document.getElementById('gift-video-create-btn').addEventListener('click'");
+  const snippet = amintiriVideo.slice(idx, idx + 2200);
+  assert.match(snippet, /errEl\.textContent = t\.msg_error_prefix \+ message;/);
   assert.match(snippet, /btn\.disabled = false;/);
   assert.match(snippet, /giftVideoCreateRequested = false;/);
 });
@@ -87,9 +91,9 @@ test('melodia-mea.html: butonul Retry (job videoStatus=failed) foloseste ACELASI
   assert.match(snippet, /retryBtn\.disabled = false;/);
 });
 
-test('melodia-mea.html: dublul-click ramane prevenit — giftVideoCreateRequested se verifica la primul rand al handler-ului, inainte de orice cerere de retea', () => {
-  const idx = melodia.indexOf("document.getElementById('gift-video-create-btn').addEventListener('click'");
-  const snippet = melodia.slice(idx, idx + 200);
+test('amintiri-video.html: dublul-click ramane prevenit — giftVideoCreateRequested se verifica la primul rand al handler-ului, inainte de orice cerere de retea', () => {
+  const idx = amintiriVideo.indexOf("document.getElementById('gift-video-create-btn').addEventListener('click'");
+  const snippet = amintiriVideo.slice(idx, idx + 200);
   assert.match(snippet, /if \(giftVideoCreateRequested\) return;\s*giftVideoCreateRequested = true;/);
 });
 
@@ -123,10 +127,10 @@ test('melodia-mea.html: showGiftVideoPreview() reincearca (backoff, plafonat la 
   assert.match(snippet, /catch \(e\) \{ scheduleGiftVideoPreviewRetry\(order\); \}/);
 });
 
-test('melodia-mea.html: maybeAutoConfirmMedia() reincearca (backoff, plafonat) daca POST /media/confirm esueaza, in loc sa astepte tacit o schimbare ulterioara a materialelor', () => {
-  assert.match(melodia, /const MEDIA_CONFIRM_MAX_RETRIES = 6;/);
-  const idx = melodia.indexOf('async function maybeAutoConfirmMedia(order, gateOk) {');
-  const snippet = melodia.slice(idx, idx + 1600);
+test('amintiri-video.html: maybeAutoConfirmMedia() reincearca (backoff, plafonat) daca POST /media/confirm esueaza, in loc sa astepte tacit o schimbare ulterioara a materialelor', () => {
+  assert.match(amintiriVideo, /const MEDIA_CONFIRM_MAX_RETRIES = 6;/);
+  const idx = amintiriVideo.indexOf('async function maybeAutoConfirmMedia(order, gateOk) {');
+  const snippet = amintiriVideo.slice(idx, idx + 1600);
   assert.match(snippet, /mediaConfirmRetryTimer = setTimeout\(\(\) => \{ mediaConfirmRetryTimer = null; maybeAutoConfirmMedia\(order, gateOk\); \},/);
 });
 

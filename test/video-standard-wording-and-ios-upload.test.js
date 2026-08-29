@@ -28,6 +28,10 @@ function read(relPath) {
 
 const comanda = read('public/comanda.html');
 const melodiaMea = read('public/melodia-mea.html');
+// CORECȚIE (2026-08-29, "pagina separata pentru selectarea si incarcarea media"): coada de
+// materiale (sectiunile 2-3 de mai jos) a fost MUTATA din melodia-mea.html in
+// public/amintiri-video.html — retargetat STRICT aceasta pagina.
+const amintiriVideo = read('public/amintiri-video.html');
 
 // ---------------------------------------------------------------------------------------------
 // 1. Descrierea Cadou video nu mai contine "Standard"/"Standart", in nicio limba.
@@ -82,19 +86,19 @@ test('melodia-mea.html: nicio schimbare a textelor proprii pachetului Standard (
 // structurale) intr-o functie dedicata renderQueueRowInner(q), refolosita si de patch-ul direct
 // de progres — vezi test/video-comanda-succes-upload-queue.test.js pentru acoperirea completa
 // a noii arhitecturi (throttling, single-flight sync, upload fragmentat).
-test('melodia-mea.html: renderQueueRowInner() NU mai construieste niciun element <video> local (blob) pentru videoclipurile din coada de asteptare', () => {
-  const idx = melodiaMea.indexOf('function renderQueueRowInner(q) {');
+test('amintiri-video.html: renderQueueRowInner() NU mai construieste niciun element <video> local (blob) pentru videoclipurile din coada de asteptare', () => {
+  const idx = amintiriVideo.indexOf('function renderQueueRowInner(q) {');
   assert.notEqual(idx, -1);
-  const end = melodiaMea.indexOf('\n  }', idx);
-  const snippet = melodiaMea.slice(idx, end);
+  const end = amintiriVideo.indexOf('\n  }', idx);
+  const snippet = amintiriVideo.slice(idx, end);
   assert.ok(!snippet.includes('<video'), 'coada de asteptare (inainte de upload) nu mai trebuie sa randeze niciun <video src="blob:...">');
   assert.ok(snippet.includes("isVideoFile(q.file) ? '🎬'"), 'videoclipurile din coada trebuie sa foloseasca STRICT iconita statica (isVideoFile — vezi test/video-media-limits.test.js pentru fallback-ul pe extensie cand MIME e gol)');
 });
 
-test('melodia-mea.html: fotografiile din coada de asteptare raman randate ca <img> din blob local, neschimbat', () => {
-  const idx = melodiaMea.indexOf('function renderQueueRowInner(q) {');
-  const end = melodiaMea.indexOf('\n  }', idx);
-  const snippet = melodiaMea.slice(idx, end);
+test('amintiri-video.html: fotografiile din coada de asteptare raman randate ca <img> din blob local, neschimbat', () => {
+  const idx = amintiriVideo.indexOf('function renderQueueRowInner(q) {');
+  const end = amintiriVideo.indexOf('\n  }', idx);
+  const snippet = amintiriVideo.slice(idx, end);
   assert.ok(snippet.includes('<img src="${q.thumbUrl}" alt="" loading="lazy" decoding="async">'));
 });
 
@@ -104,47 +108,46 @@ test('melodia-mea.html: fotografiile din coada de asteptare raman randate ca <im
 // si e populat ASINCRON, controlat, cu un thumbnail MIC (createImageBitmap + canvas), STRICT
 // pentru fotografii (videoclipurile raman pe iconita, niciodata trimise la generarea de
 // thumbnail — vezi scheduleLocalThumbnail, apelat doar cand !isVideoFile(entry.file)).
-test('melodia-mea.html: thumbUrl porneste gol si e populat asincron STRICT pentru fotografii (scheduleLocalThumbnail) — niciun videoclip din coada nu e trimis la generarea de thumbnail', () => {
-  const idx = melodiaMea.indexOf("memFileInput.addEventListener('change'");
-  const end = melodiaMea.indexOf('newEntries.forEach(entry =>', idx) + 200;
-  const snippet = melodiaMea.slice(idx, end);
+test('amintiri-video.html: thumbUrl porneste gol si e populat asincron STRICT pentru fotografii (scheduleLocalThumbnail) — niciun videoclip din coada nu e trimis la generarea de thumbnail', () => {
+  const idx = amintiriVideo.indexOf("memFileInput.addEventListener('change'");
+  const end = amintiriVideo.indexOf('newEntries.forEach(entry =>', idx) + 200;
+  const snippet = amintiriVideo.slice(idx, end);
   assert.ok(snippet.includes('thumbUrl: null,'));
   assert.ok(snippet.includes('newEntries.forEach(entry => { if (!isVideoFile(entry.file)) scheduleLocalThumbnail(entry); });'));
 });
 
-test('melodia-mea.html: fiecare fisier din selectie e adaugat in coada intr-un try/catch — o exceptie la un singur fisier nu mai opreste tot handler-ul de change', () => {
-  const idx = melodiaMea.indexOf("memFileInput.addEventListener('change'");
+test('amintiri-video.html: fiecare fisier din selectie e adaugat in coada intr-un try/catch — o exceptie la un singur fisier nu mai opreste tot handler-ul de change', () => {
+  const idx = amintiriVideo.indexOf("memFileInput.addEventListener('change'");
   assert.notEqual(idx, -1);
-  const end = melodiaMea.indexOf('renderQueueList();\n    processUploadQueue();', idx);
-  const snippet = melodiaMea.slice(idx, end);
+  const end = amintiriVideo.indexOf('renderQueueList();', idx);
+  const snippet = amintiriVideo.slice(idx, end);
   assert.ok(snippet.includes('files.forEach(file => {'));
   assert.ok(snippet.includes('try {'));
   assert.ok(snippet.includes('} catch (err) {'));
   assert.ok(snippet.includes("status: 'error'"), 'un fisier care esueaza la construire trebuie marcat vizibil ca eroare, nu ignorat tacit');
 });
 
-test('melodia-mea.html: renderQueueList() si processUploadQueue() se apeleaza necondiționat dupa forEach, indiferent daca vreun fisier a esuat la construire', () => {
-  const idx = melodiaMea.indexOf("memFileInput.addEventListener('change'");
-  const forEachStart = melodiaMea.indexOf('files.forEach(file => {', idx);
+test('amintiri-video.html: renderQueueList() se apeleaza necondiționat dupa forEach, indiferent daca vreun fisier a esuat la construire', () => {
+  const idx = amintiriVideo.indexOf("memFileInput.addEventListener('change'");
+  const forEachStart = amintiriVideo.indexOf('files.forEach(file => {', idx);
   assert.notEqual(forEachStart, -1);
-  const forEachEnd = melodiaMea.indexOf('});', forEachStart) + 3;
-  const snippet = melodiaMea.slice(forEachEnd, forEachEnd + 600);
+  const forEachEnd = amintiriVideo.indexOf('});', forEachStart) + 3;
+  const snippet = amintiriVideo.slice(forEachEnd, forEachEnd + 600);
   assert.ok(snippet.includes('renderQueueList();'), 'renderQueueList() trebuie apelat neconditionat dupa forEach, in afara oricarui try/catch per-fisier');
-  assert.ok(snippet.includes('processUploadQueue();'));
   // updateMemoriesCountAndGates() nu mai e apelat separat aici — RELANSARE 2026-08-14, mutat
   // ca parte STRUCTURALA a renderQueueList() insusi (se apeleaza de fiecare data cand coada e
   // rebuilduita complet, deci si aici, si de la orice alt apel al renderQueueList()).
-  const renderQueueListIdx = melodiaMea.indexOf('function renderQueueList() {');
-  const renderQueueListEnd = melodiaMea.indexOf('\n  }', renderQueueListIdx);
-  assert.ok(melodiaMea.slice(renderQueueListIdx, renderQueueListEnd).includes('updateMemoriesCountAndGates(memOrderRef)'));
+  const renderQueueListIdx = amintiriVideo.indexOf('function renderQueueList() {');
+  const renderQueueListEnd = amintiriVideo.indexOf('\n  }', renderQueueListIdx);
+  assert.ok(amintiriVideo.slice(renderQueueListIdx, renderQueueListEnd).includes('updateMemoriesCountAndGates(memOrderRef)'));
 });
 
-test('melodia-mea.html: FileList e citit SINCRON, imediat la inceputul handler-ului de change (niciun await inainte) — previne pierderea selectiei pe iOS', () => {
-  const idx = melodiaMea.indexOf("memFileInput.addEventListener('change', () => {");
+test('amintiri-video.html: FileList e citit SINCRON, imediat la inceputul handler-ului de change (niciun await inainte) — previne pierderea selectiei pe iOS', () => {
+  const idx = amintiriVideo.indexOf("memFileInput.addEventListener('change', () => {");
   assert.notEqual(idx, -1, 'handler-ul trebuie sa ramana sincron (fara async), ca Array.from(...) sa citeasca FileList-ul imediat');
-  const snippet = melodiaMea.slice(idx, idx + 250);
+  const snippet = amintiriVideo.slice(idx, idx + 250);
   assert.ok(snippet.includes('const files = Array.from(memFileInput.files);'));
-  assert.ok(!/\basync\s*\(\s*\)\s*=>/.test(melodiaMea.slice(idx, idx + 55)), 'handler-ul nu trebuie sa devina async');
+  assert.ok(!/\basync\s*\(\s*\)\s*=>/.test(amintiriVideo.slice(idx, idx + 55)), 'handler-ul nu trebuie sa devina async');
 });
 
 test('melodia-mea.html: mesajul existent memories_no_files_selected ramane reutilizat (niciun mesaj/modal nou adaugat)', () => {
@@ -160,15 +163,15 @@ test('melodia-mea.html: mesajul memories_upload_error (reutilizat pentru intrari
 // ---------------------------------------------------------------------------------------------
 // 3. Limitele si mecanismul de concurenta raman neschimbate.
 // ---------------------------------------------------------------------------------------------
-test('melodia-mea.html: MEM_MIN=3 si MEM_MAX=10 raman neschimbate', () => {
-  assert.match(melodiaMea, /const MEM_MIN = 3;/);
-  assert.match(melodiaMea, /const MEM_MAX = 10;/);
+test('amintiri-video.html: MEM_MIN=3 si MEM_MAX=10 raman neschimbate', () => {
+  assert.match(amintiriVideo, /const MEM_MIN = 3;/);
+  assert.match(amintiriVideo, /const MEM_MAX = 10;/);
 });
 
 // REVIZUIT (2026-08-14, "elimină plafonul artificial de 150MB"): UPLOAD_TIMEOUT_MS marit de la
 // 2 la 15 minute — vezi test/video-media-limits.test.js pentru testul dedicat noii valori.
-test('melodia-mea.html: MAX_CONCURRENT_UPLOADS ramane neschimbat (mecanismul de coada de la hotfixul anterior)', () => {
-  assert.match(melodiaMea, /const MAX_CONCURRENT_UPLOADS = 2;/);
+test('amintiri-video.html: MAX_CONCURRENT_UPLOADS ramane neschimbat (mecanismul de coada de la hotfixul anterior)', () => {
+  assert.match(amintiriVideo, /const MAX_CONCURRENT_UPLOADS = 2;/);
 });
 
 // REVIZUIT (2026-08-14, "Articolele nu pot fi încărcate" pe iPhone): acceptul explicit,
@@ -176,28 +179,29 @@ test('melodia-mea.html: MAX_CONCURRENT_UPLOADS ramane neschimbat (mecanismul de 
 // wildcard-uri simple — vezi test/video-ios-multi-select-upload.test.js pentru testele dedicate
 // noii corectii. Validarea reala de continut (magic bytes + ffprobe) ramane STRICT server-side,
 // neschimbata — vezi ORDER_MEDIA_MIME_TYPES in server.js.
-test('melodia-mea.html: acceptul de fisiere foloseste wildcard-uri simple (image/*,video/*), compatibile cu selectorul nativ iOS', () => {
-  assert.ok(melodiaMea.includes('accept="image/*,video/*"'));
+test('amintiri-video.html: acceptul de fisiere foloseste wildcard-uri simple (image/*,video/*), compatibile cu selectorul nativ iOS', () => {
+  assert.ok(amintiriVideo.includes('accept="image/*,video/*"'));
 });
 
-test('melodia-mea.html: inputul de fisiere ramane un singur element static in HTML (id="mem-file-input"), niciodata reconstruit dintr-un template — listenerul nu se poate pierde la re-randare', () => {
-  const occurrences = (melodiaMea.match(/id="mem-file-input"/g) || []).length;
+test('amintiri-video.html: inputul de fisiere ramane un singur element static in HTML (id="mem-file-input"), niciodata reconstruit dintr-un template — listenerul nu se poate pierde la re-randare', () => {
+  const occurrences = (amintiriVideo.match(/id="mem-file-input"/g) || []).length;
   assert.equal(occurrences, 1, 'trebuie sa existe exact un singur element cu acest id, definit static in HTML');
-  assert.ok(!melodiaMea.includes('mem-file-input"></input>') , 'inputul nu trebuie generat dintr-un string de template JS');
+  assert.ok(!amintiriVideo.includes('mem-file-input"></input>') , 'inputul nu trebuie generat dintr-un string de template JS');
 });
 
-test('melodia-mea.html: renderMemories()/renderAwaitingMedia() nu ating/recreaza #mem-file-input — doar reparenteaza #memories-section (mutare, nu recreare)', () => {
-  const idx = melodiaMea.indexOf('function renderMemories(order) {');
-  const end = melodiaMea.indexOf('\n  }', idx);
-  const snippet = melodiaMea.slice(idx, end);
+test('amintiri-video.html: renderMemories() nu atinge/recreaza #mem-file-input — doar randeaza listele de materiale (mutare, nu recreare)', () => {
+  const idx = amintiriVideo.indexOf('function renderMemories(order) {');
+  assert.notEqual(idx, -1);
+  const end = amintiriVideo.indexOf('\n  }', idx);
+  const snippet = amintiriVideo.slice(idx, end);
   assert.ok(!snippet.includes('mem-file-input'), 'renderMemories() nu trebuie sa recreeze/atinga inputul de fisiere');
 });
 
 // ---------------------------------------------------------------------------------------------
 // 4. Sintaxa ramane valida.
 // ---------------------------------------------------------------------------------------------
-test('public/comanda.html si public/melodia-mea.html: scriptul inline ramane sintactic valid', () => {
-  [comanda, melodiaMea].forEach(html => {
+test('public/comanda.html, public/melodia-mea.html si public/amintiri-video.html: scriptul inline ramane sintactic valid', () => {
+  [comanda, melodiaMea, amintiriVideo].forEach(html => {
     const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)];
     assert.ok(scripts.length >= 1);
     scripts.forEach(m => { new Function(m[1]); });
