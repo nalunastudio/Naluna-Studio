@@ -132,12 +132,14 @@ for (const [name, html] of Object.entries(ALL_PAGES)) {
     assert.ok(!html.includes('pickerLockTimeoutId'));
   });
 
-  test(`${name}: pragul de recuperare manuala (PICKER_MANUAL_RECOVERY_MS) e definit si rezonabil (cel putin 1 minut, ca sa nu redeschida accidental in timpul unei asteptari normale)`, () => {
-    const match = html.match(/const PICKER_MANUAL_RECOVERY_MS = ([\d\s*]+);/);
-    assert.ok(match, 'PICKER_MANUAL_RECOVERY_MS trebuie definit');
-    const ms = eval(match[1]); // eslint-disable-line no-eval -- doar evaluam o expresie numerica simpla extrasa din sursa
-    assert.ok(ms >= 60000, `pragul (${ms}ms) trebuie sa fie de cel putin 1 minut`);
-  });
+  if (name !== 'amintiri-video.html') {
+    test(`${name}: pragul de recuperare manuala (PICKER_MANUAL_RECOVERY_MS) e definit si rezonabil (cel putin 1 minut, ca sa nu redeschida accidental in timpul unei asteptari normale)`, () => {
+      const match = html.match(/const PICKER_MANUAL_RECOVERY_MS = ([\d\s*]+);/);
+      assert.ok(match, 'PICKER_MANUAL_RECOVERY_MS trebuie definit');
+      const ms = eval(match[1]); // eslint-disable-line no-eval -- doar evaluam o expresie numerica simpla extrasa din sursa
+      assert.ok(ms >= 60000, `pragul (${ms}ms) trebuie sa fie de cel putin 1 minut`);
+    });
+  }
 
   test(`${name}: handler-ul de 'change' NU verifica deloc durata scursa (pickerLockedAt) — proceseaza fisierele indiferent cat timp a durat pregatirea lor`, () => {
     const changeMarker = name === 'amintiri-video.html' ? "memFileInput.addEventListener('change', () => {" : "fileInput.addEventListener('change', () => {";
@@ -147,6 +149,16 @@ for (const [name, html] of Object.entries(ALL_PAGES)) {
     assert.ok(!snippet.includes('pickerLockedAt'), "'change' nu trebuie sa conditioneze nimic de pickerLockedAt — fisierele se proceseaza indiferent cat a durat pregatirea");
   });
 }
+
+// CORECȚIE (2026-08-29, runda 2 — "selectorul nu se mai deschide deloc pe iPhone"): pe
+// amintiri-video.html, PICKER_MANUAL_RECOVERY_MS a fost cauza EXACTA a blocajului (pointerdown
+// seta lock-ul, click-ul legitim care urma il gasea activ si isi anula singur deschiderea
+// nativa) — eliminat complet, in mod intentionat, spre deosebire de comanda-mea.html/succes.html
+// (mecanism distinct, neatins).
+test('amintiri-video.html: PICKER_MANUAL_RECOVERY_MS a fost eliminat intentionat (cauza exacta a blocajului selectorului pe iPhone) — feedback-ul vizual nu mai foloseste niciun prag temporal', () => {
+  const amintiriVideo = ALL_PAGES['amintiri-video.html'];
+  assert.ok(!amintiriVideo.includes('PICKER_MANUAL_RECOVERY_MS'));
+});
 
 for (const [name, html] of Object.entries(PAGES_WITH_NEUTRAL_MESSAGE)) {
   // CORECȚIE (2026-08-24, "selectorul ramane blocat pana la 5 minute pe iPhone, fara niciun

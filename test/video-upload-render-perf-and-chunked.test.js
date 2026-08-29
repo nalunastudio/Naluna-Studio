@@ -121,13 +121,29 @@ for (const [name, html] of Object.entries(PAGES)) {
   // feedback"): plafonul orb a fost redus (90s, de la 5 minute) — recuperarea normala devine
   // acum o AFORDANTA EXPLICITA ("Renunță și încearcă din nou"), surfacing mult mai devreme
   // prin visibilitychange/focus/pageshow, niciodata un deblocaj automat/tacut.
-  test(`${name}: prima apasare pe selectorul de fisiere blocheaza apasarile duplicate — eliberata STRICT prin actiune (change/cancel/afordanta explicita), niciodata printr-un timeout orb care deblocheaza singur`, () => {
-    assert.ok(html.includes('let pickerLocked = false;'));
-    assert.ok(html.includes('pickerLocked = true;'));
-    assert.ok(html.includes('const PICKER_MANUAL_RECOVERY_MS = 90 * 1000;'), 'plafonul de recuperare manuala trebuie sa fie 90s (redus fata de vechile 5 minute)');
-    assert.ok(!/setTimeout\(\s*\(\)\s*=>\s*\{\s*pickerLocked\s*=\s*false;/.test(html), 'nu mai trebuie sa existe niciun timeout care deblocheaza singur selectorul, fara actiune a utilizatorului');
-    assert.ok(!html.includes('pickerLockTimeoutId'), 'variabila timeout-ului orb eliminat nu mai trebuie sa existe');
-  });
+  if (name === 'amintiri-video.html') {
+    // CORECȚIE (2026-08-29, runda 2 — "selectorul nu se mai deschide deloc pe iPhone"):
+    // PICKER_MANUAL_RECOVERY_MS/pickerLocked erau EXACT cauza blocajului (pointerdown seta
+    // lock-ul, click-ul legitim care urma il gasea activ si isi anula singur deschiderea
+    // nativa) — eliminate complet. Blocarea reala a selectiilor duplicate ramane STRICT legata
+    // de un lot REAL activ (memFileInput.disabled, vezi updateBatchActiveState), niciodata de
+    // un prag temporal dupa o simpla apasare.
+    test(`${name}: nu mai exista niciun prag/lock temporal (PICKER_MANUAL_RECOVERY_MS/pickerLocked) — selectiile duplicate raman prevenite STRICT prin dezactivarea inputului cat timp un lot e activ`, () => {
+      assert.ok(!html.includes('PICKER_MANUAL_RECOVERY_MS'));
+      assert.ok(!html.includes('let pickerLocked'));
+      assert.ok(!/setTimeout\(\s*\(\)\s*=>\s*\{\s*pickerPending\s*=\s*false;/.test(html), 'nu trebuie sa existe niciun timeout care deblocheaza singur selectorul, fara actiune a utilizatorului');
+      assert.ok(!html.includes('pickerLockTimeoutId'));
+      assert.match(html, /function handlePickerOpenAttempt\(\) \{\s*if \(memFileInput\.disabled\) return;/, 'handlePickerOpenAttempt() nu mai trebuie sa primeasca/anuleze evenimentul — doar sa verifice starea reala a lotului');
+    });
+  } else {
+    test(`${name}: prima apasare pe selectorul de fisiere blocheaza apasarile duplicate — eliberata STRICT prin actiune (change/cancel/afordanta explicita), niciodata printr-un timeout orb care deblocheaza singur`, () => {
+      assert.ok(html.includes('let pickerLocked = false;'));
+      assert.ok(html.includes('pickerLocked = true;'));
+      assert.ok(html.includes('const PICKER_MANUAL_RECOVERY_MS = 90 * 1000;'), 'plafonul de recuperare manuala trebuie sa fie 90s (redus fata de vechile 5 minute)');
+      assert.ok(!/setTimeout\(\s*\(\)\s*=>\s*\{\s*pickerLocked\s*=\s*false;/.test(html), 'nu mai trebuie sa existe niciun timeout care deblocheaza singur selectorul, fara actiune a utilizatorului');
+      assert.ok(!html.includes('pickerLockTimeoutId'), 'variabila timeout-ului orb eliminat nu mai trebuie sa existe');
+    });
+  }
 
   // -----------------------------------------------------------------------------------------
   // 5. Progres global (batch), deasupra listei — textul final STRICT dupa confirmarea

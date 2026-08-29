@@ -233,13 +233,14 @@ test('amintiri-video.html: uploadul multipart direct catre R2 (Round 6) ramane n
   assert.ok(amintiriVideo.includes('const MEM_MULTIPART_THRESHOLD_BYTES = 20 * 1024 * 1024;'));
 });
 
-// CORECȚIE (2026-08-24, "selectorul ramane blocat pana la 5 minute pe iPhone"): plafonul ORB
-// de recuperare automata a fost redus (afordanta EXPLICITA — vezi showPickerWaitingMessage —
-// devine acum calea normala de recuperare, surfacing dupa PICKER_RETURN_GRACE_MS, mult mai
-// devreme decat plafonul orb). 'change'/'cancel' raman autoritatea, neschimbate.
-test('amintiri-video.html: logica de blocare/deblocare a selectorului (picker lock) foloseste acum un plafon orb mult mai scurt, plus o afordanta explicita de recuperare', () => {
-  assert.ok(amintiriVideo.includes('const PICKER_MANUAL_RECOVERY_MS = 90 * 1000;'));
-  assert.ok(!amintiriVideo.includes('const PICKER_MANUAL_RECOVERY_MS = 5 * 60 * 1000;'), 'vechiul plafon de 5 minute nu mai trebuie sa existe');
+// CORECȚIE (2026-08-29, runda 2, "selectorul nu se mai deschide deloc pe iPhone"): pragul/lock
+// temporal (PICKER_MANUAL_RECOVERY_MS) a fost cauza EXACTA a blocajului — pointerdown seta
+// lock-ul, iar click-ul legitim care urma imediat gasea lock-ul activ si isi anula singur
+// deschiderea nativa. Eliminat complet; feedback-ul vizual (pickerPending) e acum STRICT
+// pentru mesaje, niciodata pentru blocare — vezi test/amintiri-video-iphone-ux.test.js pentru
+// testul de regresie dedicat secventei reale pointerdown->click.
+test('amintiri-video.html: logica de picker nu mai foloseste niciun prag/lock temporal — feedback-ul vizual e separat de deschiderea selectorului, afordanta explicita de recuperare exista in continuare', () => {
+  assert.ok(!amintiriVideo.includes('PICKER_MANUAL_RECOVERY_MS'), 'pragul de recuperare temporal a fost eliminat complet');
   assert.ok(!amintiriVideo.includes('pickerLockTimeoutId'));
   assert.ok(amintiriVideo.includes('function showPickerWaitingMessage() {'), 'afordanta explicita de recuperare trebuie sa existe');
 });

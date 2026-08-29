@@ -53,28 +53,38 @@ const T = loadRealTranslations();
 // 1) Explicatia PERMANENTA despre timpul de pregatire pe iPhone/iCloud — vizibila TOT TIMPUL,
 //    in toate cele 8 limbi, niciodata o promisiune exacta de "un minut".
 // ===============================================================================================
-test('amintiri-video.html: banner-ul #iphone-hint exista in markup si NU e ascuns condiționat (niciun style="display:none" implicit, nicio ramura JS care il ascunde)', () => {
-  assert.match(page, /<div class="iphone-hint" id="iphone-hint" role="note"><\/div>/);
+test('amintiri-video.html: banner-ul #iphone-hint (titlu + text) exista in markup si NU e ascuns condiționat (niciun style="display:none" implicit, nicio ramura JS care il ascunde)', () => {
+  assert.match(page, /<div class="iphone-hint" id="iphone-hint" role="note">\s*<p class="iphone-hint-title" id="iphone-hint-title"><\/p>\s*<p class="iphone-hint-text" id="iphone-hint-text"><\/p>\s*<\/div>/);
   assert.ok(!/iphone-hint[\s\S]{0,80}display:\s*none/.test(page), 'bannerul nu trebuie sa aiba display:none implicit sau apropiat in markup');
   assert.ok(!page.includes("getElementById('iphone-hint').style.display"), 'nicio ramura JS nu trebuie sa comute vizibilitatea acestui banner — ramane STRICT permanent');
 });
 
-test('memories_iphone_hint: exista in toate cele 8 limbi, mentioneaza minutul/iCloud, NU promite exact un minut', () => {
+// CORECȚIE (2026-08-29, runda 2, "textul despre bifa albastra e neclar/specific iPhone"):
+// mesajul devine DEVICE-NEUTRU (telefon SAU computer), fara nicio mentiune a unei "bife
+// albastre" — clientul il citea inainte sa vada deloc selectorul, fara sa stie despre ce bifa
+// e vorba. Titlul + textul sunt acum separate (memories_iphone_hint_title / memories_iphone_hint).
+test('memories_iphone_hint_title si memories_iphone_hint: exista in toate cele 8 limbi, mentioneaza minutul/iCloud, NU promit exact un minut, NU mai mentioneaza nicio "bifa albastra"', () => {
   const langs = ['ro', 'en', 'de', 'es', 'it', 'fr', 'bg', 'tr'];
   for (const lang of langs) {
+    const title = T[lang].memories_iphone_hint_title;
     const text = T[lang].memories_iphone_hint;
+    assert.ok(typeof title === 'string' && title.length > 5, `memories_iphone_hint_title (${lang}) trebuie sa existe`);
     assert.ok(typeof text === 'string' && text.length > 20, `memories_iphone_hint (${lang}) trebuie sa existe si sa fie substantial`);
+    assert.ok(!/bifa albastr|blue checkmark|blaue Häkchen|marca azul|segno di spunta blu|coche bleue|синята отметка|mavi onay/i.test(text), `memories_iphone_hint (${lang}) nu mai trebuie sa mentioneze nicio bifa/checkmark`);
   }
   const ro = T.ro.memories_iphone_hint;
   assert.match(ro, /iCloud/);
   assert.match(ro, /minut/);
+  assert.match(ro, /telefon(ul)? sau computer(ul)?/i, 'textul trebuie sa fie neutru — telefon SAU computer, nu exclusiv iPhone');
   assert.ok(!/exact un minut|exactly one minute/i.test(ro), 'nu trebuie promis EXACT un minut — materialele mari/din iCloud pot dura mai mult');
+  assert.equal(T.ro.memories_iphone_hint_title, 'Ce se întâmplă după selectare');
 });
 
-test('amintiri-video.html: applyStaticTexts() scrie mesajul iphone-hint din traducere, o singura data, la incarcare', () => {
+test('amintiri-video.html: applyStaticTexts() scrie titlul SI textul chenarului din traducere, in elemente separate, o singura data, la incarcare', () => {
   const body = extractFn('applyStaticTexts');
-  assert.match(body, /document\.getElementById\('iphone-hint'\)\.innerHTML = /);
-  assert.match(body, /t\.memories_iphone_hint/);
+  assert.match(body, /document\.getElementById\('iphone-hint-title'\)\.innerHTML = /);
+  assert.match(body, /t\.memories_iphone_hint_title/);
+  assert.match(body, /document\.getElementById\('iphone-hint-text'\)\.textContent = t\.memories_iphone_hint;/);
 });
 
 // ===============================================================================================
@@ -95,7 +105,7 @@ function makeStubElement() {
 }
 
 function loadPickerLockSandbox() {
-  const src = extractBetween('let pickerLocked = false;', "memFileInput.addEventListener('change'");
+  const src = extractBetween('let pickerPending = false;', "memFileInput.addEventListener('change'");
   const elementsById = {};
   const documentStub = {
     hidden: false,
@@ -122,19 +132,85 @@ function loadPickerLockSandbox() {
 }
 
 // ===============================================================================================
-// 2) pointerdown/click pe selector — stare "Telefonul pregătește selecția…" INSTANT, sincron.
+// 2) pointerdown/click pe selector — stare "Dispozitivul pregătește fișierele selectate…"
+//    INSTANT, sincron, FARA sa anuleze vreodata evenimentul 'click' legitim care urmeaza.
 // ===============================================================================================
+function makeCancelableEvent(type) {
+  const e = { type, defaultPrevented: false };
+  e.preventDefault = () => { e.defaultPrevented = true; };
+  return e;
+}
+
 test('executie reala: pointerdown pe selector afiseaza IMEDIAT, sincron, mesajul de pregatire — inainte de orice raspuns real din Photos', () => {
   const { memFileInput, memStatusEl } = loadPickerLockSandbox();
   assert.equal(memStatusEl.textContent, '', 'inainte de orice interactiune, nu trebuie sa existe niciun mesaj');
-  memFileInput.listeners.pointerdown[0]({});
+  memFileInput.listeners.pointerdown[0](makeCancelableEvent('pointerdown'));
   assert.equal(memStatusEl.textContent, T.ro.memories_picker_preparing, 'mesajul de pregatire trebuie afisat SINCRON la pointerdown, fara nicio asteptare');
 });
 
 test('executie reala: click pe selector (fara pointerdown in prealabil, ex. tastatura/accesibilitate) produce acelasi mesaj de pregatire', () => {
   const { memFileInput, memStatusEl } = loadPickerLockSandbox();
-  memFileInput.listeners.click[0]({ type: 'click' });
+  memFileInput.listeners.click[0](makeCancelableEvent('click'));
   assert.equal(memStatusEl.textContent, T.ro.memories_picker_preparing);
+});
+
+// ===============================================================================================
+// REGRESIE CRITICA (2026-08-29, runda 2) — CAUZA EXACTA a blocajului raportat pe iPhone:
+// handlePickerOpenAttempt() era inregistrat identic pe 'pointerdown' SI 'click'; la
+// 'pointerdown' seta pickerLocked=true, iar evenimentul 'click' LEGITIM care urma la
+// milisecunde distanta gasea acel lock deja activ si apela e.preventDefault() PE EL INSUSI,
+// anuland actiunea nativa a inputului INAINTE sa apuce sa deschida galeria Photos — clientul
+// vedea mesajul de pregatire, dar selectorul nu se deschidea niciodata. Testele anterioare
+// simulau STRICT un 'click' izolat (fara pointerdown in prealabil) si nu puteau reproduce
+// aceasta secventa. Testul de mai jos reproduce secventa REALA de browser (pointerdown urmat
+// imediat de click, exact ordinea evenimentelor pe touch/iOS) si demonstreaza ca evenimentul
+// 'click' nu mai este NICIODATA anulat.
+// ===============================================================================================
+test('REGRESIE: secventa reala pointerdown -> click NU anuleaza click-ul legitim (defaultPrevented ramane false) — selectorul se poate deschide din primul tap', () => {
+  const { memFileInput, memStatusEl } = loadPickerLockSandbox();
+  const pointerdownEvent = makeCancelableEvent('pointerdown');
+  memFileInput.listeners.pointerdown[0](pointerdownEvent);
+  assert.equal(pointerdownEvent.defaultPrevented, false, 'pointerdown-ul insusi nu trebuie anulat');
+  assert.equal(memStatusEl.textContent, T.ro.memories_picker_preparing, 'mesajul de pregatire trebuie sa apara la pointerdown');
+
+  // 'click' soseste la milisecunde distanta, exact ca pe un iPhone real — acesta e evenimentul
+  // care CHIAR deschide selectorul nativ; daca defaultPrevented devine true aici, Photos/
+  // selectorul de fisiere nu se mai deschide niciodata (exact bug-ul raportat).
+  const clickEvent = makeCancelableEvent('click');
+  memFileInput.listeners.click[0](clickEvent);
+  assert.equal(clickEvent.defaultPrevented, false, 'click-ul legitim, care urmeaza imediat dupa pointerdown, NU trebuie anulat — altfel selectorul nativ nu se mai deschide');
+});
+
+test('REGRESIE: dupa secventa pointerdown -> click, "change" proceseaza normal materialele primite', () => {
+  const { memFileInput, memStatusEl } = loadPickerLockSandbox();
+  memFileInput.listeners.pointerdown[0](makeCancelableEvent('pointerdown'));
+  memFileInput.listeners.click[0](makeCancelableEvent('click'));
+  // simuleaza revenirea reala din Photos cu 2 fisiere selectate — verificam STRICT ca 'change'
+  // nu a fost blocat/dezactivat de secventa anterioara.
+  assert.equal(memFileInput.disabled, false, 'inputul nu trebuie dezactivat doar pentru ca a fost atins/pregatit — dezactivarea reala vine STRICT dintr-un lot activ (updateBatchActiveState)');
+});
+
+test('REGRESIE: dupa secventa pointerdown -> click, "cancel" (utilizatorul a inchis selectorul fara sa aleaga nimic) permite o noua incercare IMEDIATA', () => {
+  const { memFileInput, memStatusEl } = loadPickerLockSandbox();
+  memFileInput.listeners.pointerdown[0](makeCancelableEvent('pointerdown'));
+  memFileInput.listeners.click[0](makeCancelableEvent('click'));
+  memFileInput.listeners.cancel[0]();
+  assert.equal(memStatusEl.textContent, '', 'mesajul trebuie curatat dupa cancel');
+  const secondPointerdown = makeCancelableEvent('pointerdown');
+  const secondClick = makeCancelableEvent('click');
+  memFileInput.listeners.pointerdown[0](secondPointerdown);
+  memFileInput.listeners.click[0](secondClick);
+  assert.equal(secondPointerdown.defaultPrevented, false, 'a doua incercare, dupa cancel, nu trebuie anulata');
+  assert.equal(secondClick.defaultPrevented, false, 'a doua incercare, dupa cancel, nu trebuie anulata');
+  assert.equal(memStatusEl.textContent, T.ro.memories_picker_preparing, 'noua incercare trebuie sa arate din nou mesajul de pregatire');
+});
+
+test('REGRESIE: cat timp un lot e REALMENTE activ (memFileInput.disabled = true, prin updateBatchActiveState), o noua incercare de pointerdown/click NU deschide selectorul — dar STRICT din cauza lotului activ, nu a unei asteptari a raspunsului din Photos', () => {
+  const { memFileInput, memStatusEl } = loadPickerLockSandbox();
+  memFileInput.disabled = true; // simuleaza exact updateBatchActiveState() cu uploadQueue.length > 0
+  const pointerdownEvent = makeCancelableEvent('pointerdown');
+  memFileInput.listeners.pointerdown[0](pointerdownEvent);
+  assert.equal(memStatusEl.textContent, '', 'cat timp inputul e dezactivat de un lot activ, nu trebuie afisat mesajul de pregatire (selectorul oricum nu se poate deschide)');
 });
 
 // ===============================================================================================
@@ -200,12 +276,20 @@ test('executie reala: butonul de retry din starea de asteptare elibereaza lock-u
   assert.equal(memStatusEl.textContent, T.ro.memories_picker_preparing);
 });
 
-test('executie reala: o a doua apasare (pointerdown) CAT TIMP selectorul e inca blocat (sub pragul de recuperare) nu reseteaza/redeschide nimic vizibil suplimentar', () => {
+// CORECȚIE (2026-08-29, runda 2): vechiul prag de recuperare (PICKER_MANUAL_RECOVERY_MS) —
+// care facea o a doua apasare "idempotenta" (nu re-declansa mesajul) — a fost EXACT mecanismul
+// care anula evenimentul 'click' legitim (vezi testele REGRESIE de mai sus) si a fost eliminat
+// complet. O a doua apasare, inainte de orice 'change'/'cancel', re-afiseaza STRICT acelasi
+// mesaj de pregatire (fara eroare, fara sa blocheze nimic) — comportamentul CORECT acum.
+test('executie reala: o a doua apasare (pointerdown), inainte de orice change/cancel, re-afiseaza STRICT acelasi mesaj de pregatire — fara eroare, fara sa anuleze sau sa blocheze evenimentul', () => {
   const { memFileInput, memStatusEl } = loadPickerLockSandbox();
-  memFileInput.listeners.pointerdown[0]({});
-  memStatusEl.textContent = 'MODIFICAT-MANUAL';
-  memFileInput.listeners.pointerdown[0]({});
-  assert.equal(memStatusEl.textContent, 'MODIFICAT-MANUAL', 'a doua apasare, cat timp lock-ul e activ, nu trebuie sa re-declanseze mesajul de pregatire');
+  const first = makeCancelableEvent('pointerdown');
+  memFileInput.listeners.pointerdown[0](first);
+  assert.equal(memStatusEl.textContent, T.ro.memories_picker_preparing);
+  const second = makeCancelableEvent('pointerdown');
+  memFileInput.listeners.pointerdown[0](second);
+  assert.equal(second.defaultPrevented, false, 'a doua apasare nu trebuie anulata niciodata');
+  assert.equal(memStatusEl.textContent, T.ro.memories_picker_preparing, 'mesajul ramane STRICT cel de pregatire, neschimbat');
 });
 
 // ===============================================================================================

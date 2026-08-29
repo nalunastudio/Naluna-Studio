@@ -274,11 +274,18 @@ test('amintiri-video.html: lista materialelor se randeaza IMEDIAT, sincron, inai
 });
 
 // ---------------------------------------------------------------------------------------------
-// 6) iPhone — pickerLocked nu mai blocheaza 5 minute fara feedback vizibil.
+// 6) iPhone — pickerPending nu mai blocheaza NICIODATA evenimentul 'click' legitim (CORECȚIE
+// 2026-08-29, runda 2 — vezi test/amintiri-video-iphone-ux.test.js pentru testul de regresie
+// dedicat cauzei exacte: pointerdown seta un lock cu preventDefault pe click-ul urmator, care
+// anula deschiderea selectorului nativ — mecanismul de prag/lock a fost eliminat complet).
 // ---------------------------------------------------------------------------------------------
-test('amintiri-video.html: plafonul AUTOMAT de recuperare a selectorului a fost redus semnificativ fata de 5 minute (afordanta explicita devine calea normala de recuperare, nu plafonul orb)', () => {
-  assert.match(amintiriVideo, /const PICKER_MANUAL_RECOVERY_MS = 90 \* 1000;/);
-  assert.ok(!amintiriVideo.includes('const PICKER_MANUAL_RECOVERY_MS = 5 * 60 * 1000;'), 'vechiul plafon de 5 minute nu mai trebuie sa existe');
+test('amintiri-video.html: nu mai exista niciun prag/lock temporal care sa poata anula evenimentul click — feedback-ul vizual (pickerPending) e complet separat de deschiderea selectorului', () => {
+  assert.ok(!amintiriVideo.includes('PICKER_MANUAL_RECOVERY_MS'), 'pragul de recuperare temporal a fost eliminat complet — cauza exacta a blocajului raportat pe iPhone');
+  const idx = amintiriVideo.indexOf('function handlePickerOpenAttempt() {');
+  assert.notEqual(idx, -1, 'handlePickerOpenAttempt() nu mai trebuie sa primeasca deloc evenimentul (e) — nu mai are ce anula');
+  const end = amintiriVideo.indexOf('\n  }', idx);
+  const body = amintiriVideo.slice(idx, end);
+  assert.ok(!body.includes('preventDefault'), 'handlePickerOpenAttempt() nu mai trebuie sa apeleze preventDefault() in nicio situatie');
 });
 
 test('amintiri-video.html: visibilitychange/focus/pageshow declanseaza o afordanta EXPLICITA de renuntare ("Renunță și încearcă din nou"), NU deblocheaza automat si NU redeschid galeria', () => {
@@ -289,14 +296,14 @@ test('amintiri-video.html: visibilitychange/focus/pageshow declanseaza o afordan
   const snippet = amintiriVideo.slice(idx, idx + 700);
   assert.ok(!snippet.includes('.click()'), 'afordanta NU trebuie sa redeschida automat selectorul (niciun .click() programatic)');
   assert.ok(!snippet.includes('memFileInput.click'));
-  assert.match(snippet, /retryBtn\.addEventListener\('click', \(\) => \{\s*pickerLocked = false;/, 'deblocarea ramane STRICT la apasarea explicita a utilizatorului');
+  assert.match(snippet, /retryBtn\.addEventListener\('click', \(\) => \{\s*pickerPending = false;/, 'deblocarea ramane STRICT la apasarea explicita a utilizatorului');
 });
 
-test('amintiri-video.html: change/cancel raman sursa AUTORITATIVA de deblocare (neschimbate) — o selectie reala sau o anulare reala tot deblocheaza imediat, independent de afordanta explicita', () => {
+test('amintiri-video.html: change/cancel raman sursa AUTORITATIVA de resetare a starii de asteptare (neschimbate) — o selectie reala sau o anulare reala permit imediat o noua incercare', () => {
   const changeIdx = amintiriVideo.indexOf("memFileInput.addEventListener('change', () => {");
-  assert.match(amintiriVideo.slice(changeIdx, changeIdx + 150), /pickerLocked = false;/);
+  assert.match(amintiriVideo.slice(changeIdx, changeIdx + 150), /pickerPending = false;/);
   const cancelIdx = amintiriVideo.indexOf("memFileInput.addEventListener('cancel', () => {");
-  assert.match(amintiriVideo.slice(cancelIdx, cancelIdx + 150), /pickerLocked = false;/);
+  assert.match(amintiriVideo.slice(cancelIdx, cancelIdx + 150), /pickerPending = false;/);
 });
 
 ['memories_picker_waiting', 'memories_picker_retry'].forEach(key => {
