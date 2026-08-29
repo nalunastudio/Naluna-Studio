@@ -5312,9 +5312,12 @@ function assTimestamp(seconds) {
 // aceleasi numere absolute ar produce text vizibil MAI MIC ca proportie din cadru (exact bugul
 // de evitat aici). ASS_STYLE_SCALE de mai jos aplica ACELASI factor de scalare ca rezolutia
 // insasi (MEMORY_VIDEO_WIDTH / ASS_STYLE_REFERENCE_WIDTH), pastrand deci EXACT aspectul vizual
-// fin, deja validat, indiferent de rezolutia finala aleasa.
-const ASS_STYLE_REFERENCE_WIDTH = 720; // latimea pentru care Fontsize=30/MarginV=150/etc. au fost alese vizual
-const ASS_STYLE_SCALE = MEMORY_VIDEO_WIDTH / ASS_STYLE_REFERENCE_WIDTH;
+// fin, deja validat, indiferent de rezolutia finala aleasa. Constantele ASS_STYLE_REFERENCE_WIDTH/
+// ASS_STYLE_SCALE insele sunt declarate mai jos, langa MEMORY_VIDEO_WIDTH (de care depind direct)
+// — CORECȚIE (crash live confirmat, "Cannot access 'MEMORY_VIDEO_WIDTH' before initialization"):
+// erau declarate AICI, inaintea lui MEMORY_VIDEO_WIDTH in fisier, ceea ce arunca exact aceasta
+// eroare la incarcarea modulului (temporal dead zone pe un `const` citit inainte de linia lui
+// proprie de initializare) — server.js nu mai pornea deloc.
 function scaledAssStyleValue(referenceValue) {
   return Math.round(referenceValue * ASS_STYLE_SCALE * 10) / 10; // o zecimala — suficient pentru Outline/Shadow
 }
@@ -5425,6 +5428,12 @@ const MEMORY_VIDEO_WIDTH = 1080;
 const MEMORY_VIDEO_HEIGHT = 1920;
 const MEMORY_VIDEO_FPS = 30;
 const MEMORY_XFADE_SECONDS = 0.6; // tranzitie scurta — eleganta, fara sa incarce randarea
+
+// Scalarea proportionala a stilului ASS (vezi comentariul de la scaledAssStyleValue()/toAss(),
+// mai sus) — declarate AICI (dupa MEMORY_VIDEO_WIDTH, de care depind direct) pentru a evita
+// eroarea de temporal dead zone care oprea complet pornirea serverului.
+const ASS_STYLE_REFERENCE_WIDTH = 720; // latimea pentru care Fontsize=30/MarginV=150/etc. au fost alese vizual
+const ASS_STYLE_SCALE = MEMORY_VIDEO_WIDTH / ASS_STYLE_REFERENCE_WIDTH;
 
 // Preset x264 comun pentru TOATE etapele de randare video (cadre individuale, concat pe loturi,
 // mux final) — "ultrafast", NESCHIMBAT fata de inainte si dovedit sigur pe Railway (vezi
