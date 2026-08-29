@@ -100,12 +100,12 @@ test('melodia-mea.html: butonul de materiale exista, plasat imediat inainte de #
   assert.ok(block.includes('class="btn-cta-orange"'), 'trebuie sa reutilizeze stilul existent, nu un buton nou');
 });
 
-test('melodia-mea.html: updateMemoriesCta() ascunde STRICT butonul cat timp versiunea finala nu e stabilita (pendingVariantChoice)', () => {
+test('melodia-mea.html: updateMemoriesCta() ascunde STRICT butonul cat timp versiunea finala nu e stabilita (pendingVariantChoice) SAU videoclipul e deja gata', () => {
   const idx = melodiaMea.indexOf('function updateMemoriesCta(order, pendingVariantChoice) {');
   assert.notEqual(idx, -1);
   const end = melodiaMea.indexOf('\n  }', idx);
   const snippet = melodiaMea.slice(idx, end);
-  assert.ok(snippet.includes("ctaWrap.style.display = pendingVariantChoice ? 'none' : 'block';"));
+  assert.ok(snippet.includes("ctaWrap.style.display = (!pendingVariantChoice && order.videoStatus !== 'ready') ? 'block' : 'none';"));
 });
 
 test("melodia-mea.html: apasarea butonului navigheaza (aceeasi fila) catre /amintiri-video.html, cu id si token, fara popup", () => {

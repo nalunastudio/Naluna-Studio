@@ -92,20 +92,17 @@
 
   /* Explicatia PERMANENTA despre timpul de pregatire pe telefon/computer — cerinta explicita
      (2026-08-29): vizibila TOT TIMPUL inaintea selectorului, in toate limbile, niciodata doar
-     un tooltip/mesaj tranzitoriu. CORECȚIE (2026-08-29, runda 2, "fa chenarul putin mai
-     evident"): fundal auriu-crem mai vizibil, bordura aurie de 2px, umbra foarte discreta —
-     restul paginii (spatieri, stil general) neatins. */
+     un tooltip/mesaj tranzitoriu. CORECȚIE (2026-08-29, runda 3, "foloseste portocaliul
+     existent al site-ului, fara titlu separat"): bordura si fundal portocalii (var(--orange)/
+     var(--orange-deep)), text in var(--error) — fara titlu, chenarul incepe direct cu ℹ️, pe
+     acelasi rand cu textul. Restul paginii (spatieri, stil general, uploader) neatins.*/
   .iphone-hint{
-    background:linear-gradient(180deg, rgba(168,131,75,.18), rgba(168,131,75,.08));
-    border:2px solid var(--gold); border-radius:14px;
+    background:rgba(245,166,35,.12);
+    border:2px solid var(--orange); border-radius:14px;
     padding:14px 16px; margin-bottom:16px; line-height:1.55;
-    box-shadow:0 2px 10px -4px rgba(139,109,63,.28);
+    box-shadow:0 2px 10px -4px rgba(201,127,20,.28);
   }
-  .iphone-hint-title{
-    margin:0 0 4px; font-size:13.5px; font-weight:700; color:var(--gold-deep);
-    display:flex; align-items:center; gap:6px;
-  }
-  .iphone-hint-text{ margin:0; font-size:13px; color:var(--text-secondary); }
+  .iphone-hint-text{ margin:0; font-size:13px; color:var(--error); }
 
   .memories{ margin:0 0 22px; padding:20px; background:var(--surface); border:1px solid var(--line); border-radius:16px; }
   .memories h2{ font-family:'Fraunces', serif; font-weight:400; font-size:17px; margin:0 0 6px; }
@@ -190,7 +187,6 @@
       <p class="sub" id="memories-sub" style="margin-bottom:14px;"></p>
 
       <div class="iphone-hint" id="iphone-hint" role="note">
-        <p class="iphone-hint-title" id="iphone-hint-title"></p>
         <p class="iphone-hint-text" id="iphone-hint-text"></p>
       </div>
 
@@ -246,7 +242,6 @@
       memories_picker_retry: 'Renunță și încearcă din nou',
       memories_move_up: 'Mută mai sus', memories_move_down: 'Mută mai jos',
       memories_upload_error: 'Încărcarea a eșuat. Încearcă din nou',
-      memories_iphone_hint_title: 'Ce se întâmplă după selectare',
       memories_iphone_hint: 'După ce selectezi pozele și videoclipurile din telefonul sau computerul tău și confirmi selecția, dispozitivul poate avea nevoie de un minut sau mai mult pentru a pregăti fișierele, mai ales dacă sunt stocate în iCloud. Așteaptă fără să închizi pagina — încărcarea va începe automat.',
       memories_picker_preparing: 'Dispozitivul pregătește fișierele selectate…',
       memories_received_count: (n) => `Am primit ${n} materiale. Se pregătesc și se încarcă automat. Nu închide pagina.`,
@@ -276,7 +271,6 @@
       memories_picker_retry: 'Cancel and try again',
       memories_move_up: 'Move up', memories_move_down: 'Move down',
       memories_upload_error: 'Upload failed. Please try again.',
-      memories_iphone_hint_title: 'What happens after you select',
       memories_iphone_hint: "After you choose your photos and videos from your phone or computer and confirm the selection, your device may need a minute or more to prepare the files, especially if they're stored in iCloud. Wait without closing the page — the upload will start automatically.",
       memories_picker_preparing: 'Your device is preparing the selected files…',
       memories_received_count: (n) => `We received ${n} item${n === 1 ? '' : 's'}. They're being prepared and uploaded automatically. Don't close this page.`,
@@ -306,7 +300,6 @@
       memories_picker_retry: 'Abbrechen und erneut versuchen',
       memories_move_up: 'Nach oben', memories_move_down: 'Nach unten',
       memories_upload_error: 'Hochladen fehlgeschlagen. Bitte versuche es erneut.',
-      memories_iphone_hint_title: 'Was nach der Auswahl passiert',
       memories_iphone_hint: 'Nachdem du deine Fotos und Videos von deinem Telefon oder Computer ausgewählt und die Auswahl bestätigt hast, benötigt dein Gerät möglicherweise eine Minute oder länger, um die Dateien vorzubereiten, besonders wenn sie in iCloud gespeichert sind. Warte, ohne die Seite zu schließen — der Upload beginnt automatisch.',
       memories_picker_preparing: 'Dein Gerät bereitet die ausgewählten Dateien vor…',
       memories_received_count: (n) => `Wir haben ${n} Elemente erhalten. Sie werden automatisch vorbereitet und hochgeladen. Schließe diese Seite nicht.`,
@@ -336,7 +329,6 @@
       memories_picker_retry: 'Cancelar e intentar de nuevo',
       memories_move_up: 'Subir', memories_move_down: 'Bajar',
       memories_upload_error: 'Error al subir. Inténtalo de nuevo.',
-      memories_iphone_hint_title: 'Qué ocurre después de seleccionar',
       memories_iphone_hint: 'Después de elegir tus fotos y videos desde tu teléfono u ordenador y confirmar la selección, tu dispositivo puede necesitar un minuto o más para preparar los archivos, especialmente si están guardados en iCloud. Espera sin cerrar la página — la subida comenzará automáticamente.',
       memories_picker_preparing: 'Tu dispositivo está preparando los archivos seleccionados…',
       memories_received_count: (n) => `Recibimos ${n} elementos. Se están preparando y subiendo automáticamente. No cierres esta página.`,
@@ -366,7 +358,6 @@
       memories_picker_retry: 'Annulla e riprova',
       memories_move_up: 'Sposta su', memories_move_down: 'Sposta giù',
       memories_upload_error: 'Caricamento non riuscito. Riprova.',
-      memories_iphone_hint_title: 'Cosa succede dopo la selezione',
       memories_iphone_hint: 'Dopo aver scelto le tue foto e i tuoi video dal telefono o dal computer e confermato la selezione, il dispositivo potrebbe impiegare un minuto o più per preparare i file, soprattutto se sono salvati su iCloud. Attendi senza chiudere la pagina — il caricamento inizierà automaticamente.',
       memories_picker_preparing: 'Il dispositivo sta preparando i file selezionati…',
       memories_received_count: (n) => `Abbiamo ricevuto ${n} elementi. Vengono preparati e caricati automaticamente. Non chiudere questa pagina.`,
@@ -396,7 +387,6 @@
       memories_picker_retry: 'Annuler et réessayer',
       memories_move_up: 'Monter', memories_move_down: 'Descendre',
       memories_upload_error: "Échec de l'envoi. Veuillez réessayer.",
-      memories_iphone_hint_title: 'Ce qui se passe après la sélection',
       memories_iphone_hint: "Après avoir choisi vos photos et vidéos depuis votre téléphone ou votre ordinateur et confirmé la sélection, votre appareil peut avoir besoin d'une minute ou plus pour préparer les fichiers, surtout s'ils sont stockés sur iCloud. Attendez sans fermer la page — l'envoi commencera automatiquement.",
       memories_picker_preparing: 'Votre appareil prépare les fichiers sélectionnés…',
       memories_received_count: (n) => `Nous avons reçu ${n} éléments. Ils sont en cours de préparation et d'envoi automatique. Ne fermez pas cette page.`,
@@ -426,7 +416,6 @@
       memories_picker_retry: 'Откажи и опитай отново',
       memories_move_up: 'Премести нагоре', memories_move_down: 'Премести надолу',
       memories_upload_error: 'Качването не бе успешно. Опитай отново.',
-      memories_iphone_hint_title: 'Какво се случва след избора',
       memories_iphone_hint: 'След като избереш снимките и видеата от телефона или компютъра си и потвърдиш избора, устройството ти може да се нуждае от минута или повече, за да подготви файловете, особено ако са съхранени в iCloud. Изчакай, без да затваряш страницата — качването ще започне автоматично.',
       memories_picker_preparing: 'Устройството ти подготвя избраните файлове…',
       memories_received_count: (n) => `Получихме ${n} материала. Подготвят се и се качват автоматично. Не затваряй тази страница.`,
@@ -456,7 +445,6 @@
       memories_picker_retry: 'İptal et ve tekrar dene',
       memories_move_up: 'Yukarı taşı', memories_move_down: 'Aşağı taşı',
       memories_upload_error: 'Yükleme başarısız oldu. Lütfen tekrar deneyin.',
-      memories_iphone_hint_title: 'Seçimden sonra ne olur',
       memories_iphone_hint: "Telefonunuzdan veya bilgisayarınızdan fotoğraf ve videolarınızı seçip seçimi onayladıktan sonra, cihazınızın dosyaları hazırlaması bir dakika veya daha uzun sürebilir, özellikle iCloud'da saklanıyorlarsa. Sayfayı kapatmadan bekleyin — yükleme otomatik olarak başlayacaktır.",
       memories_picker_preparing: 'Cihazınız seçilen dosyaları hazırlıyor…',
       memories_received_count: (n) => `${n} öğe alındı. Otomatik olarak hazırlanıyor ve yükleniyor. Bu sayfayı kapatmayın.`,
@@ -499,8 +487,7 @@
     document.getElementById('memories-title').textContent = t.memories_title;
     document.getElementById('memories-sub').textContent = t.memories_sub;
     document.getElementById('memories-meta').textContent = t.memories_meta(MEM_MIN, MEM_MAX);
-    document.getElementById('iphone-hint-title').innerHTML = `<span aria-hidden="true">ℹ️</span> ${escapeHtml(t.memories_iphone_hint_title)}`;
-    document.getElementById('iphone-hint-text').textContent = t.memories_iphone_hint;
+    document.getElementById('iphone-hint-text').textContent = `ℹ️ ${t.memories_iphone_hint}`;
     document.getElementById('gift-video-create-btn').textContent = t.gift_video_create_btn;
     document.getElementById('gift-video-create-sub').textContent = t.gift_video_create_sub;
   }

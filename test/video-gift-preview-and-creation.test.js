@@ -86,9 +86,11 @@ test('melodia-mea.html: dupa o regenerare REALA (ecranul de comparare), sectiune
   assert.ok(snippet.includes("if (order.plan === 'video') updateMemoriesCta(order, pendingVariantChoice);"));
 });
 
-test('melodia-mea.html: updateMemoriesCta() ascunde butonul de materiale STRICT cat timp pendingVariantChoice e adevarat', () => {
+// CORECȚIE (2026-08-29, runda 3, "la videoStatus=ready nu mai apare Adaugă amintirile"):
+// conditia a fost extinsa — butonul ramane ascuns si dupa ce videoclipul e gata.
+test('melodia-mea.html: updateMemoriesCta() afiseaza butonul de materiale STRICT cand pendingVariantChoice e fals SI videoclipul nu e inca gata', () => {
   const body = extractFunction(melodiaMea, 'function updateMemoriesCta(order, pendingVariantChoice) {');
-  assert.ok(body.includes("ctaWrap.style.display = pendingVariantChoice ? 'none' : 'block';"));
+  assert.ok(body.includes("ctaWrap.style.display = (!pendingVariantChoice && order.videoStatus !== 'ready') ? 'block' : 'none';"));
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -338,6 +340,89 @@ test('storage.js: functiile multipart/CORS raman neschimbate', () => {
   const storage = read('storage.js');
   assert.ok(storage.includes('async function createPrivateMultipartUpload('));
   assert.ok(storage.includes('async function checkUploadCors('));
+});
+
+// ---------------------------------------------------------------------------------------------
+// 12. CORECȚIE (2026-08-29, runda 3) — cardul previzualizarii (.gift-video-locked) foloseste
+//     portocaliul existent al site-ului (var(--orange)/var(--orange-deep)), nu mai are fundal
+//     negru/gri. Playerul <video> propriu-zis isi pastreaza fundalul negru, neschimbat.
+// ---------------------------------------------------------------------------------------------
+test('melodia-mea.html: .gift-video-locked nu mai foloseste fundal negru/gri — foloseste var(--orange)/var(--orange-deep)', () => {
+  const idx = melodiaMea.indexOf('.gift-video-locked{');
+  const end = melodiaMea.indexOf('}', idx);
+  const rule = melodiaMea.slice(idx, end);
+  assert.match(rule, /background:linear-gradient\(135deg, var\(--orange\), var\(--orange-deep\)\);/);
+  assert.ok(!/#2b2b2b|#1a1a1a/i.test(rule), 'fundalul negru/gri vechi nu mai trebuie sa existe pe cardul exterior');
+});
+
+test('melodia-mea.html: badge-ul "25 de secunde gratuite" (.gift-video-preview-badge) e adaptat la paleta portocalie', () => {
+  const idx = melodiaMea.indexOf('.gift-video-preview-badge{');
+  const end = melodiaMea.indexOf('}', idx);
+  const rule = melodiaMea.slice(idx, end);
+  assert.match(rule, /color:var\(--orange-text\);/);
+  assert.ok(!rule.includes('#f4f0e8'), 'culoarea crem veche (pentru fundal negru) nu mai trebuie folosita pentru badge');
+});
+
+test('melodia-mea.html: playerul video propriu-zis (.gift-video-preview-video-wrap) isi pastreaza fundalul negru, neschimbat', () => {
+  assert.match(melodiaMea, /\.gift-video-preview-video-wrap video\{ width:100%; border-radius:12px; display:block; background:#000; \}/);
+});
+
+// ---------------------------------------------------------------------------------------------
+// 13. CORECȚIE (2026-08-29, runda 3) — la order.plan==='video' && order.videoStatus==='ready',
+//     TOT meniul de editare dispare; previzualizarea, versurile (consultare) si un singur buton
+//     de plata raman vizibile. Standard/Premium raman complet neschimbate.
+// ---------------------------------------------------------------------------------------------
+test('melodia-mea.html: isFinalGiftVideo (order.plan==="video" && order.videoStatus==="ready") e definit atat in renderVariants() cat si in updateStandardEditMenuVisibility()', () => {
+  const renderVariantsBody = extractFunction(melodiaMea, 'function renderVariants(order) {');
+  assert.match(renderVariantsBody, /const isFinalGiftVideo = order\.plan === 'video' && order\.videoStatus === 'ready';/);
+  const editMenuBody = extractFunction(melodiaMea, 'function updateStandardEditMenuVisibility(order, pendingVariantChoice) {');
+  assert.match(editMenuBody, /const isFinalGiftVideo = order\.plan === 'video' && order\.videoStatus === 'ready';/);
+});
+
+test('melodia-mea.html: renderVariants() omite .edit-lyrics-btn cand isFinalGiftVideo e adevarat (butonul mic "Editează versurile" de pe cardul melodiei)', () => {
+  assert.ok(melodiaMea.includes("(isStandardEditChoice || isFinalGiftVideo) ? '' : `<button type=\"button\" class=\"btn btn-ghost btn-small edit-lyrics-btn\""));
+});
+
+test('melodia-mea.html: updateStandardEditMenuVisibility() ascunde TOT meniul de editare (toggle mare cu creion, campuri, mesajul de editare gratuita, confirmare/regenerare, ecranul de alegere) cand isFinalGiftVideo e adevarat, si pastreaza un SINGUR checkoutBtn vizibil', () => {
+  const body = extractFunction(melodiaMea, 'function updateStandardEditMenuVisibility(order, pendingVariantChoice) {');
+  const idx = body.indexOf('if (isFinalGiftVideo) {');
+  assert.notEqual(idx, -1, 'ramura isFinalGiftVideo trebuie sa fie prima verificare din functie');
+  const end = body.indexOf('return;', idx);
+  const snippet = body.slice(idx, end);
+  assert.match(snippet, /standardPreeditToggleWrap\.style\.display = 'none';/, 'butonul mare cu creion trebuie ascuns');
+  assert.match(snippet, /editMenuFields\.hidden = true;/, 'campurile de editare trebuie ascunse');
+  assert.match(snippet, /getElementById\('edits-info-msg'\)\.style\.display = 'none';/, 'mesajul despre editarea gratuita trebuie ascuns');
+  assert.match(snippet, /confirmRow\.style\.display = 'none';/, 'confirmarea trebuie ascunsa');
+  assert.match(snippet, /regenerateBtn\.style\.display = 'none';/, 'regenerarea trebuie ascunsa');
+  assert.match(snippet, /standardChoiceSection\.style\.display = 'none';/, 'ecranul de alegere intre versiuni trebuie ascuns');
+  assert.match(snippet, /regenerateRow\.appendChild\(checkoutBtn\);/, 'checkoutBtn trebuie sa ramana intr-un slot vizibil, fara duplicare');
+  // Un SINGUR appendChild pentru checkoutBtn in aceasta ramura — niciodata doua sloturi diferite.
+  const appendCount = (snippet.match(/appendChild\(checkoutBtn\)/g) || []).length;
+  assert.equal(appendCount, 1, 'checkoutBtn nu trebuie reparentat de mai multe ori in aceeasi ramura (ar insemna duplicare)');
+});
+
+test('melodia-mea.html: updateMemoriesCta() ascunde "Adaugă amintirile pentru videoclipul cadou" (si textul explicativ de sub el) cand videoStatus==="ready"', () => {
+  const body = extractFunction(melodiaMea, 'function updateMemoriesCta(order, pendingVariantChoice) {');
+  assert.match(body, /ctaWrap\.style\.display = \(!pendingVariantChoice && order\.videoStatus !== 'ready'\) \? 'block' : 'none';/);
+});
+
+test('melodia-mea.html: updateVideoStatusUI() NU ascunde #gift-video-section cand videoStatus==="ready" — previzualizarea ramane vizibila, checkoutBtn ramane activ', () => {
+  const body = extractFunction(melodiaMea, 'function updateVideoStatusUI(order, pendingVariantChoice) {');
+  const idx = body.indexOf("if (order.videoStatus === 'ready') {");
+  const end = body.indexOf('return;', idx);
+  const snippet = body.slice(idx, end);
+  assert.ok(!snippet.includes("getElementById('gift-video-section').style.display = 'none';"), 'sectiunea de previzualizare nu trebuie ascunsa la ready');
+  assert.match(snippet, /checkoutBtn\.disabled = false;/);
+});
+
+test('melodia-mea.html: Standard si Premium raman complet neschimbate — isFinalGiftVideo e STRICT legat de plan==="video", niciodata declansat pentru alte planuri', () => {
+  // Pentru orice comanda cu plan !== 'video', isFinalGiftVideo === false necondiționat —
+  // verificat structural: predicatul contine STRICT "order.plan === 'video' &&", nu doar
+  // "order.videoStatus === 'ready'" izolat (ceea ce ar fi putut afecta si alte planuri).
+  const editMenuBody = extractFunction(melodiaMea, 'function updateStandardEditMenuVisibility(order, pendingVariantChoice) {');
+  const idx = editMenuBody.indexOf('const isFinalGiftVideo =');
+  const line = editMenuBody.slice(idx, editMenuBody.indexOf(';', idx) + 1);
+  assert.match(line, /order\.plan === 'video' && order\.videoStatus === 'ready'/);
 });
 
 // ---------------------------------------------------------------------------------------------

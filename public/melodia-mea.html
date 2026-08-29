@@ -318,19 +318,22 @@
   .video-status-msg.ready{ background:rgba(95,143,110,.1); color:var(--success); }
   .video-status-msg.failed, .video-status-msg.stale{ background:rgba(179,87,74,.08); color:var(--error); }
 
-  /* RELANSARE (2026-08-14, "previzualizare gratuita de 30s"): cardul intunecat existent
-     (fundal/culori neschimbate) gazduieste ACUM un player <video> real (previzualizarea),
-     nu doar un mesaj cu lacat — folosit STRICT dupa ce previzualizarea exista (videoStatus
-     'ready'). Videoclipul COMPLET ramane blocat pana la plata, neschimbat. */
+  /* RELANSARE (2026-08-14, "previzualizare gratuita de 30s"): cardul gazduieste un player
+     <video> real (previzualizarea), nu doar un mesaj cu lacat — folosit STRICT dupa ce
+     previzualizarea exista (videoStatus 'ready'). Videoclipul COMPLET ramane blocat pana la
+     plata, neschimbat. CORECȚIE (2026-08-29, runda 3, "fundal portocaliu, in culorile
+     existente ale site-ului"): fundalul negru/gri a fost inlocuit cu var(--orange)/
+     var(--orange-deep) (aceleasi variabile deja folosite de .btn-cta-orange) — playerul <video>
+     propriu-zis isi pastreaza fundalul negru (.gift-video-preview-video-wrap, neschimbat). */
   .gift-video-locked{
-    background:linear-gradient(135deg, #2b2b2b, #1a1a1a); border-radius:16px;
-    padding:24px; text-align:center; color:#f4f0e8;
+    background:linear-gradient(135deg, var(--orange), var(--orange-deep)); border-radius:16px;
+    padding:24px; text-align:center; color:var(--orange-text);
   }
   .gift-video-lock-icon{ font-size:32px; display:block; margin-bottom:12px; }
-  .gift-video-locked p{ font-size:14px; color:#d8d2c4; margin:0; line-height:1.5; }
+  .gift-video-locked p{ font-size:14px; color:var(--orange-text); margin:0; line-height:1.5; }
   .gift-video-preview-badge{
     display:inline-block; font-size:11px; font-weight:600; letter-spacing:.03em; text-transform:uppercase;
-    background:rgba(244,240,232,.14); color:#f4f0e8; border-radius:999px; padding:4px 10px; margin-bottom:10px;
+    background:rgba(59,42,22,.14); color:var(--orange-text); border-radius:999px; padding:4px 10px; margin-bottom:10px;
   }
   .gift-video-preview-video-wrap{ margin-top:14px; }
   .gift-video-preview-video-wrap video{ width:100%; border-radius:12px; display:block; background:#000; }
@@ -1876,6 +1879,10 @@
     // nicio editare reala) nu au niciodata acest flag — raman pe eticheta veche ("Melodia din
     // videoclip"/"Melodia cadou"), neatinse, pentru compatibilitate.
     const hasEditedAlternative = (order.variants || []).some(v => v.isEditedAlternative);
+    // CORECȚIE (2026-08-29, runda 3, "pagina finala Cadou video — doar previzualizare + plata"):
+    // dupa ce videoclipul e gata (order.videoStatus==='ready'), melodia/versurile raman STRICT
+    // pentru consultare — niciun buton de editare nu mai trebuie generat pe cardul melodiei.
+    const isFinalGiftVideo = order.plan === 'video' && order.videoStatus === 'ready';
     (order.variants || []).forEach((v, i) => {
       const card = document.createElement('div');
       const isSelectedForClass = i === selectedVariantIndex;
@@ -1945,7 +1952,7 @@
         <div class="variant-progress">${t.listened('0:00', formatTime(v.durationSeconds))}</div>
         ${(!isStandardEditChoice && !isSelected && !hasGenreTag) ? `<p class="variant-gift-note">${t.variant_gift_note}</p>` : ''}
         ${lyricsHtml}
-        ${isStandardEditChoice ? '' : `<button type="button" class="btn btn-ghost btn-small edit-lyrics-btn" data-variant-id="${v.id}">${t.edit_lyrics_btn}</button>`}
+        ${(isStandardEditChoice || isFinalGiftVideo) ? '' : `<button type="button" class="btn btn-ghost btn-small edit-lyrics-btn" data-variant-id="${v.id}">${t.edit_lyrics_btn}</button>`}
       `;
 
       card.addEventListener('click', (e) => {
@@ -2382,7 +2389,10 @@
 
   function updateMemoriesCta(order, pendingVariantChoice) {
     const ctaWrap = document.getElementById('memories-cta');
-    ctaWrap.style.display = pendingVariantChoice ? 'none' : 'block';
+    // CORECȚIE (2026-08-29, runda 3, "la videoStatus=ready nu mai apare Adaugă amintirile"):
+    // butonul (si textul explicativ de sub el, in acelasi wrap) dispare definitiv dupa ce
+    // videoclipul e gata — nu mai are sens sa se adauge materiale pentru un videoclip deja creat.
+    ctaWrap.style.display = (!pendingVariantChoice && order.videoStatus !== 'ready') ? 'block' : 'none';
   }
 
   // ==========================================================================================
@@ -2618,6 +2628,31 @@
   // click handler-ul butonului de deschidere/inchidere (fara sa re-randeze variantele/playerele
   // audio — evita exact bucla/re-randarea inutila reparata anterior in acest fisier).
   function updateStandardEditMenuVisibility(order, pendingVariantChoice) {
+    // CORECȚIE (2026-08-29, runda 3, "pagina finala Cadou video — doar previzualizare + plata"):
+    // dupa ce videoclipul e gata, TOT meniul de editare dispare (toggle-ul mare cu creion,
+    // campurile de editare, mesajul despre editarea gratuita, confirmarea/regenerarea si ecranul
+    // de alegere intre versiuni) — melodia/versurile raman STRICT pentru consultare (randate mai
+    // sus de renderVariants(), neatinse aici), iar unicul checkoutBtn ramane vizibil, reparentat
+    // in #regenerate-row (acelasi container folosit deja pentru Premium/Video inainte de alegere),
+    // cu butonul de regenerare ascuns — niciodata doua butoane de plata.
+    const isFinalGiftVideo = order.plan === 'video' && order.videoStatus === 'ready';
+    if (isFinalGiftVideo) {
+      standardPreeditToggleWrap.style.display = 'none';
+      standardPreeditCheckoutSlotCollapsed.style.display = 'none';
+      standardPreeditCheckoutSlotExpanded.style.display = 'none';
+      editMenuFields.hidden = true;
+      document.getElementById('edits-info-msg').style.display = 'none';
+      confirmRow.style.display = 'none';
+      standardChoiceSection.style.display = 'none';
+      regenerateBtn.style.display = 'none';
+      confirmCancelBtn.style.display = 'none';
+      regenerateRow.style.display = 'flex';
+      regenerateRow.appendChild(checkoutBtn);
+      checkoutBtn.classList.remove('btn-cta-wide');
+      checkoutBtn.style.flex = '1';
+      return;
+    }
+
     // CORECȚIE (2026-08-14): vezi comentariul identic din renderVariants() — Video foloseste
     // acum acelasi ecran de alegere ca Standard, DOAR dupa o editare REALA (v.isEditedAlternative);
     // comenzile Video vechi (doua genuri initiale, fara nicio editare) raman neatinse.

@@ -53,22 +53,27 @@ const T = loadRealTranslations();
 // 1) Explicatia PERMANENTA despre timpul de pregatire pe iPhone/iCloud — vizibila TOT TIMPUL,
 //    in toate cele 8 limbi, niciodata o promisiune exacta de "un minut".
 // ===============================================================================================
-test('amintiri-video.html: banner-ul #iphone-hint (titlu + text) exista in markup si NU e ascuns condiționat (niciun style="display:none" implicit, nicio ramura JS care il ascunde)', () => {
-  assert.match(page, /<div class="iphone-hint" id="iphone-hint" role="note">\s*<p class="iphone-hint-title" id="iphone-hint-title"><\/p>\s*<p class="iphone-hint-text" id="iphone-hint-text"><\/p>\s*<\/div>/);
+// CORECȚIE (2026-08-29, runda 3, "elimina complet titlul, incepe direct cu ℹ️"): chenarul nu
+// mai are un titlu separat — un singur paragraf, care incepe cu simbolul ℹ️, urmat imediat, pe
+// acelasi rand, de textul explicativ tradus. memories_iphone_hint_title a fost eliminat complet.
+test('amintiri-video.html: banner-ul #iphone-hint contine STRICT un singur paragraf de text (fara titlu separat) si NU e ascuns condiționat', () => {
+  assert.match(page, /<div class="iphone-hint" id="iphone-hint" role="note">\s*<p class="iphone-hint-text" id="iphone-hint-text"><\/p>\s*<\/div>/);
+  assert.ok(!page.includes('iphone-hint-title'), 'elementul de titlu separat trebuie eliminat complet din markup');
   assert.ok(!/iphone-hint[\s\S]{0,80}display:\s*none/.test(page), 'bannerul nu trebuie sa aiba display:none implicit sau apropiat in markup');
   assert.ok(!page.includes("getElementById('iphone-hint').style.display"), 'nicio ramura JS nu trebuie sa comute vizibilitatea acestui banner — ramane STRICT permanent');
 });
 
-// CORECȚIE (2026-08-29, runda 2, "textul despre bifa albastra e neclar/specific iPhone"):
-// mesajul devine DEVICE-NEUTRU (telefon SAU computer), fara nicio mentiune a unei "bife
-// albastre" — clientul il citea inainte sa vada deloc selectorul, fara sa stie despre ce bifa
-// e vorba. Titlul + textul sunt acum separate (memories_iphone_hint_title / memories_iphone_hint).
-test('memories_iphone_hint_title si memories_iphone_hint: exista in toate cele 8 limbi, mentioneaza minutul/iCloud, NU promit exact un minut, NU mai mentioneaza nicio "bifa albastra"', () => {
+test('amintiri-video.html: cheia memories_iphone_hint_title a fost eliminata complet din toate cele 8 traduceri', () => {
+  assert.ok(!page.includes('memories_iphone_hint_title'), 'cheia de titlu nu mai trebuie sa existe deloc in pagina');
+  for (const lang of ['ro', 'en', 'de', 'es', 'it', 'fr', 'bg', 'tr']) {
+    assert.equal(T[lang].memories_iphone_hint_title, undefined, `memories_iphone_hint_title (${lang}) nu mai trebuie sa existe`);
+  }
+});
+
+test('memories_iphone_hint: exista in toate cele 8 limbi, mentioneaza minutul/iCloud, NU promite exact un minut, NU mai mentioneaza nicio "bifa albastra"', () => {
   const langs = ['ro', 'en', 'de', 'es', 'it', 'fr', 'bg', 'tr'];
   for (const lang of langs) {
-    const title = T[lang].memories_iphone_hint_title;
     const text = T[lang].memories_iphone_hint;
-    assert.ok(typeof title === 'string' && title.length > 5, `memories_iphone_hint_title (${lang}) trebuie sa existe`);
     assert.ok(typeof text === 'string' && text.length > 20, `memories_iphone_hint (${lang}) trebuie sa existe si sa fie substantial`);
     assert.ok(!/bifa albastr|blue checkmark|blaue Häkchen|marca azul|segno di spunta blu|coche bleue|синята отметка|mavi onay/i.test(text), `memories_iphone_hint (${lang}) nu mai trebuie sa mentioneze nicio bifa/checkmark`);
   }
@@ -77,14 +82,22 @@ test('memories_iphone_hint_title si memories_iphone_hint: exista in toate cele 8
   assert.match(ro, /minut/);
   assert.match(ro, /telefon(ul)? sau computer(ul)?/i, 'textul trebuie sa fie neutru — telefon SAU computer, nu exclusiv iPhone');
   assert.ok(!/exact un minut|exactly one minute/i.test(ro), 'nu trebuie promis EXACT un minut — materialele mari/din iCloud pot dura mai mult');
-  assert.equal(T.ro.memories_iphone_hint_title, 'Ce se întâmplă după selectare');
+  assert.match(ro, /^După ce selectezi pozele și videoclipurile/, 'textul RO trebuie sa inceapa cu "După ce selectezi pozele și videoclipurile…", neschimbat');
 });
 
-test('amintiri-video.html: applyStaticTexts() scrie titlul SI textul chenarului din traducere, in elemente separate, o singura data, la incarcare', () => {
+test('amintiri-video.html: applyStaticTexts() scrie ℹ️ urmat IMEDIAT, pe acelasi rand, de textul tradus, intr-un singur element, o singura data la incarcare', () => {
   const body = extractFn('applyStaticTexts');
-  assert.match(body, /document\.getElementById\('iphone-hint-title'\)\.innerHTML = /);
-  assert.match(body, /t\.memories_iphone_hint_title/);
-  assert.match(body, /document\.getElementById\('iphone-hint-text'\)\.textContent = t\.memories_iphone_hint;/);
+  assert.match(body, /document\.getElementById\('iphone-hint-text'\)\.textContent = `ℹ️ \$\{t\.memories_iphone_hint\}`;/);
+  assert.ok(!body.includes('iphone-hint-title'), 'nu mai trebuie scris niciun titlu separat');
+});
+
+test('executie reala: textul randat in #iphone-hint-text incepe STRICT cu ℹ️, urmat imediat de textul explicativ (ro)', () => {
+  const el = { _text: '', set textContent(v) { this._text = v; }, get textContent() { return this._text; } };
+  const sandbox = { document: { getElementById: () => el }, t: T.ro };
+  const context = vm.createContext(sandbox);
+  vm.runInContext(`document.getElementById('iphone-hint-text').textContent = \`ℹ️ \${t.memories_iphone_hint}\`;`, context);
+  assert.equal(el.textContent, `ℹ️ ${T.ro.memories_iphone_hint}`);
+  assert.match(el.textContent, /^ℹ️ După ce selectezi pozele și videoclipurile/);
 });
 
 // ===============================================================================================
@@ -456,4 +469,38 @@ test('amintiri-video.html: contine EFECTIV selectorul de fisiere, lista, coada s
   ]) {
     assert.ok(page.includes(marker), `amintiri-video.html trebuie sa contina "${marker}"`);
   }
+});
+
+// ===============================================================================================
+// 11) CORECȚIE (2026-08-29, runda 3) — chenarul foloseste portocaliul existent al site-ului
+//     (var(--orange)/var(--orange-deep)/var(--error)), NU auriul folosit anterior.
+// ===============================================================================================
+test('amintiri-video.html: chenarul #iphone-hint foloseste bordura/fundal portocaliu (var(--orange)) si text rosu (var(--error)) — nu mai foloseste auriul (var(--gold))', () => {
+  const idx = page.indexOf('.iphone-hint{');
+  const end = page.indexOf('}', idx);
+  const rule = page.slice(idx, end);
+  assert.match(rule, /border:2px solid var\(--orange\);/);
+  assert.ok(!rule.includes('var(--gold)'), 'chenarul nu mai trebuie sa foloseasca auriul');
+  const textIdx = page.indexOf('.iphone-hint-text{');
+  const textEnd = page.indexOf('}', textIdx);
+  const textRule = page.slice(textIdx, textEnd);
+  assert.match(textRule, /color:var\(--error\);/);
+});
+
+// ===============================================================================================
+// 12) Verificare EXPLICITA a selectorului nativ (item 5 din lista de acceptanta): un singur
+//     input, multiple, accept="image/*,video/*", fara capture/webkitdirectory, fara
+//     showOpenFilePicker, fara click programatic, fara preventDefault pe pointerdown/click.
+// ===============================================================================================
+test('amintiri-video.html: selectorul ramane STRICT unic, multiple, image/*+video/*, fara capture/webkitdirectory/showOpenFilePicker/click programatic', () => {
+  const inputMatches = page.match(/<input type="file"[^>]*>/g) || [];
+  assert.equal(inputMatches.length, 1, 'trebuie sa existe STRICT un singur <input type="file">');
+  const tag = inputMatches[0];
+  assert.ok(tag.includes('id="mem-file-input"'));
+  assert.match(tag, /\bmultiple\b/);
+  assert.ok(tag.includes('accept="image/*,video/*"'));
+  assert.ok(!tag.includes('capture'), 'capture ar favoriza camera, nu accesul la Albume');
+  assert.ok(!tag.includes('webkitdirectory'));
+  assert.ok(!page.includes('showOpenFilePicker'), 'nu trebuie folosit showOpenFilePicker ca inlocuitor pentru input[type=file]');
+  assert.ok(!page.includes('memFileInput.click('), 'nu trebuie adaugat niciun click programatic pe selector');
 });

@@ -303,10 +303,13 @@ test('melodia-mea.html: cardul selectat Standard primeste chenar portocaliu dist
   assert.ok(html.includes("isStandardChoiceForClass && isSelectedForClass ? ' standard-selected' : ''"), 'clasa trebuie aplicata doar cand cardul e cu adevarat selectat in fluxul Standard');
 });
 
+// CORECȚIE (2026-08-29, runda 3, "pagina finala Cadou video — fara butoane de editare"):
+// conditia a fost extinsa cu isFinalGiftVideo (order.plan==='video' && order.videoStatus===
+// 'ready') — butonul ramane omis pe cardurile Standard cu alegere, EXACT ca inainte.
 test('melodia-mea.html: "Editează versurile" si celelalte controale de editare nu mai apar pe cardurile Standard cu alegere', () => {
   const html = read('public/melodia-mea.html');
   assert.ok(
-    html.includes("isStandardEditChoice ? '' : `<button type=\"button\" class=\"btn btn-ghost btn-small edit-lyrics-btn\""),
+    html.includes("(isStandardEditChoice || isFinalGiftVideo) ? '' : `<button type=\"button\" class=\"btn btn-ghost btn-small edit-lyrics-btn\""),
     'butonul de editare a versurilor trebuie omis complet pe cardurile din ecranul de alegere Standard'
   );
 });
