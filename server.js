@@ -483,24 +483,29 @@ const ORDER_MEDIA_MIME_TYPES = {
 };
 // CORECȚIE (2026-08-14, "elimină plafonul artificial de 150MB"): 150MB era un plafon ARBITRAR,
 // nelegat de vreo constrangere reala de infrastructura — respingea exact videoclipurile normale
-// de 1-2 minute pe care pachetul le promite explicit (un videoclip iPhone 4K la bitrate inalt,
-// STRICT sub limita de ORDER_MEDIA_MAX_VIDEO_SECONDS=120s, poate ajunge realist la 400-600MB).
-// Configurabil prin env (ca ORDER_MEDIA_MAX_VIDEO_SECONDS mai jos), fara redeploy de cod daca
-// decizia de business se schimba. Implicit 700MB — acopera generos si cel mai incarcat caz
-// real (4K60 HEVC, 2 minute), ramanand o limita EXPLICITA (nu upload "nelimitat") — restul
-// pipeline-ului (multer diskStorage, streaming catre R2 cu fs.createReadStream) NU tine
-// niciodata fisierul intreg in memorie, indiferent de dimensiune — vezi storage.uploadPrivateFile.
-const ORDER_MEDIA_MAX_BYTES = (Number(process.env.ORDER_MEDIA_MAX_MB) > 0 ? Number(process.env.ORDER_MEDIA_MAX_MB) : 700) * 1024 * 1024;
+// pe care pachetul le promite explicit (un videoclip iPhone 4K la bitrate inalt poate ajunge
+// realist la sute de MB, indiferent de durata).
+// CORECȚIE (2026-08-30, "elimină plafonul arbitrar de 700MB sau înlocuiește-l STRICT cu limita
+// tehnica reala a serviciului de stocare" — Cadou video): 700MB era, la randul lui, tot o decizie
+// de business, nu o limita tehnica — inlocuit cu limita REALA a upload-ului multipart catre R2:
+// marimea unei parti (10MB, vezi ORDER_MEDIA_MULTIPART_PART_BYTES mai jos, in sectiunea
+// multipart) inmultita cu numarul maxim de parti permis de S3/R2 pentru un singur upload
+// multipart (10000 — limita documentata a serviciului, aceeasi verificata explicit la
+// `partNumber > 10000` in POST .../multipart/part-url). Rezultatul (~97.6GB) ramane o limita
+// EXPLICITA (nu upload "nelimitat"), dar reflecta o constrangere tehnica reala, nu un numar ales
+// arbitrar. Configurabil prin env (ORDER_MEDIA_MAX_MB), fara redeploy, daca decizia de business
+// se schimba din nou. Restul pipeline-ului (multer diskStorage pentru fisiere mici, streaming
+// direct catre R2 pentru cele mari) NU tine niciodata fisierul intreg in memoria Railway,
+// indiferent de dimensiune — vezi storage.uploadPrivateFile si sectiunea multipart mai jos.
+const ORDER_MEDIA_MULTIPART_PART_BYTES_LIMIT = 10 * 1024 * 1024;
+const ORDER_MEDIA_MULTIPART_MAX_PARTS_LIMIT = 10000;
+const ORDER_MEDIA_MAX_BYTES = Number(process.env.ORDER_MEDIA_MAX_MB) > 0
+  ? Number(process.env.ORDER_MEDIA_MAX_MB) * 1024 * 1024
+  : ORDER_MEDIA_MULTIPART_PART_BYTES_LIMIT * ORDER_MEDIA_MULTIPART_MAX_PARTS_LIMIT;
 const ORDER_MEDIA_MAX_ITEMS = 10;
 // Minimul cerut de fluxul "Cadou video" (cerinta de business, nu doar text in UI) —
 // vezi POST /api/orders/:orderId/media/confirm si /checkout, care il aplica server-side.
 const ORDER_MEDIA_MIN_ITEMS = 3;
-// Durata maxima acceptata per videoclip incarcat de client — configurabila, ca sa poata
-// fi ajustata fara redeploy de cod daca decizia de business se schimba. Documentata in
-// README/.env.example. Implicit 120s (2 minute) — suficient pentru un clip de telefon,
-// suficient de mic sa nu domine disproportionat durata finala a videoclipului cadou.
-const ORDER_MEDIA_MAX_VIDEO_SECONDS = Number(process.env.ORDER_MEDIA_MAX_VIDEO_SECONDS) > 0
-  ? Number(process.env.ORDER_MEDIA_MAX_VIDEO_SECONDS) : 120;
 
 // Acelasi prag ca db.claimVideoRender (20 minute) — o randare video reala dureaza cateva
 // minute, niciodata atat. Folosit consecvent in toate cele 3 locuri care trebuie sa stie
@@ -590,9 +595,14 @@ async function verifyMediaDecodable(filePath, mimetype, type, timeoutMs = 20000)
     const videoStream = streams.find(s => s.codec_type === 'video');
     if (!videoStream) return { ok: false, reason: 'niciun flux video decodabil' };
     const durationSeconds = parsed.format && parsed.format.duration ? Number(parsed.format.duration) : null;
-    if (durationSeconds && durationSeconds > ORDER_MEDIA_MAX_VIDEO_SECONDS) {
-      return { ok: false, reason: `durata (${Math.round(durationSeconds)}s) depășește limita de ${ORDER_MEDIA_MAX_VIDEO_SECONDS}s` };
-    }
+    // CORECȚIE (2026-08-30, "IMG_6810.mov, durata 161s depășește limita de 120s" — Cadou video):
+    // limita artificiala de durata a fost ELIMINATA COMPLET, fara sa fie inlocuita cu alt plafon
+    // arbitrar. Un videoclip valid, decodabil, mai lung de 120s trebuie acceptat — motorul video
+    // (buildShotPlan/computeVideoSegmentStartOffset) extrage deja fragmentele necesare din surse
+    // mai lungi decat slotul alocat, indiferent de durata reala a sursei. Verificarile PASTRATE
+    // mai sus (flux video decodabil, format suportat) raman singurele conditii tehnice reale;
+    // durationSeconds continua sa fie returnat (folosit de restul pipeline-ului), doar nu mai e
+    // folosit ca motiv de respingere.
     return { ok: true, durationSeconds };
   } catch (err) {
     // Diagnostic SIGUR (fara nume de fisier client, fara continut) — necesar ca sa distingem
@@ -2140,7 +2150,19 @@ async function handleLegacyRegenerate(req, res, next) {
     // versurile din promptul descriptiv). `feedback` ramane STRICT observatia libera a
     // clientului (voce/gen/alte cereri), niciodata versuri. Nu folosim niciodata versurile
     // altei variante decat cea aleasa explicit.
-    const exactLyrics = typeof sourceVariant.editedLyrics === 'string' ? sourceVariant.editedLyrics.trim() : '';
+    // CORECȚIE (2026-08-30, "o schimbare de gen/voce/feedback nu trebuie sa rescrie accidental
+    // versurile" — Cadou video): STRICT pentru Video (Standard ramane byte-identic, cerinta
+    // explicita de scope), cand clientul edita DOAR gen/voce/feedback prin meniul mare (fara sa
+    // fi folosit vreodata editorul separat de versuri), editedLyrics era gol -> runGeneration
+    // cadea pe buildPrompt() (customMode:false), care lasa Suno sa REscrie versurile din poveste
+    // de la zero — o schimbare de atmosfera putea produce accidental versuri diferite de cele pe
+    // care clientul le-a auzit deja si le-a ales. Pentru Video, folosim ACUM intotdeauna calea
+    // verbatim (buildExactLyricsRequest) — editedLyrics daca exista, altfel chiar versurile deja
+    // generate ale variantei (originalLyrics) — garantand ca versurile raman EXACT cele alese,
+    // indiferent ce alt camp s-a schimbat.
+    const exactLyrics = (typeof sourceVariant.editedLyrics === 'string' && sourceVariant.editedLyrics.trim())
+      ? sourceVariant.editedLyrics.trim()
+      : (order.plan === 'video' && typeof sourceVariant.originalLyrics === 'string' ? sourceVariant.originalLyrics.trim() : '');
 
     // Daca clientul a cerut si o schimbare de gen, actualizam ACUM coloana corecta din DB
     // (genre pentru Standard sau varianta 1, genre2 pentru varianta 2 la Premium/Video) —
@@ -2169,7 +2191,13 @@ async function handleLegacyRegenerate(req, res, next) {
     const regenerationJobId = randomUUID();
     await db.updateOrder(order.id, {
       regenerateSourceVariantId: requestedVariantId,
-      regenerateKeepOriginal: keepOriginalForStandardEdit
+      regenerateKeepOriginal: keepOriginalForStandardEdit,
+      // CORECȚIE (2026-08-30, "Mai veselă nu ajungea la furnizor"): feedback-ul e salvat AICI,
+      // sincron, INAINTE de a porni jobul asincron de mai jos (fire-and-forget) — daca procesul
+      // repornea intre acest punct si apelul catre furnizor, instructiunea nu se mai pierdea fara
+      // urma. `feedback` ramane parametrul folosit direct in acest request, comportament
+      // neschimbat — aceasta scriere e STRICT o plasa de siguranta pentru supravietuire.
+      regenerateFeedback: feedback
     });
     await db.startRegenerationJob(order.id, regenerationJobId);
     res.json({ started: true, regenerationJobId });
@@ -2847,7 +2875,11 @@ app.post('/api/orders/:orderId/media', requireOrderToken, handleOrderMediaUpload
 // configurare (PUT permis + header-ul ETag expus), uploadul direct nu functioneaza.
 // ==========================================================================================
 const ORDER_MEDIA_MULTIPART_THRESHOLD_BYTES = 20 * 1024 * 1024; // 20MB — sub asta, un singur POST e suficient de rapid/fiabil
-const ORDER_MEDIA_MULTIPART_PART_BYTES = 10 * 1024 * 1024; // 10MB per fragment (in intervalul 8-16MB cerut, peste minimul R2 de 5MB/parte)
+// ORDER_MEDIA_MULTIPART_PART_BYTES_LIMIT/ORDER_MEDIA_MULTIPART_MAX_PARTS_LIMIT — declarate mai
+// sus, langa ORDER_MEDIA_MAX_BYTES (folosite acolo pentru a deriva limita tehnica reala de
+// dimensiune) — reutilizate AICI, ca sursa unica de adevar, in loc de o a doua constanta cu
+// aceeasi valoare (10MB) sau un "10000" repetat ca literal mai jos.
+const ORDER_MEDIA_MULTIPART_PART_BYTES = ORDER_MEDIA_MULTIPART_PART_BYTES_LIMIT; // 10MB per fragment (in intervalul 8-16MB cerut, peste minimul R2 de 5MB/parte)
 const MULTIPART_SESSION_IDLE_MS = 30 * 60 * 1000; // sesiuni abandonate (tab inchis, pagina parasita) curatate dupa 30 min
 const multipartSessions = new Map(); // sessionId -> { orderId, key, uploadId, totalBytes, mimetype, originalname, section, completed, result, lastActivityAt }
 
@@ -2900,6 +2932,10 @@ app.post('/api/orders/:orderId/media/multipart/init', requireOrderToken, async (
       result: null,
       lastActivityAt: Date.now()
     });
+    // CORECȚIE (2026-08-30, "IMG_6810.mov — Încărcarea a eșuat", logare structurata): marcaj
+    // per etapa, ca o eroare ulterioara (part-url/complete) sa poata fi corelata direct cu
+    // aceasta sesiune in loguri — inainte, singurul marcaj exista abia la finalizarea cu SUCCES.
+    perfLog(order.id, 'media_upload_multipart_init', `sesiune=${sessionId}, bytes=${totalBytes}, parti=${Math.ceil(totalBytes / ORDER_MEDIA_MULTIPART_PART_BYTES)}`);
     res.json({ sessionId, partSize: ORDER_MEDIA_MULTIPART_PART_BYTES, totalParts: Math.ceil(totalBytes / ORDER_MEDIA_MULTIPART_PART_BYTES) });
   } catch (err) {
     next(err);
@@ -2917,12 +2953,44 @@ app.post('/api/orders/:orderId/media/multipart/:sessionId/part-url', requireOrde
     }
     if (session.completed) return res.status(409).json({ error: 'Această sesiune a fost deja finalizată.' });
     const partNumber = Number(req.body?.partNumber);
-    if (!Number.isInteger(partNumber) || partNumber < 1 || partNumber > 10000) {
+    if (!Number.isInteger(partNumber) || partNumber < 1 || partNumber > ORDER_MEDIA_MULTIPART_MAX_PARTS_LIMIT) {
       return res.status(400).json({ error: 'Număr de fragment invalid.' });
     }
     const url = await storage.getSignedUploadPartUrl(session.key, session.uploadId, partNumber, 900);
     session.lastActivityAt = Date.now();
     res.json({ url });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// CORECȚIE (2026-08-30, "IMG_6810.mov — Încărcarea a eșuat" — Cadou video): cale de rezerva
+// pentru cazul in care browserul a facut PUT-ul cu succes la R2, dar nu a putut citi ETag-ul din
+// header-ele raspunsului (CORS-ul bucket-ului nu expune header-ul ETag pentru originea site-ului
+// — vezi comentariul detaliat de la storage.getMultipartPartETag). Clientul apeleaza acest
+// endpoint STRICT dupa un PUT reusit (status 2xx) fara ETag in raspuns, INAINTE sa reincerce
+// inutil acelasi upload — serverul intreaba R2 direct (acces autentificat S3, niciodata supus
+// restrictiilor CORS ale browserului) ce ETag are fragmentul deja urcat.
+app.get('/api/orders/:orderId/media/multipart/:sessionId/part-etag', requireOrderToken, async (req, res, next) => {
+  try {
+    const session = multipartSessions.get(req.params.sessionId);
+    if (!session || session.orderId !== req.order.id) {
+      return res.status(404).json({ error: 'Sesiune de upload inexistentă sau expirată — reia fișierul de la început.' });
+    }
+    if (session.completed) return res.status(409).json({ error: 'Această sesiune a fost deja finalizată.' });
+    const partNumber = Number(req.query?.partNumber);
+    if (!Number.isInteger(partNumber) || partNumber < 1 || partNumber > ORDER_MEDIA_MULTIPART_MAX_PARTS_LIMIT) {
+      return res.status(400).json({ error: 'Număr de fragment invalid.' });
+    }
+    const etag = await storage.getMultipartPartETag(session.key, session.uploadId, partNumber);
+    session.lastActivityAt = Date.now();
+    if (!etag) {
+      // fragmentul chiar nu exista inca la R2 — reincercarea PUT-ului ramane raspunsul corect,
+      // nu o eroare de retea a acestui endpoint.
+      return res.json({ etag: null });
+    }
+    perfLog(req.order.id, 'media_upload_multipart_etag_fallback', `sesiune=${req.params.sessionId}, parte=${partNumber}`);
+    res.json({ etag });
   } catch (err) {
     next(err);
   }
@@ -2953,6 +3021,9 @@ app.post('/api/orders/:orderId/media/multipart/:sessionId/complete', requireOrde
     const signedUrl = await storage.getSignedDownloadUrl(session.key, 600);
     const decodable = await verifyMediaDecodable(signedUrl, session.mimetype, 'video', 60000);
     if (!decodable.ok) {
+      // Logare structurata (2026-08-30, "IMG_6810.mov"): stagiu explicit, ca un esec viitor
+      // similar sa fie diagnosticabil direct din loguri, fara sa mai fie nevoie sa ghicim cauza.
+      perfLog(order.id, 'media_upload_multipart_failed', `etapa=decode, sesiune=${req.params.sessionId}, motiv=${decodable.reason}`);
       session.completed = true;
       await storage.deletePrivateFile(session.key).catch(() => {});
       session.result = { uploaded: [], failed: [{ filename: label, reason: `Fișierul nu poate fi procesat (${decodable.reason}). Încearcă alt fișier sau alt format.` }], total: (order.uploadedMedia || []).length };
@@ -2975,6 +3046,15 @@ app.post('/api/orders/:orderId/media/multipart/:sessionId/complete', requireOrde
     session.result = { uploaded: [{ type: 'video', filename: label, section: session.section }], failed: [], total: mutation.order.uploadedMedia.length };
     res.json(session.result);
   } catch (err) {
+    // Logare structurata (2026-08-30, "IMG_6810.mov — Încărcarea a eșuat"): pana acum, acest
+    // catch nu logga NIMIC — un esec real aici (ex. finalizarea la R2 respinsa din cauza unui
+    // ETag lipsa/gresit) nu lasa nicio urma in loguri, exact motivul pentru care diagnosticarea
+    // ulterioara nu a putut confirma cauza exacta dintr-un caz real. Mesajul erorii (din SDK-ul
+    // S3, niciodata construit de noi) poate contine detalii tehnice utile pentru diagnostic —
+    // ramane STRICT server-side (console.error); clientul primeste in continuare doar mesajul
+    // generic, sigur, de mai jos.
+    console.error(`Comanda ${order.id}: finalizarea multipart (sesiune ${req.params.sessionId}, etapa=${completedAtR2 ? 'dupa-completare-r2' : 'completare-r2'}) a esuat:`, err && err.message);
+    perfLog(order.id, 'media_upload_multipart_failed', `etapa=${completedAtR2 ? 'dupa-completare-r2' : 'completare-r2'}, sesiune=${req.params.sessionId}`);
     session.completed = true;
     if (!completedAtR2) {
       // finalizarea la R2 insasi a esuat (ex. un ETag lipsa/gresit) — sesiunea multipart ramane
@@ -4169,6 +4249,17 @@ async function runGeneration(orderId, feedback, options = {}) {
   const order = await db.getOrderById(orderId);
   if (!order) throw new Error('Comanda a dispărut în timpul generării');
 
+  // CORECȚIE (2026-08-30, "Mai veselă nu ajungea la furnizor"): preferam feedback-ul deja
+  // persistat pe comanda (scris sincron de handleLegacyRegenerate INAINTE de acest job asincron
+  // fire-and-forget) fata de parametrul primit — daca acest job ruleaza dupa un restart de
+  // proces, parametrul original in memorie ar fi disparut odata cu vechiul proces, dar valoarea
+  // din DB supravietuieste. Pentru orice alt apelant care nu scrie regenerateFeedback (ex.
+  // generarea initiala), order.regenerateFeedback e null si parametrul original ramane folosit,
+  // neschimbat.
+  const effectiveFeedback = (order.regenerateFeedback !== null && order.regenerateFeedback !== undefined)
+    ? order.regenerateFeedback
+    : feedback;
+
   perfLog(orderId, 'generation_start');
   recordGenerationProgress(orderId, 'submitted').catch(() => {});
 
@@ -4205,8 +4296,8 @@ async function runGeneration(orderId, feedback, options = {}) {
     // editate manual (options.exactLyrics), trimitem VERBATIM catre Suno prin customMode:true —
     // niciodata prin buildPrompt(), care nu garanteaza nicio reproducere exacta.
     const requestPayload = options.exactLyrics
-      ? buildExactLyricsRequest({ ...order, ...recipientSnapshot }, options.exactLyrics, genreToUse, order.voicePreference, feedback)
-      : buildPrompt({ ...order, ...recipientSnapshot }, feedback, genreToUse);
+      ? buildExactLyricsRequest({ ...order, ...recipientSnapshot }, options.exactLyrics, genreToUse, order.voicePreference, effectiveFeedback)
+      : buildPrompt({ ...order, ...recipientSnapshot }, effectiveFeedback, genreToUse);
     const taskId = await callMusicProvider(orderId, requestPayload);
     recordRegenerationProgress(orderId, options.regenerationJobId, 'dispatched').catch(() => {});
     await db.updateOrder(orderId, { musicTaskId: taskId, musicTaskId2: null });
@@ -4235,8 +4326,8 @@ async function runGeneration(orderId, feedback, options = {}) {
     // CORECȚIE (2026-08-13, "pastrarea exacta a versurilor editate") — vezi comentariul
     // identic din ramura Premium/Video de mai sus.
     const requestPayload = options.exactLyrics
-      ? buildExactLyricsRequest(order, options.exactLyrics, order.genre, order.voicePreference, feedback)
-      : buildPrompt(order, feedback);
+      ? buildExactLyricsRequest(order, options.exactLyrics, order.genre, order.voicePreference, effectiveFeedback)
+      : buildPrompt(order, effectiveFeedback);
     const taskId = await callMusicProvider(orderId, requestPayload);
     recordRegenerationProgress(orderId, options.regenerationJobId, 'dispatched').catch(() => {});
     await db.updateOrder(orderId, { musicTaskId: taskId, musicTaskId2: null });
@@ -6705,6 +6796,45 @@ const LYRICS_LANGUAGE_NAMES = {
   it: 'Italian', fr: 'French', bg: 'Bulgarian', tr: 'Turkish'
 };
 
+// CORECȚIE (2026-08-30, "Mai veselă" nu ajungea efectiv la furnizor — client a ales genul
+// "Emoțional" + a scris "Mai veselă", dar cererea finala pastra fara neutralizare descriptori
+// contradictorii din stilul genului, ex. "tearful climax"): cauza reala — feedback-ul clientului
+// era doar ADAUGAT, cu aceeasi greutate, DUPA descrierea de stil a genului (care pentru
+// "emotional" e explicit trista), fara nicio formulare de prioritate si fara nicio neutralizare
+// a descriptorilor opusi. STRICT pentru pachetul Video (cerinta explicita de scope — Standard/
+// Premium raman byte-identice, neatinse de acest export/functii, vezi gating pe order.plan mai
+// jos in buildPrompt/buildExactLyricsRequest): feedback-ul primeste acum (a) o eticheta explicita
+// de PRIORITATE fata de stilul descris mai sus, si (b) pentru cererile recunoscute de "mai vesel/
+// optimist" (cautate in toate cele 8 limbi ale site-ului, plus engleza ca fallback universal — nu
+// traducem textul clientului, doar RECUNOASTEM intentia lui ca sa adaugam o clauza suplimentara
+// clara in engleza, limba pe care Suno o intelege cel mai bine), o clauza suplimentara care descrie
+// EXPLICIT o interpretare luminoasa/energica/optimista si neutralizeaza descriptorii opusi. Textul
+// ORIGINAL al clientului ramane INTOTDEAUNA trimis verbatim, in limba lui — clauza e un ADAOS,
+// niciodata o inlocuire.
+const BRIGHTEN_MOOD_PATTERNS = {
+  ro: [/mai vesel/i, /mai fericit/i, /mai optimist/i, /mai energic/i, /mai vioi/i, /mai luminoas/i, /mai vesela/i],
+  en: [/happ(y|ier)/i, /more upbeat/i, /more cheerful/i, /brighter/i, /more energetic/i, /more positive/i, /less sad/i],
+  de: [/fröhlicher/i, /heiterer/i, /positiver/i, /energischer/i, /weniger traurig/i],
+  es: [/más alegre/i, /más feliz/i, /más optimista/i, /más enérgic/i, /menos triste/i],
+  it: [/più allegr/i, /più felice/i, /più energic/i, /più positiv/i, /meno trist/i],
+  fr: [/plus joyeu/i, /plus gai/i, /plus énergique/i, /plus positi/i, /moins triste/i],
+  bg: [/по-весел/i, /по-щастлив/i, /по-енергичн/i, /по-позитивн/i],
+  tr: [/daha neşeli/i, /daha mutlu/i, /daha enerjik/i, /daha pozitif/i, /daha az hüzünlü/i]
+};
+function detectsBrightenMoodFeedback(feedbackText, lang) {
+  if (!feedbackText) return false;
+  const patterns = (BRIGHTEN_MOOD_PATTERNS[lang] || []).concat(BRIGHTEN_MOOD_PATTERNS.en);
+  return patterns.some(re => re.test(feedbackText));
+}
+const BRIGHTEN_MOOD_CLAUSE = ' Interpret this as a request for a brighter, energetic, optimistic performance: faster upbeat tempo, major-key uplifting tone, joyful hopeful delivery — this REPLACES any somber, tearful, slow, mournful, or heavy mood implied above.';
+// Eticheta ramane SCURTA, deliberat — bugetul buildPrompt() (SUNO_PROMPT_MAX_LEN=600) e deja
+// foarte strans (vezi comentariul de la feedbackBudget mai jos); o formulare lunga aici ar fi
+// putut singura sa consume tot spatiul ramas pentru feedback-ul VERBATIM al clientului pe o
+// comanda cu poveste/ocazie deja lungi, declansand gresit eroarea "instructiune prea lunga"
+// pentru un feedback scurt, normal (gasit direct la testare: label-ul original, mult mai lung,
+// producea exact aceasta eroare falsa pentru "Mai veselă" pe o comanda tipica).
+const VIDEO_FEEDBACK_PRIORITY_LABEL = ' Client override (priority): ';
+
 // ==========================================================================================
 // COERENTA NARATIVA A EXPEDITORULUI (2026-08-24) — cauza reala raportata: pentru o comanda cu
 // UN SINGUR expeditor ("bunicul Andrei") si un mesaj explicit la persoana I singular ("te
@@ -7233,6 +7363,12 @@ function buildPrompt(order, feedback, genreOverride) {
   const MIN_USEFUL_STORY_CHARS = 40;
   const feedbackLabel = ' Client-requested adjustment: ';
   const feedbackText = feedback ? String(feedback).trim() : '';
+  // CORECȚIE (2026-08-30, "Mai veselă" — vezi comentariul detaliat de la BRIGHTEN_MOOD_PATTERNS
+  // mai sus): STRICT pentru Video, eticheta feedback-ului devine explicit de prioritate, iar
+  // cererile recunoscute de "mai vesel" primesc o clauza suplimentara clara. Standard/Premium:
+  // byte-identic cu inainte (feedbackLabel/logica neschimbate pentru ele).
+  const isVideoPlan = order.plan === 'video';
+  const effectiveFeedbackLabel = isVideoPlan ? VIDEO_FEEDBACK_PRIORITY_LABEL : feedbackLabel;
 
   let remaining = SUNO_PROMPT_MAX_LEN - head.length;
   if (remaining < 0) remaining = 0;
@@ -7244,11 +7380,29 @@ function buildPrompt(order, feedback, genreOverride) {
   let feedbackFull = '';
   if (feedbackText) {
     const extraSpace = Math.max(0, remaining - STORY_MIN_RESERVE);
-    const feedbackBudget = Math.max(0, Math.floor(extraSpace * 0.6) - feedbackLabel.length);
+    const feedbackBudget = Math.max(0, Math.floor(extraSpace * 0.6) - effectiveFeedbackLabel.length);
+    // Cerinta explicita — "nu tăia și nu elimina în tăcere instrucțiunea din cauza bugetului
+    // promptului": STRICT pentru Video, daca insusi textul VERBATIM al clientului nu ar incapea
+    // (nu doar clauza suplimentara, care e un adaos optional), eroare clara AICI, inainte de a
+    // trimite o cerere care l-ar ignora silentios. Extrem de rar in practica (feedback deja
+    // limitat la 500 caractere la granita cererii HTTP).
+    if (isVideoPlan && feedbackBudget < Array.from(feedbackText).length) {
+      throw new Error('Instrucțiunea ta de stil e prea lungă ca să încapă alături de restul detaliilor melodiei — scurteaz-o și încearcă din nou.');
+    }
     const feedbackTrimmed = truncateSafely(feedbackText, feedbackBudget);
     if (feedbackTrimmed) {
-      feedbackFull = `${feedbackLabel}${feedbackTrimmed}`;
+      feedbackFull = `${effectiveFeedbackLabel}${feedbackTrimmed}`;
       remaining -= feedbackFull.length;
+      if (isVideoPlan && detectsBrightenMoodFeedback(feedbackText, order.lang)) {
+        // Clauza suplimentara e un ADAOS — se include DOAR daca incape INTREAGA (niciodata
+        // trunchiata la mijlocul unei propozitii, ceea ce ar putea-o face ea insasi confuza)
+        // si niciodata pe seama rezervei minime garantate pentru poveste.
+        const brightenBudget = Math.max(0, remaining - STORY_MIN_RESERVE);
+        if (brightenBudget >= BRIGHTEN_MOOD_CLAUSE.length) {
+          feedbackFull += BRIGHTEN_MOOD_CLAUSE;
+          remaining -= BRIGHTEN_MOOD_CLAUSE.length;
+        }
+      }
     }
   }
   if (remaining < 0) remaining = 0;
@@ -7340,7 +7494,25 @@ function buildExactLyricsRequest(order, exactLyrics, genreOverride, voicePrefere
   // niciodata duplicate/alterate aici).
   const feedbackText = feedback ? String(feedback).trim() : '';
   let style = `${styleTags}. Sing entirely in ${lyricsLanguage}. Short natural intro, vocals starting around 8-10 seconds. Fully sung vocal performance throughout.${VOICE_STYLE_NOTE[effectiveVoice]} Sing these exact lyrics precisely as written, word for word — never paraphrase, alter, skip, or add words.`;
-  if (feedbackText) style += ` ${feedbackText}`;
+  if (feedbackText) {
+    const isVideoPlan = order.plan === 'video';
+    const label = isVideoPlan ? VIDEO_FEEDBACK_PRIORITY_LABEL : ' ';
+    const brighten = (isVideoPlan && detectsBrightenMoodFeedback(feedbackText, order.lang)) ? BRIGHTEN_MOOD_CLAUSE : '';
+    // Cerinta explicita — "nu tăia și nu elimina în tăcere instrucțiunea din cauza bugetului
+    // promptului": STRICT pentru Video, daca eticheta+textul VERBATIM al clientului (fara clauza
+    // suplimentara, care e doar un adaos) nu ar incapea in bugetul de 1000 caractere al Suno,
+    // aruncam o eroare clara AICI, inainte ca aceasta cerere sa fie trimisa mai departe — nu
+    // trunchiem silentios instructiunea clientului. In practica, feedback-ul e deja limitat la
+    // 500 caractere la granita cererii HTTP (vezi handleLegacyRegenerate), deci acest caz e
+    // extrem de rar (poveste/versuri foarte lungi), nu inexistent.
+    if (isVideoPlan) {
+      const verbatimAddition = `${label}${feedbackText}`;
+      if (Array.from(style).length + Array.from(verbatimAddition).length > 1000) {
+        throw new Error('Instrucțiunea ta de stil e prea lungă ca să încapă alături de versurile alese — scurteaz-o și încearcă din nou.');
+      }
+    }
+    style += `${label}${feedbackText}${brighten}`;
+  }
   style = truncateSafely(style, 1000);
 
   // Titlu scurt (max. 80 caractere pentru V4_5ALL) — derivat din destinatar, fara sa expuna

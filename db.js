@@ -351,6 +351,13 @@ async function initDb() {
   // din starea persistenta a comenzii, nu dintr-o variabila locala disparuta odata cu procesul.
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS regenerate_keep_original BOOLEAN NOT NULL DEFAULT false;`);
 
+  // CORECȚIE (2026-08-30, "Mai veselă nu ajungea la furnizor" — Cadou video): feedback-ul liber
+  // al clientului (POST /regenerate) traia STRICT ca argument in memorie, transmis fire-and-forget
+  // catre runGeneration — daca procesul repornea intre rezervarea editarii si apelul catre
+  // furnizor, instructiunea se pierdea definitiv, fara nicio urma. Persistat AICI, sincron,
+  // INAINTE de a porni jobul asincron (acelasi tipar ca regenerate_source_variant_id de mai sus).
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS regenerate_feedback TEXT;`);
+
   // Progres de REGENERARE, SEPARAT complet de progresul generarii initiale (hotfix 2026-08-08,
   // "FINISAJ FINAL PACHET STANDARD"). Bug real gasit: generation_phase_percent era partajat
   // intre generarea initiala SI regenerare — o comanda ajunsa deja 100% (generare initiala)
@@ -482,6 +489,7 @@ function rowToOrder(row) {
     story2: row.story_2 || null,
     regenerateSourceVariantId: row.regenerate_source_variant_id,
     regenerateKeepOriginal: !!row.regenerate_keep_original,
+    regenerateFeedback: row.regenerate_feedback || null,
     editReserved: row.edit_reserved,
     // NULL (comenzi vechi, dinainte de aceasta coloana) devine 'auto' aici, o singura
     // data, central — restul aplicatiei (buildPrompt, API, comanda.html, melodia-mea.html)
@@ -1065,6 +1073,7 @@ const COLUMN_MAP = {
   stripePaymentIntentId: 'stripe_payment_intent_id',
   regenerateSourceVariantId: 'regenerate_source_variant_id',
   regenerateKeepOriginal: 'regenerate_keep_original',
+  regenerateFeedback: 'regenerate_feedback',
   editReserved: 'edit_reserved',
   voicePreference: 'voice_preference',
   generationAttempts: 'generation_attempts',

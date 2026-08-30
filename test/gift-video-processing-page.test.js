@@ -103,7 +103,7 @@ test('amintiri-video.html: dublul-click ramane prevenit — giftVideoCreateReque
 test('melodia-mea.html: refreshVideoStatusOnly() re-arma bucla de polling (cu backoff) SI pe raspuns non-ok SI pe eroare de retea — niciun drum din functie nu lasa polling-ul oprit definitiv', () => {
   const idx = melodia.indexOf('async function refreshVideoStatusOnly() {');
   assert.ok(idx !== -1);
-  const snippet = melodia.slice(idx, idx + 900);
+  const snippet = melodia.slice(idx, idx + 1500);
   assert.match(snippet, /if \(!res\.ok\) \{ videoPollFailCount\+\+; armVideoPoll\(Math\.min\(5000 \* videoPollFailCount, 30000\)\); return; \}/);
   assert.match(snippet, /catch \(e\) \{\s*videoPollFailCount\+\+;\s*armVideoPoll\(Math\.min\(5000 \* videoPollFailCount, 30000\)\);\s*\}/);
 });

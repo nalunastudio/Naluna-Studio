@@ -124,18 +124,27 @@ test('computeSectionAwareSegmentDurations: fara nicio sectiune reala detectata, 
 // 4. Plafonul de 150MB a fost eliminat — limita ramane EXPLICITA (nu upload nelimitat),
 //    configurabila prin variabila de mediu, generoasa pentru un videoclip iPhone real de 1-2 minute.
 // ---------------------------------------------------------------------------------------------
-test('server.js: ORDER_MEDIA_MAX_BYTES nu mai e plafonul artificial de 150MB — implicit 700MB, configurabil prin ORDER_MEDIA_MAX_MB', () => {
+// CORECȚIE (2026-08-30, "elimină plafonul arbitrar de 700MB sau înlocuiește-l STRICT cu limita
+// tehnica reala a serviciului de stocare"): 700MB (ca si 150MB inaintea lui) era tot o decizie
+// de business, nu o limita tehnica. Inlocuit cu limita REALA a upload-ului multipart catre R2:
+// marimea unei parti x numarul maxim de parti permis de serviciu (10000) — vezi
+// ORDER_MEDIA_MULTIPART_PART_BYTES_LIMIT/ORDER_MEDIA_MULTIPART_MAX_PARTS_LIMIT.
+test('server.js: ORDER_MEDIA_MAX_BYTES nu mai e o valoare de business (150MB/700MB) — implicit limita TEHNICA reala a multipart R2 (marime parte x numar maxim de parti), configurabil prin ORDER_MEDIA_MAX_MB', () => {
   assert.ok(!server.includes('const ORDER_MEDIA_MAX_BYTES = 150 * 1024 * 1024;'), 'plafonul vechi de 150MB nu mai trebuie sa existe');
-  assert.ok(server.includes("const ORDER_MEDIA_MAX_BYTES = (Number(process.env.ORDER_MEDIA_MAX_MB) > 0 ? Number(process.env.ORDER_MEDIA_MAX_MB) : 700) * 1024 * 1024;"));
+  assert.ok(!server.includes(': 700) * 1024 * 1024;'), 'plafonul vechi de 700MB, ales arbitrar, nu mai trebuie sa existe');
+  assert.match(server, /const ORDER_MEDIA_MULTIPART_PART_BYTES_LIMIT = 10 \* 1024 \* 1024;/);
+  assert.match(server, /const ORDER_MEDIA_MULTIPART_MAX_PARTS_LIMIT = 10000;/);
+  assert.match(server, /const ORDER_MEDIA_MAX_BYTES = Number\(process\.env\.ORDER_MEDIA_MAX_MB\) > 0\s*\n\s*\? Number\(process\.env\.ORDER_MEDIA_MAX_MB\) \* 1024 \* 1024\s*\n\s*: ORDER_MEDIA_MULTIPART_PART_BYTES_LIMIT \* ORDER_MEDIA_MULTIPART_MAX_PARTS_LIMIT;/);
 });
 
-test('server.js: limita ramane EXPLICITA si finita — nu e eliminata complet (protectie reala impotriva abuzului), doar marita generos', () => {
-  // simulam evaluarea constantei fara variabila de mediu setata (ca in productie implicit)
-  const ORDER_MEDIA_MAX_BYTES = (Number(undefined) > 0 ? Number(undefined) : 700) * 1024 * 1024;
-  assert.equal(ORDER_MEDIA_MAX_BYTES, 700 * 1024 * 1024);
-  assert.ok(ORDER_MEDIA_MAX_BYTES > 151 * 1024 * 1024, 'un fisier de 151MB (peste vechea limita) trebuie acceptat acum');
+test('server.js: limita implicita (fara ORDER_MEDIA_MAX_MB setat) e derivata din limita tehnica reala R2 (~97.6GB) — ramane EXPLICITA si finita, nu eliminata complet, dar mult peste orice fisier real de telefon', () => {
+  const PART_BYTES = 10 * 1024 * 1024;
+  const MAX_PARTS = 10000;
+  const ORDER_MEDIA_MAX_BYTES = Number(undefined) > 0 ? Number(undefined) * 1024 * 1024 : PART_BYTES * MAX_PARTS;
+  assert.ok(ORDER_MEDIA_MAX_BYTES > 151 * 1024 * 1024, 'un fisier de 151MB (peste vechea limita de 150MB) trebuie acceptat acum');
   assert.ok(ORDER_MEDIA_MAX_BYTES >= 500 * 1024 * 1024, 'un fisier de 500MB (scenariu cerut explicit) trebuie acceptat');
-  assert.ok(ORDER_MEDIA_MAX_BYTES < 5 * 1024 * 1024 * 1024, 'limita nu trebuie sa fie nelimitata/absurda — ramane o protectie reala');
+  assert.ok(ORDER_MEDIA_MAX_BYTES > 700 * 1024 * 1024, 'un fisier de peste 700MB (vechea limita arbitrara) trebuie acceptat acum');
+  assert.ok(ORDER_MEDIA_MAX_BYTES < 200 * 1024 * 1024 * 1024, 'limita nu trebuie sa fie infinita/absurda — ramane o protectie reala, derivata din limitele documentate ale R2');
 });
 
 test('server.js: mesajul de eroare pentru un fisier prea mare reflecta AUTOMAT noua limita (calculat din constanta, niciodata hardcodat "150MB")', () => {
@@ -200,7 +209,7 @@ test('verificare reala: un fisier de 300MB si unul de 500MB (create ca fisiere r
       fs.closeSync(fd);
       const stats = fs.statSync(filePath);
       assert.equal(stats.size, size);
-      const ORDER_MEDIA_MAX_BYTES = 700 * 1024 * 1024;
+      const ORDER_MEDIA_MAX_BYTES = 10 * 1024 * 1024 * 10000; // limita tehnica reala R2 (~97.6GB), nu 700MB
       assert.ok(stats.size <= ORDER_MEDIA_MAX_BYTES, `un fisier de ${size / (1024 * 1024)}MB trebuie sa incapa sub noua limita`);
       // streaming real, fara sa incarcam continutul in memorie — doar confirmam ca stream-ul
       // se poate deschide si citi progresiv, fara Buffer.concat/readFileSync.

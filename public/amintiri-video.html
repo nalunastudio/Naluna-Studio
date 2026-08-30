@@ -140,11 +140,34 @@
   .mem-actions button:disabled{ opacity:.35; cursor:default; }
   .mem-actions .mem-remove{ color:var(--error); font-size:16px; }
   .mem-actions .mem-retry{ color:var(--gold-deep); font-size:12px; font-weight:600; }
+  /* Cerinta 3 (2026-08-30): inputul nativ RAMANE in DOM, functional, dar vizual ascuns — un
+     <label for="mem-file-input"> (mai jos) e singurul declansator vizibil, stilizat ca un CTA
+     mare. NICIODATA display:none (unele combinatii vechi de browser/screen-reader pot ignora
+     label-ul asociat unui element display:none) — folosim in schimb tehnica standard "vizual
+     ascuns, dar prezent" (clip + dimensiune de 1px), care pastreaza inputul complet functional
+     si accesibil pentru orice tehnologie asistiva. */
   #mem-file-input{
-    display:block; width:100%; font-size:13px; margin-bottom:10px;
-    font-family:'Sora',sans-serif; color:var(--text-secondary);
+    position:absolute; width:1px; height:1px; padding:0; margin:-1px;
+    overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0;
   }
-  #mem-file-input:disabled{ opacity:.5; }
+  .btn-pick-files{
+    display:flex; align-items:center; justify-content:center; text-align:center;
+    width:100%; max-width:420px; min-height:56px; box-sizing:border-box;
+    padding:14px 24px; font-size:16px; font-weight:700; border-radius:14px;
+    background:var(--orange); color:var(--error); border:none; cursor:pointer;
+    box-shadow:0 10px 24px -8px rgba(245,166,35,.55); margin:0 auto 12px;
+  }
+  .btn-pick-files:hover{ background:var(--orange-deep); box-shadow:0 12px 28px -8px rgba(201,127,20,.55); }
+  .btn-pick-files:focus-visible{ outline:3px solid var(--orange-deep); outline-offset:2px; }
+  .btn-pick-files.is-disabled-look{ opacity:.5; pointer-events:none; box-shadow:none; }
+  /* Cerinta 4: forma compacta a aceluiasi buton, folosita STRICT in etapa de incarcare (cand
+     coada e goala si mai e loc pentru materiale) — ramane ACELASI element <label>, niciodata
+     un al doilea input/label separat, doar redimensionat vizual. */
+  .btn-pick-files.compact{ min-height:44px; font-size:14px; padding:10px 20px; max-width:320px; }
+  #upload-stage-header{ text-align:center; margin-bottom:6px; }
+  #upload-stage-header .sub{ margin-bottom:14px; }
+  .upload-overall-track{ background:var(--line); border-radius:999px; height:8px; overflow:hidden; margin:14px 0 18px; }
+  .upload-overall-fill{ background:var(--orange); height:100%; border-radius:999px; transition:width .3s ease; width:0%; }
   .mem-status{ font-size:13px; margin-top:10px; }
   .mem-status.err{ color:var(--error); }
   .mem-picker-retry-btn{
@@ -180,14 +203,28 @@
     </div>
 
     <div id="content-state" style="display:none;">
-      <div class="back-link-row">
+      <div class="back-link-row" id="back-link-row">
         <a class="back-link" id="back-link" href="#"></a>
       </div>
+      <!-- Etapa 1 (selectie) — titlu, explicatie si chenarul informativ. Cerinta 4: ascunse
+           complet imediat ce clientul intra in etapa de incarcare (enterUploadStage() mai jos),
+           NICIODATA navigare catre alt document — doar vizibilitate, in acelasi runtime, ca
+           obiectele File selectate sa nu se piarda. -->
       <h1 class="display" id="memories-title"></h1>
       <p class="sub" id="memories-sub" style="margin-bottom:14px;"></p>
 
       <div class="iphone-hint" id="iphone-hint" role="note">
         <p class="iphone-hint-text" id="iphone-hint-text"></p>
+      </div>
+
+      <!-- Etapa 2 (incarcare) — pagina separata, simpla: titlu clar + explicatie ca pagina
+           trebuie pastrata deschisa + progresul general. Logo-ul e deja comun tuturor starilor
+           (img.logo-mark, in afara acestui div). Ascunsa implicit — aratata STRICT dupa prima
+           selectie reala de fisiere. -->
+      <div id="upload-stage-header" style="display:none;">
+        <h1 class="display" id="upload-stage-title"></h1>
+        <p class="sub" id="upload-stage-sub"></p>
+        <div class="upload-overall-track"><div class="upload-overall-fill" id="upload-overall-fill"></div></div>
       </div>
 
       <div class="memories" id="memories-section">
@@ -199,8 +236,14 @@
         <!-- CORECȚIE (2026-08-14, "Articolele nu pot fi încărcate" pe iPhone): accept simplu, cu
              wildcard-uri ("image/*, video/*") — Safari/iOS poate esua sa initializeze corect
              selectorul nativ cu o lista lunga de MIME-uri explicite. Validarea REALA de continut
-             (magic bytes + decodare ffprobe) ramane STRICT server-side, neschimbata. -->
+             (magic bytes + decodare ffprobe) ramane STRICT server-side, neschimbata.
+             CORECȚIE (2026-08-30, Cerinta 3): un SINGUR input nativ, ramas EXACT cu aceleasi
+             atribute (multiple, accept="image/*,video/*", fara capture, fara webkitdirectory) —
+             doar vizual ascuns (vezi CSS #mem-file-input mai sus). Activarea se face STRICT
+             nativ, printr-un <label for="mem-file-input">, niciodata prin input.click()
+             programatic. -->
         <input type="file" id="mem-file-input" multiple accept="image/*,video/*" aria-label="Selectează poze și videoclipuri">
+        <label class="btn-pick-files" for="mem-file-input" id="mem-pick-label"><span id="mem-pick-label-text"></span></label>
         <p class="mem-status" id="mem-status" role="status" aria-live="assertive" aria-busy="false"></p>
       </div>
 
@@ -228,6 +271,9 @@
       back_link: '← Înapoi la melodia mea',
       memories_title: 'Adaugă pozele și videoclipurile tale',
       memories_sub: 'Adaugă între 3 și 10 poze sau clipuri video — le vom transforma într-un videoclip sincronizat cu melodia ta.',
+      memories_pick_files_btn: 'Alege fișierele',
+      upload_stage_title: 'Se încarcă amintirile tale',
+      upload_stage_sub: 'Te rugăm să păstrezi această pagină deschisă până se termină încărcarea.',
       memories_meta: (min, max) => `Între ${min} și ${max} materiale • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • orice combinație de poze și videoclipuri`,
       memories_count: (n, min, max, pending) => (n < min ? `${n} din minimum ${min} materiale` : n > max ? `Prea multe materiale (${n}/${max})` : `${n} materiale — gata de continuare`) + (pending > 0 ? ` (${pending} în curs de încărcare)` : ''),
       memories_uploading: 'Se încarcă...', memories_queued: 'În așteptare...', memories_uploaded: 'Încărcat', memories_remove: '✕', memories_retry: 'Reîncearcă',
@@ -257,6 +303,9 @@
       back_link: '← Back to my song',
       memories_title: 'Add your photos & videos',
       memories_sub: "Add 3 to 10 photos or video clips — we'll weave them into a video synced to your song.",
+      memories_pick_files_btn: 'Choose files',
+      upload_stage_title: 'Uploading your memories',
+      upload_stage_sub: 'Please keep this page open until the upload finishes.',
       memories_meta: (min, max) => `${min} to ${max} items • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • any mix of photos and videos`,
       memories_count: (n, min, max, pending) => (n < min ? `${n} of at least ${min} items` : n > max ? `Too many items (${n}/${max})` : `${n} items — ready to continue`) + (pending > 0 ? ` (${pending} uploading)` : ''),
       memories_uploading: 'Uploading...', memories_queued: 'Queued...', memories_uploaded: 'Uploaded', memories_remove: '✕', memories_retry: 'Retry',
@@ -286,6 +335,9 @@
       back_link: '← Zurück zu meinem Lied',
       memories_title: 'Füge deine Fotos & Videos hinzu',
       memories_sub: 'Füge 3 bis 10 Fotos oder Videoclips hinzu — wir verweben sie zu einem Video, das genau auf dein Lied abgestimmt ist.',
+      memories_pick_files_btn: 'Dateien auswählen',
+      upload_stage_title: 'Deine Erinnerungen werden hochgeladen',
+      upload_stage_sub: 'Bitte lass diese Seite geöffnet, bis der Upload abgeschlossen ist.',
       memories_meta: (min, max) => `${min} bis ${max} Elemente • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • jede Mischung aus Fotos und Videos`,
       memories_count: (n, min, max, pending) => (n < min ? `${n} von mindestens ${min} Elementen` : n > max ? `Zu viele Elemente (${n}/${max})` : `${n} Elemente — bereit zum Fortfahren`) + (pending > 0 ? ` (${pending} werden hochgeladen)` : ''),
       memories_uploading: 'Wird hochgeladen...', memories_queued: 'In Warteschlange...', memories_uploaded: 'Hochgeladen', memories_remove: '✕', memories_retry: 'Erneut versuchen',
@@ -315,6 +367,9 @@
       back_link: '← Volver a mi canción',
       memories_title: 'Añade tus fotos y videos',
       memories_sub: 'Añade entre 3 y 10 fotos o clips de video — los combinaremos en un video sincronizado con tu canción.',
+      memories_pick_files_btn: 'Elegir archivos',
+      upload_stage_title: 'Subiendo tus recuerdos',
+      upload_stage_sub: 'Por favor, mantén esta página abierta hasta que termine la subida.',
       memories_meta: (min, max) => `Entre ${min} y ${max} elementos • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • cualquier combinación de fotos y videos`,
       memories_count: (n, min, max, pending) => (n < min ? `${n} de al menos ${min} elementos` : n > max ? `Demasiados elementos (${n}/${max})` : `${n} elementos — listo para continuar`) + (pending > 0 ? ` (${pending} subiendo)` : ''),
       memories_uploading: 'Subiendo...', memories_queued: 'En espera...', memories_uploaded: 'Subido', memories_remove: '✕', memories_retry: 'Reintentar',
@@ -344,6 +399,9 @@
       back_link: '← Torna alla mia canzone',
       memories_title: 'Aggiungi le tue foto e i tuoi video',
       memories_sub: 'Aggiungi da 3 a 10 foto o clip video: le trasformeremo in un video sincronizzato con la tua canzone.',
+      memories_pick_files_btn: 'Scegli i file',
+      upload_stage_title: 'Caricamento dei tuoi ricordi in corso',
+      upload_stage_sub: 'Ti preghiamo di tenere questa pagina aperta finché il caricamento non è terminato.',
       memories_meta: (min, max) => `Da ${min} a ${max} elementi • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • qualsiasi combinazione di foto e video`,
       memories_count: (n, min, max, pending) => (n < min ? `${n} di almeno ${min} elementi` : n > max ? `Troppi elementi (${n}/${max})` : `${n} elementi — pronto per continuare`) + (pending > 0 ? ` (${pending} in caricamento)` : ''),
       memories_uploading: 'Caricamento...', memories_queued: 'In attesa...', memories_uploaded: 'Caricato', memories_remove: '✕', memories_retry: 'Riprova',
@@ -373,6 +431,9 @@
       back_link: '← Retour à ma chanson',
       memories_title: 'Ajoutez vos photos et vidéos',
       memories_sub: 'Ajoutez 3 à 10 photos ou clips vidéo — nous les intégrerons dans une vidéo synchronisée avec votre chanson.',
+      memories_pick_files_btn: 'Choisir les fichiers',
+      upload_stage_title: 'Téléchargement de vos souvenirs',
+      upload_stage_sub: 'Merci de garder cette page ouverte jusqu’à la fin du téléchargement.',
       memories_meta: (min, max) => `${min} à ${max} éléments • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • tout mélange de photos et vidéos`,
       memories_count: (n, min, max, pending) => (n < min ? `${n} sur au moins ${min} éléments` : n > max ? `Trop d'éléments (${n}/${max})` : `${n} éléments — prêt à continuer`) + (pending > 0 ? ` (${pending} en cours d'envoi)` : ''),
       memories_uploading: 'Envoi en cours...', memories_queued: 'En attente...', memories_uploaded: 'Envoyé', memories_remove: '✕', memories_retry: 'Réessayer',
@@ -402,6 +463,9 @@
       back_link: '← Обратно към моята песен',
       memories_title: 'Добави своите снимки и видеа',
       memories_sub: 'Добави между 3 и 10 снимки или видеоклипа — ще ги превърнем във видео, синхронизирано с твоята песен.',
+      memories_pick_files_btn: 'Избери файлове',
+      upload_stage_title: 'Качване на спомените ти',
+      upload_stage_sub: 'Моля, дръж тази страница отворена, докато качването приключи.',
       memories_meta: (min, max) => `Между ${min} и ${max} материала • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • всякаква комбинация от снимки и видеа`,
       memories_count: (n, min, max, pending) => (n < min ? `${n} от поне ${min} материала` : n > max ? `Твърде много материали (${n}/${max})` : `${n} материала — готово за продължаване`) + (pending > 0 ? ` (${pending} се качват)` : ''),
       memories_uploading: 'Качване...', memories_queued: 'На изчакване...', memories_uploaded: 'Качено', memories_remove: '✕', memories_retry: 'Опитай отново',
@@ -431,6 +495,9 @@
       back_link: '← Şarkıma geri dön',
       memories_title: 'Fotoğraflarınızı ve videolarınızı ekleyin',
       memories_sub: '3 ile 10 arası fotoğraf veya video klip ekleyin — bunları şarkınızla senkronize bir videoya dönüştürelim.',
+      memories_pick_files_btn: 'Dosyaları seç',
+      upload_stage_title: 'Anıların yükleniyor',
+      upload_stage_sub: 'Yükleme tamamlanana kadar lütfen bu sayfayı açık tut.',
       memories_meta: (min, max) => `${min} ile ${max} arası öğe • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • fotoğraf ve video karışımı kabul edilir`,
       memories_count: (n, min, max, pending) => (n < min ? `${n} / en az ${min} öğe` : n > max ? `Çok fazla öğe (${n}/${max})` : `${n} öğe — devam etmeye hazır`) + (pending > 0 ? ` (${pending} yükleniyor)` : ''),
       memories_uploading: 'Yükleniyor...', memories_queued: 'Sırada...', memories_uploaded: 'Yüklendi', memories_remove: '✕', memories_retry: 'Tekrar dene',
@@ -488,6 +555,9 @@
     document.getElementById('memories-sub').textContent = t.memories_sub;
     document.getElementById('memories-meta').textContent = t.memories_meta(MEM_MIN, MEM_MAX);
     document.getElementById('iphone-hint-text').textContent = `ℹ️ ${t.memories_iphone_hint}`;
+    document.getElementById('mem-pick-label-text').textContent = t.memories_pick_files_btn;
+    document.getElementById('upload-stage-title').textContent = t.upload_stage_title;
+    document.getElementById('upload-stage-sub').textContent = t.upload_stage_sub;
     document.getElementById('gift-video-create-btn').textContent = t.gift_video_create_btn;
     document.getElementById('gift-video-create-sub').textContent = t.gift_video_create_sub;
   }
@@ -533,6 +603,7 @@
     countEl.className = 'memories-count ' + (ok ? 'ok' : 'warn');
     updateCreateButtonVisibility(order, ok && !uploading && !hasUnresolvedError);
     maybeAutoConfirmMedia(order, ok && !uploading && !hasUnresolvedError);
+    syncPickerLabelState();
   }
 
   // Vizibilitatea butonului "Creează videoclipul" — mediaReady inseamna EXACT aceeasi conditie
@@ -893,14 +964,61 @@
     const el = document.getElementById('mem-batch-status');
     if (!el) return;
     const active = uploadQueue.filter(q => q.status !== 'error');
-    if (memBatchTotal === 0) { el.textContent = ''; return; }
+    const overallFill = document.getElementById('upload-overall-fill');
+    if (memBatchTotal === 0) {
+      el.textContent = '';
+      if (overallFill) overallFill.style.width = '0%';
+      return;
+    }
     if (active.length === 0) {
       el.textContent = memBatchDoneCount > 0 ? t.memories_batch_done(memBatchDoneCount) : '';
+      if (overallFill) overallFill.style.width = '100%';
       return;
     }
     const inFlightSum = active.reduce((s, q) => s + (q.status === 'processing' ? 100 : (q.progress || 0)), 0);
     const overallPct = Math.min(100, Math.round(((memBatchDoneCount * 100) + inFlightSum) / memBatchTotal));
     el.textContent = t.memories_batch_progress(memBatchDoneCount, memBatchTotal, overallPct);
+    // Cerinta 4: progresul general, afisat in chenarul dedicat al etapei de incarcare (nu doar
+    // ca text) — acelasi procent, calculat identic, doar randat si ca bara vizuala.
+    if (overallFill) overallFill.style.width = overallPct + '%';
+  }
+
+  // Cerinta 4 (2026-08-30, "pagina separata pentru incarcare"): comuta la a doua "vedere" —
+  // NICIODATA navigare catre alt document (obiectele File selectate s-ar pierde) — doar
+  // vizibilitate, in ACELASI runtime, apelata STRICT dupa ce FileList a fost deja copiat sincron
+  // (vezi handler-ul 'change' mai jos). Ascunde titlul/explicatia/chenarul informativ/selectorul
+  // mare al etapei 1; arata titlul clar + explicatia "pastreaza pagina deschisa" + progresul
+  // general al etapei 2. Lista de materiale (deja existenta) si butonul de creare raman vizibile
+  // in ambele etape — ele SUNT continutul relevant al etapei 2.
+  let uploadStageEntered = false;
+  function enterUploadStage() {
+    if (uploadStageEntered) return;
+    uploadStageEntered = true;
+    document.getElementById('memories-title').style.display = 'none';
+    document.getElementById('memories-sub').style.display = 'none';
+    document.getElementById('iphone-hint').style.display = 'none';
+    document.getElementById('memories-meta').style.display = 'none';
+    document.getElementById('back-link-row').style.display = 'none';
+    document.getElementById('upload-stage-header').style.display = 'block';
+    document.getElementById('mem-pick-label').classList.add('compact');
+    syncPickerLabelState();
+  }
+
+  // Vizibilitatea/starea vizuala a butonului mare (etapa 1) / compact (etapa 2) de alegere a
+  // fisierelor — SINGURUL <label> asociat inputului nativ unic, in ambele etape. In etapa 1,
+  // ramane mereu vizibil (doar cu aspect dezactivat cat timp memFileInput.disabled). In etapa 2,
+  // ramane ascuns cat timp un lot e activ (clientul trebuie sa vada STRICT progresul incarcarii —
+  // cerinta explicita), reaparand compact, STRICT cand coada s-a golit SI mai e loc pentru
+  // materiale (sub MEM_MAX) — ca upload-ul unui numar insuficient de materiale sa nu blocheze
+  // definitiv clientul fara nicio cale de a mai adauga altele.
+  function syncPickerLabelState() {
+    const label = document.getElementById('mem-pick-label');
+    if (!label) return;
+    const disabled = memFileInput.disabled;
+    label.classList.toggle('is-disabled-look', disabled);
+    if (!uploadStageEntered) { label.style.display = 'flex'; return; }
+    const total = memOrderRef ? (memOrderRef.uploadedMedia || []).length : 0;
+    label.style.display = (!disabled && total < MEM_MAX) ? 'flex' : 'none';
   }
 
   // CORECȚIE (2026-08-29, "blocheaza selectiile duplicate cat timp lotul este activ"): selectorul
@@ -912,6 +1030,7 @@
     memFileInput.disabled = active;
     document.getElementById('mem-staged-list').setAttribute('aria-busy', active ? 'true' : 'false');
     document.getElementById('mem-status').setAttribute('aria-busy', active ? 'true' : 'false');
+    syncPickerLabelState();
   }
 
   let memSyncTimer = null;
@@ -1021,9 +1140,21 @@
     xhr.send(formData);
   }
 
+  // Cale de rezerva, independenta de CORS — vezi comentariul de la storage.getMultipartPartETag
+  // in server.js. Apelata STRICT dupa un PUT reusit (2xx) fara ETag citibil in raspuns.
+  async function fetchPartEtagFallback(entrySessionId, partNumber) {
+    const res = await fetch(`/api/orders/${orderId}/media/multipart/${entrySessionId}/part-etag?partNumber=${partNumber}`, {
+      headers: { 'X-Access-Token': accessToken }
+    });
+    if (!res.ok) return null;
+    const data = await res.json().catch(() => ({}));
+    return data.etag || null;
+  }
+
   function uploadOnePart(entry, partNumber, blob, onProgress) {
     return new Promise((resolve, reject) => {
       let attempt = 0;
+      const fetchPartEtagFallbackForEntry = (pn) => fetchPartEtagFallback(entry.multipartSessionId, pn);
       const tryOnce = async () => {
         if (entry.abortRequested) { reject(new Error('aborted')); return; }
         try {
@@ -1044,9 +1175,17 @@
             delete entry.activePartXhrs[partNumber];
             if (xhr.status >= 200 && xhr.status < 300) {
               const etag = xhr.getResponseHeader('ETag');
-              if (!etag) { retryOrFail(); return; }
-              onProgress(blob.size);
-              resolve(etag);
+              if (etag) { onProgress(blob.size); resolve(etag); return; }
+              // CORECȚIE (2026-08-30, "IMG_6810.mov — Încărcarea a eșuat"): PUT-ul chiar a
+              // reușit la R2 (status 2xx) — un ETag lipsă in răspuns înseamnă cel mai probabil
+              // că CORS-ul bucket-ului nu expune header-ul ETag pentru această origine, nu că
+              // fragmentul nu s-a încărcat. Reîncercarea ACELUIAȘI PUT nu ajută (nu e o eroare
+              // tranzitorie) — întrebăm în schimb serverul (acces R2 direct, neafectat de CORS)
+              // ce ETag are fragmentul deja urcat, înainte de a renunța.
+              fetchPartEtagFallbackForEntry(partNumber).then((fallbackEtag) => {
+                if (fallbackEtag) { onProgress(blob.size); resolve(fallbackEtag); }
+                else { retryOrFail(); }
+              }).catch(() => { retryOrFail(); });
             } else { retryOrFail(); }
           };
           xhr.onerror = () => { delete entry.activePartXhrs[partNumber]; retryOrFail(); };
@@ -1235,6 +1374,10 @@
       memStatusEl.className = 'mem-status err';
       return;
     }
+    // Cerinta 4: comutarea la etapa de incarcare (a doua "vedere", acelasi document) se face
+    // STRICT AICI — imediat DUPA copierea sincrona de mai sus (Array.from), niciodata inainte.
+    // Fisierele raman in memorie (obiecte File reale, deja copiate) — comutarea e STRICT vizuala.
+    enterUploadStage();
     // Mesaj SINCRON, cu numarul REAL de materiale primite — cerinta explicita (2026-08-29):
     // "Am primit N materiale. Se pregătesc și se încarcă automat. Nu închide pagina."
     memStatusEl.textContent = t.memories_received_count(files.length);

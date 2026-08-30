@@ -83,7 +83,24 @@ for (const [name, html] of Object.entries(PAGES)) {
   test(`${name}: ETag-ul fragmentului e citit din raspunsul R2 (header expus prin CORS) — necesar la finalizare`, () => {
     const src = extractFunction(html, 'function uploadOnePart(');
     assert.ok(src.includes("xhr.getResponseHeader('ETag')"));
-    assert.ok(src.includes('if (!etag) { retryOrFail(); return; }'), 'un raspuns fara ETag trebuie tratat ca eroare (reincercat), nu ca succes silentios');
+  });
+
+  // CORECȚIE (2026-08-30, "IMG_6810.mov — Încărcarea a eșuat"): inainte, un PUT reusit (2xx) fara
+  // ETag citibil in raspuns (CORS-ul bucket-ului nu expune header-ul ETag) era tratat STRICT ca
+  // esec, reincercand la nesfarsit ACELASI PUT — inutil, pentru ca problema nu e tranzitorie.
+  // Acum, un asemenea caz apeleaza intai fallback-ul server-side (independent de CORS) inainte
+  // sa reincerce PUT-ul insusi.
+  test(`${name}: un PUT reusit (2xx) FARA ETag in raspuns apeleaza fallback-ul server-side (independent de CORS) inainte sa reincerce PUT-ul`, () => {
+    const src = extractFunction(html, 'function uploadOnePart(');
+    assert.match(src, /fetchPartEtagFallback\w*\(/, 'trebuie sa incerce fallback-ul server-side cand ETag lipseste din raspunsul PUT');
+    assert.ok(!src.includes('if (!etag) { retryOrFail(); return; }'), 'nu mai trebuie sa reincerce ORB PUT-ul la un ETag lipsa — fallback-ul are prioritate');
+  });
+
+  test(`${name}: fetchPartEtagFallback() apeleaza noul endpoint server-side GET .../part-etag, cu token de acces, si intoarce null (nu arunca) daca fragmentul chiar nu exista inca la R2`, () => {
+    const fnSrc = extractFunction(html, 'async function fetchPartEtagFallback(');
+    assert.ok(fnSrc.includes('/media/multipart/${') && fnSrc.includes('}/part-etag?partNumber=${partNumber}'));
+    assert.match(fnSrc, /'X-Access-Token': (accessToken|currentToken)/);
+    assert.ok(fnSrc.includes('if (!res.ok) return null;'));
   });
 
   // -----------------------------------------------------------------------------------------
@@ -185,9 +202,12 @@ test('storage.js: getSignedUploadPartUrl() semneaza STRICT un UploadPartCommand 
 //    video (nicio ruta nu primeste body de fisier/octet-stream pentru fragmente); finalizarea
 //    e idempotenta; sesiunile abandonate sunt curatate (inclusiv la R2, nu doar local).
 // -------------------------------------------------------------------------------------------
-test('server.js: cele 4 rute de upload multipart exista, toate protejate de requireOrderToken', () => {
+test('server.js: cele 5 rute de upload multipart exista, toate protejate de requireOrderToken', () => {
   assert.match(server, /app\.post\('\/api\/orders\/:orderId\/media\/multipart\/init', requireOrderToken/);
   assert.match(server, /app\.post\('\/api\/orders\/:orderId\/media\/multipart\/:sessionId\/part-url', requireOrderToken/);
+  // CORECȚIE (2026-08-30, "IMG_6810.mov"): ruta noua de rezerva, independenta de CORS, pentru
+  // citirea ETag-ului unui fragment deja urcat direct de la R2.
+  assert.match(server, /app\.get\('\/api\/orders\/:orderId\/media\/multipart\/:sessionId\/part-etag', requireOrderToken/);
   assert.match(server, /app\.post\('\/api\/orders\/:orderId\/media\/multipart\/:sessionId\/complete', requireOrderToken/);
   assert.match(server, /app\.delete\('\/api\/orders\/:orderId\/media\/multipart\/:sessionId', requireOrderToken/);
 });

@@ -424,6 +424,17 @@
           </div>
         </div>
 
+        <!-- CORECȚIE (2026-08-30, Cerinta 6, "doua butoane de plata pe pagina finala Cadou
+             video"): al DOILEA buton de checkout, identic ca eticheta/pret/design cu #checkout-btn
+             (existent, ramas la finalul paginii, dupa cardurile cu melodiile) — plasat imediat
+             DUPA chenarul cu previzualizarea video de mai sus. ID unic (checkout-btn-2), aceeasi
+             functie comuna de checkout (goToCheckout), aceeasi comanda Stripe — NICIODATA un al
+             doilea produs/plata. Vizibil STRICT in aceeasi stare ca butonul de jos (isFinalGiftVideo,
+             vezi updateStandardEditMenuVisibility) — ascuns implicit aici. -->
+        <div id="checkout-btn-top-wrap" style="display:none; margin-bottom:20px;">
+          <button type="button" class="btn btn-primary" id="checkout-btn-2" style="width:100%; justify-content:center;"></button>
+        </div>
+
         <div id="variants-wrap"></div>
 
         <!-- MODIFICARE STRICTĂ — fluxul Premium: pagina rezultatului initial, editarea selectiva
@@ -1657,6 +1668,22 @@
   const feedbackEl = document.getElementById('feedback');
   const regenerateBtn = document.getElementById('regenerate-btn');
   const checkoutBtn = document.getElementById('checkout-btn');
+  // Cerinta 6: al doilea buton de plata — element DISTINCT, ID unic, NICIODATA clonat/reparentat
+  // ca #checkout-btn (care ramane singurul reparentat intre sloturile Standard/Premium). Ramane
+  // static in DOM, la pozitia lui fixa (imediat dupa previzualizarea video) — doar vizibilitatea
+  // si continutul lui se sincronizeaza cu #checkout-btn, vezi syncCheckoutBtn2()/goToCheckout().
+  const checkoutBtn2 = document.getElementById('checkout-btn-2');
+  // Sincronizeaza continutul (eticheta+pret) si starea disabled ale celui de-al doilea buton cu
+  // #checkout-btn — apelata dupa fiecare actualizare a acestuia din renderContent(). Copiem
+  // innerHTML dar redenumim ID-urile interne (checkout-price/selected-variant-label), ca sa nu
+  // ajungem cu doua elemente cu acelasi ID in acelasi document.
+  function syncCheckoutBtn2() {
+    if (!checkoutBtn2) return;
+    checkoutBtn2.innerHTML = checkoutBtn.innerHTML
+      .replace(/id="checkout-price"/g, 'id="checkout-price-2"')
+      .replace(/id="selected-variant-label"/g, 'id="selected-variant-label-2"');
+    checkoutBtn2.disabled = checkoutBtn.disabled;
+  }
   const editsInfoMsgEl = document.getElementById('edits-info-msg');
   const checkoutPriceEl = document.getElementById('checkout-price');
   const selectedVariantLabelEl = document.getElementById('selected-variant-label');
@@ -2130,12 +2157,16 @@
     contentState.style.display = 'none';
     lyricsEditorState.style.display = 'block';
     lyricsTextarea.focus();
+    // Cerinta 1: editorul separat de versuri e si el un "editor deschis" — CTA-ul "Adaugă
+    // amintirile" trebuie sa dispara imediat, la fel ca la meniul mare de editare.
+    updateMemoriesCta(currentOrder, computePendingVariantChoice(currentOrder));
   }
 
   function closeLyricsEditor() {
     editingVariantId = null;
     lyricsEditorState.style.display = 'none';
     contentState.style.display = 'block';
+    updateMemoriesCta(currentOrder, computePendingVariantChoice(currentOrder));
   }
 
   function updateCharCounter() {
@@ -2222,7 +2253,7 @@
       setVoiceCardActive(selectedVoicePreference);
       populateGenreSelect(currentOrder);
       menuExpanded = false;
-      const pendingVariantChoiceNow = !currentOrder.selectedVariantId && (currentOrder.variants || []).length > 1;
+      const pendingVariantChoiceNow = computePendingVariantChoice(currentOrder);
       updateStandardEditMenuVisibility(currentOrder, pendingVariantChoiceNow);
       return;
     }
@@ -2237,7 +2268,7 @@
   editMenuToggleBtn.addEventListener('click', () => {
     if (!currentOrder) return;
     menuExpanded = !menuExpanded;
-    const pendingVariantChoiceNow = !currentOrder.selectedVariantId && (currentOrder.variants || []).length > 1;
+    const pendingVariantChoiceNow = computePendingVariantChoice(currentOrder);
     updateStandardEditMenuVisibility(currentOrder, pendingVariantChoiceNow);
     if (menuExpanded) {
       // Pe mobil, derulare lina catre inceputul meniului nou deschis.
@@ -2324,8 +2355,19 @@
     }
   });
 
+  // Cerinta 6: SINGURA functie de checkout, comuna ambelor butoane — apelata identic de
+  // #checkout-btn SI #checkout-btn-2, creeaza EXACT aceeasi cerere/comanda Stripe (backend-ul
+  // insusi ramane neschimbat: aceeasi validare de varianta/mediaRevision/videoKey, aceeasi cheie
+  // de idempotency versionata — vezi POST /api/orders/:orderId/checkout). Protectia la dublu-click
+  // dezactiveaza AMBELE butoane SINCRON, la primul apel — inclusiv la apasari rapide pe butoane
+  // DIFERITE (checkoutInFlight e verificat inaintea oricarei dezactivari, deci un al doilea click,
+  // pe oricare buton, in timp ce primul e deja in curs, e ignorat complet).
+  let checkoutInFlight = false;
   async function goToCheckout() {
+    if (checkoutInFlight) return;
+    checkoutInFlight = true;
     checkoutBtn.disabled = true;
+    if (checkoutBtn2) checkoutBtn2.disabled = true;
     statusMsgEl.textContent = t.msg_preparing_payment;
     statusMsgEl.className = '';
 
@@ -2341,15 +2383,20 @@
       } else {
         statusMsgEl.textContent = t.msg_error_prefix + (data.error || t.msg_try_again);
         statusMsgEl.className = 'status-err';
+        checkoutInFlight = false;
         checkoutBtn.disabled = false;
+        if (checkoutBtn2) checkoutBtn2.disabled = false;
       }
     } catch (err) {
       statusMsgEl.textContent = t.msg_conn_error;
       statusMsgEl.className = 'status-err';
+      checkoutInFlight = false;
       checkoutBtn.disabled = false;
+      if (checkoutBtn2) checkoutBtn2.disabled = false;
     }
   }
   checkoutBtn.addEventListener('click', goToCheckout);
+  if (checkoutBtn2) checkoutBtn2.addEventListener('click', goToCheckout);
 
   document.getElementById('retry-btn').addEventListener('click', async () => {
     const retryBtn = document.getElementById('retry-btn');
@@ -2387,12 +2434,30 @@
     window.location.href = `/amintiri-video.html?id=${encodeURIComponent(orderId)}&token=${encodeURIComponent(accessToken)}`;
   });
 
+  // CORECȚIE (2026-08-30, "CTA-ul Adaugă amintirile reapare dupa editare"): SINGURA sursa de
+  // adevar pentru vizibilitatea acestui CTA. Inainte, doua functii separate (aceasta si
+  // updateStandardEditMenuVisibility) scriau independent style.display pe acelasi element —
+  // updateStandardEditMenuVisibility il ascundea corect cat timp meniul mare era deschis, dar
+  // renderContent() apela apoi NECONDITIONAT tot updateMemoriesCta (fara sa stie de meniu),
+  // suprascriindu-l inapoi la vizibil de fiecare data cand orice re-randare completa rula cat
+  // meniul era inca deschis (ex: click pe un card de varianta -> selectVariant -> loadOrder ->
+  // renderContent). Acum NICIO alta functie nu mai scrie direct pe #memories-cta — toate
+  // locurile care schimba o stare relevanta (menuExpanded, editingVariantId, pendingVariantChoice,
+  // videoStatus) apeleaza in schimb aceasta functie, care citeste STARE REALA COMPLETA:
+  // planul, daca editorul mare SAU editorul de versuri e deschis, daca exista o alegere de
+  // varianta in asteptare, si statusul videoclipului.
   function updateMemoriesCta(order, pendingVariantChoice) {
     const ctaWrap = document.getElementById('memories-cta');
-    // CORECȚIE (2026-08-29, runda 3, "la videoStatus=ready nu mai apare Adaugă amintirile"):
-    // butonul (si textul explicativ de sub el, in acelasi wrap) dispare definitiv dupa ce
-    // videoclipul e gata — nu mai are sens sa se adauge materiale pentru un videoclip deja creat.
-    ctaWrap.style.display = (!pendingVariantChoice && order.videoStatus !== 'ready') ? 'block' : 'none';
+    const editorOpen = menuExpanded || !!editingVariantId;
+    const shouldShow = order.plan === 'video'
+      && !editorOpen
+      && !pendingVariantChoice
+      && order.videoStatus !== 'ready';
+    ctaWrap.style.display = shouldShow ? 'block' : 'none';
+  }
+
+  function computePendingVariantChoice(order) {
+    return !order.selectedVariantId && (order.variants || []).length > 1;
   }
 
   // ==========================================================================================
@@ -2613,8 +2678,13 @@
       const order = await res.json();
       if (order.status !== 'preview_ready') { loadOrder(); return; } // stare schimbata real -> refresh complet
       currentOrder = order;
-      const pendingVariantChoiceNow = !order.selectedVariantId && (order.variants || []).length > 1;
+      const pendingVariantChoiceNow = computePendingVariantChoice(order);
       updateVideoStatusUI(order, pendingVariantChoiceNow);
+      // Cerinta 1: acest refresh USOR (doar starea video, fara renderContent complet) e exact
+      // "polling"-ul mentionat explicit in cerinta — daca videoclipul devine 'ready' cat timp
+      // clientul e deja pe pagina, CTA-ul trebuie sa dispara imediat, nu doar la urmatoarea
+      // reincarcare completa.
+      updateMemoriesCta(order, pendingVariantChoiceNow);
     } catch (e) {
       videoPollFailCount++;
       armVideoPoll(Math.min(5000 * videoPollFailCount, 30000));
@@ -2628,13 +2698,27 @@
   // click handler-ul butonului de deschidere/inchidere (fara sa re-randeze variantele/playerele
   // audio — evita exact bucla/re-randarea inutila reparata anterior in acest fisier).
   function updateStandardEditMenuVisibility(order, pendingVariantChoice) {
+    // CORECȚIE (2026-08-30, "CTA-ul Adaugă amintirile reapare dupa editare"): un SINGUR apel,
+    // aici, la inceputul functiei — acopera TOATE ramurile/return-urile de mai jos (isFinalGiftVideo,
+    // isStandardEditChoice, standardDirectEditMode, Premium). Nimic din restul acestei functii nu
+    // mai scrie direct pe #memories-cta — vezi comentariul de la updateMemoriesCta.
+    updateMemoriesCta(order, pendingVariantChoice);
+    // Cerinta 6: acelasi principiu de sursa unica — #checkout-btn-top-wrap (al doilea buton de
+    // plata) e ascuns implicit la INCEPUTUL acestei functii, la fiecare apel; SINGURA ramura care
+    // il re-afiseaza e isFinalGiftVideo, mai jos. Orice alta stare (alegere de varianta in
+    // asteptare, meniu de editare deschis, Premium) il ascunde automat, fara sa fie nevoie sa
+    // adaugam cate un `style.display='none'` explicit in fiecare alta ramura.
+    const checkoutBtnTopWrap = document.getElementById('checkout-btn-top-wrap');
+    if (checkoutBtnTopWrap) checkoutBtnTopWrap.style.display = 'none';
     // CORECȚIE (2026-08-29, runda 3, "pagina finala Cadou video — doar previzualizare + plata"):
     // dupa ce videoclipul e gata, TOT meniul de editare dispare (toggle-ul mare cu creion,
     // campurile de editare, mesajul despre editarea gratuita, confirmarea/regenerarea si ecranul
     // de alegere intre versiuni) — melodia/versurile raman STRICT pentru consultare (randate mai
-    // sus de renderVariants(), neatinse aici), iar unicul checkoutBtn ramane vizibil, reparentat
-    // in #regenerate-row (acelasi container folosit deja pentru Premium/Video inainte de alegere),
-    // cu butonul de regenerare ascuns — niciodata doua butoane de plata.
+    // sus de renderVariants(), neatinse aici). #checkout-btn ramane reparentat in #regenerate-row
+    // (acelasi container folosit deja pentru Premium/Video inainte de alegere), cu butonul de
+    // regenerare ascuns. CORECȚIE (2026-08-30, Cerinta 6): al DOILEA buton de plata
+    // (#checkout-btn-2, static, NICIODATA reparentat) devine vizibil AICI, imediat sub
+    // previzualizarea video — sincronizat cu continutul/starea disabled ale primului.
     const isFinalGiftVideo = order.plan === 'video' && order.videoStatus === 'ready';
     if (isFinalGiftVideo) {
       standardPreeditToggleWrap.style.display = 'none';
@@ -2650,6 +2734,8 @@
       regenerateRow.appendChild(checkoutBtn);
       checkoutBtn.classList.remove('btn-cta-wide');
       checkoutBtn.style.flex = '1';
+      syncCheckoutBtn2();
+      if (checkoutBtnTopWrap) checkoutBtnTopWrap.style.display = 'block';
       return;
     }
 
@@ -2686,10 +2772,6 @@
       renderStandardChoiceButtons(order);
       checkoutBtn.classList.add('btn-cta-wide');
       checkoutBtn.style.flex = 'none';
-      // RELANSARE (2026-08-14, "nu afisa sectiunea media pana cand clientul nu alege
-      // versiunea finala"): pe acest ecran de comparare, sectiunea de materiale ramane
-      // gatata STRICT de aceeasi conditie ca oriunde altundeva — pendingVariantChoice.
-      if (order.plan === 'video') updateMemoriesCta(order, pendingVariantChoice);
       return;
     }
 
@@ -2766,17 +2848,11 @@
 
     // RELANSARE (2026-08-14, "cand meniul de editare e deschis, ascunde complet sectiunea
     // media si mesajul despre editarea gratuita"): STRICT pachetul video (Standard nu are
-    // sectiune media). Meniul DESCHIS ascunde butonul catre pagina de materiale — materialele
-    // deja confirmate raman neatinse pe server, doar butonul vizual se ascunde. Meniul INCHIS
-    // (fara editare, sau dupa "Renunță") reafiseaza butonul EXACT ca inainte de editare —
-    // melodia initiala ramane versiunea aleasa.
+    // sectiune media). Meniul DESCHIS ascunde mesajul despre editarea gratuita — vizibilitatea
+    // CTA-ului "Adaugă amintirile" insusi e deja gestionata central, o singura data, la
+    // inceputul acestei functii (vezi apelul updateMemoriesCta de mai sus).
     if (order.plan === 'video') {
       document.getElementById('edits-info-msg').style.display = menuExpanded ? 'none' : '';
-      if (menuExpanded) {
-        document.getElementById('memories-cta').style.display = 'none';
-      } else {
-        updateMemoriesCta(order, pendingVariantChoice);
-      }
     }
   }
 
@@ -3575,6 +3651,11 @@
         : ` — ${t.variant_word} <span id="selected-variant-label">${selectedVariantIndex + 1}</span>`;
       checkoutBtn.innerHTML = `${t.checkout_btn}${variantSuffixHtml} (<span id="checkout-price">£${order.price}</span>) →`;
     }
+    // Cerinta 6: continutul (eticheta+pret) tocmai a fost stabilit mai sus pentru ACEST render —
+    // sincronizam AICI cel de-al doilea buton, ca sa nu preia continutul RENDER-ului anterior
+    // (updateStandardEditMenuVisibility, apelata mai devreme in aceasta functie, ar fi sincronizat
+    // altfel continutul VECHI al lui #checkout-btn).
+    syncCheckoutBtn2();
 
     if (isResume) {
       document.getElementById('resume-banner').style.display = 'block';
@@ -3582,10 +3663,10 @@
 
     if (order.plan === 'video') {
       updateVideoStatusUI(order, pendingVariantChoice);
-      updateMemoriesCta(order, pendingVariantChoice);
-    } else {
-      document.getElementById('memories-cta').style.display = 'none';
     }
+    // CORECȚIE (2026-08-30): un singur apel, neconditionat — updateMemoriesCta insasi verifica
+    // deja order.plan==='video' intern, deci ramane ascuns corect pentru Standard/Premium.
+    updateMemoriesCta(order, pendingVariantChoice);
 
     showState('content-state');
   }

@@ -56,11 +56,21 @@ const T = loadRealTranslations();
 // CORECȚIE (2026-08-29, runda 3, "elimina complet titlul, incepe direct cu ℹ️"): chenarul nu
 // mai are un titlu separat — un singur paragraf, care incepe cu simbolul ℹ️, urmat imediat, pe
 // acelasi rand, de textul explicativ tradus. memories_iphone_hint_title a fost eliminat complet.
-test('amintiri-video.html: banner-ul #iphone-hint contine STRICT un singur paragraf de text (fara titlu separat) si NU e ascuns condiționat', () => {
+// CORECȚIE (2026-08-30, Cerinta 4, "pagina separata pentru incarcare"): bannerul ramane
+// permanent vizibil in ETAPA 1 (selectie), exact ca inainte — dar cerinta explicita a acestei
+// runde cere ca "explicatiile, chenarul informativ" sa dispara STRICT in etapa 2 (incarcare),
+// unde clientul trebuie sa vada doar progresul. Aceasta e SINGURA ramura permisa care ii comuta
+// vizibilitatea — enterUploadStage(), apelata o singura data, ireversibil, dupa prima selectie
+// reala de fisiere. Testul de mai jos verifica STRICT ca acea ramura e SINGURA care il atinge.
+test('amintiri-video.html: banner-ul #iphone-hint contine STRICT un singur paragraf de text (fara titlu separat); ramane permanent in etapa 1, ascuns STRICT de enterUploadStage() (Cerinta 4) — nicio alta ramura nu il atinge', () => {
   assert.match(page, /<div class="iphone-hint" id="iphone-hint" role="note">\s*<p class="iphone-hint-text" id="iphone-hint-text"><\/p>\s*<\/div>/);
   assert.ok(!page.includes('iphone-hint-title'), 'elementul de titlu separat trebuie eliminat complet din markup');
   assert.ok(!/iphone-hint[\s\S]{0,80}display:\s*none/.test(page), 'bannerul nu trebuie sa aiba display:none implicit sau apropiat in markup');
-  assert.ok(!page.includes("getElementById('iphone-hint').style.display"), 'nicio ramura JS nu trebuie sa comute vizibilitatea acestui banner — ramane STRICT permanent');
+  const displayTogglesOnHint = [...page.matchAll(/getElementById\('iphone-hint'\)\.style\.display\s*=/g)];
+  assert.equal(displayTogglesOnHint.length, 1, 'trebuie sa existe STRICT o singura ramura care comuta vizibilitatea acestui banner');
+  const enterUploadStageIdx = page.indexOf('function enterUploadStage() {');
+  const enterUploadStageEnd = (() => { let depth = 1, i = page.indexOf('{', enterUploadStageIdx) + 1; for (; i < page.length; i++) { if (page[i] === '{') depth++; else if (page[i] === '}') { depth--; if (depth === 0) break; } } return i; })();
+  assert.ok(displayTogglesOnHint[0].index > enterUploadStageIdx && displayTogglesOnHint[0].index < enterUploadStageEnd, 'singura ramura care il ascunde trebuie sa fie STRICT enterUploadStage() (Cerinta 4), nu vreo alta functie');
 });
 
 test('amintiri-video.html: cheia memories_iphone_hint_title a fost eliminata complet din toate cele 8 traduceri', () => {

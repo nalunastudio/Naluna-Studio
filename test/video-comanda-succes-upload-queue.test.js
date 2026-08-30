@@ -122,10 +122,17 @@ for (const [name, html] of Object.entries(PAGES)) {
     assert.ok(!/if\s*\(|for\s*\(|files\.forEach|\.push\(/.test(between.replace(/mediaDebugLog\([^)]*\)/g, '')), 'intre copiere si resetare nu trebuie sa existe alta logica decat diagnosticul');
   });
 
+  // CORECȚIE (2026-08-30): extractia foloseste acum acelasi helper cu numarare de acolade
+  // (extractFunction, deja folosit in restul fisierului) — legatura anterioara, bazata pe un
+  // literal cu indentare fixa ("renderQueueList();\n      processUploadQueue();"), nu se
+  // potrivea cu indentarea reala din succes.html (8 spatii, nu 6) — indexOf esua silentios
+  // (-1), iar `.slice(idx, -1)` producea din greseala un fragment CAT TOT RESTUL FISIERULUI,
+  // nu doar handler-ul de "change". Ramas nedescoperit pana cand alt cod adaugat mai departe
+  // in fisier (Cerinta 7, giftVariant) a introdus intamplator un `.filter(`, care a picat in
+  // acel fragment mult prea larg. Fixul nu slabeste verificarea — o face STRICT corecta,
+  // marginita real la corpul handler-ului.
   test(`${name}: fiecare fisier din selectie e adaugat necondiționat in coada (files.forEach, fara .filter, fara conditie dupa file.type)`, () => {
-    const idx = html.indexOf("fileInput.addEventListener('change', () => {");
-    const end = html.indexOf('renderQueueList();\n      processUploadQueue();', idx);
-    const snippet = html.slice(idx, end);
+    const snippet = extractFunction(html, "fileInput.addEventListener('change', () => {");
     assert.ok(snippet.includes('files.forEach(file => {'));
     assert.ok(!snippet.includes('.filter('));
     assert.ok(!/if\s*\(\s*file\.type/.test(snippet));

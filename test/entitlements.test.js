@@ -52,11 +52,72 @@ test('getGiftVariant — Standard NU livreaza niciodata "melodia cadou", chiar d
   assert.equal(getGiftVariant(order), null);
 });
 
-test('getGiftVariant — Premium/Video tot livreaza "melodia cadou" (doua melodii reale, distincte)', () => {
+test('getGiftVariant — Premium livreaza "melodia cadou" (doua melodii reale, distincte), fara sa ceara isEditedAlternative', () => {
   const order = {
     plan: 'premium',
     selectedVariantId: 'a',
     variants: [{ id: 'a', fullKey: 'k1' }, { id: 'b', fullKey: 'k2' }]
   };
   assert.equal(getGiftVariant(order).id, 'b');
+});
+
+// ---------------------------------------------------------------------------------------------
+// CORECȚIE (2026-08-30, Cerinta 7, "dupa plata, clientul primeste ambele melodii"): Video
+// livreaza acum bonusul (melodia neselectata), DAR STRICT cand exista o pereche legitima —
+// exact 2 variante, exact una marcata REAL ca editare (isEditedAlternative). Regula e mai
+// STRICTA decat la Premium (care nu cere deloc acest marcaj), tocmai ca sa nu acorde acces
+// accidental unor comenzi vechi cu 2 variante nemarcate.
+// ---------------------------------------------------------------------------------------------
+test('getGiftVariant — Video livreaza bonusul cand exista o editare REALA (exact 2 variante, exact una marcata isEditedAlternative)', () => {
+  const order = {
+    plan: 'video',
+    selectedVariantId: 'a',
+    variants: [{ id: 'a', fullKey: 'k1' }, { id: 'b', fullKey: 'k2', isEditedAlternative: true }]
+  };
+  const gift = getGiftVariant(order);
+  assert.ok(gift);
+  assert.equal(gift.id, 'b');
+});
+
+test('getGiftVariant — Video: bonusul e varianta INITIALA cand clientul a selectat pentru checkout varianta EDITATA (functioneaza in ambele directii)', () => {
+  const order = {
+    plan: 'video',
+    selectedVariantId: 'b', // a ales editarea pentru checkout/video
+    variants: [{ id: 'a', fullKey: 'k1' }, { id: 'b', fullKey: 'k2', isEditedAlternative: true }]
+  };
+  const gift = getGiftVariant(order);
+  assert.ok(gift);
+  assert.equal(gift.id, 'a', 'bonusul trebuie sa fie varianta INITIALA, cea neselectata');
+});
+
+test('getGiftVariant — Video: NICIUN bonus daca are doar 1 varianta (nicio editare a existat vreodata)', () => {
+  const order = { plan: 'video', selectedVariantId: 'a', variants: [{ id: 'a', fullKey: 'k1' }] };
+  assert.equal(getGiftVariant(order), null);
+});
+
+test('getGiftVariant — Video: NICIUN bonus pentru o comanda VECHE cu 2 variante NEMARCATE (niciuna isEditedAlternative) — nu acorda acces accidental', () => {
+  const order = {
+    plan: 'video',
+    selectedVariantId: 'a',
+    variants: [{ id: 'a', fullKey: 'k1' }, { id: 'b', fullKey: 'k2' }]
+  };
+  assert.equal(getGiftVariant(order), null, 'fara marcajul explicit de editare, cele 2 variante nu formeaza o pereche legitima initiala+editata');
+});
+
+test('getGiftVariant — Video: NICIUN bonus daca (defensiv, nu ar trebui sa se intample niciodata in practica) AMBELE variante sunt marcate isEditedAlternative', () => {
+  const order = {
+    plan: 'video',
+    selectedVariantId: 'a',
+    variants: [{ id: 'a', fullKey: 'k1', isEditedAlternative: true }, { id: 'b', fullKey: 'k2', isEditedAlternative: true }]
+  };
+  assert.equal(getGiftVariant(order), null);
+});
+
+test('getGiftVariant — Video: NICIUN bonus daca exista 3+ variante (structura neasteptata pentru Video — Video are STRICT 2 variante posibile, niciodata 3+)', () => {
+  const order = {
+    plan: 'video',
+    selectedVariantId: 'a',
+    variants: [{ id: 'a', fullKey: 'k1' }, { id: 'b', fullKey: 'k2', isEditedAlternative: true }, { id: 'c', fullKey: 'k3' }]
+  };
+  assert.equal(getGiftVariant(order), null);
 });

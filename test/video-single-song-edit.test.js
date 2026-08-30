@@ -112,12 +112,15 @@ test('server.js: mecanismul dual-genre (Promise.all, replaceVariantId, editVaria
 test('server.js: runGeneration() foloseste ramura cu UN SINGUR gen (!isDualGenrePlan) pentru video, dupa corectia PLAN_VARIANT_COUNT', () => {
   const idx = server.indexOf('async function runGeneration(orderId, feedback, options = {}) {');
   assert.notEqual(idx, -1);
-  const snippet = server.slice(idx, idx + 5400);
+  const snippet = server.slice(idx, idx + 6000);
   assert.ok(snippet.includes('const isDualGenrePlan = PLAN_VARIANT_COUNT[order.plan] === 2;'));
   assert.ok(snippet.includes('if (!isDualGenrePlan) {'));
   // pentru video (PLAN_VARIANT_COUNT.video===1), isDualGenrePlan e fals -> intra pe aceasta
   // ramura, exact ca Standard — UN SINGUR apel Suno, cu order.genre (niciodata genre2).
-  assert.ok(snippet.includes("buildPrompt(order, feedback)"));
+  // CORECȚIE (2026-08-30, "Mai veselă"): parametrul folosit e acum effectiveFeedback (preia
+  // feedback-ul persistat pe comanda, cu fallback la parametrul original) — vezi comentariul
+  // de la declararea lui, la inceputul functiei.
+  assert.ok(snippet.includes("buildPrompt(order, effectiveFeedback)"));
 });
 
 test('server.js: FREE_EDITS ramane 1 pentru toate pachetele — Cadou video are exact o editare/regenerare gratuita, ca Standard', () => {
@@ -185,21 +188,27 @@ test('server.js: GET /media/video/:orderId si /media/full/:orderId livreaza STRI
 });
 
 // ---------------------------------------------------------------------------------------------
-// 6. Alegerea finala: original -> melodie+video original; editat -> melodie+video editat.
-//    Dupa plata, clientul NU primeste niciodata varianta nealeasa (nicio "melodie cadou" pentru
-//    video, spre deosebire de Premium).
+// 6. Alegerea finala: original -> videoclipul foloseste STRICT varianta originala; editat ->
+//    videoclipul foloseste STRICT varianta editata (neschimbat — un singur videoclip, mereu al
+//    variantei selectate). CORECȚIE (2026-08-30, Cerinta 7, "dupa plata, clientul primeste
+//    ambele melodii"): dupa plata, daca exista o editare REALA, clientul primeste SI cele doua
+//    melodii complete (audio), ca bonus — vezi test/entitlements.test.js pentru suita completa
+//    a noii reguli. Videoclipul insusi ramane STRICT al variantei selectate, niciodata dublat.
 // ---------------------------------------------------------------------------------------------
-test('lib/entitlements.js: getGiftVariant() returneaza null pentru plan="video" (executie REALA, nu doar text-matching) — nicio melodie/videoclip nealese nu se livreaza', () => {
-  const orderWithTwoVariants = {
+test('lib/entitlements.js: getGiftVariant() livreaza bonusul pentru plan="video" cand exista o editare REALA (executie REALA, nu doar text-matching)', () => {
+  const orderWithRealEdit = {
     plan: 'video',
     selectedVariantId: 'v1',
     variants: [{ id: 'v1', fullKey: 'a', isEditedAlternative: undefined }, { id: 'v2', fullKey: 'b', isEditedAlternative: true }]
   };
-  assert.equal(getGiftVariant(orderWithTwoVariants), null, 'Video nu trebuie sa livreze niciodata varianta nealeasa, indiferent care e originala/editata');
+  const gift = getGiftVariant(orderWithRealEdit);
+  assert.ok(gift, 'cu o pereche legitima initiala+editata, bonusul trebuie livrat');
+  assert.equal(gift.id, 'v2', 'bonusul trebuie sa fie varianta NESELECTATA');
 });
 
-test('lib/entitlements.js: getGiftVariant() ramane null pentru Standard (neschimbat) si continua sa functioneze corect pentru Premium', () => {
+test('lib/entitlements.js: getGiftVariant() ramane null pentru Video FARA nicio editare reala (o singura varianta) si pentru Standard (neschimbat); continua sa functioneze corect pentru Premium', () => {
   assert.equal(getGiftVariant({ plan: 'standard', selectedVariantId: 'v1', variants: [{ id: 'v1' }, { id: 'v2', isEditedAlternative: true }] }), null);
+  assert.equal(getGiftVariant({ plan: 'video', selectedVariantId: 'v1', variants: [{ id: 'v1', fullKey: 'a' }] }), null, 'Video cu o singura varianta (nicio editare) nu are ce bonus sa livreze');
   const premiumOrder = { plan: 'premium', selectedVariantId: 'v1', selectedVariantId2: 'v2', variants: [{ id: 'v1', fullKey: 'a' }, { id: 'v2', fullKey: 'b' }] };
   const gift = getGiftVariant(premiumOrder);
   assert.equal(gift && gift.id, 'v2', 'Premium trebuie sa continue sa livreze a doua melodie completa, neschimbat');
@@ -218,8 +227,12 @@ test('server.js: PLAN_PRICES.video ramane £35 — checkout-ul foloseste STRICT 
   assert.ok(server.includes('const price = PLAN_PRICES[plan];'));
 });
 
-test('public/succes.html: nu mai calculeaza/afiseaza o "melodie cadou" pentru plan="video" pe pagina de dupa plata', () => {
-  assert.ok(succes.includes("const giftVariant = (data.plan === 'video') ? null : (data.variants || []).find(v => v.id !== data.selectedVariantId);"));
+// CORECȚIE (2026-08-30, Cerinta 7): succes.html calculeaza acum "melodia cadou" si pentru
+// plan="video", STRICT cand exista o editare reala (aceeasi regula ca getGiftVariant, replicata
+// aici) — vezi test/video-dual-checkout-buttons.test.js / raportul Cerintei 7 pentru context.
+test('public/succes.html: calculeaza "melodia cadou" pentru plan="video" STRICT cand exista o pereche legitima initiala+editata (replica getGiftVariant) — nu mai e refuzat neconditionat', () => {
+  assert.ok(!succes.includes("const giftVariant = (data.plan === 'video') ? null : (data.variants || []).find(v => v.id !== data.selectedVariantId);"), 'refuzul neconditionat vechi nu mai trebuie sa existe');
+  assert.match(succes, /if \(data\.plan === 'video'\) \{\s*if \(variants\.length !== 2\) return null;\s*const editedCount = variants\.filter\(v => v\.isEditedAlternative\)\.length;\s*if \(editedCount !== 1\) return null;/);
 });
 
 // ---------------------------------------------------------------------------------------------

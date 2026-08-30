@@ -340,9 +340,15 @@ test('melodia-mea.html: renderContent() branch-uieste catre renderPremiumFlow DO
   assert.ok(snippet.includes('return;'), 'branch-ul trebuie sa faca return imediat, inainte de renderVariants/updateStandardEditMenuVisibility (Standard/Video)');
 });
 
-test('lib/entitlements.js: Video (fara selectedVariantId2) si Premium vechi raman pe regula originala "cealalta varianta" — comportament byte-identic', () => {
+// CORECȚIE (2026-08-30, Cerinta 7, "dupa plata, clientul primeste ambele melodii"): Video nu
+// mai foloseste regula GENERICA "cealalta varianta" fara nicio conditie — primeste acum propria
+// ramura, mai STRICTA (exact 2 variante, exact una marcata isEditedAlternative), inainte sa
+// ajunga la regula generica de mai jos. Premium vechi (fara selectedVariantId2) ramane
+// byte-identic pe regula generica — vezi test/entitlements.test.js pentru suita completa a
+// noii ramuri Video.
+test('lib/entitlements.js: Premium vechi (fara selectedVariantId2) ramane pe regula originala "cealalta varianta" — comportament byte-identic', () => {
   const idx = entitlements.indexOf('function getGiftVariant(order) {');
-  const body = entitlements.slice(idx, idx + 500);
+  const body = entitlements.slice(idx, idx + 800);
   assert.ok(body.includes("const selectedId = order.selectedVariantId;"));
   assert.ok(body.includes("return variants.find(v => v.id !== selectedId) || null;"));
 });

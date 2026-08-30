@@ -372,7 +372,11 @@ test('emailul si descarcarea dupa plata livreaza EXCLUSIV versiunea selectata pe
   const entitlements = read('lib/entitlements.js');
   // deja verificat separat (getGiftVariant), reconfirmat aici in contextul explicit al cerintei:
   // Standard NU mai livreaza niciodata a doua varianta, indiferent de ce alta varianta exista.
-  assert.ok(entitlements.includes("if (!order || order.plan === 'standard' || order.plan === 'video') return null;"), 'getGiftVariant trebuie sa refuze explicit Standard (si acum Video, corectie 2026-08-14)');
+  // CORECȚIE (2026-08-30, Cerinta 7): Video a fost SCOS din acest refuz global — primeste acum
+  // propria ramura (mai stricta), care POATE livra bonusul cand exista o editare reala. Standard
+  // ramane STRICT refuzat, neschimbat.
+  assert.match(entitlements, /if \(!order \|\| order\.plan === 'standard'\) return null;/, 'getGiftVariant trebuie sa refuze explicit Standard');
+  assert.ok(!entitlements.includes("order.plan === 'video') return null;"), 'Video nu mai trebuie refuzat neconditionat — vezi ramura dedicata Video din getGiftVariant');
   assert.ok(
     server.includes("const variant = (order.variants || []).find(v => v.id === order.selectedVariantId);"),
     'livrarea principala (email/descarcare) trebuie sa foloseasca exact selectedVariantId, niciodata prima varianta din array sau alta presupunere'

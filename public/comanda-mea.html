@@ -713,6 +713,18 @@
   // Upload MULTIPART DIRECT DIN BROWSER CATRE R2 — vezi comentariul identic, mai detaliat, din
   // melodia-mea.html si din server.js. Rezervat videoclipurilor mari. Fragmentele NU mai trec
   // prin acest server — Railway autorizeaza si intoarce cate un URL semnat per fragment.
+  // Cale de rezerva, independenta de CORS — vezi comentariul detaliat de la
+  // storage.getMultipartPartETag in server.js. Apelata STRICT dupa un PUT reusit (2xx) fara
+  // ETag citibil in raspuns (CORS-ul bucket-ului nu expune header-ul ETag pentru aceasta origine).
+  async function fetchPartEtagFallback(orderId, sessionId, partNumber) {
+    const res = await fetch(`/api/orders/${orderId}/media/multipart/${sessionId}/part-etag?partNumber=${partNumber}`, {
+      headers: { 'X-Access-Token': currentToken || '' }
+    });
+    if (!res.ok) return null;
+    const data = await res.json().catch(() => ({}));
+    return data.etag || null;
+  }
+
   function uploadOnePart(entry, orderId, partNumber, blob, onProgress) {
     return new Promise((resolve, reject) => {
       let attempt = 0;
@@ -736,9 +748,14 @@
             delete entry.activePartXhrs[partNumber];
             if (xhr.status >= 200 && xhr.status < 300) {
               const etag = xhr.getResponseHeader('ETag');
-              if (!etag) { retryOrFail(); return; }
-              onProgress(blob.size);
-              resolve(etag);
+              if (etag) { onProgress(blob.size); resolve(etag); return; }
+              // PUT-ul chiar a reusit la R2 — ETag lipsa in raspuns e cel mai probabil un CORS
+              // care nu expune acel header, nu o eroare tranzitorie (retrimiterea PUT-ului nu
+              // ajuta). Intrebam serverul, care are acces R2 direct, neafectat de CORS.
+              fetchPartEtagFallback(orderId, entry.multipartSessionId, partNumber).then((fallbackEtag) => {
+                if (fallbackEtag) { onProgress(blob.size); resolve(fallbackEtag); }
+                else { retryOrFail(); }
+              }).catch(() => { retryOrFail(); });
             } else { retryOrFail(); }
           };
           xhr.onerror = () => { delete entry.activePartXhrs[partNumber]; retryOrFail(); };

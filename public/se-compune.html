@@ -11,7 +11,7 @@
     --bg:#FAF8F5; --bg-secondary:#F8F6F2; --surface:#FDFCFA;
     --text:#2B2B2B; --text-secondary:#6B6B6B;
     --gold:#A8834B; --gold-soft:#C9A876; --gold-deep:#8B6D3F; --line:#E8E2D6;
-    --success:#5F8F6E; --error:#B3574A;
+    --success:#5F8F6E; --error:#B3574A; --orange:#F5A623;
   }
   *{box-sizing:border-box;}
   html, body{ height:100%; }
@@ -124,6 +124,16 @@
   .soft-notice{
     display:none; margin-top:18px; padding:12px 16px; border-radius:14px;
     background:rgba(168,131,75,.08); color:var(--gold-deep); font-size:13px; line-height:1.5;
+  }
+  /* Cerinta 2 (video, mesaj de intarziere): chenar portocaliu deschis, text rosu — STRICT
+     pentru pachetul Video (clasa aplicata dinamic doar cand order.plan==='video'), niciodata
+     pentru mesajele generale de eroare/retea (acelea folosesc #soft-notice/.error-state,
+     neatinse aici). */
+  #long-notice.long-notice-video{
+    background:rgba(245,166,35,.12); border:1.5px solid var(--orange);
+  }
+  #long-notice.long-notice-video, #long-notice.long-notice-video strong, #long-notice.long-notice-video span{
+    color:var(--error);
   }
 
   .error-state{ display:none; }
@@ -571,6 +581,9 @@
       consecutivePollFailures = 0;
       hideSoftNotice();
       const order = await res.json();
+      // Cerinta 2: stilul portocaliu/rosu al mesajului de intarziere e STRICT pentru pachetul
+      // Video — Standard/Premium pastreaza stilul neutru existent, neschimbat.
+      longNoticeEl.classList.toggle('long-notice-video', order.plan === 'video');
       updateRealProgress(order);
 
       // FINISAJ FINAL PACHET STANDARD: in modul de regenerare, order.status revine la

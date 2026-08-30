@@ -100,12 +100,37 @@ test('melodia-mea.html: butonul de materiale exista, plasat imediat inainte de #
   assert.ok(block.includes('class="btn-cta-orange"'), 'trebuie sa reutilizeze stilul existent, nu un buton nou');
 });
 
+// CORECȚIE (2026-08-30, "CTA-ul Adaugă amintirile reapare dupa editare"): updateMemoriesCta()
+// a devenit sursa unica de adevar, verificand acum SI starea editorului (menuExpanded/
+// editingVariantId), nu doar pendingVariantChoice/videoStatus — vezi test/video-cta-and-
+// feedback-priority.test.js pentru suita functionala completa. Testul de aici verifica STRICT
+// ca cele doua conditii originale (pendingVariantChoice, videoStatus==='ready') supravietuiesc.
 test('melodia-mea.html: updateMemoriesCta() ascunde STRICT butonul cat timp versiunea finala nu e stabilita (pendingVariantChoice) SAU videoclipul e deja gata', () => {
   const idx = melodiaMea.indexOf('function updateMemoriesCta(order, pendingVariantChoice) {');
   assert.notEqual(idx, -1);
-  const end = melodiaMea.indexOf('\n  }', idx);
-  const snippet = melodiaMea.slice(idx, end);
-  assert.ok(snippet.includes("ctaWrap.style.display = (!pendingVariantChoice && order.videoStatus !== 'ready') ? 'block' : 'none';"));
+  let depth = 0, i = melodiaMea.indexOf('{', idx);
+  for (; i < melodiaMea.length; i++) {
+    if (melodiaMea[i] === '{') depth++;
+    else if (melodiaMea[i] === '}') { depth--; if (depth === 0) break; }
+  }
+  const snippet = melodiaMea.slice(idx, i + 1);
+  assert.match(snippet, /!pendingVariantChoice/);
+  assert.match(snippet, /order\.videoStatus !== 'ready'/);
+  const sandboxSrc = `
+    let menuExpanded = false;
+    let editingVariantId = null;
+    const ctaEl = { display: 'block' };
+    const document = { getElementById: () => ({ style: ctaEl }) };
+    ${snippet}
+    updateMemoriesCta({ plan: 'video', videoStatus: 'ready' }, false);
+    const afterReady = ctaEl.display;
+    updateMemoriesCta({ plan: 'video', videoStatus: 'none' }, true);
+    const afterPending = ctaEl.display;
+    return { afterReady, afterPending };
+  `;
+  const { afterReady, afterPending } = new Function(sandboxSrc)();
+  assert.equal(afterReady, 'none', 'trebuie ascuns cand videoclipul e deja gata');
+  assert.equal(afterPending, 'none', 'trebuie ascuns cat timp exista o alegere de varianta in asteptare');
 });
 
 test("melodia-mea.html: apasarea butonului navigheaza (aceeasi fila) catre /amintiri-video.html, cu id si token, fara popup", () => {

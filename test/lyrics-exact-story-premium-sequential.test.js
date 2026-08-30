@@ -198,9 +198,10 @@ test('buildPrompt: separarea poveste 1/poveste 2 Premium ramane corecta cu noua 
 test('server.js: buildExactLyricsRequest trimite versurile editate VERBATIM (customMode:true, campul "prompt" = versurile), niciodata ca instructiune catre un model care le rescrie', () => {
   assert.match(server, /function buildExactLyricsRequest\(order, exactLyrics, genreOverride, voicePreference, feedback\) \{/);
   const idx = server.indexOf('function buildExactLyricsRequest');
-  // fereastra marita (2026-08-13, runda 6): clauza noua de reproducere exacta in campul style
-  // a impins "return { style, title, lyrics };" dincolo de fereastra veche de 2600 caractere.
-  const body = server.slice(idx, idx + 3200);
+  // fereastra marita (2026-08-30): prioritizarea + detectarea "mai vesel" pentru feedback-ul
+  // Video (vezi BRIGHTEN_MOOD_PATTERNS) a impins din nou "return { style, title, lyrics };"
+  // dincolo de fereastra anterioara de 3200 caractere.
+  const body = server.slice(idx, idx + 4600);
   assert.ok(body.includes('return { style, title, lyrics };'), 'trebuie sa returneze versurile ca un camp separat, netrunchiat de bugetul de stil');
 });
 
@@ -219,9 +220,32 @@ test('server.js: mesajul vechi "Try to follow lyrics close to this rewritten ver
 
 test('server.js: editarea Standard/Video (handleLegacyRegenerate) foloseste versurile exacte ale variantei sursa ca exactLyrics, transmise separat de feedback', () => {
   const idx = server.indexOf('async function handleLegacyRegenerate');
-  const body = server.slice(idx, idx + 11000);
-  assert.ok(body.includes("const exactLyrics = typeof sourceVariant.editedLyrics === 'string' ? sourceVariant.editedLyrics.trim() : '';"));
+  const body = server.slice(idx, idx + 12000);
+  assert.ok(body.includes("sourceVariant.editedLyrics.trim()"), 'exactLyrics trebuie sa foloseasca versurile editate manual cand exista');
   assert.ok(body.includes('exactLyrics: exactLyrics || null'));
+});
+
+// CORECȚIE (2026-08-30, "o schimbare de gen/voce/feedback nu trebuie sa rescrie accidental
+// versurile" — Cadou video): STRICT pentru Video, cand clientul NU a folosit niciodata editorul
+// separat de versuri (editedLyrics gol), exactLyrics cade acum pe originalLyrics ale variantei —
+// niciodata pe buildPrompt() (care ar lasa Suno sa rescrie versurile de la zero). Standard ramane
+// byte-identic (fallback gol, comportament vechi neschimbat, verificat separat mai jos).
+test('server.js: pentru Video, exactLyrics cade pe originalLyrics (nu ramane gol) cand clientul nu a editat niciodata versurile manual — Suno nu mai are voie sa le rescrie la o editare de gen/voce/feedback', () => {
+  const idx = server.indexOf('async function handleLegacyRegenerate');
+  const body = server.slice(idx, idx + 11000);
+  assert.match(body, /order\.plan === 'video' && typeof sourceVariant\.originalLyrics === 'string' \? sourceVariant\.originalLyrics\.trim\(\) : ''/);
+});
+
+test("server.js: pentru Standard, exactLyrics ramane gol ('') cand nu exista editedLyrics — comportament NESCHIMBAT (fallback pe originalLyrics e STRICT pentru Video)", () => {
+  const idx = server.indexOf('async function handleLegacyRegenerate');
+  const body = server.slice(idx, idx + 11000);
+  // simulam sandbox minimal ca sa evaluam expresia reala din server.js, nu o presupunere
+  const exprMatch = body.match(/const exactLyrics = \(typeof sourceVariant\.editedLyrics[\s\S]*?: ''\);/);
+  assert.ok(exprMatch, 'expresia exactLyrics trebuie sa existe in forma noua (cu fallback conditionat de plan)');
+  const fn = new Function('sourceVariant', 'order', `${exprMatch[0]}\nreturn exactLyrics;`);
+  assert.equal(fn({ editedLyrics: null, originalLyrics: 'Versuri originale Standard' }, { plan: 'standard' }), '');
+  assert.equal(fn({ editedLyrics: '', originalLyrics: 'Versuri originale Video' }, { plan: 'video' }), 'Versuri originale Video');
+  assert.equal(fn({ editedLyrics: 'Versuri editate manual', originalLyrics: 'Versuri originale' }, { plan: 'video' }), 'Versuri editate manual');
 });
 
 test('server.js: editarea selectiva Premium foloseste versurile exacte per melodie (song.exactLyrics), separat de feedback-ul liber', () => {

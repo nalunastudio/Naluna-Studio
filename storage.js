@@ -95,14 +95,14 @@ const PUBLIC_BUCKET = process.env.S3_PUBLIC_BUCKET;
 
 let s3Client = null;
 let PutObjectCommand, GetObjectCommand, DeleteObjectCommand, HeadObjectCommand, getSignedUrl;
-let CreateMultipartUploadCommand, UploadPartCommand, CompleteMultipartUploadCommand, AbortMultipartUploadCommand, GetBucketCorsCommand;
+let CreateMultipartUploadCommand, UploadPartCommand, CompleteMultipartUploadCommand, AbortMultipartUploadCommand, GetBucketCorsCommand, ListPartsCommand;
 
 if (CLOUD_ENABLED) {
   const {
     S3Client, PutObjectCommand: POC, GetObjectCommand: GOC, DeleteObjectCommand: DOC, HeadObjectCommand: HOC,
     CreateMultipartUploadCommand: CMU, UploadPartCommand: UPC,
     CompleteMultipartUploadCommand: CMPU, AbortMultipartUploadCommand: AMU,
-    GetBucketCorsCommand: GBC
+    GetBucketCorsCommand: GBC, ListPartsCommand: LPC
   } = require('@aws-sdk/client-s3');
   ({ getSignedUrl } = require('@aws-sdk/s3-request-presigner'));
   PutObjectCommand = POC;
@@ -114,6 +114,7 @@ if (CLOUD_ENABLED) {
   CompleteMultipartUploadCommand = CMPU;
   AbortMultipartUploadCommand = AMU;
   GetBucketCorsCommand = GBC;
+  ListPartsCommand = LPC;
 
   s3Client = new S3Client({
     region: process.env.S3_REGION || 'auto',
@@ -276,6 +277,27 @@ async function getSignedUploadPartUrl(key, uploadId, partNumber, expirySeconds =
   return getSignedUrl(s3Client, command, { expiresIn: expirySeconds });
 }
 
+// CORECȚIE (2026-08-30, "IMG_6810.mov — Încărcarea a eșuat" — Cadou video): dupa un PUT direct
+// de fragment care REUSESTE la R2 (status 2xx), browserul trebuie sa citeasca ETag-ul din
+// header-ele raspunsului (xhr.getResponseHeader('ETag')) — posibil DOAR daca CORS-ul bucket-ului
+// expune explicit acel header (`ExposeHeaders: ['ETag']`, vezi checkUploadCors mai jos). Daca
+// acea configurare lipseste/e incompleta, fragmentul chiar s-a incarcat cu succes, dar clientul
+// nu poate afla ETag-ul lui din raspunsul PUT — inainte de aceasta corectie, singura reactie era
+// sa reincerce ACELASI PUT de mai multe ori (inutil — problema nu e tranzitorie, e de configurare
+// CORS), apoi sa esueze cu un mesaj generic. Aceasta functie ofera o cale de rezerva INDEPENDENTA
+// de CORS: serverul (acces S3 direct, autentificat, niciodata supus restrictiilor CORS ale
+// browserului) intreaba R2 direct, prin ListPartsCommand, ce ETag are fragmentul deja urcat —
+// STRICT metadata (marime + ETag), niciodata continutul fisierului. Intoarce null daca fragmentul
+// chiar nu exista inca la R2 (caz in care reincercarea PUT-ului ramane raspunsul corect).
+async function getMultipartPartETag(key, uploadId, partNumber) {
+  if (!CLOUD_ENABLED) {
+    throw new Error('getMultipartPartETag() necesita stocare cloud activata.');
+  }
+  const res = await s3Client.send(new ListPartsCommand({ Bucket: PRIVATE_BUCKET, Key: key, UploadId: uploadId, PartNumberMarker: String(partNumber - 1), MaxParts: 1 }));
+  const part = (res.Parts || []).find(p => p.PartNumber === partNumber);
+  return part ? part.ETag : null;
+}
+
 // parts: [{ partNumber, etag }, ...] — ETag-ul e cel intors de R2 la fiecare PUT direct de
 // fragment (header de raspuns, citit de client), necesar EXACT in aceasta forma pentru ca R2
 // sa poata reasambla obiectul final. Idempotent la nivelul apelantului (server.js) — vezi
@@ -397,6 +419,7 @@ module.exports = {
   deletePublicFile,
   createPrivateMultipartUpload,
   getSignedUploadPartUrl,
+  getMultipartPartETag,
   completePrivateMultipartUpload,
   abortPrivateMultipartUpload,
   checkUploadCors

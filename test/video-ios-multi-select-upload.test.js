@@ -79,11 +79,12 @@ test('server.js: fisierele mari NU sunt tinute in memorie (diskStorage, streamin
 
 // REVIZUIT (2026-08-14, "elimină plafonul artificial de 150MB"): 150MB era plafonul GRESIT
 // care respingea videoclipuri normale de 1-2 minute — vezi test/video-media-limits.test.js
-// pentru testele dedicate noii limite (700MB implicit, configurabila prin ORDER_MEDIA_MAX_MB).
-test('server.js: numarul de materiale (10 maximum, 3 minimum) si durata maxima video (120s) raman neschimbate', () => {
+// pentru testele dedicate noii limite de dimensiune (derivata din limita tehnica reala R2).
+// CORECȚIE (2026-08-30, "elimină complet limita de 120s"): durata maxima nu mai exista deloc —
+// vezi test/video-duration-limit-removed.test.js pentru testele dedicate acestei corectii.
+test('server.js: numarul de materiale (10 maximum, 3 minimum) raman neschimbate', () => {
   assert.match(server, /const ORDER_MEDIA_MAX_ITEMS = 10;/);
   assert.match(server, /const ORDER_MEDIA_MIN_ITEMS = 3;/);
-  assert.ok(/ORDER_MEDIA_MAX_VIDEO_SECONDS[\s\S]{0,120}: 120;/.test(server));
 });
 
 test('server.js: fiecare fisier e validat/urcat INDEPENDENT (per-fisier, nu tot-sau-nimic) — un material problematic nu pierde restul selectiei', () => {

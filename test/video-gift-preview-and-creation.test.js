@@ -46,19 +46,42 @@ function extractFunction(src, marker) {
 // 1. COMPORTAMENTUL MENIULUI DE EDITARE — ascunde sectiunea media + textul despre editarea
 //    gratuita cat timp meniul e deschis; le reafiseaza la inchidere (fara regenerare).
 // ---------------------------------------------------------------------------------------------
+// CORECȚIE (2026-08-30, "CTA-ul Adaugă amintirile reapare dupa editare"): vizibilitatea CTA-ului
+// nu mai e comutata direct (style.display) in interiorul blocului `if (order.plan === 'video')`
+// — acel bloc pastreaza STRICT mesajul despre editarea gratuita; CTA-ul e gestionat de apelul
+// UNIC catre updateMemoriesCta() de la inceputul functiei, care citeste `menuExpanded` direct.
+// Verificat FUNCTIONAL mai jos (nu doar text-matching).
 test('melodia-mea.html: meniul de editare deschis (menuExpanded) ascunde STRICT butonul de materiale si textul despre editarea gratuita, pentru pachetul video', () => {
-  const idx = melodiaMea.indexOf("function updateStandardEditMenuVisibility(order, pendingVariantChoice) {");
   const body = extractFunction(melodiaMea, "function updateStandardEditMenuVisibility(order, pendingVariantChoice) {");
   assert.ok(body.includes("if (order.plan === 'video') {"));
   assert.ok(body.includes("document.getElementById('edits-info-msg').style.display = menuExpanded ? 'none' : '';"));
-  assert.ok(body.includes("document.getElementById('memories-cta').style.display = 'none';"));
+  assert.ok(!body.includes("document.getElementById('memories-cta').style.display"), 'aceasta functie nu mai trebuie sa scrie direct pe #memories-cta — sursa unica ramane updateMemoriesCta()');
+
+  const memoriesCtaBody = extractFunction(melodiaMea, 'function updateMemoriesCta(order, pendingVariantChoice) {');
+  const sandboxSrc = `
+    let menuExpanded = true;
+    let editingVariantId = null;
+    const ctaEl = { display: 'block' };
+    const document = { getElementById: () => ({ style: ctaEl }) };
+    ${memoriesCtaBody}
+    updateMemoriesCta({ plan: 'video', videoStatus: 'none' }, false);
+    return ctaEl.display;
+  `;
+  assert.equal(new Function(sandboxSrc)(), 'none', 'cu meniul deschis (menuExpanded=true), CTA-ul trebuie ascuns');
 });
 
 test('melodia-mea.html: inchiderea meniului (fara regenerare) reafiseaza sectiunea media prin updateMemoriesCta — melodia initiala ramane versiunea aleasa', () => {
-  const body = extractFunction(melodiaMea, "function updateStandardEditMenuVisibility(order, pendingVariantChoice) {");
-  const idx = body.indexOf("if (order.plan === 'video') {");
-  const snippet = body.slice(idx, idx + 400);
-  assert.ok(snippet.includes('} else {\n        updateMemoriesCta(order, pendingVariantChoice);'), 'meniul INCHIS trebuie sa reafiseze sectiunea media prin updateMemoriesCta (nu o ascunde neconditionat)');
+  const memoriesCtaBody = extractFunction(melodiaMea, 'function updateMemoriesCta(order, pendingVariantChoice) {');
+  const sandboxSrc = `
+    let menuExpanded = false;
+    let editingVariantId = null;
+    const ctaEl = { display: 'block' };
+    const document = { getElementById: () => ({ style: ctaEl }) };
+    ${memoriesCtaBody}
+    updateMemoriesCta({ plan: 'video', videoStatus: 'none' }, false);
+    return ctaEl.display;
+  `;
+  assert.equal(new Function(sandboxSrc)(), 'block', 'cu meniul INCHIS (menuExpanded=false), CTA-ul trebuie sa reapara');
 });
 
 test('melodia-mea.html: "Renunță" (confirmCancelBtn) trateaza Standard SI Video identic — inchide meniul si anuleaza modificarile nesalvate pentru ambele', () => {
@@ -78,19 +101,40 @@ test('melodia-mea.html: deschiderea/inchiderea meniului NU sterge materialele de
   assert.ok(!snippet.includes('.abort()'), 'nu trebuie sa opreasca vreun upload activ la deschiderea/inchiderea meniului');
 });
 
-test('melodia-mea.html: dupa o regenerare REALA (ecranul de comparare), sectiunea media apare STRICT dupa alegerea versiunii finale (pendingVariantChoice)', () => {
+// CORECȚIE (2026-08-30, "CTA-ul Adaugă amintirile reapare dupa editare"): updateMemoriesCta()
+// nu mai e apelata separat, per-ramura, in interiorul updateStandardEditMenuVisibility() — un
+// SINGUR apel, la INCEPUTUL functiei (inainte de orice ramura/return), o acopera pe TOATE,
+// inclusiv ecranul de alegere (isStandardEditChoice). Vezi test/video-cta-and-feedback-priority
+// .test.js pentru testele functionale complete ale acestei arhitecturi.
+test('melodia-mea.html: dupa o regenerare REALA (ecranul de comparare), sectiunea media apare STRICT dupa alegerea versiunii finale (pendingVariantChoice) — prin apelul UNIC de la inceputul functiei', () => {
   const body = extractFunction(melodiaMea, "function updateStandardEditMenuVisibility(order, pendingVariantChoice) {");
-  const idx = body.indexOf('if (isStandardEditChoice) {');
-  const end = body.indexOf('return;', idx);
-  const snippet = body.slice(idx, end);
-  assert.ok(snippet.includes("if (order.plan === 'video') updateMemoriesCta(order, pendingVariantChoice);"));
+  const isStandardEditChoiceIdx = body.indexOf('if (isStandardEditChoice) {');
+  const singleCallIdx = body.indexOf('updateMemoriesCta(order, pendingVariantChoice);');
+  assert.ok(singleCallIdx !== -1 && singleCallIdx < isStandardEditChoiceIdx, 'apelul unic trebuie sa preceada ramura isStandardEditChoice, acoperind-o');
+  // nicio ramura NU mai are propriul apel separat catre updateMemoriesCta — o singura sursa.
+  const occurrences = (body.match(/updateMemoriesCta\(/g) || []).length;
+  assert.equal(occurrences, 1);
 });
 
 // CORECȚIE (2026-08-29, runda 3, "la videoStatus=ready nu mai apare Adaugă amintirile"):
 // conditia a fost extinsa — butonul ramane ascuns si dupa ce videoclipul e gata.
 test('melodia-mea.html: updateMemoriesCta() afiseaza butonul de materiale STRICT cand pendingVariantChoice e fals SI videoclipul nu e inca gata', () => {
   const body = extractFunction(melodiaMea, 'function updateMemoriesCta(order, pendingVariantChoice) {');
-  assert.ok(body.includes("ctaWrap.style.display = (!pendingVariantChoice && order.videoStatus !== 'ready') ? 'block' : 'none';"));
+  const sandboxSrc = `
+    let menuExpanded = false;
+    let editingVariantId = null;
+    const ctaEl = { display: 'block' };
+    const document = { getElementById: () => ({ style: ctaEl }) };
+    ${body}
+    return { updateMemoriesCta, ctaEl };
+  `;
+  const { updateMemoriesCta, ctaEl } = new Function(sandboxSrc)();
+  updateMemoriesCta({ plan: 'video', videoStatus: 'none' }, false);
+  assert.equal(ctaEl.display, 'block');
+  updateMemoriesCta({ plan: 'video', videoStatus: 'none' }, true);
+  assert.equal(ctaEl.display, 'none', 'trebuie ascuns cand exista o alegere de varianta in asteptare');
+  updateMemoriesCta({ plan: 'video', videoStatus: 'ready' }, false);
+  assert.equal(ctaEl.display, 'none', 'trebuie ascuns cand videoclipul e deja gata');
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -401,9 +445,27 @@ test('melodia-mea.html: updateStandardEditMenuVisibility() ascunde TOT meniul de
   assert.equal(appendCount, 1, 'checkoutBtn nu trebuie reparentat de mai multe ori in aceeasi ramura (ar insemna duplicare)');
 });
 
+// CORECȚIE (2026-08-30, "CTA-ul Adaugă amintirile reapare dupa editare"): updateMemoriesCta()
+// a devenit SINGURA regula centralizata de vizibilitate — vezi test/video-cta-and-feedback-
+// priority.test.js pentru testele functionale complete ale acestei functii (editor deschis,
+// alegere in asteptare, Renunță, polling). Testul de aici verifica STRICT ca invarianta
+// originala (videoStatus==='ready' => CTA ascuns) supravietuieste in noua implementare.
 test('melodia-mea.html: updateMemoriesCta() ascunde "Adaugă amintirile pentru videoclipul cadou" (si textul explicativ de sub el) cand videoStatus==="ready"', () => {
   const body = extractFunction(melodiaMea, 'function updateMemoriesCta(order, pendingVariantChoice) {');
-  assert.match(body, /ctaWrap\.style\.display = \(!pendingVariantChoice && order\.videoStatus !== 'ready'\) \? 'block' : 'none';/);
+  assert.match(body, /order\.videoStatus !== 'ready'/, 'trebuie sa existe in continuare o verificare a videoStatus!==\'ready\' in conditia de afisare');
+  const sandboxSrc = `
+    let menuExpanded = false;
+    let editingVariantId = null;
+    const ctaEl = { display: 'block' };
+    const document = { getElementById: () => ({ style: ctaEl }) };
+    ${body}
+    return { updateMemoriesCta, ctaEl };
+  `;
+  const { updateMemoriesCta, ctaEl } = new Function(sandboxSrc)();
+  updateMemoriesCta({ plan: 'video', videoStatus: 'ready' }, false);
+  assert.equal(ctaEl.display, 'none', 'CTA-ul trebuie ascuns cand videoclipul e gata');
+  updateMemoriesCta({ plan: 'video', videoStatus: 'none' }, false);
+  assert.equal(ctaEl.display, 'block', 'CTA-ul trebuie sa ramana vizibil cat timp videoclipul NU e gata (celelalte conditii indeplinite)');
 });
 
 test('melodia-mea.html: updateVideoStatusUI() NU ascunde #gift-video-section cand videoStatus==="ready" — previzualizarea ramane vizibila, checkoutBtn ramane activ', () => {
