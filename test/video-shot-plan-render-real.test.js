@@ -74,6 +74,7 @@ test.before(() => {
     "async function execFfmpeg(args, options = {}) { return execFileAsync('ffmpeg', ['-hide_banner','-loglevel','error','-nostats',...args], { maxBuffer: 20*1024*1024, ...options }); }",
     "function perfLog() {}",
     extractConst('CONCAT_BATCH_SIZE'),
+    extractConst('CONCAT_BATCH_CONCURRENCY'),
     extractFn('wrapVideoRenderStageError'),
     extractFn('computeVideoSegmentStartOffset'),
     extractFn('getVideoSourceDurationSeconds'),

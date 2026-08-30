@@ -75,6 +75,7 @@ test.before(() => {
     extractConst('VIDEO_ENCODE_PRESET'),
     extractConst('VIDEO_INTERMEDIATE_CRF'),
     extractConst('CONCAT_BATCH_SIZE'),
+    extractConst('CONCAT_BATCH_CONCURRENCY'),
     // execFfmpeg INSTRUMENTAT — executa REAL ffmpeg (aceeasi cale ca in productie), dar
     // inregistreaza si numarul de "-i" (intrari) per apel, ca testul sa poata dovedi masurabil
     // ca plafonul e respectat, nu doar sa presupuna asta din faptul ca randarea a reusit.

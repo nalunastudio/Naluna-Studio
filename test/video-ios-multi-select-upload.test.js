@@ -97,11 +97,18 @@ test('server.js: fiecare fisier e validat/urcat INDEPENDENT (per-fisier, nu tot-
 // ---------------------------------------------------------------------------------------------
 // 3. Extragerea fragmentelor din videoclipuri lungi (1-2 minute) — nu mai foloseste
 //    intotdeauna DOAR primul fragment; alegere DETERMINISTA (nu aleatorie), care evita
-//    inceputul/finalul si variaza intre materiale succesive.
+//    inceputul/finalul, variaza intre materiale succesive SI avanseaza secvential (fara
+//    suprapuneri) intre aparitii succesive ale ACELUIASI material.
+//
+// CORECȚIE (2026-08-30, "fara repetarea acelorasi secvente video"): semnatura functiei s-a
+// schimbat de la un singur "index sintetic" opac la (itemIndex, occurrence) explicite — vechea
+// combinare (itemIndex*97 + occurrence*31) intr-un hash unic nu putea garanta avansarea
+// secventiala ceruta (vezi testele noi de mai jos si test/video-shot-plan-render-real.test.js
+// pentru verificarea REALA, cu randare ffmpeg efectiva).
 // ---------------------------------------------------------------------------------------------
 function loadComputeVideoSegmentStartOffset() {
-  const start = server.indexOf('function computeVideoSegmentStartOffset(index, sourceDurationSeconds, segDurationSeconds) {');
-  assert.notEqual(start, -1, 'functia trebuie sa existe, extrasa separat de renderMemorySegment');
+  const start = server.indexOf('function computeVideoSegmentStartOffset(itemIndex, occurrence, sourceDurationSeconds, segDurationSeconds) {');
+  assert.notEqual(start, -1, 'functia trebuie sa existe, extrasa separat de renderMemorySegment, cu semnatura (itemIndex, occurrence, ...)');
   let depth = 0, i = server.indexOf('{', start), bodyStart = i;
   for (; i < server.length; i++) {
     if (server[i] === '{') depth++;
@@ -113,16 +120,16 @@ function loadComputeVideoSegmentStartOffset() {
 const computeVideoSegmentStartOffset = loadComputeVideoSegmentStartOffset();
 
 test('computeVideoSegmentStartOffset: pastreaza comportamentul vechi (bucla de la 0) cand sursa e mai scurta sau egala cu durata alocata', () => {
-  const r1 = computeVideoSegmentStartOffset(0, 5, 8);
+  const r1 = computeVideoSegmentStartOffset(0, 0, 5, 8);
   assert.equal(r1.useLoop, true);
   assert.equal(r1.startOffset, 0);
-  const r2 = computeVideoSegmentStartOffset(2, null, 8); // durata sursa necunoscuta (ffprobe esuat)
+  const r2 = computeVideoSegmentStartOffset(2, 1, null, 8); // durata sursa necunoscuta (ffprobe esuat)
   assert.equal(r2.useLoop, true);
   assert.equal(r2.startOffset, 0);
 });
 
 test('computeVideoSegmentStartOffset: pentru o sursa mai lunga decat durata alocata, NU mai porneste de la 0 — extrage un fragment real (fara bucla)', () => {
-  const r = computeVideoSegmentStartOffset(0, 90, 6); // videoclip de 90s, segment de 6s
+  const r = computeVideoSegmentStartOffset(0, 0, 90, 6); // videoclip de 90s, segment de 6s
   assert.equal(r.useLoop, false);
   assert.ok(r.startOffset >= 0 && r.startOffset <= 90 - 6, 'punctul de start trebuie sa lase loc pentru intreaga durata alocata inainte de finalul sursei');
 });
@@ -130,23 +137,72 @@ test('computeVideoSegmentStartOffset: pentru o sursa mai lunga decat durata aloc
 test('computeVideoSegmentStartOffset: evita primele ~8% si ultimele ~5% ale unui clip lung (evita inceputurile/finalurile instabile)', () => {
   const sourceDuration = 100;
   const segDuration = 5;
-  for (let index = 0; index < 6; index++) {
-    const { startOffset } = computeVideoSegmentStartOffset(index, sourceDuration, segDuration);
+  for (let occurrence = 0; occurrence < 6; occurrence++) {
+    const { startOffset } = computeVideoSegmentStartOffset(0, occurrence, sourceDuration, segDuration);
     assert.ok(startOffset >= sourceDuration * 0.08 - 0.01, `startOffset=${startOffset} trebuie sa fie dupa marginea de start`);
     assert.ok(startOffset + segDuration <= sourceDuration - sourceDuration * 0.05 + 0.01, `startOffset=${startOffset} trebuie sa lase marginea de final`);
   }
 });
 
 test('computeVideoSegmentStartOffset: e DETERMINIST — aceleasi argumente produc mereu acelasi rezultat (nu Math.random)', () => {
-  const a = computeVideoSegmentStartOffset(3, 90, 6);
-  const b = computeVideoSegmentStartOffset(3, 90, 6);
+  const a = computeVideoSegmentStartOffset(1, 3, 90, 6);
+  const b = computeVideoSegmentStartOffset(1, 3, 90, 6);
   assert.equal(a.startOffset, b.startOffset);
 });
 
-test('computeVideoSegmentStartOffset: NU selecteaza mereu exact acelasi fragment pentru materiale succesive (variaza dupa index, nu doar "primul fragment")', () => {
-  const offsets = [0, 1, 2, 3, 4].map(i => computeVideoSegmentStartOffset(i, 90, 6).startOffset);
+test('computeVideoSegmentStartOffset: NU porneste mereu din aceeasi fereastra pentru materiale succesive (variaza dupa itemIndex, nu doar "primul fragment")', () => {
+  const offsets = [0, 1, 2, 3, 4].map(i => computeVideoSegmentStartOffset(i, 0, 90, 6).startOffset);
   const distinctValues = new Set(offsets.map(o => o.toFixed(2)));
   assert.ok(distinctValues.size > 1, `punctele de start trebuie sa varieze intre materiale succesive, a produs: ${offsets.join(', ')}`);
+});
+
+// ---------------------------------------------------------------------------------------------
+// 3b. CORECȚIE (2026-08-30, "fara repetarea acelorasi secvente video") — criteriile 3/4/7 din
+//     cerinta: aparitii succesive ale ACELUIASI material avanseaza prin ferestre NEFOLOSITE,
+//     fara suprapuneri, si repeta o fereastra STRICT dupa epuizarea reala a continutului unic.
+// ---------------------------------------------------------------------------------------------
+test('computeVideoSegmentStartOffset: aparitii succesive ale ACELUIASI material (occurrence 0,1,2,...) avanseaza STRICT secvential, fara suprapuneri, cat timp exista ferestre nefolosite', () => {
+  const sourceDuration = 120; // 120s sursa, segmente de 4s -> multe ferestre disponibile
+  const segDuration = 4;
+  const offsets = [];
+  for (let occurrence = 0; occurrence < 10; occurrence++) {
+    offsets.push(computeVideoSegmentStartOffset(0, occurrence, sourceDuration, segDuration).startOffset);
+  }
+  // toate cele 10 aparitii trebuie sa fie DISTINCTE (contine mult mai multe ferestre decat 10)
+  const distinct = new Set(offsets.map(o => o.toFixed(2)));
+  assert.equal(distinct.size, offsets.length, `toate aparitiile trebuie sa fie distincte cat timp exista ferestre nefolosite, a produs: ${offsets.join(', ')}`);
+  // fiecare fereastra [start, start+seg) nu se suprapune cu nicio alta fereastra folosita
+  for (let a = 0; a < offsets.length; a++) {
+    for (let b = a + 1; b < offsets.length; b++) {
+      const overlap = offsets[a] < offsets[b] + segDuration && offsets[b] < offsets[a] + segDuration;
+      assert.ok(!overlap, `ferestrele aparitiilor ${a} (${offsets[a]}) si ${b} (${offsets[b]}) nu trebuie sa se suprapuna`);
+    }
+  }
+});
+
+test('computeVideoSegmentStartOffset: dupa epuizarea tuturor ferestrelor nefolosite ale unui material, ciclul se repeta printr-un fallback gratios (modulo) — NICIODATA inainte de epuizare', () => {
+  // sursa scurta, cu STRICT 2 ferestre disponibile de aceasta marime (safeSpan mic) —
+  // occurrence 0 si 1 trebuie sa fie distincte; occurrence 2 trebuie sa REPETE fereastra lui 0
+  // (fallback prin modulo), niciodata o a treia fereastra inexistenta.
+  const sourceDuration = 20;
+  const segDuration = 4; // usableSpan=16, marginStart=1.6, marginEnd=1, safeSpan=13.4 -> 3 ferestre
+  const o0 = computeVideoSegmentStartOffset(0, 0, sourceDuration, segDuration).startOffset;
+  const o1 = computeVideoSegmentStartOffset(0, 1, sourceDuration, segDuration).startOffset;
+  const o2 = computeVideoSegmentStartOffset(0, 2, sourceDuration, segDuration).startOffset;
+  const o3 = computeVideoSegmentStartOffset(0, 3, sourceDuration, segDuration).startOffset;
+  assert.notEqual(o0.toFixed(2), o1.toFixed(2), 'primele doua aparitii trebuie sa fie distincte (exista ferestre nefolosite)');
+  assert.equal(o3.toFixed(2), o0.toFixed(2), 'a 4-a aparitie trebuie sa repete STRICT fereastra primei aparitii (ciclu complet, epuizare reala confirmata)');
+  void o2; // a treia aparitie e verificata implicit prin numarul total de ferestre distincte de mai jos
+  const numDistinctFirstCycle = new Set([o0, o1, o2].map(o => o.toFixed(2))).size;
+  assert.ok(numDistinctFirstCycle >= 2, 'trebuie sa existe cel putin 2 ferestre distincte inainte de orice repetare');
+});
+
+test('computeVideoSegmentStartOffset: materiale diferite (itemIndex diferit) NU pornesc toate din aceeasi fereastra 0 — pastreaza diversitatea dintre materiale din designul anterior', () => {
+  const sourceDuration = 120;
+  const segDuration = 4;
+  const firstOffsets = [0, 1, 2, 3, 4].map(itemIndex => computeVideoSegmentStartOffset(itemIndex, 0, sourceDuration, segDuration).startOffset);
+  const distinct = new Set(firstOffsets.map(o => o.toFixed(2)));
+  assert.ok(distinct.size > 1, `prima aparitie a fiecarui material trebuie sa varieze intre materiale, a produs: ${firstOffsets.join(', ')}`);
 });
 
 test('server.js: getVideoSourceDurationSeconds() foloseste ffprobe cu timeout si NU arunca eroare la esec (revine la comportamentul vechi, sigur)', () => {
@@ -161,13 +217,15 @@ test('server.js: getVideoSourceDurationSeconds() foloseste ffprobe cu timeout si
 // CORECȚIE (2026-08-24, "montajul video e monoton"): renderMemorySegment() (UN segment lung
 // per material) a fost inlocuita de renderShot() (UN cadru scurt din shot-plan, posibil mai
 // multe aparitii per material) — vezi test/video-shot-plan-render-real.test.js pentru
-// verificarea REALA (randare efectiva + ffprobe) a noii arhitecturi. computeVideoSegmentStartOffset()
-// insasi ramane NESCHIMBATA (testata mai sus, in acest fisier) — doar apelantul ei s-a mutat.
+// verificarea REALA (randare efectiva + ffprobe) a noii arhitecturi. CORECȚIE (2026-08-30):
+// renderShot() transmite acum shot.itemIndex si shot.occurrence SEPARAT catre
+// computeVideoSegmentStartOffset() (vezi testele dedicate mai sus, in acest fisier) — vechiul
+// "index sintetic" combinat era exact cauza repetarii/suprapunerii secventelor video.
 test('server.js: renderShot() foloseste computeVideoSegmentStartOffset() pentru videoclipuri, pastrand exact pipeline-ul de scalare/crop existent', () => {
   const idx = server.indexOf('async function renderShot(item, shot, shotIndex, order) {');
   assert.notEqual(idx, -1, 'renderShot() trebuie sa existe (inlocuieste renderMemorySegment)');
   const snippet = server.slice(idx, idx + 3200);
-  assert.ok(snippet.includes('computeVideoSegmentStartOffset(syntheticIndex, sourceDuration, segDurationSeconds)'));
+  assert.ok(snippet.includes('computeVideoSegmentStartOffset(shot.itemIndex, shot.occurrence, sourceDuration, segDurationSeconds)'));
   // CORECȚIE (2026-08-29, "calitate video clara"): scalarea foloseste acum explicit Lanczos
   // (flags=lanczos) — scalare de calitate, nu bilinear implicit — dincolo de asta, crop-ul
   // fara deformare ramane exact acelasi.

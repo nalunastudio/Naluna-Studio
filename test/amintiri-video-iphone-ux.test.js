@@ -504,3 +504,36 @@ test('amintiri-video.html: selectorul ramane STRICT unic, multiple, image/*+vide
   assert.ok(!page.includes('showOpenFilePicker'), 'nu trebuie folosit showOpenFilePicker ca inlocuitor pentru input[type=file]');
   assert.ok(!page.includes('memFileInput.click('), 'nu trebuie adaugat niciun click programatic pe selector');
 });
+
+// ===============================================================================================
+// 13) CORECȚIE (2026-08-30, audit "Colectii/Albume" — verificare site-side, fara modificari de
+//     cod, deoarece implementarea era deja corecta): pickerPending ofera STRICT feedback vizual,
+//     nu dezactiveaza niciodata inputul; inputul nu e recreat/mutat; niciun getUserMedia/
+//     Permissions API/PhotoKit presupus; FileList e copiat INAINTE de resetarea input.value.
+// ===============================================================================================
+test('amintiri-video.html: pickerPending NU dezactiveaza niciodata inputul (memFileInput.disabled) — dezactivarea reala vine STRICT din updateBatchActiveState(), legata de un lot activ', () => {
+  assert.ok(!/pickerPending[\s\S]{0,80}memFileInput\.disabled\s*=/.test(page), 'pickerPending nu trebuie sa fie folosit pentru a dezactiva inputul');
+  const attemptBody = extractFn('handlePickerOpenAttempt');
+  assert.ok(!attemptBody.includes('memFileInput.disabled = true'), 'handlePickerOpenAttempt() nu trebuie sa dezactiveze inputul — doar sa citeasca starea existenta');
+});
+
+test('amintiri-video.html: inputul static #mem-file-input apare o SINGURA data in tot fisierul (definit STRICT in markup, niciodata recreat/generat din JS/template)', () => {
+  const occurrences = (page.match(/id="mem-file-input"/g) || []).length;
+  assert.equal(occurrences, 1, 'trebuie sa existe STRICT o singura definitie a inputului, in markup');
+  assert.ok(!page.includes('mem-file-input"></input>'), 'inputul nu trebuie generat dintr-un string de template JS');
+});
+
+test('amintiri-video.html: nu foloseste getUserMedia, Permissions API sau vreun API presupus PhotoKit accesibil din JavaScript', () => {
+  assert.ok(!page.includes('getUserMedia'));
+  assert.ok(!page.includes('navigator.permissions'));
+  assert.ok(!/PhotoKit/i.test(page));
+});
+
+test('amintiri-video.html: la "change", FileList e copiat COMPLET (Array.from) STRICT inainte de resetarea memFileInput.value — ordinea previne pierderea selectiei pe iOS', () => {
+  const arrayFromIdx = page.indexOf('const files = Array.from(memFileInput.files);');
+  assert.notEqual(arrayFromIdx, -1);
+  const valueResetIdx = page.indexOf("memFileInput.value = '';", arrayFromIdx);
+  assert.notEqual(valueResetIdx, -1);
+  assert.ok(valueResetIdx > arrayFromIdx, 'memFileInput.value trebuie resetat STRICT dupa ce Array.from a copiat deja FileList-ul complet');
+  assert.ok(valueResetIdx - arrayFromIdx < 100, 'resetarea trebuie sa vina la scurt timp dupa copiere, fara nicio alta logica intre ele care ar putea intarzia/pierde FileList-ul');
+});

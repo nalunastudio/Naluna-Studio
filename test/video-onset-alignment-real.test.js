@@ -95,6 +95,7 @@ test.before(() => {
     extractConst('VIDEO_ENCODE_PRESET'),
     extractConst('VIDEO_INTERMEDIATE_CRF'),
     extractConst('CONCAT_BATCH_SIZE'),
+    extractConst('CONCAT_BATCH_CONCURRENCY'),
     "async function execFfmpeg(args, options = {}) { return realExecFileAsync('ffmpeg', ['-hide_banner','-loglevel','error','-nostats',...args], { maxBuffer: 40*1024*1024, ...options }); }",
     "function perfLog() {}",
     "const { detectOnsets } = require(" + JSON.stringify(path.join(__dirname, '..', 'lib', 'media-analysis.js')) + ");",

@@ -3304,6 +3304,11 @@ async function runVideoRenderJob(orderId, variantId, mediaRevisionAtStart) {
   // Problema 1 — faza 2 pentru pachetul Video ("Realizăm videoclipul și îl sincronizăm"):
   // audio-ul e deja gata la acest punct (altfel randarea nici nu ar fi putut porni), doar
   // videoclipul mai ramane. Vezi PHASE_PROGRESS/melodia-mea.html pentru afisarea distincta.
+  // MASURATOARE (2026-08-30, "obiectiv real de maximum 2 minute"): marcaj de START pentru
+  // randarea video completa — pana acum nu exista niciun punct de plecare masurabil pentru
+  // acest job, doar rezultate intermediare ulterioare; acesta permite calculul duratei totale
+  // reale (video_ready - video_render_total_start) direct din loguri.
+  perfLog(orderId, 'video_render_total_start', `varianta=${variantId}`);
   recordGenerationProgress(orderId, 'video_processing').catch(() => {});
 
   let versionChangedDuringRender = false;
@@ -5073,40 +5078,53 @@ async function generatePremiumExtras(orderId, options = {}) {
 
     const patch = {};
 
-    if ((order.plan === 'premium' || order.plan === 'video') && !variant.wavKey) {
-      try {
-        patch.wavKey = await generateWavExtra(orderId, variant.id, tempFull);
-        perfLog(orderId, 'wav_ready', `varianta=${variant.id}`);
-      } catch (err) {
-        console.error(`Comanda ${orderId}: generarea WAV a esuat:`, err.message);
-      }
-    }
-
-    // RELANSARE (2026-08-14, "previzualizarea gratuita de 25s"): re-randam si pentru o
-    // comanda VECHE care are deja videoKey dar nu si videoPreviewKey (creata inainte ca
-    // aceasta previzualizare sa existe) — un singur job, produce ambele fisiere (vezi
-    // generateLyricVideo).
-    if (order.plan === 'video' && forceVideo && (!variant.videoKey || !variant.videoPreviewKey)) {
-      try {
-        const videoResult = await generateLyricVideo(order, variant, tempFull);
-        patch.videoKey = videoResult.videoKey;
-        patch.videoPreviewKey = videoResult.videoPreviewKey;
-        patch.sectionTimings = videoResult.sectionTimings;
-        patch.videoFailedReason = null;
-        perfLog(orderId, 'video_ready', `varianta=${variant.id}`);
-      } catch (err) {
-        // CORECȚIE (2026-08-24, "logheaza sigur, fara secrete/cai expuse clientului"): pana
-        // acum, err.message (stocat NESCHIMBAT in videoFailedReason, camp EXPUS clientului
-        // prin GET /api/orders/:id) putea contine — dupa un esec la descarcarea materialelor —
-        // URL-ul SEMNAT complet (cu semnatura de acces R2 in query string) sau, dupa un esec
-        // ffmpeg, comanda completa plus caile temporare de pe disc. Log-ul COMPLET (util pentru
-        // diagnostic) ramane STRICT server-side (console.error); clientul primeste STRICT un
-        // motiv generic, etichetat cu etapa (err.stage, vezi wrapVideoRenderStageError) daca e
-        // disponibila — niciodata continutul brut al erorii.
-        console.error(`Comanda ${orderId}: generarea videoclipului a esuat:`, err && err.stack ? err.stack : (err && err.message) || err);
-        patch.videoFailedReason = (err && err.stage) ? `Randarea a esuat la etapa: ${err.stage}.` : 'Randarea videoclipului nu a putut fi finalizata.';
-      }
-    }
+    // CORECȚIE (2026-08-30, "obiectiv real de maximum 2 minute"): WAV-ul si videoclipul erau
+    // generate STRICT secvential (WAV complet, apoi abia dupa aceea pornea videoclipul), desi
+    // sunt complet INDEPENDENTE — ambele pornesc STRICT de la acelasi tempFull deja descarcat, nu
+    // se citesc/scriu reciproc si scriu in chei DISTINCTE ale obiectului `patch` (wavKey vs.
+    // videoKey/videoPreviewKey/sectionTimings/videoFailedReason), deci rularea lor in paralel e
+    // sigura fara nicio schimbare de comportament — doar de ordine in timp. Masurat pe o comanda
+    // reala: generarea WAV dureaza ~10s, deci rularea in paralel cu randarea video (sute de
+    // secunde) elimina acele ~10s din timpul total, fara sa schimbe rezultatul.
+    await Promise.all([
+      (async () => {
+        if ((order.plan === 'premium' || order.plan === 'video') && !variant.wavKey) {
+          try {
+            patch.wavKey = await generateWavExtra(orderId, variant.id, tempFull);
+            perfLog(orderId, 'wav_ready', `varianta=${variant.id}`);
+          } catch (err) {
+            console.error(`Comanda ${orderId}: generarea WAV a esuat:`, err.message);
+          }
+        }
+      })(),
+      (async () => {
+        // RELANSARE (2026-08-14, "previzualizarea gratuita de 25s"): re-randam si pentru o
+        // comanda VECHE care are deja videoKey dar nu si videoPreviewKey (creata inainte ca
+        // aceasta previzualizare sa existe) — un singur job, produce ambele fisiere (vezi
+        // generateLyricVideo).
+        if (order.plan === 'video' && forceVideo && (!variant.videoKey || !variant.videoPreviewKey)) {
+          try {
+            const videoResult = await generateLyricVideo(order, variant, tempFull);
+            patch.videoKey = videoResult.videoKey;
+            patch.videoPreviewKey = videoResult.videoPreviewKey;
+            patch.sectionTimings = videoResult.sectionTimings;
+            patch.videoFailedReason = null;
+            perfLog(orderId, 'video_ready', `varianta=${variant.id}`);
+          } catch (err) {
+            // CORECȚIE (2026-08-24, "logheaza sigur, fara secrete/cai expuse clientului"): pana
+            // acum, err.message (stocat NESCHIMBAT in videoFailedReason, camp EXPUS clientului
+            // prin GET /api/orders/:id) putea contine — dupa un esec la descarcarea materialelor —
+            // URL-ul SEMNAT complet (cu semnatura de acces R2 in query string) sau, dupa un esec
+            // ffmpeg, comanda completa plus caile temporare de pe disc. Log-ul COMPLET (util pentru
+            // diagnostic) ramane STRICT server-side (console.error); clientul primeste STRICT un
+            // motiv generic, etichetat cu etapa (err.stage, vezi wrapVideoRenderStageError) daca e
+            // disponibila — niciodata continutul brut al erorii.
+            console.error(`Comanda ${orderId}: generarea videoclipului a esuat:`, err && err.stack ? err.stack : (err && err.message) || err);
+            patch.videoFailedReason = (err && err.stage) ? `Randarea a esuat la etapa: ${err.stage}.` : 'Randarea videoclipului nu a putut fi finalizata.';
+          }
+        }
+      })()
+    ]);
 
     if (Object.keys(patch).length > 0) {
       // Cerinta E9: daca acest apel a fost facut PENTRU o versiune specifica (variantId +
@@ -5550,14 +5568,26 @@ async function buildHdrToneMapFilterIfNeeded(localPath, orderId, shotIndex) {
 // functie PURA (fara I/O), extrasa separat ca sa poata fi testata izolat, fara ffmpeg —
 // pentru un videoclip SURSA mai lung decat durata alocata (frecvent pentru clipurile de
 // 1-2 minute de pe iPhone), nu mai extragem intotdeauna DE LA INCEPUT (adesea exact
-// momentul in care telefonul e ridicat/pornit, instabil) — alegem un punct de start
-// DETERMINIST (nu aleator — acelasi rezultat la o re-randare), care evita primele ~8% si
-// ultimele ~5% din clip si variaza intre materiale succesive (dupa indexul elementului),
-// folosind pasul de aur pentru o distributie uniforma, nu repetitiva. Pentru un videoclip
-// MAI SCURT decat durata alocata (sau daca durata sursei e necunoscuta — ffprobe a esuat),
-// pastram EXACT comportamentul anterior — bucla completa de la inceput (-stream_loop -1),
-// dovedit robust in productie.
-function computeVideoSegmentStartOffset(index, sourceDurationSeconds, segDurationSeconds) {
+// momentul in care telefonul e ridicat/pornit, instabil).
+//
+// CORECȚIE (2026-08-30, "fara repetarea acelorasi secvente video"): varianta anterioara alegea
+// un punct de start prin hash-ul (raport de aur) al unui "index sintetic" (itemIndex*97 +
+// occurrence*31) — o pozitie PSEUDO-ALEATOARE per aparitie, FARA nicio garantie ca aparitiile
+// succesive ale ACELUIASI material avanseaza sau nu se suprapun (verificat direct: doua
+// ocurente apropiate puteau ateriza in ferestre identice sau suprapuse — exact bug-ul raportat,
+// "aceleasi secvente video se repeta"). Inlocuita cu o PARTITIONARE STRICT secventiala si
+// neconsupanatoare a intervalului "sigur" (dupa marginile instabile de inceput/sfarsit) in
+// ferestre de marimea segmentului cerut: aparitia 0 a unui material ia prima fereastra
+// nefolosita, aparitia 1 ia urmatoarea, s.a.m.d. — o fereastra deja folosita se repeta STRICT
+// dupa ce toate ferestrele disponibile ale acelui material au fost epuizate (fallback gratios,
+// prin modulo pe numarul de ferestre, niciodata inainte de epuizare). itemIndex adauga o
+// defazare PER MATERIAL (tot deterministă, bazata pe raportul de aur, ca in designul anterior)
+// — materiale diferite nu mai pornesc toate din aceeasi fereastra 0, pastrand diversitatea
+// dintre materiale fara sa afecteze avansarea in interiorul ACELUIASI material. Pentru un
+// videoclip MAI SCURT decat durata alocata (sau daca durata sursei e necunoscuta — ffprobe a
+// esuat), pastram EXACT comportamentul anterior — bucla completa de la inceput
+// (-stream_loop -1), dovedit robust in productie.
+function computeVideoSegmentStartOffset(itemIndex, occurrence, sourceDurationSeconds, segDurationSeconds) {
   if (!sourceDurationSeconds || sourceDurationSeconds <= segDurationSeconds) {
     return { useLoop: true, startOffset: 0 };
   }
@@ -5565,9 +5595,17 @@ function computeVideoSegmentStartOffset(index, sourceDurationSeconds, segDuratio
   const marginStart = sourceDurationSeconds * 0.08;
   const marginEnd = sourceDurationSeconds * 0.05;
   const safeSpan = Math.max(0, usableSpan - marginStart - marginEnd);
-  const GOLDEN_RATIO_CONJUGATE = 0.61803398875; // distributie uniforma, deterministă, per index
-  const fraction = safeSpan > 0 ? ((index * GOLDEN_RATIO_CONJUGATE) % 1) : 0;
-  const startOffset = Math.max(0, Math.min(marginStart + fraction * safeSpan, usableSpan));
+  if (!(segDurationSeconds > 0) || safeSpan <= 0) {
+    return { useLoop: false, startOffset: Math.max(0, Math.min(marginStart, usableSpan)) };
+  }
+  const GOLDEN_RATIO_CONJUGATE = 0.61803398875; // defazare uniforma, deterministă, per material
+  // Numarul de ferestre NEFOLOSITE distincte, de marimea segmentului cerut, care incap in
+  // intervalul sigur — cel putin 1, ca sa nu impartim niciodata la zero pentru un clip cu
+  // safeSpan pozitiv, dar mai mic decat un segment intreg.
+  const numWindows = Math.max(1, Math.floor(safeSpan / segDurationSeconds));
+  const itemPhase = Math.floor(((itemIndex * GOLDEN_RATIO_CONJUGATE) % 1) * numWindows);
+  const windowIndex = (itemPhase + Math.max(0, occurrence || 0)) % numWindows;
+  const startOffset = Math.max(0, Math.min(marginStart + windowIndex * segDurationSeconds, usableSpan));
   return { useLoop: false, startOffset };
 }
 
@@ -5577,11 +5615,11 @@ function computeVideoSegmentStartOffset(index, sourceDurationSeconds, segDuratio
 // lib/media-analysis.js), la rezolutia finala. Pentru poze, foloseste varianta Ken Burns
 // atribuita ACESTEI aparitii a materialului (shot.kenBurns — aparitii succesive ale aceluiasi
 // material primesc miscari diferite, niciodata aceeasi miscare de doua ori la rand). Pentru
-// videoclipuri, foloseste EXACT computeVideoSegmentStartOffset() de mai sus (NESCHIMBATA,
-// ramane testata de test/video-ios-multi-select-upload.test.js cu semnatura ei originala) —
-// combinam indexul materialului cu numarul aparitiei intr-un singur "index" sintetic, ca
-// aparitii diferite ale ACELUIASI clip sa extraga fragmente diferite, fara sa atingem functia
-// existenta.
+// videoclipuri, foloseste computeVideoSegmentStartOffset() de mai sus, cu shot.itemIndex si
+// shot.occurrence transmise SEPARAT (2026-08-30 — vezi comentariul functiei: combinarea lor
+// intr-un singur "index sintetic" era exact cauza repetarii/suprapunerii secventelor video),
+// ca aparitii diferite ale ACELUIASI clip sa avanseze STRICT secvential prin ferestre
+// nefolosite ale sursei.
 async function renderShot(item, shot, shotIndex, order) {
   const outPath = path.join(TEMP_DIR, `${order.id}-memory-shot-${shotIndex}.mp4`);
   const segDurationSeconds = shot.duration;
@@ -5606,8 +5644,7 @@ async function renderShot(item, shot, shotIndex, order) {
     }
   } else {
     const sourceDuration = await getVideoSourceDurationSeconds(item.localPath);
-    const syntheticIndex = shot.itemIndex * 97 + shot.occurrence * 31;
-    const { useLoop, startOffset } = computeVideoSegmentStartOffset(syntheticIndex, sourceDuration, segDurationSeconds);
+    const { useLoop, startOffset } = computeVideoSegmentStartOffset(shot.itemIndex, shot.occurrence, sourceDuration, segDurationSeconds);
     const inputArgs = useLoop
       ? ['-stream_loop', '-1', '-i', item.localPath]
       : ['-ss', startOffset.toFixed(2), '-i', item.localPath];
@@ -5716,6 +5753,21 @@ async function concatBatchWithCrossfades(segmentPaths, shots, order, batchTag) {
 // intrari simultan intr-un proces ffmpeg. Durata fiecarui rezultat intermediar e MASURATA REAL
 // (ffprobe), nu propagata aritmetic — evita orice deriva de rotunjire acumulata pe mai multe
 // niveluri, la un cost neglijabil (un apel ffprobe rapid per lot intermediar).
+// CORECȚIE (2026-08-30, "obiectiv real de maximum 2 minute" — bottleneck-ul REAL masurat direct
+// din loguri de productie, nu presupus): loturile din INTERIORUL aceluiasi nivel erau procesate
+// STRICT secvential, unul cate unul (`for` + `await` in interiorul buclei) — desi sunt complet
+// INDEPENDENTE intre ele (fiecare combina STRICT propriul subset distinct de segmente, scrie
+// intr-un fisier de iesire propriu, unic, dupa batchTag). Pe o comanda reala cu 50 de cadre,
+// randarea video completa a durat ~729s; NIVELURILE de concatenare (50->10, 10->2, 2->1) au
+// insumat ~547s din acel total — cel mai mare bottleneck REAL identificat, mai mare chiar decat
+// randarea celor 50 de cadre individuale (deja paralelizata, vezi SHOT_RENDER_CONCURRENCY).
+// Concurenta e LIMITATA (nu nelimitata) — fiecare lot de concatenare e deja un proces ffmpeg mai
+// greu decat un singur cadru (pana la CONCAT_BATCH_SIZE fluxuri video decodate simultan +
+// filter_complex cu xfade) — 2 loturi simultan dubleaza travaliul CPU/memorie per moment, un
+// compromis sigur, NESCHIMBAT fata de plafonul deja dovedit (CONCAT_BATCH_SIZE=5 intrari/proces
+// ffmpeg, pastrat neatins).
+const CONCAT_BATCH_CONCURRENCY = 2;
+
 async function concatWithCrossfades(segmentPaths, shots, order) {
   if (segmentPaths.length === 1) return segmentPaths[0];
 
@@ -5733,29 +5785,52 @@ async function concatWithCrossfades(segmentPaths, shots, order) {
   let finalPath = null;
   try {
     while (currentSegments.length > 1) {
-      const nextSegments = [];
-      const nextShots = [];
-      for (let i = 0; i < currentSegments.length; i += CONCAT_BATCH_SIZE) {
-        const batchSegments = currentSegments.slice(i, i + CONCAT_BATCH_SIZE);
-        const batchShots = currentShots.slice(i, i + CONCAT_BATCH_SIZE);
-        const batchTag = `L${level}-${i}`;
-        const merged = await concatBatchWithCrossfades(batchSegments, batchShots, order, batchTag);
-        let mergedDuration;
-        if (batchSegments.length > 1) {
-          intermediates.push(merged); // fisier NOU creat la acest nivel — de curatat mai jos
-          try {
-            mergedDuration = await getVideoSourceDurationSeconds(merged);
-          } catch (err) { /* fallback aritmetic mai jos daca ffprobe esueaza, tranzitoriu */ }
-          if (!mergedDuration) {
-            mergedDuration = batchShots.reduce((s, sh) => s + sh.duration, 0) - (batchShots.length - 1) * MEMORY_XFADE_SECONDS;
+      const batchStarts = [];
+      for (let i = 0; i < currentSegments.length; i += CONCAT_BATCH_SIZE) batchStarts.push(i);
+      const nextSegments = new Array(batchStarts.length);
+      const nextShots = new Array(batchStarts.length);
+
+      let batchCursor = 0;
+      async function processNextBatch() {
+        while (batchCursor < batchStarts.length) {
+          const b = batchCursor++;
+          const i = batchStarts[b];
+          const batchSegments = currentSegments.slice(i, i + CONCAT_BATCH_SIZE);
+          const batchShots = currentShots.slice(i, i + CONCAT_BATCH_SIZE);
+          const batchTag = `L${level}-${i}`;
+          const merged = await concatBatchWithCrossfades(batchSegments, batchShots, order, batchTag);
+          let mergedDuration;
+          if (batchSegments.length > 1) {
+            intermediates.push(merged); // fisier NOU creat la acest nivel — de curatat mai jos
+            try {
+              mergedDuration = await getVideoSourceDurationSeconds(merged);
+            } catch (err) { /* fallback aritmetic mai jos daca ffprobe esueaza, tranzitoriu */ }
+            if (!mergedDuration) {
+              mergedDuration = batchShots.reduce((s, sh) => s + sh.duration, 0) - (batchShots.length - 1) * MEMORY_XFADE_SECONDS;
+            }
+          } else {
+            mergedDuration = batchShots[0].duration;
           }
-        } else {
-          mergedDuration = batchShots[0].duration;
+          // scriere INDEXATA (nu push) — pozitia b trebuie sa ramana cea din planul original,
+          // indiferent de ORDINEA in care loturile paralele termina efectiv; nivelul urmator
+          // depinde de ordinea cronologica reala a segmentelor pentru tranzitiile xfade corecte.
+          nextSegments[b] = merged;
+          nextShots[b] = { duration: mergedDuration, transitionOut: batchShots[batchShots.length - 1].transitionOut };
         }
-        nextSegments.push(merged);
-        nextShots.push({ duration: mergedDuration, transitionOut: batchShots[batchShots.length - 1].transitionOut });
       }
-      perfLog(order.id, 'memory_concat_level', `nivel=${level}, intrari=${currentSegments.length}, rezultate=${nextSegments.length}, lot_max=${CONCAT_BATCH_SIZE}`);
+      // CORECȚIE (2026-08-30, gasita chiar de testul de curatare la esec existent —
+      // "fisierele intermediare create la un nivel ANTERIOR unui esec sunt curatate si la
+      // eroare"): Promise.all() simplu s-ar fi intors la PRIMA respingere, fara sa astepte
+      // ceilalti muncitori inca in curs — un lot vecin, INCA nefinalizat in acel moment, si-ar
+      // fi creat fisierul intermediar DUPA ce blocul finally de mai jos a rulat deja curatarea,
+      // ramanand orfan pe disc. Promise.allSettled() asteapta STRICT ca toti muncitorii nivelului
+      // curent sa termine (succes SAU eroare) inainte sa continue — orice fisier intermediar
+      // creat de un lot reusit e deja in `intermediates` (vezi mai jos) cand se arunca eroarea.
+      const settled = await Promise.allSettled(new Array(Math.min(CONCAT_BATCH_CONCURRENCY, batchStarts.length)).fill(0).map(processNextBatch));
+      const firstFailure = settled.find(s => s.status === 'rejected');
+      if (firstFailure) throw firstFailure.reason;
+
+      perfLog(order.id, 'memory_concat_level', `nivel=${level}, intrari=${currentSegments.length}, rezultate=${nextSegments.length}, lot_max=${CONCAT_BATCH_SIZE}, concurenta=${CONCAT_BATCH_CONCURRENCY}`);
       currentSegments = nextSegments;
       currentShots = nextShots;
       level++;
@@ -5941,6 +6016,13 @@ async function generateLyricVideo(order, variant, tempFullMp3Path) {
     // SDR sunt deja, de fapt, in BT.709, dar containerul MP4 nu avea NICIUN tag de spatiu de
     // culoare explicit inainte de aceasta corectie; playerele stricte (unele browsere mobile)
     // pot interpreta gresit un flux fara tag, mai ales dupa un lant de reencodari.
+    // MASURATOARE (2026-08-30, "obiectiv real de maximum 2 minute"): instrumentare noua,
+    // STRICT de citire (niciun efect asupra randarii) — pana acum, timpul dintre
+    // memory_background_ready si video_ready era o singura gaura opaca ce inglobat mixajul
+    // final (subtitrari + audio + encodare), taierea previzualizarii SI ambele incarcari.
+    // Aceste marcaje separa cele 4 etape ca sa se poata masura REAL fiecare, inainte de a
+    // decide daca mai merita optimizata vreuna dintre ele.
+    perfLog(order.id, 'final_mux_start');
     await execFfmpeg([
       '-y',
       ...videoInputArgs,
@@ -5953,6 +6035,7 @@ async function generateLyricVideo(order, variant, tempFullMp3Path) {
       '-shortest',
       tempVideo
     ], { timeout: 600000 });
+    perfLog(order.id, 'final_mux_done');
   } finally {
     try { fs.unlinkSync(assPath); } catch (e) { /* best-effort */ }
     if (memoryBackground) {
@@ -5963,6 +6046,7 @@ async function generateLyricVideo(order, variant, tempFullMp3Path) {
 
   const videoKey = `orders/full-video/${order.id}-${variant.id}.mp4`;
   await storage.uploadPrivateFile(tempVideo, videoKey, 'video/mp4');
+  perfLog(order.id, 'video_upload_done');
 
   // Previzualizarea gratuita de 25s (cerinta 5/7, "Cadou video"): taiem STRICT primele
   // VIDEO_PREVIEW_SECONDS din videoclipul complet DEJA randat mai sus — reprezinta exact
@@ -5977,6 +6061,7 @@ async function generateLyricVideo(order, variant, tempFullMp3Path) {
     await execFfmpeg(['-y', '-i', tempVideo, '-t', String(VIDEO_PREVIEW_SECONDS), '-c', 'copy', tempVideoPreview], { timeout: 60000 });
     videoPreviewKey = `orders/preview-video/${order.id}-${variant.id}.mp4`;
     await storage.uploadPrivateFile(tempVideoPreview, videoPreviewKey, 'video/mp4');
+    perfLog(order.id, 'preview_upload_done');
   } catch (err) {
     // Previzualizarea e un adaos — un esec la taiere/upload NU trebuie sa piarda videoclipul
     // complet, deja randat si urcat cu succes mai sus. triggerVideoGeneration ramane
