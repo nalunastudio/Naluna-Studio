@@ -161,11 +161,12 @@ test('melodia-mea.html: mesajul memories_upload_error (reutilizat pentru intrari
 });
 
 // ---------------------------------------------------------------------------------------------
-// 3. Limitele si mecanismul de concurenta raman neschimbate.
+// 3. Limita minima si mecanismul de concurenta raman neschimbate; maximul a fost ridicat explicit
+//    (2026-08-31, "mărește limita de la 10 la 30 de materiale").
 // ---------------------------------------------------------------------------------------------
-test('amintiri-video.html: MEM_MIN=3 si MEM_MAX=10 raman neschimbate', () => {
+test('amintiri-video.html: MEM_MIN=3, MEM_MAX=30', () => {
   assert.match(amintiriVideo, /const MEM_MIN = 3;/);
-  assert.match(amintiriVideo, /const MEM_MAX = 10;/);
+  assert.match(amintiriVideo, /const MEM_MAX = 30;/);
 });
 
 // REVIZUIT (2026-08-14, "elimină plafonul artificial de 150MB"): UPLOAD_TIMEOUT_MS marit de la

@@ -1,7 +1,7 @@
 // Teste pentru CORECȚIA 2026-08-30 (Cadou video, Cerința 5): elimină complet limita artificiala
 // de 120s pentru materialele video ("Fișierul nu poate fi procesat (durata 161s depășește limita
 // de 120s)"), fara sa o inlocuiasca cu alt plafon arbitrar. Pastreaza STRICT verificarile tehnice
-// reale: format suportat, decodabilitate, securitate, limita de 3-10 materiale a pachetului.
+// reale: format suportat, decodabilitate, securitate, limita de 3-30 materiale a pachetului.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -148,7 +148,7 @@ test('server.js: 5 materiale valide, finalizate secvential (ca la un upload mult
   const mutatorMatch = completeFnSrc.match(/\(current\) => \{\s*const existing = current\.uploadedMedia \|\| \[\];\s*if \(existing\.length >= ORDER_MEDIA_MAX_ITEMS\) return null;\s*return \{ uploadedMedia: \[\.\.\.existing, \{ key: session\.key, type: 'video', section: session\.section, filename: label \}\] \};\s*\}/);
   assert.ok(mutatorMatch, 'nu am gasit callback-ul de acumulare atomica in POST .../complete');
 
-  const ORDER_MEDIA_MAX_ITEMS = 10;
+  const ORDER_MEDIA_MAX_ITEMS = 30; // valoarea reala actuala (2026-08-31, "mărește limita la 30")
   // reconstruim STRICT acelasi callback, cu `session`/`label` legate la fiecare apel — simuland
   // 5 sesiuni multipart distincte, finalizate una dupa alta (secvential, ca in productie).
   function buildMutator(session, label) {

@@ -331,12 +331,13 @@ for (const [name, html] of Object.entries(PAGES)) {
 }
 
 // -------------------------------------------------------------------------------------------
-// 15. Server: limita reala de 10 materiale ramane neschimbata (protectia exista deja server-side,
-//     independent de UI — nu era nevoie de o limita noua client-side pentru aceste doua pagini).
+// 15. Server: limita reala de materiale (protectia exista deja server-side, independent de UI —
+//     nu era nevoie de o limita noua client-side pentru aceste doua pagini). Ridicata explicit
+//     la 30 (2026-08-31, "mărește limita de la 10 la 30 de materiale").
 // -------------------------------------------------------------------------------------------
-test('server.js: ORDER_MEDIA_MAX_ITEMS ramane 10, neschimbat', () => {
+test('server.js: ORDER_MEDIA_MAX_ITEMS = 30', () => {
   const server = read('server.js');
-  assert.match(server, /const ORDER_MEDIA_MAX_ITEMS\s*=\s*10;/);
+  assert.match(server, /const ORDER_MEDIA_MAX_ITEMS\s*=\s*30;/);
 });
 
 test('server.js: PLAN_PRICES si PLAN_VARIANT_COUNT raman neschimbate — Standard/Premium neatinse in aceasta corectie', () => {

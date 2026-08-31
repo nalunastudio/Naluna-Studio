@@ -141,9 +141,10 @@ test("melodia-mea.html: apasarea butonului navigheaza (aceeasi fila) catre /amin
   assert.ok(!snippet.includes("window.open("), 'nu trebuie sa deschida niciun popup/tab nou');
 });
 
-test('amintiri-video.html: meniul de materiale e STRICT cel existent, neschimbat structural — acelasi input, aceleasi limite (3-10)', () => {
+// CORECȚIE (2026-08-31, "mărește limita de la 10 la 30 de materiale"): MEM_MAX ridicat explicit.
+test('amintiri-video.html: meniul de materiale e STRICT cel existent, neschimbat structural — acelasi input, limitele actuale (3-30)', () => {
   assert.ok(amintiriVideo.includes('const MEM_MIN = 3;'));
-  assert.ok(amintiriVideo.includes('const MEM_MAX = 10;'));
+  assert.ok(amintiriVideo.includes('const MEM_MAX = 30;'));
   assert.ok(amintiriVideo.includes('<input type="file" id="mem-file-input" multiple accept="image/*,video/*"'));
 });
 

@@ -101,9 +101,14 @@ test('amintiri-video.html: sincronizarea disabled/loading a butonului cu coada d
 function loadStageSandbox() {
   const syncSrc = extractFn(html, 'function syncPickerLabelState() {');
   const enterSrc = extractFn(html, 'function enterUploadStage() {');
+  // CORECȚIE (2026-08-31, "mărește limita de la 10 la 30 de materiale"): MEM_MAX e extras acum
+  // DIRECT din sursa reala (nu mai e un literal separat, hardcodat aici) — testul ramane corect
+  // automat la orice schimbare viitoare a limitei, fara sa mai trebuiasca actualizat manual.
+  const memMaxIdx = html.indexOf('const MEM_MAX =');
+  const memMaxDecl = html.slice(memMaxIdx, html.indexOf(';', memMaxIdx) + 1);
   const sandboxSrc = `
     let uploadStageEntered = false;
-    const MEM_MAX = 10;
+    ${memMaxDecl}
     let memOrderRef = { uploadedMedia: [] };
     const els = {};
     function makeEl(id) { const e = { id, style: {}, classList: { set: new Set(), add(c){this.set.add(c);}, remove(c){this.set.delete(c);}, toggle(c,v){ if (v) this.set.add(c); else this.set.delete(c); }, contains(c){ return this.set.has(c); } } }; els[id] = e; return e; }
@@ -155,7 +160,7 @@ test('syncPickerLabelState (etapa 2, coada goala): butonul REAPARE (compact) STR
   const mod = loadStageSandbox();
   mod.enterUploadStage();
   mod.setDisabled(false);
-  mod.setUploadedCount(2); // sub MEM_MAX (10)
+  mod.setUploadedCount(2); // sub MEM_MAX (30)
   mod.syncPickerLabelState();
   assert.equal(mod.els['mem-pick-label'].style.display, 'flex');
 });
@@ -164,7 +169,7 @@ test('syncPickerLabelState (etapa 2, MEM_MAX atins): butonul ramane ascuns chiar
   const mod = loadStageSandbox();
   mod.enterUploadStage();
   mod.setDisabled(false);
-  mod.setUploadedCount(10); // = MEM_MAX
+  mod.setUploadedCount(30); // = MEM_MAX
   mod.syncPickerLabelState();
   assert.equal(mod.els['mem-pick-label'].style.display, 'none');
 });

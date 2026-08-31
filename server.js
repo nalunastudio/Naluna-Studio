@@ -502,7 +502,11 @@ const ORDER_MEDIA_MULTIPART_MAX_PARTS_LIMIT = 10000;
 const ORDER_MEDIA_MAX_BYTES = Number(process.env.ORDER_MEDIA_MAX_MB) > 0
   ? Number(process.env.ORDER_MEDIA_MAX_MB) * 1024 * 1024
   : ORDER_MEDIA_MULTIPART_PART_BYTES_LIMIT * ORDER_MEDIA_MULTIPART_MAX_PARTS_LIMIT;
-const ORDER_MEDIA_MAX_ITEMS = 10;
+// CORECȚIE (2026-08-31, "mărește limita de la 10 la 30 de materiale"): singura sursa de adevar
+// pentru numarul maxim de materiale ale pachetului Video — toate validarile (upload simplu,
+// multipart, finalizare atomica, confirmare selectie, creare video, checkout, raspunsul API)
+// citesc STRICT aceasta constanta, niciodata un literal separat.
+const ORDER_MEDIA_MAX_ITEMS = 30;
 // Minimul cerut de fluxul "Cadou video" (cerinta de business, nu doar text in UI) —
 // vezi POST /api/orders/:orderId/media/confirm si /checkout, care il aplica server-side.
 const ORDER_MEDIA_MIN_ITEMS = 3;
@@ -516,7 +520,7 @@ function isVideoLockActive(order) {
   return !!order.videoRenderClaimedAt && (Date.now() - new Date(order.videoRenderClaimedAt).getTime()) < VIDEO_LOCK_EXPIRY_MS;
 }
 
-// STOCARE PE DISC, NU IN MEMORIE — cu memoryStorage(), pana la ORDER_MEDIA_MAX_ITEMS (10)
+// STOCARE PE DISC, NU IN MEMORIE — cu memoryStorage(), pana la ORDER_MEDIA_MAX_ITEMS (30)
 // fisiere de ORDER_MEDIA_MAX_BYTES fiecare puteau ajunge simultan in RAM-ul procesului Node
 // (multi GB per cerere, mai ales dupa marirea plafonului la 700MB) — pe o instanta Railway
 // obisnuita, asta putea termina procesul (OOM kill) la un singur upload nefericit. diskStorage scrie fiecare
@@ -2826,15 +2830,23 @@ app.post('/api/orders/:orderId/media', requireOrderToken, handleOrderMediaUpload
     // (alt fisier din acelasi lot, sau o stergere/reordonare aproape simultana), citind
     // starea REALA chiar in momentul scrierii — nu mai exista cursa in care doua cereri
     // citesc acelasi uploadedMedia "vechi" si una suprascrie rezultatul celeilalte.
+    // CORECȚIE (2026-08-31, "un obiect R2 incarcat in plus intr-o cursa concurenta trebuie
+    // sters"): pastram lista exacta a fisierelor din ACEST lot care nu au incaput (fie pentru ca
+    // lotul insusi depasea locul ramas, fie — cazul de mai jos, !mutation.ok — pentru ca o cerere
+    // concurenta a umplut between timp locul ramas) — fiecare e sters explicit din R2 dupa
+    // mutatia atomica, niciodata lasat orfan.
+    let overflowToDelete = [];
     const mutation = await db.mutateOrderMediaAtomically(order.id, (current) => {
       const existing = current.uploadedMedia || [];
       const room = ORDER_MEDIA_MAX_ITEMS - existing.length;
       if (room <= 0) return null; // deja plin — nimic din acest lot nu mai incape
       const accepted = uploaded.slice(0, room);
       const overflow = uploaded.slice(room);
+      overflowToDelete = overflow;
       overflow.forEach(u => failed.push({ filename: u.filename, reason: `Ai atins limita de ${ORDER_MEDIA_MAX_ITEMS} materiale.` }));
       return { uploadedMedia: [...existing, ...accepted] };
     });
+    overflowToDelete.forEach(u => storage.deletePrivateFile(u.key).catch(() => {}));
 
     if (!mutation.ok) {
       // limita era deja atinsa de o alta cerere concurenta intre timp — fisierele erau deja
@@ -5566,18 +5578,29 @@ const VIDEO_FINAL_CRF = 19;
 // buildHdrToneMapFilterIfNeeded/renderShot).
 const VIDEO_BT709_TAG_ARGS = ['-color_primaries', 'bt709', '-color_trc', 'bt709', '-colorspace', 'bt709', '-x264-params', 'colorprim=bt709:transfer=bt709:colormatrix=bt709'];
 
+// Descarca UN SINGUR element uploadedMedia din bucket-ul PRIVAT, intr-un fisier local temporar.
+// `globalIndex` — pozitia STABILA a materialului in lista completa a comenzii (NU pozitia din
+// orice subset ar fi transmis apelantul) — garanteaza un nume de fisier local UNIC indiferent
+// de ORDINEA/MOMENTUL in care materialele sunt descarcate (cerinta F, 2026-08-31: descarcare
+// LENESA per material, vezi buildMemoryBackground — doua descarcari concurente ale unor
+// materiale diferite nu se pot niciodata suprascrie una pe alta).
+async function downloadOneOrderMediaItem(order, item, globalIndex) {
+  const ext = path.extname(item.key) || (item.type === 'video' ? '.mp4' : '.jpg');
+  const localPath = path.join(TEMP_DIR, `${order.id}-memory-src-${globalIndex}${ext}`);
+  const signedUrl = await storage.getSignedDownloadUrl(item.key, 600);
+  await downloadFile(signedUrl, localPath);
+  return { ...item, localPath };
+}
+
 // Descarca toate elementele uploadedMedia ale comenzii din bucket-ul PRIVAT, in fisiere
-// locale temporare. O eroare la orice element opreste tot pipeline-ul cinematic — apelantul
-// (generateLyricVideo) trateaza asta ca semnal sa treaca pe fundalul solid.
+// locale temporare, SECVENTIAL. Pastrata pentru compatibilitate — buildMemoryBackground (mai
+// jos) NU mai foloseste aceasta functie (descarca LENES, per material, doar cand primul cadru
+// care il foloseste chiar are nevoie de el — cerinta F, "30 de materiale nu trebuie sa
+// epuizeze diskul temporar"). O eroare la orice element opreste tot pipeline-ul cinematic.
 async function downloadOrderMedia(order, items) {
   const localItems = [];
   for (let i = 0; i < items.length; i++) {
-    const item = items[i];
-    const ext = path.extname(item.key) || (item.type === 'video' ? '.mp4' : '.jpg');
-    const localPath = path.join(TEMP_DIR, `${order.id}-memory-src-${i}${ext}`);
-    const signedUrl = await storage.getSignedDownloadUrl(item.key, 600);
-    await downloadFile(signedUrl, localPath);
-    localItems.push({ ...item, localPath });
+    localItems.push(await downloadOneOrderMediaItem(order, items[i], i));
   }
   return localItems;
 }
@@ -5655,6 +5678,39 @@ async function buildHdrToneMapFilterIfNeeded(localPath, orderId, shotIndex) {
   return HDR_TONEMAP_FILTER;
 }
 
+// CERINTA C (2026-08-31, "nu decupa agresiv o poza foarte lata/panoramica"): prag pentru decizia
+// decupare-centrata (implicit, neschimbata) vs. letterbox cu fundal blurat derivat din ACEEASI
+// poza (vezi renderShot mai jos). 1.6 a fost ales STRICT intre cele doua forme cele mai comune
+// de fotografie orizontala: 4:3 (1.33 — o poza orizontala obisnuita, unde decuparea centrata
+// existenta ramane acceptabila, deja folosita/testata) si 16:9 (1.78 — o captura de ecran/cadru
+// video, unde decuparea centrata ar elimina aproape jumatate din latimea originala). Orice sursa
+// mai lata de 1.6 trece pe randul cu fundal blurat, niciodata invers.
+const WIDE_PHOTO_ASPECT_RATIO_THRESHOLD = 1.6;
+
+// Dimensiunile REALE ale unei fotografii sursa — esec controlat (fisier corupt/format
+// neasteptat/camp lipsa): null, apelantul (renderShot) revine automat la decuparea standard,
+// deja dovedita, niciodata nu blocheaza randarea.
+async function getPhotoDimensions(localPath) {
+  try {
+    const { stdout } = await execFileAsync('ffprobe', [
+      '-v', 'error', '-select_streams', 'v:0',
+      '-show_entries', 'stream=width,height',
+      '-of', 'default=noprint_wrappers=1', localPath
+    ], { timeout: 15000 });
+    const fields = {};
+    stdout.trim().split('\n').forEach(line => {
+      const eqIdx = line.indexOf('=');
+      if (eqIdx === -1) return;
+      fields[line.slice(0, eqIdx).trim()] = line.slice(eqIdx + 1).trim();
+    });
+    const width = parseInt(fields.width, 10);
+    const height = parseInt(fields.height, 10);
+    return (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) ? { width, height } : null;
+  } catch (err) {
+    return null;
+  }
+}
+
 // CORECȚIE (2026-08-14, "nu selecta accidental numai primul fragment al fiecarui clip"):
 // functie PURA (fara I/O), extrasa separat ca sa poata fi testata izolat, fara ffmpeg —
 // pentru un videoclip SURSA mai lung decat durata alocata (frecvent pentru clipurile de
@@ -5722,14 +5778,43 @@ async function renderShot(item, shot, shotIndex, order) {
     // CORECȚIE (2026-08-29): flags=lanczos adaugat explicit la scalare — scalare de calitate
     // (nu bilinear implicit) — vizibil mai clara la fotografii cu detalii fine.
     const kb = shot.kenBurns;
+    const zoompanFilter = `zoompan=z='${kb.z}':x='${kb.x}':y='${kb.y}':d=${frames}:s=${MEMORY_VIDEO_WIDTH}x${MEMORY_VIDEO_HEIGHT}:fps=${MEMORY_VIDEO_FPS},format=yuv420p`;
+    // CERINTA C (2026-08-31, "nu decupa agresiv o poza foarte lata/panoramica"): pentru o sursa
+    // real MULT mai lata decat portret (peste WIDE_PHOTO_ASPECT_RATIO_THRESHOLD), decuparea
+    // centrata standard de mai jos ar elimina o parte prea mare din latime (poate taia oameni/
+    // margini dintr-o poza de grup). In loc de decupare, poza INTREAGA (fara nicio deformare —
+    // niciun scale separat pe axe) e suprapusa, incadrata complet, peste un fundal derivat din
+    // ACEEASI poza (scalat sa umple cadrul, blurat si usor intunecat) — niciodata o imagine
+    // inventata/stock/AI. Esec la ffprobe (dimensiuni necunoscute) => decuparea standard,
+    // niciodata blocata.
+    const dims = await getPhotoDimensions(item.localPath);
+    const isWidePhoto = !!(dims && (dims.width / dims.height) > WIDE_PHOTO_ASPECT_RATIO_THRESHOLD);
     try {
-      await execFfmpeg([
-        '-y', '-loop', '1', '-i', item.localPath,
-        '-t', String(segDurationSeconds),
-        '-vf', `scale=${MEMORY_VIDEO_WIDTH * 2}:${MEMORY_VIDEO_HEIGHT * 2}:force_original_aspect_ratio=increase:flags=lanczos,crop=${MEMORY_VIDEO_WIDTH * 2}:${MEMORY_VIDEO_HEIGHT * 2},zoompan=z='${kb.z}':x='${kb.x}':y='${kb.y}':d=${frames}:s=${MEMORY_VIDEO_WIDTH}x${MEMORY_VIDEO_HEIGHT}:fps=${MEMORY_VIDEO_FPS},format=yuv420p`,
-        '-c:v', 'libx264', '-preset', VIDEO_ENCODE_PRESET, '-crf', String(VIDEO_INTERMEDIATE_CRF), '-an',
-        outPath
-      ], { timeout: 120000 });
+      if (isWidePhoto) {
+        const filterComplex = [
+          `[0:v]split=2[bg][fg]`,
+          `[bg]scale=${MEMORY_VIDEO_WIDTH * 2}:${MEMORY_VIDEO_HEIGHT * 2}:force_original_aspect_ratio=increase:flags=lanczos,crop=${MEMORY_VIDEO_WIDTH * 2}:${MEMORY_VIDEO_HEIGHT * 2},gblur=sigma=20,eq=brightness=-0.15[bgblur]`,
+          `[fg]scale=${MEMORY_VIDEO_WIDTH * 2}:${MEMORY_VIDEO_HEIGHT * 2}:force_original_aspect_ratio=decrease:flags=lanczos[fgfit]`,
+          `[bgblur][fgfit]overlay=(W-w)/2:(H-h)/2[composed]`,
+          `[composed]${zoompanFilter}[vout]`
+        ].join(';');
+        await execFfmpeg([
+          '-y', '-loop', '1', '-i', item.localPath,
+          '-t', String(segDurationSeconds),
+          '-filter_complex', filterComplex,
+          '-map', '[vout]',
+          '-c:v', 'libx264', '-preset', VIDEO_ENCODE_PRESET, '-crf', String(VIDEO_INTERMEDIATE_CRF), '-an',
+          outPath
+        ], { timeout: 120000 });
+      } else {
+        await execFfmpeg([
+          '-y', '-loop', '1', '-i', item.localPath,
+          '-t', String(segDurationSeconds),
+          '-vf', `scale=${MEMORY_VIDEO_WIDTH * 2}:${MEMORY_VIDEO_HEIGHT * 2}:force_original_aspect_ratio=increase:flags=lanczos,crop=${MEMORY_VIDEO_WIDTH * 2}:${MEMORY_VIDEO_HEIGHT * 2},${zoompanFilter}`,
+          '-c:v', 'libx264', '-preset', VIDEO_ENCODE_PRESET, '-crf', String(VIDEO_INTERMEDIATE_CRF), '-an',
+          outPath
+        ], { timeout: 120000 });
+      }
     } catch (err) {
       throw wrapVideoRenderStageError(order.id, 'shot_render_photo', err, `cadru=${shotIndex}, material=${shot.itemIndex}`);
     }
@@ -5802,8 +5887,12 @@ function wrapVideoRenderStageError(orderId, stage, err, context) {
 
 // Concateneaza UN LOT marginit (maximum CONCAT_BATCH_SIZE) de cadre consecutive cu xfade —
 // exact algoritmul de dinainte, dar STRICT limitat la un singur lot mic, niciodata la planul
-// intreg. Tranzitiile alterneaza deja intre fade/slideleft dupa energia sectiunii
-// (shot.transitionOut, vezi buildShotPlan) — neschimbat.
+// intreg. CORECȚIE (2026-08-31, cerinta E, "tranzitii variate, nu acelasi xfade peste tot"):
+// tipul ramane STRICT 'fade' peste tot (shot.transitionOut, vezi buildShotPlan — vechiul efect
+// de alunecare, folosit repetitiv in momentele energice, eliminat complet), dar DURATA variaza
+// acum per-granita (shot.transitionDuration) — nu mai e
+// MEMORY_XFADE_SECONDS aplicat uniform; acea constanta ramane STRICT ca plasa de siguranta,
+// pentru cadre construite manual (teste) fara acest camp.
 async function concatBatchWithCrossfades(segmentPaths, shots, order, batchTag) {
   if (segmentPaths.length === 1) return segmentPaths[0];
 
@@ -5815,12 +5904,15 @@ async function concatBatchWithCrossfades(segmentPaths, shots, order, batchTag) {
   let lastLabel = '0:v';
   let cumulative = shots[0].duration;
   for (let i = 1; i < segmentPaths.length; i++) {
-    const offset = Math.max(0, cumulative - MEMORY_XFADE_SECONDS);
+    const xfadeDuration = (typeof shots[i - 1].transitionDuration === 'number' && shots[i - 1].transitionDuration >= 0)
+      ? shots[i - 1].transitionDuration
+      : MEMORY_XFADE_SECONDS;
+    const offset = Math.max(0, cumulative - xfadeDuration);
     const outLabel = i === segmentPaths.length - 1 ? 'vout' : `x${i}`;
     const transition = shots[i - 1].transitionOut || 'fade';
-    filter += `[${lastLabel}][${i}:v]xfade=transition=${transition}:duration=${MEMORY_XFADE_SECONDS}:offset=${offset.toFixed(3)}[${outLabel}];`;
+    filter += `[${lastLabel}][${i}:v]xfade=transition=${transition}:duration=${xfadeDuration}:offset=${offset.toFixed(3)}[${outLabel}];`;
     lastLabel = outLabel;
-    cumulative += shots[i].duration - MEMORY_XFADE_SECONDS;
+    cumulative += shots[i].duration - xfadeDuration;
   }
   filter = filter.replace(/;$/, '');
 
@@ -5897,7 +5989,17 @@ async function concatWithCrossfades(segmentPaths, shots, order) {
               mergedDuration = await getVideoSourceDurationSeconds(merged);
             } catch (err) { /* fallback aritmetic mai jos daca ffprobe esueaza, tranzitoriu */ }
             if (!mergedDuration) {
-              mergedDuration = batchShots.reduce((s, sh) => s + sh.duration, 0) - (batchShots.length - 1) * MEMORY_XFADE_SECONDS;
+              // CORECȚIE (2026-08-31, cerinta E): xfade-ul NU mai e uniform — suma fiecarei
+              // tranzitii REALE din acest lot (per-granita, shots[j-1].transitionDuration),
+              // niciodata o valoare unica globala inmultita cu numarul de tranzitii.
+              let sum = batchShots.reduce((s, sh) => s + sh.duration, 0);
+              for (let j = 1; j < batchShots.length; j++) {
+                const xfadeHere = (typeof batchShots[j - 1].transitionDuration === 'number' && batchShots[j - 1].transitionDuration >= 0)
+                  ? batchShots[j - 1].transitionDuration
+                  : MEMORY_XFADE_SECONDS;
+                sum -= xfadeHere;
+              }
+              mergedDuration = sum;
             }
           } else {
             mergedDuration = batchShots[0].duration;
@@ -5905,8 +6007,16 @@ async function concatWithCrossfades(segmentPaths, shots, order) {
           // scriere INDEXATA (nu push) — pozitia b trebuie sa ramana cea din planul original,
           // indiferent de ORDINEA in care loturile paralele termina efectiv; nivelul urmator
           // depinde de ordinea cronologica reala a segmentelor pentru tranzitiile xfade corecte.
+          // transitionDuration e propagat mai departe la fel ca transitionOut — granita catre
+          // LOTUL URMATOR corespunde EXACT granitei reale dintre ultimul cadru-frunza al acestui
+          // lot si primul cadru-frunza al lotului urmator (vezi computeRealBoundaryPositions,
+          // lib/media-analysis.js, pentru aceeasi logica aplicata pur pe durate).
           nextSegments[b] = merged;
-          nextShots[b] = { duration: mergedDuration, transitionOut: batchShots[batchShots.length - 1].transitionOut };
+          nextShots[b] = {
+            duration: mergedDuration,
+            transitionOut: batchShots[batchShots.length - 1].transitionOut,
+            transitionDuration: batchShots[batchShots.length - 1].transitionDuration
+          };
         }
       }
       // CORECȚIE (2026-08-30, gasita chiar de testul de curatare la esec existent —
@@ -5966,34 +6076,77 @@ async function extractAudioOnsets(audioFilePath, orderId) {
   }
 }
 
-// Construieste fundalul cinematic complet (tacut) pentru comanda — descarca elementele O
-// SINGURA DATA (indiferent de cate cadre foloseste fiecare mai departe, vezi buildShotPlan),
-// randeaza fiecare cadru din plan, le concateneaza cu tranzitii. Curata singura toate
-// fisierele intermediare proprii (sursele descarcate, cadrele) inainte sa iasa, indiferent de
-// rezultat — doar fundalul final ramane (returnat apelantului, care il curata la randul lui).
+// Construieste fundalul cinematic complet (tacut) pentru comanda — randeaza fiecare cadru din
+// plan, le concateneaza cu tranzitii. Curata singura toate fisierele intermediare proprii
+// (sursele descarcate, cadrele) inainte sa iasa, indiferent de rezultat — doar fundalul final
+// ramane (returnat apelantului, care il curata la randul lui).
 // `songFilePath` (2026-08-24): calea locala a melodiei REALE a comenzii, pentru analiza audio de
 // mai sus — optional (comenzi/cai de apel vechi ramana pe fallback fara aliniere la impuls).
+//
+// CERINTA F (2026-08-31, "30 de materiale nu trebuie sa epuizeze diskul temporar Railway"):
+// ÎNAINTE de aceasta corectie, TOATE sursele erau descarcate DINAINTE de a randa vreun cadru
+// (downloadOrderMedia, un `for` secvential) — cu 30 de materiale, unele filmari iPhone de
+// 100+MB, asta putea pune pana la 30 de fisiere complete pe disc SIMULTAN, pentru toata durata
+// randarii. Acum: planul de cadre (shotPlan, mai jos) foloseste STRICT metadate usoare
+// (.type/.section/.key — NU fisierul descarcat), deci poate fi construit INAINTE de orice
+// descarcare; fiecare sursa e descarcata LENES (doar cand primul cadru care o foloseste chiar
+// ajunge sa fie randat), cu MEMOIZARE (doi workeri concurenti care au nevoie simultan de
+// ACEEASI sursa impart UN SINGUR Promise de descarcare, niciodata doua descarcari paralele ale
+// aceluiasi fisier) si STEARSA imediat ce ULTIMUL cadru care o foloseste s-a terminat de randat
+// (numarator de referinte per material, decrementat DUPA ce randarea acelui cadru s-a incheiat
+// — deci orice worker concurent care mai citea acel fisier a terminat deja de citit el).
 async function buildMemoryBackground(order, mediaItems, durationSeconds, sectionTimings, songFilePath) {
   const ordered = sortMediaBySection(mediaItems);
   const cleanupPaths = [];
   try {
     const onsetTimes = songFilePath ? await extractAudioOnsets(songFilePath, order.id) : [];
-    const downloaded = await downloadOrderMedia(order, ordered);
-    downloaded.forEach(d => cleanupPaths.push(d.localPath));
 
-    // SHOT PLAN (2026-08-24) — inlocuieste vechea alocare "un segment lung per material"
-    // (computeSectionAwareSegmentDurations, ramasa neschimbata in lib/media-analysis.js
-    // pentru compatibilitate/teste existente, dar nu mai apelata aici) cu un plan de cadre
-    // SCURTE, posibil multiple per material, cu ritm dupa sectiunea REALA curenta — vezi
-    // comentariul detaliat de la buildShotPlan(). onsetTimes (calculat mai sus) ajusteaza fin
-    // granitele deja calculate, cand exista impulsuri detectate suficient de aproape.
-    // CONCAT_BATCH_SIZE e transmis explicit (2026-08-24, corectie audit runda 2) — aliniere la
-    // impuls simuleaza EXACT reducerea pe loturi din concatWithCrossfades() mai jos; fara acest
-    // parametru, simularea ar presupune gresit un lant liniar (o singura tranzitie intre oricare
-    // doi vecini), nepotrivit cu randarea reala pe niveluri.
-    const shotPlan = buildShotPlan(downloaded, durationSeconds, sectionTimings, MEMORY_XFADE_SECONDS, onsetTimes, CONCAT_BATCH_SIZE);
+    // SHOT PLAN (2026-08-24, rescris 2026-08-31 — storyboard pe ture, vezi lib/media-analysis.js)
+    // — plan de cadre SCURTE, posibil multiple per material, cu ritm dupa sectiunea REALA
+    // curenta. Construit din `ordered` (metadate, NU fisiere descarcate — vezi comentariul de
+    // mai sus) — onsetTimes ajusteaza fin granitele deja calculate, cand exista impulsuri
+    // detectate suficient de aproape. CONCAT_BATCH_SIZE e transmis explicit (2026-08-24, corectie
+    // audit runda 2) — aliniere la impuls simuleaza EXACT reducerea pe loturi din
+    // concatWithCrossfades() mai jos.
+    const shotPlan = buildShotPlan(ordered, durationSeconds, sectionTimings, MEMORY_XFADE_SECONDS, onsetTimes, CONCAT_BATCH_SIZE);
     if (shotPlan.length === 0) throw new Error('Planul de cadre a rezultat gol — nu pot construi fundalul cinematic.');
-    perfLog(order.id, 'memory_shot_plan', `materiale=${downloaded.length}, cadre=${shotPlan.length}, sectiuni=${(sectionTimings || []).length}, onset-uri=${onsetTimes.length}`);
+    perfLog(order.id, 'memory_shot_plan', `materiale=${ordered.length}, cadre=${shotPlan.length}, sectiuni=${(sectionTimings || []).length}, onset-uri=${onsetTimes.length}`);
+
+    // Descarcare LENESA + memoizata + numarator de referinte (cerinta F, vezi comentariul
+    // functiei) — `remainingUsesByItem` e cunoscut INTEGRAL inainte de a descarca ceva, pentru
+    // ca planul de cadre e deja complet la acest punct.
+    const remainingUsesByItem = new Array(ordered.length).fill(0);
+    shotPlan.forEach(sh => { remainingUsesByItem[sh.itemIndex]++; });
+    const localPathByItem = new Array(ordered.length).fill(null);
+    const downloadPromiseByItem = new Array(ordered.length).fill(null);
+
+    function ensureDownloaded(itemIndex) {
+      if (localPathByItem[itemIndex]) return Promise.resolve(localPathByItem[itemIndex]);
+      if (!downloadPromiseByItem[itemIndex]) {
+        downloadPromiseByItem[itemIndex] = downloadOneOrderMediaItem(order, ordered[itemIndex], itemIndex).then(downloaded => {
+          localPathByItem[itemIndex] = downloaded.localPath;
+          cleanupPaths.push(downloaded.localPath);
+          return downloaded.localPath;
+        });
+      }
+      return downloadPromiseByItem[itemIndex];
+    }
+
+    // Sterge sursa locala a unui material IMEDIAT ce ultimul cadru care o foloseste a terminat
+    // de randat (await deja rezolvat inainte de acest apel — vezi renderNextShot mai jos) —
+    // niciodata sursele R2 (storage.deletePrivateFile nu e apelat aici, STRICT fisiere locale
+    // temporare).
+    function releaseItem(itemIndex) {
+      remainingUsesByItem[itemIndex]--;
+      if (remainingUsesByItem[itemIndex] <= 0) {
+        const localPath = localPathByItem[itemIndex];
+        if (localPath) {
+          try { fs.unlinkSync(localPath); } catch (e) { /* best-effort */ }
+          const idx = cleanupPaths.indexOf(localPath);
+          if (idx !== -1) cleanupPaths.splice(idx, 1);
+        }
+      }
+    }
 
     const segments = new Array(shotPlan.length);
     let cursor = 0;
@@ -6001,7 +6154,9 @@ async function buildMemoryBackground(order, mediaItems, durationSeconds, section
       while (cursor < shotPlan.length) {
         const i = cursor++;
         const shot = shotPlan[i];
-        segments[i] = await renderShot(downloaded[shot.itemIndex], shot, i, order);
+        const localPath = await ensureDownloaded(shot.itemIndex);
+        segments[i] = await renderShot({ ...ordered[shot.itemIndex], localPath }, shot, i, order);
+        releaseItem(shot.itemIndex);
       }
     }
     await Promise.all(new Array(Math.min(SHOT_RENDER_CONCURRENCY, shotPlan.length)).fill(0).map(renderNextShot));

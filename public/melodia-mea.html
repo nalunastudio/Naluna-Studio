@@ -136,6 +136,16 @@
   /* Butonul unic de plata din ecranul de alegere Standard — acelasi stil primar existent,
      doar mai mare/centrat, ca sa ramana singurul punct de actiune vizibil dupa editare. */
   .btn-cta-wide{ width:100%; max-width:420px; min-height:56px; font-size:15px; }
+  /* Cerinta 2 (2026-08-31, "doua butoane de plata mari si usor de gasit" — pagina finala Cadou
+     video): ambele CTA-uri (sus, dupa cardul planului; jos, dupa cardurile melodiilor) folosesc
+     ACEEASI clasa — latime completa (fara max-width:420px), inaltime minima 64-68px, font mare,
+     aceeasi culoare neagra existenta a butonului de checkout (.btn-primary, neschimbata). STRICT
+     pentru starea finala (videoStatus==='ready') — celelalte ecrane (alegere varianta, meniu de
+     editare) isi pastreaza dimensiunea existenta (.btn-cta-wide), neatinse. */
+  .btn-cta-checkout-lg{
+    width:100%; max-width:none; min-height:66px;
+    padding:18px 24px; font-size:18px; font-weight:700;
+  }
   .variant-card.standard-selected{ border-color:var(--orange); background:rgba(245,166,35,.09); }
   /* FINISAJ FINAL PACHET STANDARD (hotfix 2026-08-08): sectiunea de alegere explicita, cu
      fundal discret si titlu mare, imediat sub cele doua carduri — inlocuieste vechiul buton
@@ -406,6 +416,18 @@
           </div>
         </div>
 
+        <!-- CORECȚIE (2026-08-31, Cerinta 2, "primul buton, in primul ecran, inainte de player"):
+             al DOILEA buton de checkout (identic ca eticheta/pret/design cu #checkout-btn, cel
+             ramas la finalul paginii) — mutat AICI, imediat dupa titlu/dedicatie + cardul
+             pachetului, INAINTEA chenarului cu previzualizarea video de mai jos — vizibil in
+             primul ecran pe iPhone, fara derulare. ID unic (checkout-btn-2), aceeasi functie
+             comuna de checkout (goToCheckout), aceeasi comanda Stripe — NICIODATA un al doilea
+             produs/plata. Vizibil STRICT in aceeasi stare ca butonul de jos (isFinalGiftVideo,
+             vezi updateStandardEditMenuVisibility) — ascuns implicit aici. -->
+        <div id="checkout-btn-top-wrap" style="display:none; margin-bottom:20px;">
+          <button type="button" class="btn btn-primary btn-cta-checkout-lg" id="checkout-btn-2"></button>
+        </div>
+
         <!-- RELANSARE (2026-08-14, "previzualizare gratuita de 30s"): videoclipul COMPLET tot NU
              e redabil inainte de plata (neschimbat — nicio cerere catre /media/video/:orderId,
              blocat strict la status='ready', vezi acea ruta) — dar clientul trebuie sa poata
@@ -422,17 +444,6 @@
             <p id="gift-video-locked-msg"></p>
             <div class="gift-video-preview-video-wrap" id="gift-video-preview-video-wrap"></div>
           </div>
-        </div>
-
-        <!-- CORECȚIE (2026-08-30, Cerinta 6, "doua butoane de plata pe pagina finala Cadou
-             video"): al DOILEA buton de checkout, identic ca eticheta/pret/design cu #checkout-btn
-             (existent, ramas la finalul paginii, dupa cardurile cu melodiile) — plasat imediat
-             DUPA chenarul cu previzualizarea video de mai sus. ID unic (checkout-btn-2), aceeasi
-             functie comuna de checkout (goToCheckout), aceeasi comanda Stripe — NICIODATA un al
-             doilea produs/plata. Vizibil STRICT in aceeasi stare ca butonul de jos (isFinalGiftVideo,
-             vezi updateStandardEditMenuVisibility) — ascuns implicit aici. -->
-        <div id="checkout-btn-top-wrap" style="display:none; margin-bottom:20px;">
-          <button type="button" class="btn btn-primary" id="checkout-btn-2" style="width:100%; justify-content:center;"></button>
         </div>
 
         <div id="variants-wrap"></div>
@@ -713,6 +724,16 @@
         </div>
 
         <div id="status-msg"></div>
+
+        <!-- CORECȚIE (2026-08-31, Cerinta 2, "butonul de jos lipsea pe pagina finala"): CAUZA
+             EXACTA gasita — checkoutBtn era reparentat in #regenerate-row, care e un COPIL direct
+             al lui #edit-menu-fields; pe pagina finala (isFinalGiftVideo), editMenuFields.hidden
+             era setat pe true — atributul HTML `hidden` forteaza display:none pe element,
+             indiferent de style.display al descendentilor sai (regenerateRow.style.display='flex'
+             nu avea niciun efect, fiind un descendent al unui parinte ascuns). Acest slot e un
+             FRATE independent, NICIODATA descendent al editorului sau al altui container ascuns
+             cu `hidden` — ultimul element vizibil din #content-state, dupa cardurile melodiilor. -->
+        <div id="checkout-btn-bottom-wrap" style="display:none; margin-top:20px;"></div>
       </div>
 
       <div id="lyrics-editor-state" style="display:none;">
@@ -1011,7 +1032,7 @@
       video_status_failed: 'Crearea videoclipului a eșuat. Încearcă din nou.',
       video_status_none: 'Videoclipul tău nu este încă gata.',
       memories_title: 'Adaugă pozele și videoclipurile tale',
-      memories_sub: 'Adaugă între 3 și 10 poze sau clipuri video — le vom transforma într-un videoclip sincronizat cu melodia ta.',
+      memories_sub: 'Adaugă între 3 și 30 poze sau clipuri video — le vom transforma într-un videoclip sincronizat cu melodia ta.',
       memories_meta: (min, max) => `Între ${min} și ${max} materiale • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • orice combinație de poze și videoclipuri`,
       memories_cta_title: 'Adaugă amintirile pentru videoclipul cadou',
       memories_cta_sub: 'Alege fotografiile și videoclipurile care vor da viață poveștii voastre.',
@@ -1091,7 +1112,7 @@
       video_status_failed: 'Creating the video failed. Please try again.',
       video_status_none: "Your video isn't ready yet.",
       memories_title: 'Add your photos & videos',
-      memories_sub: "Add 3 to 10 photos or video clips — we'll weave them into a video synced to your song.",
+      memories_sub: "Add 3 to 30 photos or video clips — we'll weave them into a video synced to your song.",
       memories_meta: (min, max) => `${min} to ${max} items • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • any mix of photos and videos`,
       memories_cta_title: 'Add memories for your gift video',
       memories_cta_sub: 'Choose the photos and videos that will bring your story to life.',
@@ -1171,7 +1192,7 @@
       video_status_failed: 'Die Videoerstellung ist fehlgeschlagen. Bitte versuche es erneut.',
       video_status_none: 'Dein Video ist noch nicht fertig.',
       memories_title: 'Füge deine Fotos & Videos hinzu',
-      memories_sub: 'Füge 3 bis 10 Fotos oder Videoclips hinzu — wir verweben sie zu einem Video, das genau auf dein Lied abgestimmt ist.',
+      memories_sub: 'Füge 3 bis 30 Fotos oder Videoclips hinzu — wir verweben sie zu einem Video, das genau auf dein Lied abgestimmt ist.',
       memories_meta: (min, max) => `${min} bis ${max} Elemente • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • jede Mischung aus Fotos und Videos`,
       memories_cta_title: 'Füge Erinnerungen für dein Geschenkvideo hinzu',
       memories_cta_sub: 'Wähle die Fotos und Videos, die eurer Geschichte Leben einhauchen.',
@@ -1251,7 +1272,7 @@
       video_status_failed: 'La creación del video falló. Inténtalo de nuevo.',
       video_status_none: 'Tu video aún no está listo.',
       memories_title: 'Añade tus fotos y videos',
-      memories_sub: 'Añade entre 3 y 10 fotos o clips de video — los combinaremos en un video sincronizado con tu canción.',
+      memories_sub: 'Añade entre 3 y 30 fotos o clips de video — los combinaremos en un video sincronizado con tu canción.',
       memories_meta: (min, max) => `Entre ${min} y ${max} elementos • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • cualquier combinación de fotos y videos`,
       memories_cta_title: 'Añade recuerdos para tu video de regalo',
       memories_cta_sub: 'Elige las fotos y videos que darán vida a vuestra historia.',
@@ -1331,7 +1352,7 @@
       video_status_failed: 'La creazione del video non è riuscita. Riprova.',
       video_status_none: 'Il tuo video non è ancora pronto.',
       memories_title: 'Aggiungi le tue foto e i tuoi video',
-      memories_sub: 'Aggiungi da 3 a 10 foto o clip video: le trasformeremo in un video sincronizzato con la tua canzone.',
+      memories_sub: 'Aggiungi da 3 a 30 foto o clip video: le trasformeremo in un video sincronizzato con la tua canzone.',
       memories_meta: (min, max) => `Da ${min} a ${max} elementi • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • qualsiasi combinazione di foto e video`,
       memories_cta_title: 'Aggiungi i ricordi per il tuo video regalo',
       memories_cta_sub: 'Scegli le foto e i video che daranno vita alla vostra storia.',
@@ -1411,7 +1432,7 @@
       video_status_failed: 'La création de la vidéo a échoué. Veuillez réessayer.',
       video_status_none: "Votre vidéo n'est pas encore prête.",
       memories_title: 'Ajoutez vos photos et vidéos',
-      memories_sub: 'Ajoutez 3 à 10 photos ou clips vidéo — nous les intégrerons dans une vidéo synchronisée avec votre chanson.',
+      memories_sub: 'Ajoutez 3 à 30 photos ou clips vidéo — nous les intégrerons dans une vidéo synchronisée avec votre chanson.',
       memories_meta: (min, max) => `${min} à ${max} éléments • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • tout mélange de photos et vidéos`,
       memories_cta_title: 'Ajoutez vos souvenirs pour la vidéo cadeau',
       memories_cta_sub: 'Choisissez les photos et vidéos qui donneront vie à votre histoire.',
@@ -1491,7 +1512,7 @@
       video_status_failed: 'Създаването на видеото не бе успешно. Опитай отново.',
       video_status_none: 'Видеото ти още не е готово.',
       memories_title: 'Добави своите снимки и видеа',
-      memories_sub: 'Добави между 3 и 10 снимки или видеоклипа — ще ги превърнем във видео, синхронизирано с твоята песен.',
+      memories_sub: 'Добави между 3 и 30 снимки или видеоклипа — ще ги превърнем във видео, синхронизирано с твоята песен.',
       memories_meta: (min, max) => `Между ${min} и ${max} материала • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • всякаква комбинация от снимки и видеа`,
       memories_cta_title: 'Добави спомените за подаръчното видео',
       memories_cta_sub: 'Избери снимките и видеата, които ще вдъхнат живот на вашата история.',
@@ -1571,7 +1592,7 @@
       video_status_failed: 'Video oluşturma başarısız oldu. Lütfen tekrar deneyin.',
       video_status_none: 'Videonuz henüz hazır değil.',
       memories_title: 'Fotoğraflarınızı ve videolarınızı ekleyin',
-      memories_sub: '3 ile 10 arası fotoğraf veya video klip ekleyin — bunları şarkınızla senkronize bir videoya dönüştürelim.',
+      memories_sub: '3 ile 30 arası fotoğraf veya video klip ekleyin — bunları şarkınızla senkronize bir videoya dönüştürelim.',
       memories_meta: (min, max) => `${min} ile ${max} arası öğe • JPG, PNG, HEIC, DNG, MP4, MOV, WebM • fotoğraf ve video karışımı kabul edilir`,
       memories_cta_title: 'Hediye videosu için anılarınızı ekleyin',
       memories_cta_sub: 'Hikayenize hayat verecek fotoğrafları ve videoları seçin.',
@@ -2680,11 +2701,19 @@
       currentOrder = order;
       const pendingVariantChoiceNow = computePendingVariantChoice(order);
       updateVideoStatusUI(order, pendingVariantChoiceNow);
-      // Cerinta 1: acest refresh USOR (doar starea video, fara renderContent complet) e exact
-      // "polling"-ul mentionat explicit in cerinta — daca videoclipul devine 'ready' cat timp
-      // clientul e deja pe pagina, CTA-ul trebuie sa dispara imediat, nu doar la urmatoarea
-      // reincarcare completa.
+      // Cerinta 1 (sesiune anterioara): acest refresh USOR (doar starea video, fara renderContent
+      // complet) e exact "polling"-ul mentionat explicit in cerinta — daca videoclipul devine
+      // 'ready' cat timp clientul e deja pe pagina, CTA-ul "Adaugă amintirile" trebuie sa dispara
+      // imediat, nu doar la urmatoarea reincarcare completa.
       updateMemoriesCta(order, pendingVariantChoiceNow);
+      // CORECȚIE (2026-08-31, Cerinta 2D, "pollingul generating->ready trebuie sa afiseze ambele
+      // CTA-uri fara refresh manual"): updateStandardEditMenuVisibility() e STRICT sincronizare
+      // de vizibilitate/reparentare (toggle style.display/hidden/classList, appendChild pe
+      // containere usoare) — NICIODATA re-randare de playere audio/video sau cerere de retea —
+      // deci e sigur de apelat si din acest refresh usor. Fara acest apel, cele doua butoane de
+      // plata (afisate STRICT din ramura isFinalGiftVideo a acelei functii) ramaneau ascunse pana
+      // la o reincarcare completa a paginii, desi videoclipul devenise deja gata.
+      updateStandardEditMenuVisibility(order, pendingVariantChoiceNow);
     } catch (e) {
       videoPollFailCount++;
       armVideoPoll(Math.min(5000 * videoPollFailCount, 30000));
@@ -2714,12 +2743,19 @@
     // dupa ce videoclipul e gata, TOT meniul de editare dispare (toggle-ul mare cu creion,
     // campurile de editare, mesajul despre editarea gratuita, confirmarea/regenerarea si ecranul
     // de alegere intre versiuni) — melodia/versurile raman STRICT pentru consultare (randate mai
-    // sus de renderVariants(), neatinse aici). #checkout-btn ramane reparentat in #regenerate-row
-    // (acelasi container folosit deja pentru Premium/Video inainte de alegere), cu butonul de
-    // regenerare ascuns. CORECȚIE (2026-08-30, Cerinta 6): al DOILEA buton de plata
-    // (#checkout-btn-2, static, NICIODATA reparentat) devine vizibil AICI, imediat sub
-    // previzualizarea video — sincronizat cu continutul/starea disabled ale primului.
+    // sus de renderVariants(), neatinse aici).
+    // CORECȚIE (2026-08-31, Cerinta 2, "butonul de jos lipsea"): #checkout-btn NU mai e reparentat
+    // in #regenerate-row — acela e un COPIL al lui #edit-menu-fields, care primeste chiar mai jos
+    // `hidden = true`; atributul HTML `hidden` forteaza display:none pe element INDIFERENT de
+    // style.display al descendentilor, deci butonul devenea invizibil desi codul il arata explicit
+    // ca vizibil. Reparentat acum intr-un slot STABIL, independent (#checkout-btn-bottom-wrap),
+    // frate direct al lui #edit-menu-fields, niciodata descendent al lui sau al altui container cu
+    // `hidden`. Ambele butoane (#checkout-btn, jos; #checkout-btn-2, sus, static, NICIODATA
+    // reparentat) primesc acum clasa .btn-cta-checkout-lg (latime completa, fara max-width,
+    // inaltime mare) si raman sincronizate prin syncCheckoutBtn2().
     const isFinalGiftVideo = order.plan === 'video' && order.videoStatus === 'ready';
+    const checkoutBtnBottomWrap = document.getElementById('checkout-btn-bottom-wrap');
+    if (checkoutBtnBottomWrap) checkoutBtnBottomWrap.style.display = 'none';
     if (isFinalGiftVideo) {
       standardPreeditToggleWrap.style.display = 'none';
       standardPreeditCheckoutSlotCollapsed.style.display = 'none';
@@ -2730,14 +2766,19 @@
       standardChoiceSection.style.display = 'none';
       regenerateBtn.style.display = 'none';
       confirmCancelBtn.style.display = 'none';
-      regenerateRow.style.display = 'flex';
-      regenerateRow.appendChild(checkoutBtn);
+      regenerateRow.style.display = 'none';
+      checkoutBtn.style.flex = '';
       checkoutBtn.classList.remove('btn-cta-wide');
-      checkoutBtn.style.flex = '1';
+      checkoutBtn.classList.add('btn-cta-checkout-lg');
+      if (checkoutBtnBottomWrap) {
+        checkoutBtnBottomWrap.appendChild(checkoutBtn);
+        checkoutBtnBottomWrap.style.display = 'block';
+      }
       syncCheckoutBtn2();
       if (checkoutBtnTopWrap) checkoutBtnTopWrap.style.display = 'block';
       return;
     }
+    checkoutBtn.classList.remove('btn-cta-checkout-lg');
 
     // CORECȚIE (2026-08-14): vezi comentariul identic din renderVariants() — Video foloseste
     // acum acelasi ecran de alegere ca Standard, DOAR dupa o editare REALA (v.isEditedAlternative);

@@ -82,8 +82,10 @@ test('server.js: fisierele mari NU sunt tinute in memorie (diskStorage, streamin
 // pentru testele dedicate noii limite de dimensiune (derivata din limita tehnica reala R2).
 // CORECȚIE (2026-08-30, "elimină complet limita de 120s"): durata maxima nu mai exista deloc —
 // vezi test/video-duration-limit-removed.test.js pentru testele dedicate acestei corectii.
-test('server.js: numarul de materiale (10 maximum, 3 minimum) raman neschimbate', () => {
-  assert.match(server, /const ORDER_MEDIA_MAX_ITEMS = 10;/);
+// CORECȚIE (2026-08-31, "mărește limita de la 10 la 30 de materiale"): plafonul a fost ridicat
+// explicit — vezi test/video-media-limits.test.js pentru suita completa dedicata acestei corectii.
+test('server.js: numarul de materiale (30 maximum, 3 minimum)', () => {
+  assert.match(server, /const ORDER_MEDIA_MAX_ITEMS = 30;/);
   assert.match(server, /const ORDER_MEDIA_MIN_ITEMS = 3;/);
 });
 
@@ -223,9 +225,17 @@ test('server.js: getVideoSourceDurationSeconds() foloseste ffprobe cu timeout si
 // computeVideoSegmentStartOffset() (vezi testele dedicate mai sus, in acest fisier) — vechiul
 // "index sintetic" combinat era exact cauza repetarii/suprapunerii secventelor video.
 test('server.js: renderShot() foloseste computeVideoSegmentStartOffset() pentru videoclipuri, pastrand exact pipeline-ul de scalare/crop existent', () => {
-  const idx = server.indexOf('async function renderShot(item, shot, shotIndex, order) {');
-  assert.notEqual(idx, -1, 'renderShot() trebuie sa existe (inlocuieste renderMemorySegment)');
-  const snippet = server.slice(idx, idx + 3200);
+  // CORECȚIE (2026-08-31, clasa recurenta de fragilitate — fereastra fixa de caractere devine
+  // prea ingusta dupa ce cod nou e adaugat mai devreme in functie, ex. letterbox pentru poze
+  // late): extragerea foloseste potrivire REALA de acolade (brace-depth), nu un offset fix.
+  const startIdx = server.indexOf('async function renderShot(item, shot, shotIndex, order) {');
+  assert.notEqual(startIdx, -1, 'renderShot() trebuie sa existe (inlocuieste renderMemorySegment)');
+  let depth = 0, i = server.indexOf('{', startIdx);
+  for (; i < server.length; i++) {
+    if (server[i] === '{') depth++;
+    else if (server[i] === '}') { depth--; if (depth === 0) break; }
+  }
+  const snippet = server.slice(startIdx, i + 1);
   assert.ok(snippet.includes('computeVideoSegmentStartOffset(shot.itemIndex, shot.occurrence, sourceDuration, segDurationSeconds)'));
   // CORECȚIE (2026-08-29, "calitate video clara"): scalarea foloseste acum explicit Lanczos
   // (flags=lanczos) — scalare de calitate, nu bilinear implicit — dincolo de asta, crop-ul
@@ -253,23 +263,31 @@ test('server.js: durata TOTALA a fundalului cinematic ramane exact durata melodi
 // veche ramane definita/exportata neschimbata (compatibilitate/teste proprii, vezi
 // test/media-analysis.test.js) — doar buildMemoryBackground() nu o mai apeleaza.
 test('server.js: buildMemoryBackground() foloseste buildShotPlan() (plan de cadre, nu un singur segment lung per material), cu sectiunile REALE derivate din marcajele Suno', () => {
-  // CORECȚIE (2026-08-24, runda 2): al cincilea argument, onsetTimes (din extractAudioOnsets), si
-  // al saselea, CONCAT_BATCH_SIZE (necesar ca simularea de aliniere la impuls sa corespunda EXACT
-  // cu reducerea pe loturi din concatWithCrossfades — vezi audit independent, runda 2), au fost
-  // adaugate — buildShotPlan() foloseste sectiunile/duratele ca inainte, doar ajusteaza fin
-  // granitele cand exista impulsuri detectate suficient de aproape (vezi lib/media-analysis.js).
-  assert.ok(server.includes('const shotPlan = buildShotPlan(downloaded, durationSeconds, sectionTimings, MEMORY_XFADE_SECONDS, onsetTimes, CONCAT_BATCH_SIZE);'));
+  // CORECȚIE (2026-08-31, cerinta F, "30 de materiale nu trebuie sa epuizeze diskul temporar"):
+  // buildShotPlan() e apelat acum pe `ordered` (metadate usoare, INAINTE de orice descarcare) —
+  // nu mai pe `downloaded` — planul e cunoscut INTEGRAL inainte sa se descarce vreo sursa, ca
+  // sa se poata calcula numarul de referinte ramase per material si descarca LENES (vezi
+  // buildMemoryBackground). Al cincilea argument, onsetTimes, si al saselea, CONCAT_BATCH_SIZE
+  // (necesar ca simularea de aliniere la impuls sa corespunda EXACT cu reducerea pe loturi din
+  // concatWithCrossfades), raman neschimbate.
+  assert.ok(server.includes('const shotPlan = buildShotPlan(ordered, durationSeconds, sectionTimings, MEMORY_XFADE_SECONDS, onsetTimes, CONCAT_BATCH_SIZE);'));
   assert.ok(server.includes("perfLog(order.id, 'memory_shot_plan',"));
 });
 
-// CORECȚIE (2026-08-24, "acelasi crossfade peste tot"): tranzitia NU mai e hardcodata 'fade'
-// pentru toate granitele — variaza dupa energia sectiunii (shot.transitionOut, vezi
-// buildShotPlan) — 'fade' in momente calme, 'slideleft' in momente energice. MEMORY_XFADE_SECONDS
-// (durata tranzitiei) ramane neschimbata.
-test('server.js: tranzitiile crossfade variaza acum dupa energia sectiunii (fade/slideleft), durata ramane MEMORY_XFADE_SECONDS neschimbata', () => {
+// CORECȚIE (2026-08-31, cerinta E, "tranzitii variate, nu acelasi xfade peste tot"): 'slideleft'
+// (folosit repetitiv pe toate momentele energice) a fost ELIMINAT COMPLET — 'fade' (cross-
+// dissolve) ramane SINGURUL tip de tranzitie folosit oriunde; durata variaza acum per-granita
+// (shot.transitionDuration, vezi buildShotPlan/chooseTransitionDuration, lib/media-analysis.js)
+// — aproape nula (taietura curata) la majoritatea granitelor, scurta langa momente calme, usor
+// mai lunga la inceputul/finalul intregului plan. MEMORY_XFADE_SECONDS ramane STRICT ca plasa de
+// siguranta (fallback), nu mai e durata uniforma aplicata peste tot.
+test('server.js: tranzitiile folosesc STRICT "fade" (niciodata "slideleft"), cu durata variabila per-granita (shot.transitionDuration), nu MEMORY_XFADE_SECONDS uniform', () => {
   assert.match(server, /const MEMORY_XFADE_SECONDS = 0\.6;/);
   assert.ok(server.includes('const transition = shots[i - 1].transitionOut'));
-  assert.ok(server.includes("xfade=transition=${transition}:duration="));
+  assert.ok(server.includes("xfade=transition=${transition}:duration=${xfadeDuration}"));
+  assert.ok(!server.includes("'slideleft'"), '"slideleft" nu mai trebuie sa apara nicaieri in server.js');
+  const libSrc = fs.readFileSync(path.join(__dirname, '..', 'lib', 'media-analysis.js'), 'utf8');
+  assert.ok(!libSrc.includes('slideleft'), '"slideleft" nu mai trebuie sa apara nicaieri in lib/media-analysis.js');
 });
 
 test('server.js: daca pipeline-ul cinematic esueaza in orice punct, randarea revine automat la fundalul solid dovedit — clientul primeste intotdeauna un videoclip', () => {

@@ -262,11 +262,12 @@ test('melodia-mea.html: choose_variant_btn() foloseste genurile REALE ("versiune
 });
 
 // ---------------------------------------------------------------------------------------------
-// 8. Fotografiile/videoclipurile clientului si limitele (3-10) raman neschimbate.
+// 8. Fotografiile/videoclipurile clientului — limita minima (3) ramane neschimbata; maximul a
+//    fost ridicat explicit la 30 (2026-08-31, "mărește limita de la 10 la 30 de materiale").
 // ---------------------------------------------------------------------------------------------
-test('server.js: ORDER_MEDIA_MIN_ITEMS/ORDER_MEDIA_MAX_ITEMS (3-10) raman neschimbate', () => {
+test('server.js: ORDER_MEDIA_MIN_ITEMS=3, ORDER_MEDIA_MAX_ITEMS=30', () => {
   assert.ok(/ORDER_MEDIA_MIN_ITEMS\s*=\s*3/.test(server));
-  assert.ok(/ORDER_MEDIA_MAX_ITEMS\s*=\s*10/.test(server));
+  assert.ok(/ORDER_MEDIA_MAX_ITEMS\s*=\s*30/.test(server));
 });
 
 // ---------------------------------------------------------------------------------------------

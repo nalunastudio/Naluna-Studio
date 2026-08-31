@@ -439,7 +439,11 @@ test('melodia-mea.html: updateStandardEditMenuVisibility() ascunde TOT meniul de
   assert.match(snippet, /confirmRow\.style\.display = 'none';/, 'confirmarea trebuie ascunsa');
   assert.match(snippet, /regenerateBtn\.style\.display = 'none';/, 'regenerarea trebuie ascunsa');
   assert.match(snippet, /standardChoiceSection\.style\.display = 'none';/, 'ecranul de alegere intre versiuni trebuie ascuns');
-  assert.match(snippet, /regenerateRow\.appendChild\(checkoutBtn\);/, 'checkoutBtn trebuie sa ramana intr-un slot vizibil, fara duplicare');
+  // CORECȚIE (2026-08-31, Cerinta 2B): checkoutBtn nu mai e reparentat in regenerateRow (copil
+  // al lui edit-menu-fields, care primeste hidden=true chiar mai sus) — reparentat acum intr-un
+  // slot STABIL, independent (#checkout-btn-bottom-wrap), niciodata descendent al unui container
+  // ascuns cu `hidden`. Vezi test/video-dual-checkout-buttons.test.js pentru suita completa.
+  assert.match(snippet, /checkoutBtnBottomWrap\.appendChild\(checkoutBtn\);/, 'checkoutBtn trebuie sa ramana intr-un slot vizibil, STABIL, fara duplicare');
   // Un SINGUR appendChild pentru checkoutBtn in aceasta ramura — niciodata doua sloturi diferite.
   const appendCount = (snippet.match(/appendChild\(checkoutBtn\)/g) || []).length;
   assert.equal(appendCount, 1, 'checkoutBtn nu trebuie reparentat de mai multe ori in aceeasi ramura (ar insemna duplicare)');

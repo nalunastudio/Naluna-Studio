@@ -1,8 +1,13 @@
-// Teste pentru CORECȚIA 2026-08-30 (Cadou video, Cerința 6): doua butoane de plata identice pe
-// pagina finala — primul imediat dupa previzualizarea video, al doilea la finalul paginii, dupa
-// cardurile cu melodiile. Aceeasi eticheta/pret/design, aceeasi functie de checkout, aceeasi
-// comanda Stripe (backend neschimbat), vizibile STRICT cand videoclipul e ready, dezactivate
-// impreuna la dublu-click. ID-uri unice, niciodata duplicate. Standard/Premium neatinse.
+// Teste pentru CORECȚIA 2026-08-30 (Cadou video, Cerința 6) + CORECȚIA 2026-08-31 (Cerinta 2,
+// "doua butoane de plata mari si usor de gasit"): doua butoane de plata identice pe pagina
+// finala. Pozitia a fost REVIZUITA in runda 2026-08-31: primul buton s-a mutat INAINTEA
+// previzualizarii video (imediat dupa cardul planului, vizibil in primul ecran pe iPhone), al
+// doilea ramane ultimul element vizibil, dupa cardurile cu melodiile, intr-un slot STABIL,
+// NICIODATA descendent al unui container care primeste `hidden=true` (cauza exacta a bug-ului
+// "butonul de jos lipsea" — vezi testele dedicate mai jos). Aceeasi eticheta/pret/design (acum
+// marite — .btn-cta-checkout-lg), aceeasi functie de checkout, aceeasi comanda Stripe (backend
+// neschimbat), vizibile STRICT cand videoclipul e ready, dezactivate impreuna la dublu-click.
+// ID-uri unice, niciodata duplicate. Standard/Premium neatinse.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -34,18 +39,82 @@ test('melodia-mea.html: exista EXACT doua butoane de checkout, cu ID-uri UNICE (
   assert.equal(idOccurrences('checkout-btn-2'), 1);
 });
 
-test('melodia-mea.html: al doilea buton (#checkout-btn-2) e plasat imediat DUPA chenarul cu previzualizarea video (#gift-video-section), INAINTE de cardurile cu melodiile (#variants-wrap)', () => {
-  const giftVideoIdx = html.indexOf('id="gift-video-section"');
+// CORECȚIE (2026-08-31, Cerinta 2A): ordinea DOM reala ceruta explicit — titlu/dedicatie -> cardul
+// planului (plan-badge) -> PRIMUL buton (checkout-btn-2) -> previzualizarea video -> cardurile
+// melodiilor (variants-wrap) -> AL DOILEA buton (checkout-btn-bottom-wrap, static, la finalul
+// paginii). Primul buton trebuie sa fie vizibil in primul ecran pe iPhone, fara derulare dupa
+// player — deci STRICT inaintea chenarului de previzualizare, nu dupa el.
+test('melodia-mea.html: ordinea DOM reala e card plan -> CTA sus -> preview -> melodii -> CTA jos', () => {
+  const planBadgeIdx = html.indexOf('id="plan-badge"');
   const checkout2Idx = html.indexOf('id="checkout-btn-2"');
+  const giftVideoIdx = html.indexOf('id="gift-video-section"');
   const variantsWrapIdx = html.indexOf('id="variants-wrap"');
-  assert.ok(giftVideoIdx !== -1 && checkout2Idx !== -1 && variantsWrapIdx !== -1);
-  assert.ok(giftVideoIdx < checkout2Idx && checkout2Idx < variantsWrapIdx, 'ordinea trebuie sa fie: previzualizare video -> checkout-btn-2 -> cardurile melodiilor');
+  const checkoutBottomWrapIdx = html.indexOf('id="checkout-btn-bottom-wrap"');
+  assert.ok([planBadgeIdx, checkout2Idx, giftVideoIdx, variantsWrapIdx, checkoutBottomWrapIdx].every(i => i !== -1), 'toate elementele trebuie sa existe');
+  assert.ok(planBadgeIdx < checkout2Idx, 'primul buton trebuie sa vina dupa cardul planului');
+  assert.ok(checkout2Idx < giftVideoIdx, 'primul buton trebuie sa vina INAINTE de previzualizarea video (vizibil in primul ecran, fara derulare)');
+  assert.ok(giftVideoIdx < variantsWrapIdx, 'previzualizarea video ramane inaintea cardurilor melodiilor');
+  assert.ok(variantsWrapIdx < checkoutBottomWrapIdx, 'al doilea buton trebuie sa fie STRICT dupa cardurile melodiilor');
 });
 
-test('melodia-mea.html: #checkout-btn (primul buton, la finalul paginii dupa carduri) ramane singurul reparentat — #checkout-btn-2 e STATIC, niciodata reparentat/clonat', () => {
-  const isFinalBranch = extractFn(html, 'const isFinalGiftVideo = order.plan === \'video\' && order.videoStatus === \'ready\';\n    if (isFinalGiftVideo) {');
-  assert.ok(isFinalBranch.includes('regenerateRow.appendChild(checkoutBtn);'));
+test('melodia-mea.html: slotul final (#checkout-btn-bottom-wrap) e ultimul element din #content-state — fara alte sectiuni/spatii mari dupa el', () => {
+  const checkoutBottomWrapIdx = html.indexOf('id="checkout-btn-bottom-wrap"');
+  const contentStateCloseIdx = html.indexOf('<div id="lyrics-editor-state"');
+  assert.ok(checkoutBottomWrapIdx !== -1 && contentStateCloseIdx !== -1);
+  const between = html.slice(checkoutBottomWrapIdx, contentStateCloseIdx);
+  // intre slot si finalul lui #content-state pot exista STRICT tag-urile de inchidere (</div>),
+  // niciun alt element vizibil nou.
+  assert.ok(!/<div id="/.test(between.slice(between.indexOf('</div>'))), 'nu trebuie sa mai existe alt container nou dupa slotul final');
+});
+
+// CORECȚIE (2026-08-31, Cerinta 2B, "cauza pentru care butonul de jos lipsea"): #checkout-btn NU
+// mai e reparentat in #regenerate-row — acela e un COPIL al lui #edit-menu-fields, care primeste
+// `hidden = true` pe pagina finala; atributul HTML `hidden` forteaza display:none pe element
+// INDIFERENT de style.display al descendentilor, deci butonul devenea invizibil desi era "vizibil"
+// dupa propriul lui style. Reparentat acum intr-un slot STATIC, independent, NICIODATA descendent
+// al unui container cu `hidden` — #checkout-btn-bottom-wrap.
+test('melodia-mea.html: #checkout-btn e reparentat intr-un slot STABIL (#checkout-btn-bottom-wrap), NICIODATA in #regenerate-row (copil al lui #edit-menu-fields, care primeste hidden=true) — #checkout-btn-2 ramane STATIC, niciodata reparentat/clonat', () => {
+  const fnSrc = extractFn(html, 'function updateStandardEditMenuVisibility(order, pendingVariantChoice) {');
+  const isFinalIdx = fnSrc.indexOf('if (isFinalGiftVideo) {');
+  const isFinalEnd = fnSrc.indexOf('\n    }', isFinalIdx);
+  const isFinalBranch = fnSrc.slice(isFinalIdx, isFinalEnd);
+  assert.ok(isFinalBranch.includes('checkoutBtnBottomWrap.appendChild(checkoutBtn);'), 'checkoutBtn trebuie reparentat in slotul stabil, independent');
+  assert.ok(!isFinalBranch.includes('regenerateRow.appendChild(checkoutBtn)'), 'checkoutBtn nu mai trebuie reparentat in regenerate-row (copil al unui container cu hidden=true)');
   assert.ok(!isFinalBranch.includes('appendChild(checkoutBtn2)'), 'checkoutBtn2 nu trebuie NICIODATA reparentat — ramane static la pozitia lui fixa in HTML');
+});
+
+test('melodia-mea.html: #regenerate-row e un descendent al lui #edit-menu-fields, care primeste hidden=true pe pagina finala — confirma STRUCTURAL cauza exacta a bug-ului original', () => {
+  const editMenuFieldsSrc = extractFn(html, '<div id="edit-menu-fields">');
+  assert.ok(editMenuFieldsSrc.includes('id="regenerate-row"'), 'regenerate-row trebuie sa ramana descendent al edit-menu-fields (confirma cauza bug-ului, nu o schimbare de structura HTML)');
+});
+
+test('melodia-mea.html: ambele butoane primesc clasa .btn-cta-checkout-lg (latime completa, fara max-width, inaltime mare) pe pagina finala', () => {
+  assert.match(html, /<button type="button" class="btn btn-primary btn-cta-checkout-lg" id="checkout-btn-2">/);
+  const fnSrc = extractFn(html, 'function updateStandardEditMenuVisibility(order, pendingVariantChoice) {');
+  const isFinalIdx = fnSrc.indexOf('if (isFinalGiftVideo) {');
+  const isFinalEnd = fnSrc.indexOf('\n    }', isFinalIdx);
+  const isFinalBranch = fnSrc.slice(isFinalIdx, isFinalEnd);
+  assert.ok(isFinalBranch.includes("checkoutBtn.classList.add('btn-cta-checkout-lg')"));
+});
+
+test('CSS: .btn-cta-checkout-lg respecta dimensiunile cerute — latime completa, fara max-width:420px, inaltime minima 64-68px, font minimum 18px, font-weight 700', () => {
+  const cssIdx = html.indexOf('.btn-cta-checkout-lg{');
+  assert.ok(cssIdx !== -1);
+  const cssBlock = html.slice(cssIdx, html.indexOf('}', cssIdx) + 1);
+  assert.ok(cssBlock.includes('width:100%'));
+  assert.ok(!cssBlock.includes('max-width:420px'));
+  const minHeightMatch = cssBlock.match(/min-height:(\d+)px/);
+  assert.ok(minHeightMatch && Number(minHeightMatch[1]) >= 64 && Number(minHeightMatch[1]) <= 68, 'inaltimea minima trebuie sa fie intre 64 si 68px');
+  const fontSizeMatch = cssBlock.match(/font-size:(\d+)px/);
+  assert.ok(fontSizeMatch && Number(fontSizeMatch[1]) >= 18, 'fontul trebuie sa fie de minimum 18px');
+  assert.ok(cssBlock.includes('font-weight:700'));
+});
+
+test('melodia-mea.html: ambele butoane folosesc culoarea neagra existenta (.btn-primary), nu portocaliu — .btn-cta-checkout-lg nu redefineste background/color', () => {
+  const cssIdx = html.indexOf('.btn-cta-checkout-lg{');
+  const cssBlock = html.slice(cssIdx, html.indexOf('}', cssIdx) + 1);
+  assert.ok(!cssBlock.includes('background'), 'clasa de dimensiune nu trebuie sa schimbe culoarea — ramane .btn-primary (negru existent)');
+  assert.ok(!cssBlock.includes('color:'));
 });
 
 // ===============================================================================================
@@ -167,6 +236,14 @@ test('melodia-mea.html: #checkout-btn-2 nu apare niciodata in fluxul Premium (re
 test('melodia-mea.html: Standard nu ajunge niciodata in ramura isFinalGiftVideo (STRICT order.plan===\'video\') — al doilea buton ramane invizibil pentru Standard', () => {
   const fnSrc = extractFn(html, 'function updateStandardEditMenuVisibility(order, pendingVariantChoice) {');
   assert.match(fnSrc, /const isFinalGiftVideo = order\.plan === 'video' && order\.videoStatus === 'ready';/);
+});
+
+// ===============================================================================================
+// PARTEA 6 — Cerinta 2D: pollingul generating->ready afiseaza ambele CTA-uri fara refresh manual.
+// ===============================================================================================
+test('melodia-mea.html: refreshVideoStatusOnly() (refresh-ul USOR de polling) apeleaza updateStandardEditMenuVisibility() — daca videoStatus devine "ready" cat clientul e pe pagina, ambele CTA-uri trebuie sa apara automat, fara reincarcare completa', () => {
+  const fnSrc = extractFn(html, 'async function refreshVideoStatusOnly() {');
+  assert.ok(fnSrc.includes('updateStandardEditMenuVisibility(order, pendingVariantChoiceNow)'), 'refresh-ul usor de polling trebuie sa re-evalueze vizibilitatea butoanelor de plata, nu doar mesajul de stare video');
 });
 
 test('server.js, public/melodia-mea.html raman sintactic valide dupa aceasta corectie', () => {

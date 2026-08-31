@@ -182,10 +182,12 @@ test('amintiri-video.html: UPLOAD_TIMEOUT_MS (client, XHR per fisier) marit gene
 });
 
 // ---------------------------------------------------------------------------------------------
-// 5. Scenariile explicit cerute — 3+3, 7+3, 10 materiale totale, fisiere individuale > 150MB.
+// 5. Scenariile explicit cerute — 3+3, 7+3, 30 materiale totale, fisiere individuale > 150MB.
+// CORECȚIE (2026-08-31, "mărește limita de la 10 la 30 de materiale"): plafonul a fost ridicat
+// explicit — vezi test/video-media-limits-30.test.js pentru suita completa dedicata.
 // ---------------------------------------------------------------------------------------------
-test('server.js: ORDER_MEDIA_MAX_ITEMS (10) si ORDER_MEDIA_MIN_ITEMS (3) raman neschimbate — 3 foto+3 video (6) si 7 foto+3 video (10) raman ambele valide', () => {
-  assert.match(server, /const ORDER_MEDIA_MAX_ITEMS = 10;/);
+test('server.js: ORDER_MEDIA_MAX_ITEMS (30) si ORDER_MEDIA_MIN_ITEMS (3) — 3 foto+3 video (6) si 7 foto+3 video (10) raman ambele valide, sub noul plafon', () => {
+  assert.match(server, /const ORDER_MEDIA_MAX_ITEMS = 30;/);
   assert.match(server, /const ORDER_MEDIA_MIN_ITEMS = 3;/);
 });
 

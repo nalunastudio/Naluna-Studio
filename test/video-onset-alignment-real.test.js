@@ -107,6 +107,8 @@ test.before(() => {
     extractFn('detectHdrVideo'),
     extractConst('HDR_TONEMAP_FILTER'),
     extractFn('buildHdrToneMapFilterIfNeeded'),
+    extractConst('WIDE_PHOTO_ASPECT_RATIO_THRESHOLD'),
+    extractFn('getPhotoDimensions'),
     extractFn('renderShot'),
     extractFn('concatBatchWithCrossfades'),
     extractFn('concatWithCrossfades'),
@@ -246,9 +248,14 @@ test('SINCRONIZARE REALA (50 de cadre, 200s, 5 materiale): schimbarile vizuale d
 
   // 1) planul de BAZA (fara analiza audio) — folosit STRICT ca sa alegem pozitii REALE de
   // granita, langa care plasam click-urile cunoscute (simuleaza un "beat" real, usor deplasat).
+  // CORECȚIE (2026-08-31, cerinta E, "tranzitii variate, nu acelasi xfade peste tot"): durata
+  // tranzitiei NU mai e uniforma (0.6 peste tot) — foloseste array-ul REAL per-granita
+  // (basePlan[i].transitionDuration), altfel pozitiile "reale" calculate aici NU ar mai
+  // corespunde cu cele din MP4-ul chiar randat mai jos (care foloseste duratele reale).
   const basePlan = buildShotPlan(items, durationSeconds, sectionTimings, 0.6, null, mod.CONCAT_BATCH_SIZE);
   assert.ok(basePlan.length >= 45, `testul are nevoie de un plan cu aproape de 50 de cadre, a obtinut ${basePlan.length}`);
-  const baseRealBoundaries = computeRealBoundaryPositions(basePlan, 0.6, mod.CONCAT_BATCH_SIZE);
+  const baseBoundaryDurations = basePlan.slice(0, -1).map(s => s.transitionDuration);
+  const baseRealBoundaries = computeRealBoundaryPositions(basePlan, baseBoundaryDurations, mod.CONCAT_BATCH_SIZE);
   // alegem O TREIME din granitele reale (nu toate — click-urile prea dese ar interfera unele cu
   // altele in detectorul de impulsuri), fiecare cu un mic decalaj deterministic (+0.15s).
   const groundTruthClicks = baseRealBoundaries.filter((_, i) => i % 3 === 0).map(b => b + 0.15).filter(t => t > 1 && t < durationSeconds - 1);

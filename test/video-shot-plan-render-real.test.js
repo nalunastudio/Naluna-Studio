@@ -24,7 +24,7 @@ function read(relPath) {
   return fs.readFileSync(path.join(__dirname, '..', relPath), 'utf8');
 }
 const server = read('server.js');
-const { buildShotPlan } = require('../lib/media-analysis.js');
+const { buildShotPlan, computeRealBoundaryPositions } = require('../lib/media-analysis.js');
 
 function hasBinary(name) {
   try { execFileSync(name, ['-version'], { stdio: 'ignore' }); return true; } catch (e) { return false; }
@@ -82,10 +82,12 @@ test.before(() => {
     extractFn('detectHdrVideo'),
     extractConst('HDR_TONEMAP_FILTER'),
     extractFn('buildHdrToneMapFilterIfNeeded'),
+    extractConst('WIDE_PHOTO_ASPECT_RATIO_THRESHOLD'),
+    extractFn('getPhotoDimensions'),
     extractFn('renderShot'),
     extractFn('concatBatchWithCrossfades'),
     extractFn('concatWithCrossfades'),
-    'return { renderShot, concatWithCrossfades, MEMORY_VIDEO_WIDTH, MEMORY_VIDEO_HEIGHT, MEMORY_VIDEO_FPS };'
+    'return { renderShot, concatWithCrossfades, CONCAT_BATCH_SIZE, MEMORY_VIDEO_WIDTH, MEMORY_VIDEO_HEIGHT, MEMORY_VIDEO_FPS };'
   ].join('\n\n');
   mod = new Function('execFileAsync', 'require', src)(execFileAsync, require);
 });
@@ -111,23 +113,25 @@ function closeTo(color, target, tol) {
   return Math.abs(color.r - target.r) <= tol && Math.abs(color.g - target.g) <= tol && Math.abs(color.b - target.b) <= tol;
 }
 
-// concatWithCrossfades() suprapune fiecare pereche de cadre consecutive pentru xfadeSeconds —
+// concatWithCrossfades() suprapune fiecare pereche de cadre consecutive cu o tranzitie —
 // pozitia REALA (in fisierul de iesire) unde un cadru devine "pur" (fara amestec cu vecinul)
 // difera de simpla suma cumulativa a duratelor (shot.start/shot.end, calculate INAINTE de
-// randare) — fiecare tranzitie anterioara comprima timeline-ul real cu xfadeSeconds fata de
-// suma naiva. Reproduce AICI exact aceeasi aritmetica cumulativa ca in concatWithCrossfades()
-// din server.js, ca esantioanele de culoare sa fie luate din zona CU ADEVARAT "pura" a
-// fiecarui cadru, nu dintr-o pozitie gresita (motivul exact pentru care esantionarea naiva de
-// mai jos ar fi esuat pentru cadrele tarzii dintr-un plan cu multe cadre).
-function computeRealPureWindows(shots, xfade) {
-  if (shots.length === 1) return [{ pureStart: 0, pureEnd: shots[0].duration }];
+// randare) — fiecare tranzitie anterioara comprima timeline-ul real cu durata ei proprie fata
+// de suma naiva, iar aceasta comprimare se COMPUNE ierarhic pe niveluri (CONCAT_BATCH_SIZE).
+// CORECȚIE (2026-08-31, cerinta E, "tranzitii variate, nu acelasi xfade peste tot"): durata nu
+// mai e uniforma (shot.transitionDuration, per-granita) — reutilizeaza direct
+// computeRealBoundaryPositions (lib/media-analysis.js, aceeasi functie folosita si de
+// snapShotBoundariesToOnsets in productie) in loc de o aritmetica proprie, paralela si acum
+// incorecta pentru un xfade neuniform.
+function computeRealPureWindows(shots, batchSize, realTotalDuration) {
+  const n = shots.length;
+  if (n === 1) return [{ pureStart: 0, pureEnd: shots[0].duration }];
+  const boundaryDurations = shots.slice(0, -1).map(s => (typeof s.transitionDuration === 'number' && s.transitionDuration >= 0) ? s.transitionDuration : 0.6);
+  const boundaries = computeRealBoundaryPositions(shots, boundaryDurations, batchSize); // boundaries[i] = inceputul tranzitiei catre cadrul i+1
   const windows = [];
-  let cumulative = shots[0].duration;
-  windows.push({ pureStart: 0, pureEnd: cumulative - xfade });
-  for (let i = 1; i < shots.length; i++) {
-    const pureStart = cumulative;
-    cumulative += shots[i].duration - xfade;
-    const pureEnd = i === shots.length - 1 ? cumulative : cumulative - xfade;
+  for (let i = 0; i < n; i++) {
+    const pureStart = i === 0 ? 0 : boundaries[i - 1] + boundaryDurations[i - 1];
+    const pureEnd = i === n - 1 ? realTotalDuration : boundaries[i];
     windows.push({ pureStart, pureEnd });
   }
   return windows;
@@ -135,7 +139,13 @@ function computeRealPureWindows(shots, xfade) {
 const RED = { r: 254, g: 0, b: 0 };
 const GREEN = { r: 1, g: 129, b: 0 };
 const BLUE = { r: 0, g: 0, b: 255 };
-const YELLOW = { r: 255, g: 204, b: 0 };
+// CORECȚIE (2026-08-31, gasita direct in timpul acestei dezvoltari): constanta veche
+// {255,204,0} nu corespunde culorii REALE produse de fixture-ul "color=c=yellow" (verificat
+// direct, ffmpeg+ffprobe: decodeaza la RGB(255,255,0) exact) — o eroare de calibrare
+// preexistenta in acest test, care intampla sa ramana sub pragul de 75% doar cu numarul vechi,
+// mai mic, de esantioane; planul de cadre mai bogat (mai multe cadre video esantionate) al
+// noului storyboard a scos-o la iveala. Corectata la valoarea REALA, verificata empiric.
+const YELLOW = { r: 255, g: 255, b: 0 };
 
 function buildFixtures(dir) {
   fs.mkdirSync(dir, { recursive: true });
@@ -194,7 +204,7 @@ test('RANDARE REALA (3 poze + 1 video, fallback fara sectiuni): toate cele 4 mat
   // plan (nu doar ca planul "spune" asta pe hartie). Esantionate din zona REAL "pura" a
   // fiecarui cadru (vezi computeRealPureWindows) — nu din simpla suma naiva a duratelor.
   const colorByItemIndex = [RED, GREEN, BLUE, YELLOW];
-  const pureWindows = computeRealPureWindows(shotPlan, 0.6);
+  const pureWindows = computeRealPureWindows(shotPlan, mod.CONCAT_BATCH_SIZE, duration);
   let sampled = 0;
   let matched = 0;
   shotPlan.forEach((shot, i) => {

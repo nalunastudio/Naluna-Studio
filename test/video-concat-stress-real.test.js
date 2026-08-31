@@ -87,6 +87,8 @@ test.before(() => {
     extractFn('detectHdrVideo'),
     extractConst('HDR_TONEMAP_FILTER'),
     extractFn('buildHdrToneMapFilterIfNeeded'),
+    extractConst('WIDE_PHOTO_ASPECT_RATIO_THRESHOLD'),
+    extractFn('getPhotoDimensions'),
     extractFn('renderShot'),
     extractFn('concatBatchWithCrossfades'),
     extractFn('concatWithCrossfades'),
