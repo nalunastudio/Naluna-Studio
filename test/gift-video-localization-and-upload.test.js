@@ -39,6 +39,20 @@ function extractConst(name) {
   return server.slice(idx, end + 1);
 }
 
+// CORECȚIE (2026-08-31, clasa recurenta de fragilitate — fereastra fixa de caractere devine
+// prea ingusta dupa ce cod nou e adaugat mai devreme in functie): extragere REALA prin
+// potrivire de acolade, in loc de un offset fix presupus.
+function extractHtmlFn(html, signature) {
+  const idx = html.indexOf(signature);
+  assert.ok(idx !== -1, `nu am gasit "${signature}"`);
+  let depth = 1, i = idx + signature.length;
+  for (; i < html.length; i++) {
+    if (html[i] === '{') depth++;
+    else if (html[i] === '}') { depth--; if (depth === 0) break; }
+  }
+  return html.slice(idx, i + 1);
+}
+
 function loadCaptionHelpers() {
   const src = [
     extractFn('stripSpanningNotes'),
@@ -237,10 +251,11 @@ test('server.js: thumbnailul e generat citind DIRECT din URL-ul semnat (ffmpeg s
   assert.ok(!snippet.includes('downloadFile('), 'nu trebuie sa descarce fisierul original pe disc pentru thumbnail');
 });
 
-test('amintiri-video.html: coada locala de materiale NU mai foloseste URL.createObjectURL(file) direct pe fisierul original ca thumbnail — genereaza un thumbnail MIC client-side (createImageBitmap + canvas)', () => {
-  const idx = amintiriVideo.indexOf("memFileInput.addEventListener('change'");
-  assert.ok(idx !== -1);
-  const snippet = amintiriVideo.slice(idx, idx + 4600);
+// CORECȚIE (2026-08-31, cerinta 5 "un singur loader mare" — extragerea handleFilesReceived(),
+// folosita acum de AMBELE selectoare, cerinta 4): constructia intrarilor de coada s-a mutat in
+// functia comuna handleFilesReceived(), nu mai traieste direct in handler-ul de 'change'.
+test('amintiri-video.html: handleFilesReceived() NU mai foloseste URL.createObjectURL(file) direct pe fisierul original ca thumbnail — genereaza un thumbnail MIC client-side (createImageBitmap + canvas)', () => {
+  const snippet = extractHtmlFn(amintiriVideo, 'function handleFilesReceived(files) {');
   assert.ok(!snippet.includes('thumbUrl: URL.createObjectURL(file)'), 'construirea intrarii NU mai trebuie sa atribuie thumbUrl direct din fisierul original (vechiul tipar)');
   assert.match(snippet, /thumbUrl: null,/);
   assert.match(snippet, /scheduleLocalThumbnail\(entry\)/);
@@ -263,8 +278,7 @@ test('amintiri-video.html: nu instantiaza niciodata FileReader() sau apeleaza fi
 });
 
 test('amintiri-video.html: lista materialelor se randeaza IMEDIAT, sincron, inainte de orice operatiune costisitoare (thumbnailuri/upload pornesc DUPA)', () => {
-  const idx = amintiriVideo.indexOf("memFileInput.addEventListener('change'");
-  const snippet = amintiriVideo.slice(idx, idx + 4600);
+  const snippet = extractHtmlFn(amintiriVideo, 'function handleFilesReceived(files) {');
   const renderIdx = snippet.indexOf('renderQueueList();');
   const uploadIdx = snippet.indexOf('processUploadQueue();');
   const thumbIdx = snippet.indexOf('newEntries.forEach(entry =>');

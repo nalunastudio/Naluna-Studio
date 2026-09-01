@@ -35,12 +35,13 @@ function loadBuildPrompt() {
   const funcEnd = i + 1;
   const snippet = server.slice(startIdx, funcEnd);
   const sandboxSrc = `
+    const { normalizeSingingText, getDictionInstruction } = require('../lib/diction.js');
     const VOICE_PREFERENCES = ['female', 'male', 'duet', 'auto'];
     const FAMILY_RECIPIENT_ROLE_VALUES = ['grandmother', 'grandfather', 'grandparents', 'mother', 'father', 'parents', 'aunt', 'uncle', 'aunt_uncle', 'mother_in_law', 'father_in_law', 'parents_in_law', 'sister', 'brother'];
     ${snippet}
     return buildPrompt;
   `;
-  return new Function(sandboxSrc)();
+  return new Function('require', sandboxSrc)(require);
 }
 
 const buildPrompt = loadBuildPrompt();

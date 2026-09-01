@@ -201,12 +201,25 @@ for (const [name, html] of Object.entries(PAGES_WITH_NEUTRAL_MESSAGE)) {
 // 3. Cardurile apar imediat dupa 'change' (neschimbat de aceasta corectie) si uploadul direct
 //    catre R2 ramane intact — regresie fata de rundele anterioare.
 // -------------------------------------------------------------------------------------------
+// CORECȚIE (2026-08-31, cerinta 5 "un singur loader mare" — extragerea handleFilesReceived(),
+// folosita acum de AMBELE selectoare pe toate cele 3 pagini, cerinta 4): construirea cozii +
+// randarea + pornirea uploadului s-au mutat in functia comuna handleFilesReceived(), nu mai
+// traiesc direct in handler-ul de 'change'.
+function extractFunction2(src, marker) {
+  const start = src.indexOf(marker);
+  assert.notEqual(start, -1, `functia "${marker}" trebuie sa existe`);
+  let depth = 0, i = src.indexOf('{', start);
+  for (; i < src.length; i++) {
+    if (src[i] === '{') depth++;
+    else if (src[i] === '}') { depth--; if (depth === 0) break; }
+  }
+  return src.slice(start, i + 1);
+}
 for (const [name, html] of Object.entries(ALL_PAGES)) {
-  test(`${name}: dupa 'change', renderQueueList() (toate cardurile) ruleaza SINCRON, inainte de processUploadQueue() — neschimbat de aceasta corectie`, () => {
-    const changeMarker = name === 'amintiri-video.html' ? "memFileInput.addEventListener('change', () => {" : "fileInput.addEventListener('change', () => {";
-    const idx = html.indexOf(changeMarker);
-    const renderIdx = html.indexOf('renderQueueList();', idx);
-    const processIdx = html.indexOf('processUploadQueue();', idx);
+  test(`${name}: dupa 'change', handleFilesReceived() ruleaza renderQueueList() (toate cardurile) SINCRON, inainte de processUploadQueue() — neschimbat de aceasta corectie`, () => {
+    const snippet = extractFunction2(html, 'function handleFilesReceived(files) {');
+    const renderIdx = snippet.indexOf('renderQueueList();');
+    const processIdx = snippet.indexOf('processUploadQueue();');
     assert.ok(renderIdx !== -1 && processIdx !== -1 && renderIdx < processIdx);
   });
 

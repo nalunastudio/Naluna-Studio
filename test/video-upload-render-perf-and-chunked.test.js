@@ -51,11 +51,21 @@ for (const [name, html] of Object.entries(PAGES)) {
   //    inainte de orice raspuns de retea (nu asteapta thumbnailuri/metadate/server).
   // -----------------------------------------------------------------------------------------
   test(`${name}: dupa 'change', renderQueueList() (rebuild COMPLET al intregii selectii) e apelat SINCRON, inainte de processUploadQueue()`, () => {
+    // CORECȚIE (2026-08-29/30, "pagina de recuperare Photos si loader unic" — Cerintele 4/5):
+    // change-handler-ul acum copiaza sincron FileList-ul si preda fisierele catre
+    // handleFilesReceived(files) (comuna cu fallback-ul "Alege din Fisiere"), care e cea care
+    // efectiv randeaza coada si porneste uploadul — verificam ordinea ACOLO, nu direct in
+    // handler-ul de 'change'.
     const changeMarker = name === 'amintiri-video.html' ? "memFileInput.addEventListener('change', () => {" : "fileInput.addEventListener('change', () => {";
-    const idx = html.indexOf(changeMarker);
-    assert.notEqual(idx, -1);
-    const renderIdx = html.indexOf('renderQueueList();', idx);
-    const processIdx = html.indexOf('processUploadQueue();', idx);
+    const changeIdx = html.indexOf(changeMarker);
+    assert.notEqual(changeIdx, -1);
+    const handOffIdx = html.indexOf('handleFilesReceived(files)', changeIdx);
+    assert.notEqual(handOffIdx, -1, 'change trebuie sa predea fisierele catre handleFilesReceived');
+
+    const fnStart = html.indexOf('function handleFilesReceived(files) {');
+    assert.notEqual(fnStart, -1);
+    const renderIdx = html.indexOf('renderQueueList();', fnStart);
+    const processIdx = html.indexOf('processUploadQueue();', fnStart);
     assert.notEqual(renderIdx, -1);
     assert.notEqual(processIdx, -1);
     assert.ok(renderIdx < processIdx, 'toate cardurile trebuie sa apara INAINTE de a porni uploadul (nu invers)');
@@ -74,11 +84,13 @@ for (const [name, html] of Object.entries(PAGES)) {
     assert.ok(!onprogressBody.includes('renderQueueList()'), 'un tick de progres nu mai trebuie sa reconstruiasca toata lista');
   });
 
-  test(`${name}: patchQueueRowProgress() actualizeaza DIRECT bara/textul unui singur rand, fara sa reconstruiasca innerHTML-ul randului`, () => {
+  // CORECȚIE (2026-08-31, cerinta 5 "un singur loader mare"): randul individual NU mai are bara
+  // proprie de progres (".mem-progress-fill" a fost eliminata) — patch-ul direct actualizeaza
+  // STRICT textul (".mem-meta"), progresul vizual fiind reprezentat exclusiv de loaderul agregat.
+  test(`${name}: patchQueueRowProgress() actualizeaza DIRECT textul unui singur rand (fara bara individuala, eliminata), fara sa reconstruiasca innerHTML-ul randului`, () => {
     const src = extractFunction(html, 'function patchQueueRowProgress(entry) {');
-    assert.ok(src.includes("querySelector('.mem-progress-fill')"));
+    assert.ok(!src.includes('.mem-progress-fill'), 'bara individuala de progres a fost eliminata (cerinta 5) — nu mai trebuie referita aici');
     assert.ok(src.includes("querySelector('.mem-meta')"));
-    assert.ok(src.includes('fill.style.width'));
     assert.ok(!/row\.innerHTML\s*=/.test(src), 'patch-ul direct nu trebuie sa reconstruiasca innerHTML-ul randului (doar campurile individuale)');
   });
 
@@ -158,13 +170,14 @@ for (const [name, html] of Object.entries(PAGES)) {
     assert.ok(batchIdx < stagedIdx, '#mem-batch-status trebuie sa apara inaintea #mem-staged-list in DOM');
   });
 
-  test(`${name}: memBatchDoneCount creste STRICT la succesul confirmat de server (in xhr.onload / completeRes), niciodata in handler-ul de 'change'`, () => {
-    const changeMarker = name === 'amintiri-video.html' ? "memFileInput.addEventListener('change', () => {" : "fileInput.addEventListener('change', () => {";
-    const changeIdx = html.indexOf(changeMarker);
-    const changeEnd = html.indexOf('\n  });', changeIdx);
-    const changeSnippet = html.slice(changeIdx, changeEnd === -1 ? changeIdx + 3000 : changeEnd);
-    assert.ok(!changeSnippet.includes('memBatchDoneCount++'), 'selectia locala nu trebuie sa creasca numarul de materiale confirmate');
-    assert.ok(changeSnippet.includes('memBatchTotal += files.length;'));
+  // CORECȚIE (2026-08-31, cerinta 5 — extragerea handleFilesReceived()): construirea/numararea
+  // lotului s-a mutat in functia comuna handleFilesReceived(), apelata de handler-ul de 'change'
+  // (si de fallback-ul cerintei 4) — memBatchDoneCount ramane STRICT crescut doar la succesul
+  // confirmat de server, niciodata la selectia locala.
+  test(`${name}: memBatchDoneCount creste STRICT la succesul confirmat de server (in xhr.onload / completeRes), niciodata la selectia locala (handleFilesReceived)`, () => {
+    const handleSrc = extractFunction(html, 'function handleFilesReceived(files) {');
+    assert.ok(!handleSrc.includes('memBatchDoneCount++'), 'selectia locala nu trebuie sa creasca numarul de materiale confirmate');
+    assert.ok(handleSrc.includes('memBatchTotal += files.length;'));
     const startUploadSrc = extractFunction(html, 'function startSingleUpload(entry) {');
     assert.ok(startUploadSrc.includes('memBatchDoneCount++'));
   });

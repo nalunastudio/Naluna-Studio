@@ -46,13 +46,14 @@ function loadPremiumHelpers() {
   const song2Funcs = server.slice(song1Start, song2End);
 
   const sandboxSrc = `
+    const { normalizeSingingText, getDictionInstruction } = require('../lib/diction.js');
     const VOICE_PREFERENCES = ['female', 'male', 'duet', 'auto'];
     ${familyConstants}
     ${buildPromptSnippet}
     ${song2Funcs}
     return { buildPrompt, getSong1EffectiveData, getSong2EffectiveData };
   `;
-  return new Function(sandboxSrc)();
+  return new Function('require', sandboxSrc)(require);
 }
 
 const { buildPrompt, getSong1EffectiveData, getSong2EffectiveData } = loadPremiumHelpers();
@@ -143,48 +144,52 @@ test('comanda.html: submit handler porneste generarea DOAR la pasul final (getTo
   assert.match(comanda, /if \(currentStep !== getTotalSteps\(\)\) \{/);
 });
 
-test('comanda.html: pe pasul 4, cu Premium selectat, butonul "Generează..." avanseaza direct la pasul 5 (prima configurare obligatorie a melodiei 2 — genul), fara sa trimita comanda si fara sa schimbe URL-ul', () => {
-  assert.match(comanda, /if \(selectedPlan\.id === 'premium' && currentStep === 4\) \{\s*showStep\(5\);\s*return;\s*\}/);
+// CORECȚIE (2026-08-31, cerinta 2D "renumerotarea pasilor" — pasul dedicat de voce, +1
+// pretutindeni fata de numerele vechi): pachetul e acum pasul 5 (era 4), genul melodiei 2 pasul
+// 6 (era 5), destinatarul melodiei 2 pasul 7 (era 6) — vezi test/wizard-step-renumbering.test.js
+// pentru suita completa dedicata renumerotarii.
+test('comanda.html: pe pasul 5 (pachet), cu Premium selectat, butonul "Generează..." avanseaza direct la pasul 6 (prima configurare obligatorie a melodiei 2 — genul), fara sa trimita comanda si fara sa schimbe URL-ul', () => {
+  assert.match(comanda, /if \(selectedPlan\.id === 'premium' && currentStep === 5\) \{\s*showStep\(6\);\s*return;\s*\}/);
 });
 
 // MODIFICARE STRICTĂ — separarea configurarii Premium in doi pasi (hotfix 2026-08-10 runda 2),
-// CORECȚIE 2026-08-23 (eliminarea ecranului separat "Pachet Premium"): genul (pasul 5) si
-// destinatarul (pasul 6) raman ecrane SEPARATE — Premium are acum 6 sau 7 pasi in total
-// (pasul 5 al vechiului flux, sumarul, a fost eliminat), nu 7/8.
-test('comanda.html: getTotalSteps() e 6 sau 7 pentru premium (7 STRICT cand "Pentru altă persoană" a fost ales — mini-pagina dedicata), 4 pentru orice alt pachet (Standard/Video neschimbate)', () => {
-  assert.match(comanda, /function getTotalSteps\(\) \{\s*if \(selectedPlan\.id !== 'premium'\) return 4;\s*return song2TargetInput\.value === 'other' \? 7 : 6;\s*\}/);
+// CORECȚIE 2026-08-23 (eliminarea ecranului separat "Pachet Premium"); CERINTA 2D (2026-08-31,
+// pasul dedicat de voce): genul (pasul 6) si destinatarul (pasul 7) raman ecrane SEPARATE —
+// Premium are acum 7 sau 8 pasi in total (era 6/7).
+test('comanda.html: getTotalSteps() e 7 sau 8 pentru premium (8 STRICT cand "Pentru altă persoană" a fost ales — mini-pagina dedicata), 5 pentru orice alt pachet (Standard/Video neschimbate)', () => {
+  assert.match(comanda, /function getTotalSteps\(\) \{\s*if \(selectedPlan\.id !== 'premium'\) return 5;\s*return song2TargetInput\.value === 'other' \? 8 : 7;\s*\}/);
 });
 
-test('comanda.html: pasul 5 (genul) si pasul 6 (destinatarul) sunt ecrane distincte, fiecare cu propriul step-card — pasul 4 este pagina comuna cu pachetele', () => {
-  assert.match(comanda, /<div class="step-card" data-step="5" style="display:none;">/);
+test('comanda.html: pasul 6 (genul) si pasul 7 (destinatarul) sunt ecrane distincte, fiecare cu propriul step-card — pasul 5 este pagina comuna cu pachetele', () => {
   assert.match(comanda, /<div class="step-card" data-step="6" style="display:none;">/);
-  const idx5 = comanda.indexOf('data-step="5"');
-  const idx6 = comanda.indexOf('data-step="6"', idx5);
-  const step5Html = comanda.slice(idx5, idx6);
-  assert.ok(step5Html.includes('song2_genre_section_title'), 'pasul 5 trebuie sa contina sectiunea de gen');
-  assert.ok(!step5Html.includes('song2_target_section_title'), 'pasul 5 NU trebuie sa contina sectiunea de destinatar');
-  assert.match(step5Html, /data-next="6" data-validate="5"/, 'pasul 5 trebuie sa aiba un buton Continuă catre pasul 6, cu validare');
+  assert.match(comanda, /<div class="step-card" data-step="7" style="display:none;">/);
+  const idx6 = comanda.indexOf('data-step="6"');
+  const idx7 = comanda.indexOf('data-step="7"', idx6);
+  const step6Html = comanda.slice(idx6, idx7);
+  assert.ok(step6Html.includes('song2_genre_section_title'), 'pasul 6 trebuie sa contina sectiunea de gen');
+  assert.ok(!step6Html.includes('song2_target_section_title'), 'pasul 6 NU trebuie sa contina sectiunea de destinatar');
+  assert.match(step6Html, /data-next="7" data-validate="6"/, 'pasul 6 trebuie sa aiba un buton Continuă catre pasul 7, cu validare');
 });
 
-test('comanda.html: butonul "Înapoi" din configurarea Premium (pasul 5, genul melodiei 2) revine la pagina comuna cu pachetele (pasul 4)', () => {
-  const idx5 = comanda.indexOf('data-step="5"');
-  const idx6 = comanda.indexOf('data-step="6"', idx5);
-  const step5Html = comanda.slice(idx5, idx6);
-  assert.match(step5Html, /data-prev="4"/);
+test('comanda.html: butonul "Înapoi" din configurarea Premium (pasul 6, genul melodiei 2) revine la pagina comuna cu pachetele (pasul 5)', () => {
+  const idx6 = comanda.indexOf('data-step="6"');
+  const idx7 = comanda.indexOf('data-step="7"', idx6);
+  const step6Html = comanda.slice(idx6, idx7);
+  assert.match(step6Html, /data-prev="5"/);
 });
 
-test('comanda.html: validateStep(5) cere genre2 obligatoriu si diferit de genre, inainte de a trece la pasul 6', () => {
-  const idx = comanda.indexOf('if (n === 5) {');
+test('comanda.html: validateStep(6) cere genre2 obligatoriu si diferit de genre, inainte de a trece la pasul 7', () => {
+  const idx = comanda.indexOf('if (n === 6) {');
   const snippet = comanda.slice(idx, idx + 500);
   assert.ok(snippet.includes("t('val_genre2_required')"));
   assert.ok(snippet.includes("t('val_genre_same')"));
 });
 
-test('comanda.html: butonul "Înapoi" de pe pasul 6 (destinatarul) pastreaza genul ales pe pasul 5 (revine la pasul 5, nu reseteaza genre2Input)', () => {
-  const idx6 = comanda.indexOf('data-step="6"');
-  const idx7 = comanda.indexOf('data-step="7"', idx6);
-  const step6Html = comanda.slice(idx6, idx7);
-  assert.match(step6Html, /data-prev="5"/);
+test('comanda.html: butonul "Înapoi" de pe pasul 7 (destinatarul) pastreaza genul ales pe pasul 6 (revine la pasul 6, nu reseteaza genre2Input)', () => {
+  const idx7 = comanda.indexOf('data-step="7"');
+  const idx8 = comanda.indexOf('data-step="8"', idx7);
+  const step7Html = comanda.slice(idx7, idx8);
+  assert.match(step7Html, /data-prev="6"/);
 });
 
 // ---------------------------------------------------------------------------------------------

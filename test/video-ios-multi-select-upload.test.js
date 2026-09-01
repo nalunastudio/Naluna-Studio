@@ -49,9 +49,14 @@ const succes = read('public/succes.html');
     assert.ok(!inputTag.includes('image/x-adobe-dng'), 'MIME-ul nestandard nu mai trebuie sa apara in acceptul inputului insusi');
   });
 
-  test(`${file}: nu exista un al doilea input de fisiere separat (un singur selector, pentru ambele tipuri deodata)`, () => {
+  // CORECȚIE (2026-08-31, cerinta 4 "fallback Alege din Fișiere"): al doilea input, STATIC, e
+  // acum intentionat — FARA accept (ca sa nu forteze din nou Photos), afisat STRICT din panoul
+  // de recuperare, dupa un cancel/revenire fara fisiere. NU e un selector separat pentru
+  // "un tip de fisier" — ambele inputuri accepta orice tip mixt deodata.
+  test(`${file}: exista EXACT doua inputuri de fisiere (principal + fallback "Alege din Fișiere") — niciun al treilea, niciun selector separat pe tip`, () => {
     const occurrences = (html.match(/type="file"/g) || []).length;
-    assert.equal(occurrences, 1, 'trebuie sa existe STRICT un singur input de fisiere pe pagina — o singura selectie mixta, niciodata doua selectoare separate');
+    assert.equal(occurrences, 2, 'trebuie sa existe EXACT doua inputuri: principal (Photos) + fallback (Fișiere) — niciodata selectoare separate pe tip de fisier');
+    assert.ok(!html.includes('accept="image/*"') && !html.includes('accept="video/*"'), 'niciun input nu trebuie sa filtreze STRICT dupa un singur tip');
   });
 });
 

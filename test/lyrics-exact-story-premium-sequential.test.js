@@ -34,13 +34,14 @@ function loadBuildPrompt() {
   }
   const snippet = server.slice(startIdx, i + 1);
   const sandboxSrc = `
+    const { normalizeSingingText, getDictionInstruction } = require('../lib/diction.js');
     const VOICE_PREFERENCES = ['female', 'male', 'duet', 'auto'];
     const FAMILY_OCCASIONS = ['bunici', 'parinti', 'matusa-unchi', 'socri'];
     const FAMILY_RECIPIENT_ROLE_VALUES = ['grandmother', 'grandfather', 'grandparents', 'mother', 'father', 'parents', 'aunt', 'uncle', 'aunt_uncle', 'mother_in_law', 'father_in_law', 'parents_in_law', 'sister', 'brother'];
     ${snippet}
     return buildPrompt;
   `;
-  return new Function(sandboxSrc)();
+  return new Function('require', sandboxSrc)(require);
 }
 const buildPrompt = loadBuildPrompt();
 
@@ -198,10 +199,10 @@ test('buildPrompt: separarea poveste 1/poveste 2 Premium ramane corecta cu noua 
 test('server.js: buildExactLyricsRequest trimite versurile editate VERBATIM (customMode:true, campul "prompt" = versurile), niciodata ca instructiune catre un model care le rescrie', () => {
   assert.match(server, /function buildExactLyricsRequest\(order, exactLyrics, genreOverride, voicePreference, feedback\) \{/);
   const idx = server.indexOf('function buildExactLyricsRequest');
-  // fereastra marita (2026-08-30): prioritizarea + detectarea "mai vesel" pentru feedback-ul
-  // Video (vezi BRIGHTEN_MOOD_PATTERNS) a impins din nou "return { style, title, lyrics };"
-  // dincolo de fereastra anterioara de 3200 caractere.
-  const body = server.slice(idx, idx + 4600);
+  // fereastra marita (2026-08-31, cerinta 3 "pronuntie naturala" — instructiunea de dictie +
+  // normalizeSingingText() au impins din nou "return { style, title, lyrics };" dincolo de
+  // fereastra anterioara de 4600 caractere).
+  const body = server.slice(idx, idx + 5200);
   assert.ok(body.includes('return { style, title, lyrics };'), 'trebuie sa returneze versurile ca un camp separat, netrunchiat de bugetul de stil');
 });
 
@@ -440,6 +441,11 @@ test('melodia-mea.html: Standard ramane STRICT neschimbat — editorul de versur
 // Continuarea regresiei critice (2026-08-13): toate genurile, campul style pentru versurile
 // exacte, si "[Instrumental]" niciodata hardcodat de codul propriu.
 // ---------------------------------------------------------------------------------------------
+// CORECȚIE (2026-08-31, "16 genuri, pagina de gen separata"): lista a crescut de la 15 la 23 —
+// cele 7 chei VECHI (emotional/suflet/acustic/petrecere/balada/manele/modern, pastrate STRICT
+// pentru comenzile deja existente) + cele 16 NOI aratate clientilor. Niciuna dintre cele 15
+// vechi nu a fost eliminata — vezi test/genre-16-new-list.test.js pentru suita completa
+// dedicata acestei corectii (mapare, compatibilitate, UI).
 test('server.js: toate cele 15 genuri existente raman mapate — niciunul eliminat, redenumit sau inlocuit cu un fallback generic', () => {
   const idx = server.indexOf('const GENRE_STYLE_MAP = {');
   const end = server.indexOf('};', idx);
@@ -452,7 +458,7 @@ test('server.js: toate cele 15 genuri existente raman mapate — niciunul elimin
     assert.match(body, new RegExp(`\\b${genre}: '`), `genul "${genre}" trebuie sa ramana mapat in GENRE_STYLE_MAP`);
   });
   const mappedCount = (body.match(/^\s*\w+: '/gm) || []).length;
-  assert.equal(mappedCount, 15, `trebuie sa existe exact 15 genuri mapate, gasite ${mappedCount}`);
+  assert.equal(mappedCount, 23, `trebuie sa existe exact 23 genuri mapate (7 vechi + 16 noi), gasite ${mappedCount}`);
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -508,14 +514,17 @@ test('server.js: descrierile Hip-Hop si Rock nu contin nume de artisti, titluri 
   });
 });
 
-test('server.js: celelalte 13 genuri raman BYTE-IDENTICE cu inainte de aceasta runda — DOAR hiphop si rock au fost modificate', () => {
+// CORECȚIE (2026-08-31, "16 genuri"): "pop" a fost REDESENAT intentionat ca parte a noii liste
+// de 16 genuri (vezi test/genre-16-new-list.test.js) — scos din setul "neschimbat" de mai jos.
+// Toate celelalte 12 raman byte-identice, inclusiv hiphop/rock (deja rescrise intr-o runda
+// anterioara, nemaischimbate acum).
+test('server.js: celelalte 12 genuri raman BYTE-IDENTICE cu inainte de aceasta runda — DOAR "pop" a mai fost rescris intentionat (cerinta 16 genuri)', () => {
   const idx = server.indexOf('const GENRE_STYLE_MAP = {');
   const end = server.indexOf('};', idx);
   const body = server.slice(idx, end);
   const unchanged = {
     emotional: 'cinematic orchestral ballad, swelling strings and piano, rubato build, breathy vulnerable vocal, tearful climax',
     suflet: 'intimate de suflet ballad, sparse guitar or piano, close warm vocal, quiet confessional unpolished mood',
-    pop: 'commercial pop, 100-120bpm, verse-chorus-bridge, synth hook, polished vocal, radio-ready energy',
     acustic: 'unplugged acoustic folk, fingerpicked guitar, light percussion, natural room sound, plain sincere vocal',
     petrecere: 'fast Romanian party beat, 130+bpm, syncopated dance rhythm, horns and synth stabs, shouted chorus, club energy',
     balada: 'slow rubato piano ballad, sustained strings, no beat, dramatic dynamic swells, powerful sustained vocal',
@@ -769,9 +778,13 @@ test('buildExactLyricsRequest: campul style contine acum o cerere explicita de r
   assert.ok(idx !== -1 && end !== -1);
   const body = server.slice(idx, end);
   assert.match(body, /Sing these exact lyrics precisely as written, word for word/i, `campul style trebuie sa contina cererea explicita de reproducere exacta, a produs: ${body}`);
-  // versurile insele (campul `lyrics`, trimis separat) raman STRICT `exactLyrics`, verbatim —
-  // clauza noua nu modifica deloc continutul cantat, doar intareste instructiunea de stil.
-  assert.ok(body.includes('const lyrics = String(exactLyrics || \'\').trim();'), 'campul lyrics trebuie sa ramana STRICT textul exact al clientului, neschimbat');
+  // CORECȚIE (2026-08-31, cerinta 3 "pronuntie naturala"): versurile insele (campul `lyrics`)
+  // trec acum prin normalizeSingingText() — NFC + eliminare caractere invizibile/control +
+  // corectie ş/ţ->ș/ț + punctuatie prudenta — NICIODATA o rescriere de continut/cuvinte. Testul
+  // de mai jos verifica STRICT ca aceasta normalizare e prezenta (nu textul vechi, netrecut prin
+  // ea) — comportamentul functional real (nicio schimbare de continut pe text deja curat) e
+  // acoperit de test/diction-and-normalization.test.js.
+  assert.ok(body.includes('const lyrics = normalizeSingingText(String(exactLyrics || \'\').trim());'), 'campul lyrics trebuie sa treaca prin normalizeSingingText() (curatare sigura, niciodata rescriere de continut)');
 });
 
 // ---------------------------------------------------------------------------------------------

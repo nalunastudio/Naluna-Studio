@@ -43,15 +43,21 @@ function loadTranslations() {
 // PARTEA 1 — Cerinta 3: un singur input nativ, neatins in atributele cerute; declansat STRICT
 // printr-un <label> asociat, niciodata prin input.click() programatic.
 // ===============================================================================================
-test('amintiri-video.html: exista EXACT un singur <input type="file">, cu multiple + accept="image/*,video/*", fara capture, fara webkitdirectory/directory', () => {
+test('amintiri-video.html: exista EXACT doua <input type="file"> (principal + fallback recuperare Cerinta 4), principalul cu multiple + accept="image/*,video/*", fara capture, fara webkitdirectory/directory', () => {
   const inputs = [...html.matchAll(/<input[^>]*type="file"[^>]*>/g)];
-  assert.equal(inputs.length, 1, 'trebuie sa existe STRICT un singur input de fisiere');
-  const tag = inputs[0][0];
+  assert.equal(inputs.length, 2, 'trebuie sa existe principal + fallback "Alege din Fisiere" (Cerinta 4)');
+  const tag = inputs.find(m => m[0].includes('id="mem-file-input"'))[0];
   assert.ok(tag.includes('multiple'));
   assert.ok(tag.includes('accept="image/*,video/*"'));
   assert.ok(!/\bcapture\b/.test(tag), 'fara capture');
   assert.ok(!/webkitdirectory|directory/.test(tag), 'fara webkitdirectory/directory');
   assert.ok(tag.includes('id="mem-file-input"'));
+  const fallbackMatch = inputs.find(m => m[0].includes('mem-file-input-fallback'));
+  assert.ok(fallbackMatch, 'trebuie sa existe inputul fallback "Alege din Fisiere"');
+  const fallbackTag = fallbackMatch[0];
+  assert.ok(fallbackTag.includes('multiple'));
+  assert.ok(!fallbackTag.includes('accept='), 'fallback-ul nu trebuie sa forteze Photos prin accept');
+  assert.ok(!/\bcapture\b/.test(fallbackTag), 'fara capture pe fallback');
 });
 
 test('amintiri-video.html: exista un <label for="mem-file-input"> — activarea selectorului e STRICT nativa, prin label, niciodata prin input.click() programatic', () => {
@@ -178,12 +184,16 @@ test('syncPickerLabelState (etapa 2, MEM_MAX atins): butonul ramane ascuns chiar
 // PARTEA 3 — Cerinta 4: comutarea la etapa de incarcare se face STRICT dupa copierea sincrona a
 // FileList, in acelasi document (fara navigare) — verificat DIRECT din ordinea reala a codului.
 // ===============================================================================================
-test('amintiri-video.html: handler-ul de "change" copiaza FileList SINCRON (Array.from) INAINTE sa apeleze enterUploadStage() — fisierele nu se pierd niciodata', () => {
+test('amintiri-video.html: handler-ul de "change" copiaza FileList SINCRON (Array.from) INAINTE sa predea fisierele lui handleFilesReceived(), care apeleaza enterUploadStage() — fisierele nu se pierd niciodata', () => {
   const changeFnSrc = extractFn(html, "memFileInput.addEventListener('change', () => {");
   const arrayFromIdx = changeFnSrc.indexOf('Array.from(memFileInput.files)');
-  const enterStageIdx = changeFnSrc.indexOf('enterUploadStage()');
-  assert.ok(arrayFromIdx !== -1 && enterStageIdx !== -1);
-  assert.ok(arrayFromIdx < enterStageIdx, 'FileList trebuie copiat INAINTE de comutarea vizuala la etapa 2');
+  const handOffIdx = changeFnSrc.indexOf('handleFilesReceived(files)');
+  assert.ok(arrayFromIdx !== -1 && handOffIdx !== -1);
+  assert.ok(arrayFromIdx < handOffIdx, 'FileList trebuie copiat INAINTE de predarea catre etapa 2');
+
+  const handleFnSrc = extractFn(html, 'function handleFilesReceived(files) {');
+  const enterStageIdx = handleFnSrc.indexOf('enterUploadStage()');
+  assert.ok(enterStageIdx !== -1, 'handleFilesReceived trebuie sa comute la etapa de incarcare');
 });
 
 test('amintiri-video.html: selectarea fisierelor NU declanseaza nicio navigare (window.location) — comutarea la etapa de incarcare ramane STRICT vizuala, in acelasi document', () => {

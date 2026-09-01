@@ -49,6 +49,7 @@ function loadModule() {
   const obtainSnippet = sliceFunctionBody(server, 'async function obtainAcceptableVariant(orderId, tracks, taskId, genre, order, recipientSnapshot, canonicalLyrics) {').text;
 
   const sandboxSrc = `
+    const { normalizeSingingText, getDictionInstruction } = require('../lib/diction.js');
     const { randomUUID } = require('node:crypto');
     const SUNO_SUCCESS_STATUS = 'SUCCESS';
 

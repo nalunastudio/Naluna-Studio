@@ -165,11 +165,15 @@ test('amintiri-video.html: concurenta uploadului (MAX_CONCURRENT_UPLOADS, MEM_MA
   assert.match(amintiriVideo, /MEM_MAX_PARALLEL_PARTS\s*=\s*2/);
 });
 
-test('amintiri-video.html: selectorul de fisiere ramane STRICT unic, multiple, image/*+video/*, fara capture — neschimbat de cresterea limitei', () => {
+// CORECȚIE (2026-08-31, cerinta 4 "fallback Alege din Fișiere"): al doilea input (fallback,
+// FARA accept) e acum intentionat — vezi test/video-ios-multi-select-upload.test.js pentru
+// verificarea dedicata a ambelor inputuri.
+test('amintiri-video.html: selectorul principal de fisiere ramane multiple, image/*+video/*, fara capture — neschimbat de cresterea limitei', () => {
   const amintiriVideo = read('public/amintiri-video.html');
   const inputs = [...amintiriVideo.matchAll(/<input[^>]*type="file"[^>]*>/g)];
-  assert.equal(inputs.length, 1);
-  const tag = inputs[0][0];
+  assert.equal(inputs.length, 2, 'principal + fallback');
+  const tag = inputs.map(m => m[0]).find(t => t.includes('id="mem-file-input"'));
+  assert.ok(tag);
   assert.ok(tag.includes('multiple'));
   assert.ok(tag.includes('accept="image/*,video/*"'));
   assert.ok(!/\bcapture\b/.test(tag));

@@ -166,8 +166,54 @@
   .btn-pick-files.compact{ min-height:44px; font-size:14px; padding:10px 20px; max-width:320px; }
   #upload-stage-header{ text-align:center; margin-bottom:6px; }
   #upload-stage-header .sub{ margin-bottom:14px; }
-  .upload-overall-track{ background:var(--line); border-radius:999px; height:8px; overflow:hidden; margin:14px 0 18px; }
+  /* CERINTA 5 (2026-08-31, "un singur loader mare pentru incarcarea media"): inlocuieste barele
+     individuale per fisier (eliminate din renderQueueRowInner) cu UN SINGUR loader mare,
+     centrat, portocaliu, pentru intregul lot. Procentul afisat (mem-batch-loader-pct) si bara
+     (mem-batch-loader-fill) sunt actualizate STRICT din renderBatchStatus() — niciun procent sau
+     temporizator fals. Inelul (mem-batch-loader-ring) e STRICT decorativ (aria-hidden) — animatia
+     lui de rotatie e dezactivata complet sub prefers-reduced-motion (vezi media query mai jos),
+     ramanand un inel static, fara sa piarda nicio informatie (procentul si textul raman identice).*/
+  .mem-batch-loader{ display:none; flex-direction:column; align-items:center; text-align:center; margin:18px 0 22px; }
+  .mem-batch-loader-ring{
+    width:64px; height:64px; border-radius:50%; margin-bottom:14px;
+    border:6px solid var(--line); border-top-color:var(--orange); box-sizing:border-box;
+  }
+  @media (prefers-reduced-motion: no-preference){
+    .mem-batch-loader-ring{ animation:mem-loader-spin 1s linear infinite; }
+  }
+  @keyframes mem-loader-spin{ to{ transform:rotate(360deg); } }
+  .mem-batch-loader-pct{ font-family:'Fraunces',serif; font-size:32px; font-weight:600; color:var(--orange-deep); margin:0 0 6px; }
+  .upload-overall-track{
+    background:var(--line); border-radius:999px; height:14px; overflow:hidden; margin:6px 0 14px;
+    width:100%; max-width:360px;
+  }
   .upload-overall-fill{ background:var(--orange); height:100%; border-radius:999px; transition:width .3s ease; width:0%; }
+  @media (prefers-reduced-motion: reduce){
+    .upload-overall-fill{ transition:none; }
+  }
+  .mem-batch-loader .mem-batch-status{ font-size:14px; margin:0 0 4px; }
+  .mem-batch-loader-note{ font-size:12px; color:var(--text-secondary); margin:0; }
+  .mem-batch-loader.has-errors .mem-batch-loader-ring{ border-top-color:var(--error); animation:none; }
+  .mem-batch-loader.has-errors .mem-batch-loader-fill{ background:var(--error); }
+  /* CERINTA 4 (2026-08-31, fallback "Colectii" iPhone) — panou de recuperare, afisat STRICT dupa
+     un cancel/revenire fara fisiere de la selectorul nativ (niciodata preemptiv). */
+  .mem-recovery{
+    display:none; background:var(--surface); border:1px solid var(--line); border-radius:14px;
+    padding:16px; margin:14px 0; text-align:left;
+  }
+  .mem-recovery p{ font-size:13px; color:var(--text-secondary); margin:0 0 8px; }
+  .mem-recovery p:last-of-type{ margin-bottom:12px; }
+  .mem-recovery-fallback-input{
+    position:absolute; width:1px; height:1px; padding:0; margin:-1px;
+    overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0;
+  }
+  .btn-pick-files-fallback{
+    display:flex; align-items:center; justify-content:center; text-align:center;
+    width:100%; min-height:48px; box-sizing:border-box; padding:12px 20px; font-size:14px;
+    font-weight:700; border-radius:12px; background:transparent; color:var(--orange-deep);
+    border:2px solid var(--orange); cursor:pointer;
+  }
+  .btn-pick-files-fallback:focus-visible{ outline:3px solid var(--orange-deep); outline-offset:2px; }
   .mem-status{ font-size:13px; margin-top:10px; }
   .mem-status.err{ color:var(--error); }
   .mem-picker-retry-btn{
@@ -224,15 +270,27 @@
       <div id="upload-stage-header" style="display:none;">
         <h1 class="display" id="upload-stage-title"></h1>
         <p class="sub" id="upload-stage-sub"></p>
-        <div class="upload-overall-track"><div class="upload-overall-fill" id="upload-overall-fill"></div></div>
       </div>
 
       <div class="memories" id="memories-section">
         <p class="memories-meta" id="memories-meta"></p>
         <p class="memories-count" id="memories-count" aria-live="polite"></p>
         <div class="mem-list" id="mem-uploaded-list"></div>
-        <p class="mem-batch-status" id="mem-batch-status" aria-live="polite"></p>
-        <div class="mem-list" id="mem-staged-list" aria-live="polite" aria-busy="false"></div>
+        <!-- CERINTA 5 (2026-08-31): UN SINGUR loader mare, portocaliu, pentru intregul lot —
+             inlocuieste barele individuale per fisier (vezi renderQueueRowInner, fara progress-
+             track in timpul incarcarii normale). role="progressbar" pe bara reala; #mem-batch-
+             status ramane SINGURA regiune aria-live="polite" (text uman, actualizat de
+             renderBatchStatus()) — inelul/procentul sunt STRICT decorative (aria-hidden). -->
+        <div class="mem-batch-loader" id="mem-batch-loader">
+          <div class="mem-batch-loader-ring" aria-hidden="true"></div>
+          <p class="mem-batch-loader-pct" id="mem-batch-loader-pct" aria-hidden="true">0%</p>
+          <div class="upload-overall-track" id="upload-overall-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+            <div class="upload-overall-fill" id="upload-overall-fill"></div>
+          </div>
+          <p class="mem-batch-status" id="mem-batch-status" aria-live="polite"></p>
+          <p class="mem-batch-loader-note" id="mem-batch-loader-note"></p>
+        </div>
+        <div class="mem-list" id="mem-staged-list" aria-busy="false"></div>
         <!-- CORECȚIE (2026-08-14, "Articolele nu pot fi încărcate" pe iPhone): accept simplu, cu
              wildcard-uri ("image/*, video/*") — Safari/iOS poate esua sa initializeze corect
              selectorul nativ cu o lista lunga de MIME-uri explicite. Validarea REALA de continut
@@ -245,6 +303,19 @@
         <input type="file" id="mem-file-input" multiple accept="image/*,video/*" aria-label="Selectează poze și videoclipuri">
         <label class="btn-pick-files" for="mem-file-input" id="mem-pick-label"><span id="mem-pick-label-text"></span></label>
         <p class="mem-status" id="mem-status" role="status" aria-live="assertive" aria-busy="false"></p>
+
+        <!-- CERINTA 4 (2026-08-31): panou de recuperare, afisat STRICT dupa un cancel/revenire
+             fara fisiere din selectorul nativ (showRecoveryUI(), niciodata preemptiv). Al doilea
+             input, STATIC, FARA accept — nu forteaza din nou selectorul catre Photos — activat
+             STRICT printr-un <label>, exact ca inputul principal, niciodata input.click(). -->
+        <div class="mem-recovery" id="mem-recovery" role="region" aria-live="polite">
+          <p id="mem-recovery-title" style="font-weight:700; color:var(--text);"></p>
+          <p id="mem-recovery-safari" style="display:none;"></p>
+          <p id="mem-recovery-check"></p>
+          <p id="mem-recovery-icloud"></p>
+          <input type="file" id="mem-file-input-fallback" class="mem-recovery-fallback-input" multiple aria-label="Alege fișiere">
+          <label class="btn-pick-files-fallback" for="mem-file-input-fallback" id="mem-pick-fallback-label"><span id="mem-pick-fallback-label-text"></span></label>
+        </div>
       </div>
 
       <div class="create-video-wrap" id="gift-video-create" style="display:none;">
@@ -293,6 +364,13 @@
       memories_received_count: (n) => `Am primit ${n} materiale. Se pregătesc și se încarcă automat. Nu închide pagina.`,
       memories_confirm_failed: 'Nu am putut confirma materialele. Verifică conexiunea și încearcă din nou.',
       gift_video_create_btn: 'Creează videoclipul meu cadou', gift_video_create_sub: 'Vom transforma amintirile tale într-un videoclip sincronizat cu melodia aleasă.',
+      memories_dont_close: 'Nu închide această pagină.',
+      memories_batch_errors: (done, total, err) => `${done} din ${total} materiale încărcate — ${err} au eșuat. Reîncearcă sau șterge-le mai jos.`,
+      memories_recovery_title: 'Nu am primit fișierele?',
+      memories_recovery_safari: 'Se pare că ești într-o aplicație, nu direct în Safari — deschide pagina în Safari pentru cele mai bune rezultate.',
+      memories_recovery_check: 'Verifică conexiunea la internet și spațiul liber de pe telefon.',
+      memories_recovery_icloud: 'Dacă fotografiile sunt doar în iCloud: Poze → selectează-le → Distribuie → Salvează în Fișiere (sau Exportă originalul nemodificat) — apoi alege-le de acolo.',
+      memories_pick_files_fallback_btn: 'Alege din Fișiere',
       msg_try_again: 'încearcă din nou', msg_error_prefix: 'Eroare: '
     },
     en: {
@@ -325,6 +403,13 @@
       memories_received_count: (n) => `We received ${n} item${n === 1 ? '' : 's'}. They're being prepared and uploaded automatically. Don't close this page.`,
       memories_confirm_failed: "We couldn't confirm your materials. Check your connection and try again.",
       gift_video_create_btn: 'Create my gift video', gift_video_create_sub: "We'll turn your memories into a video synced to the song you chose.",
+      memories_dont_close: "Don't close this page.",
+      memories_batch_errors: (done, total, err) => `${done} of ${total} items uploaded — ${err} failed. Retry or remove them below.`,
+      memories_recovery_title: "Didn't receive the files?",
+      memories_recovery_safari: "It looks like you're inside another app, not Safari directly — open this page in Safari for the best results.",
+      memories_recovery_check: 'Check your internet connection and the free storage space on your phone.',
+      memories_recovery_icloud: 'If your photos are only in iCloud: Photos → select them → Share → Save to Files (or Export Unmodified Original) — then pick them from there.',
+      memories_pick_files_fallback_btn: 'Choose from Files',
       msg_try_again: 'please try again.', msg_error_prefix: 'Error: '
     },
     de: {
@@ -357,6 +442,13 @@
       memories_received_count: (n) => `Wir haben ${n} Elemente erhalten. Sie werden automatisch vorbereitet und hochgeladen. Schließe diese Seite nicht.`,
       memories_confirm_failed: 'Wir konnten deine Materialien nicht bestätigen. Überprüfe deine Verbindung und versuche es erneut.',
       gift_video_create_btn: 'Mein Geschenkvideo erstellen', gift_video_create_sub: 'Wir verwandeln deine Erinnerungen in ein Video, das auf dein gewähltes Lied abgestimmt ist.',
+      memories_dont_close: 'Schließe diese Seite nicht.',
+      memories_batch_errors: (done, total, err) => `${done} von ${total} Elementen hochgeladen — ${err} fehlgeschlagen. Wiederhole es oder entferne sie unten.`,
+      memories_recovery_title: 'Keine Dateien erhalten?',
+      memories_recovery_safari: 'Es sieht so aus, als wärst du in einer anderen App und nicht direkt in Safari — öffne diese Seite in Safari für beste Ergebnisse.',
+      memories_recovery_check: 'Überprüfe deine Internetverbindung und den freien Speicherplatz auf deinem Telefon.',
+      memories_recovery_icloud: 'Wenn deine Fotos nur in iCloud sind: Fotos → auswählen → Teilen → In Dateien sichern (oder Unverändertes Original exportieren) — wähle sie danach von dort aus.',
+      memories_pick_files_fallback_btn: 'Aus Dateien wählen',
       msg_try_again: 'bitte versuche es erneut.', msg_error_prefix: 'Fehler: '
     },
     es: {
@@ -389,6 +481,13 @@
       memories_received_count: (n) => `Recibimos ${n} elementos. Se están preparando y subiendo automáticamente. No cierres esta página.`,
       memories_confirm_failed: 'No pudimos confirmar tus materiales. Comprueba tu conexión e inténtalo de nuevo.',
       gift_video_create_btn: 'Crear mi video de regalo', gift_video_create_sub: 'Convertiremos tus recuerdos en un video sincronizado con la canción elegida.',
+      memories_dont_close: 'No cierres esta página.',
+      memories_batch_errors: (done, total, err) => `${done} de ${total} elementos subidos — ${err} fallaron. Reinténtalo o elimínalos abajo.`,
+      memories_recovery_title: '¿No se recibieron los archivos?',
+      memories_recovery_safari: 'Parece que estás dentro de otra app, no directamente en Safari — abre esta página en Safari para mejores resultados.',
+      memories_recovery_check: 'Comprueba tu conexión a internet y el espacio libre en tu teléfono.',
+      memories_recovery_icloud: 'Si tus fotos solo están en iCloud: Fotos → selecciónalas → Compartir → Guardar en Archivos (o Exportar original sin modificar) — luego elígelas desde ahí.',
+      memories_pick_files_fallback_btn: 'Elegir desde Archivos',
       msg_try_again: 'inténtalo de nuevo.', msg_error_prefix: 'Error: '
     },
     it: {
@@ -421,6 +520,13 @@
       memories_received_count: (n) => `Abbiamo ricevuto ${n} elementi. Vengono preparati e caricati automaticamente. Non chiudere questa pagina.`,
       memories_confirm_failed: 'Non siamo riusciti a confermare i materiali. Controlla la connessione e riprova.',
       gift_video_create_btn: 'Crea il mio video regalo', gift_video_create_sub: 'Trasformeremo i tuoi ricordi in un video sincronizzato con la canzone scelta.',
+      memories_dont_close: 'Non chiudere questa pagina.',
+      memories_batch_errors: (done, total, err) => `${done} di ${total} elementi caricati — ${err} non riusciti. Riprova o rimuovili qui sotto.`,
+      memories_recovery_title: 'Non hai ricevuto i file?',
+      memories_recovery_safari: "Sembra che tu sia dentro un'altra app, non direttamente in Safari — apri questa pagina in Safari per risultati migliori.",
+      memories_recovery_check: 'Controlla la connessione a internet e lo spazio libero sul telefono.',
+      memories_recovery_icloud: 'Se le tue foto sono solo su iCloud: Foto → selezionale → Condividi → Salva in File (o Esporta originale non modificato) — poi scegline da lì.',
+      memories_pick_files_fallback_btn: 'Scegli da File',
       msg_try_again: 'riprova.', msg_error_prefix: 'Errore: '
     },
     fr: {
@@ -453,6 +559,13 @@
       memories_received_count: (n) => `Nous avons reçu ${n} éléments. Ils sont en cours de préparation et d'envoi automatique. Ne fermez pas cette page.`,
       memories_confirm_failed: "Nous n'avons pas pu confirmer vos éléments. Vérifiez votre connexion et réessayez.",
       gift_video_create_btn: 'Créer ma vidéo cadeau', gift_video_create_sub: 'Nous transformerons tes souvenirs en une vidéo synchronisée avec la chanson choisie.',
+      memories_dont_close: 'Ne fermez pas cette page.',
+      memories_batch_errors: (done, total, err) => `${done} sur ${total} éléments importés — ${err} ont échoué. Réessayez ou supprimez-les ci-dessous.`,
+      memories_recovery_title: "Vous n'avez pas reçu les fichiers ?",
+      memories_recovery_safari: "Il semble que vous soyez dans une autre application, pas directement dans Safari — ouvrez cette page dans Safari pour de meilleurs résultats.",
+      memories_recovery_check: "Vérifiez votre connexion internet et l'espace disponible sur votre téléphone.",
+      memories_recovery_icloud: "Si vos photos ne sont que sur iCloud : Photos → sélectionnez-les → Partager → Enregistrer dans Fichiers (ou Exporter l'original non modifié) — puis choisissez-les depuis là.",
+      memories_pick_files_fallback_btn: 'Choisir depuis Fichiers',
       msg_try_again: 'veuillez réessayer.', msg_error_prefix: 'Erreur : '
     },
     bg: {
@@ -485,6 +598,13 @@
       memories_received_count: (n) => `Получихме ${n} материала. Подготвят се и се качват автоматично. Не затваряй тази страница.`,
       memories_confirm_failed: 'Не успяхме да потвърдим материалите. Провери връзката си и опитай отново.',
       gift_video_create_btn: 'Създай моето видео подарък', gift_video_create_sub: 'Ще превърнем спомените ти във видео, синхронизирано с избраната песен.',
+      memories_dont_close: 'Не затваряй тази страница.',
+      memories_batch_errors: (done, total, err) => `${done} от ${total} материала качени — ${err} се провалиха. Опитай отново или ги изтрий по-долу.`,
+      memories_recovery_title: 'Не получи файловете?',
+      memories_recovery_safari: 'Изглежда си в друго приложение, а не директно в Safari — отвори тази страница в Safari за най-добри резултати.',
+      memories_recovery_check: 'Провери интернет връзката и свободното място на телефона.',
+      memories_recovery_icloud: 'Ако снимките ти са само в iCloud: Снимки → избери ги → Сподели → Запази във Файлове (или Експортирай необработен оригинал) — после ги избери оттам.',
+      memories_pick_files_fallback_btn: 'Избери от Файлове',
       msg_try_again: 'опитай отново.', msg_error_prefix: 'Грешка: '
     },
     tr: {
@@ -517,6 +637,13 @@
       memories_received_count: (n) => `${n} öğe alındı. Otomatik olarak hazırlanıyor ve yükleniyor. Bu sayfayı kapatmayın.`,
       memories_confirm_failed: 'Materyallerinizi onaylayamadık. Bağlantınızı kontrol edip tekrar deneyin.',
       gift_video_create_btn: 'Hediye videomu oluştur', gift_video_create_sub: 'Anılarınızı seçtiğiniz şarkıyla senkronize bir videoya dönüştüreceğiz.',
+      memories_dont_close: 'Bu sayfayı kapatma.',
+      memories_batch_errors: (done, total, err) => `${total} materyalden ${done} tanesi yüklendi — ${err} tanesi başarısız oldu. Aşağıdan yeniden dene veya sil.`,
+      memories_recovery_title: 'Dosyalar gelmedi mi?',
+      memories_recovery_safari: "Görünüşe göre doğrudan Safari'de değil, başka bir uygulamanın içindesin — en iyi sonuç için bu sayfayı Safari'de aç.",
+      memories_recovery_check: 'İnternet bağlantını ve telefonundaki boş depolama alanını kontrol et.',
+      memories_recovery_icloud: "Fotoğrafların yalnızca iCloud'daysa: Fotoğraflar → seç → Paylaş → Dosyalar'a Kaydet (veya Değiştirilmemiş Orijinali Dışa Aktar) — sonra oradan seç.",
+      memories_pick_files_fallback_btn: 'Dosyalardan Seç',
       msg_try_again: 'lütfen tekrar deneyin.', msg_error_prefix: 'Hata: '
     }
   };
@@ -560,6 +687,14 @@
     document.getElementById('upload-stage-sub').textContent = t.upload_stage_sub;
     document.getElementById('gift-video-create-btn').textContent = t.gift_video_create_btn;
     document.getElementById('gift-video-create-sub').textContent = t.gift_video_create_sub;
+    document.getElementById('mem-recovery-title').textContent = t.memories_recovery_title;
+    document.getElementById('mem-recovery-safari').textContent = t.memories_recovery_safari;
+    document.getElementById('mem-recovery-check').textContent = t.memories_recovery_check;
+    document.getElementById('mem-recovery-icloud').textContent = t.memories_recovery_icloud;
+    document.getElementById('mem-pick-fallback-label-text').textContent = t.memories_pick_files_fallback_btn;
+    document.getElementById('mem-file-input-fallback').setAttribute('aria-label', t.memories_pick_files_fallback_btn);
+    document.getElementById('mem-batch-loader-note').textContent = t.memories_dont_close;
+    document.getElementById('upload-overall-track').setAttribute('aria-label', t.upload_stage_title);
   }
 
   // ==========================================================================================
@@ -812,8 +947,12 @@
     } catch (e) { /* urmatorul poll/refresh manual va corecta */ }
   }
 
+  // CERINTA 5 (2026-08-31, "un singur loader mare"): randul static NU mai afiseaza bara/procent
+  // individual in timpul incarcarii normale (uploading/processing) — progresul e reprezentat
+  // STRICT de loaderul agregat unic (mem-batch-loader, vezi renderBatchStatus). Randul ramane
+  // util pentru identificare (nume, iconita, stare text) si pentru actiunile de eroare
+  // (Reincarca/Sterge), neschimbate.
   function renderQueueRowInner(q) {
-    const pct = q.status === 'processing' ? 100 : q.progress;
     return `
       <span class="mem-thumb">${isVideoFile(q.file) ? '🎬' : (q.thumbUrl ? `<img src="${q.thumbUrl}" alt="" loading="lazy" decoding="async">` : '🖼️')}</span>
       <div class="mem-info">
@@ -825,7 +964,6 @@
           : q.status === 'error' ? (q.errorMsg || t.memories_upload_error)
           : t.memories_uploaded
         }</span>
-        ${(q.status === 'uploading' || q.status === 'processing') ? `<div class="mem-progress-track"><div class="mem-progress-fill" style="width:${pct}%"></div></div>` : ''}
       </div>
       <div class="mem-actions">
         ${q.status === 'error' ? `<button type="button" class="mem-retry" data-retry-id="${q.localId}">${t.memories_retry}</button>` : ''}
@@ -934,10 +1072,8 @@
   function patchQueueRowProgress(entry) {
     const row = document.querySelector(`#mem-staged-list [data-queue-id="${entry.localId}"]`);
     if (!row) return;
-    const fill = row.querySelector('.mem-progress-fill');
     const meta = row.querySelector('.mem-meta');
-    if (!fill || !meta) { renderQueueRow(entry); return; }
-    fill.style.width = (entry.status === 'processing' ? 100 : entry.progress) + '%';
+    if (!meta) { renderQueueRow(entry); return; }
     meta.textContent = entry.status === 'processing' ? t.memories_processing : t.memories_uploading_pct(entry.progress);
     meta.classList.remove('err');
   }
@@ -962,27 +1098,81 @@
 
   let memBatchTotal = 0;
   let memBatchDoneCount = 0;
+  // CERINTA 5 (2026-08-31): progresul agregat era PONDERAT PE NUMAR DE FISIERE (fiecare fisier
+  // "valora" 1/memBatchTotal din procent, indiferent de marime) — cu un lot mixt de poze mici si
+  // un videoclip de 100+MB, procentul sarea inainte fals de repede la finalul pozelor, apoi
+  // parea "blocat" mult timp pe singurul videoclip mare. Ponderat acum STRICT dupa octeti REALI
+  // (entry.file.size), singura masura corecta pentru un lot cu marimi foarte diferite.
+  let memBatchTotalBytes = 0;
+  let memBatchBytesDone = 0;
+  function setLoaderProgressAttrs(pct) {
+    const track = document.getElementById('upload-overall-track');
+    if (track) track.setAttribute('aria-valuenow', String(pct));
+    const pctEl = document.getElementById('mem-batch-loader-pct');
+    if (pctEl) pctEl.textContent = pct + '%';
+  }
   function renderBatchStatus() {
     const el = document.getElementById('mem-batch-status');
     if (!el) return;
-    const active = uploadQueue.filter(q => q.status !== 'error');
+    const loaderWrap = document.getElementById('mem-batch-loader');
     const overallFill = document.getElementById('upload-overall-fill');
-    if (memBatchTotal === 0) {
-      el.textContent = '';
+    const noteEl = document.getElementById('mem-batch-loader-note');
+    // CERINTA 5: loaderul agregat e vizibil STRICT cat timp exista materiale in coada (indiferent
+    // de stare, inclusiv error — clientul trebuie sa vada rezumatul, nu doar cat timp se
+    // incarca activ ceva) SAU cat timp lotul curent nu a fost inca golit complet.
+    const hasQueueItems = uploadQueue.length > 0;
+    if (loaderWrap) loaderWrap.style.display = (memBatchTotal > 0 && hasQueueItems) ? 'flex' : 'none';
+    if (noteEl) noteEl.textContent = t.memories_dont_close;
+    if (memBatchTotal === 0 || !hasQueueItems) {
+      if (!hasQueueItems && memBatchTotal > 0) {
+        // coada goala — fie totul a reusit (fara nicio eroare ramasa), fie clientul a sters
+        // manual toate randurile ramase in eroare; in ambele cazuri nu mai e nimic de aratat aici.
+        el.textContent = memBatchDoneCount > 0 ? t.memories_batch_done(memBatchDoneCount) : '';
+      } else {
+        el.textContent = '';
+      }
       if (overallFill) overallFill.style.width = '0%';
+      if (loaderWrap) loaderWrap.classList.remove('has-errors');
+      setLoaderProgressAttrs(0);
       return;
     }
-    if (active.length === 0) {
-      el.textContent = memBatchDoneCount > 0 ? t.memories_batch_done(memBatchDoneCount) : '';
-      if (overallFill) overallFill.style.width = '100%';
+    const errorEntries = uploadQueue.filter(q => q.status === 'error');
+    const activeEntries = uploadQueue.filter(q => q.status !== 'error');
+    // Octeti "in zbor" pentru materialele inca active (pending/uploading/processing) — error e
+    // EXCLUS explicit: octetii deja trimisi ai unui fisier esuat nu conteaza niciodata ca progres
+    // "facut", altfel un lot cu esecuri ar putea ajunge fals aproape de 100%.
+    const inFlightBytes = activeEntries.reduce((sum, q) => {
+      if (q.status === 'processing') return sum + q.file.size;
+      if (q.status === 'uploading') return sum + q.file.size * (Math.min(100, q.progress || 0) / 100);
+      return sum; // pending: 0 octeti trimisi inca
+    }, 0);
+    const doneBytes = memBatchBytesDone + inFlightBytes;
+    const overallPct = memBatchTotalBytes > 0 ? Math.min(100, Math.round((doneBytes / memBatchTotalBytes) * 100)) : 0;
+
+    if (activeEntries.length === 0) {
+      // Nimic mai e activ — fie chiar totul a reusit, fie au ramas STRICT materiale in eroare.
+      if (errorEntries.length > 0) {
+        el.textContent = t.memories_batch_errors(memBatchDoneCount, memBatchTotal, errorEntries.length);
+        if (loaderWrap) loaderWrap.classList.add('has-errors');
+        // CORECȚIE (2026-08-31, bug real gasit: "progresul agregat poate arata 100% desi lotul
+        // are erori"): bara reflecta ACUM STRICT procentul real din octeti CU ADEVARAT incarcati
+        // — niciodata 100% fals doar pentru ca nu mai ruleaza nimic activ.
+        if (overallFill) overallFill.style.width = overallPct + '%';
+        setLoaderProgressAttrs(overallPct);
+      } else {
+        el.textContent = memBatchDoneCount > 0 ? t.memories_batch_done(memBatchDoneCount) : '';
+        if (loaderWrap) loaderWrap.classList.remove('has-errors');
+        if (overallFill) overallFill.style.width = '100%';
+        setLoaderProgressAttrs(100);
+      }
       return;
     }
-    const inFlightSum = active.reduce((s, q) => s + (q.status === 'processing' ? 100 : (q.progress || 0)), 0);
-    const overallPct = Math.min(100, Math.round(((memBatchDoneCount * 100) + inFlightSum) / memBatchTotal));
-    el.textContent = t.memories_batch_progress(memBatchDoneCount, memBatchTotal, overallPct);
-    // Cerinta 4: progresul general, afisat in chenarul dedicat al etapei de incarcare (nu doar
-    // ca text) — acelasi procent, calculat identic, doar randat si ca bara vizuala.
+    if (loaderWrap) loaderWrap.classList.toggle('has-errors', errorEntries.length > 0);
+    el.textContent = errorEntries.length > 0
+      ? t.memories_batch_errors(memBatchDoneCount, memBatchTotal, errorEntries.length)
+      : t.memories_batch_progress(memBatchDoneCount, memBatchTotal, overallPct);
     if (overallFill) overallFill.style.width = overallPct + '%';
+    setLoaderProgressAttrs(overallPct);
   }
 
   // Cerinta 4 (2026-08-30, "pagina separata pentru incarcare"): comuta la a doua "vedere" —
@@ -1030,8 +1220,11 @@
   function updateBatchActiveState() {
     const active = uploadQueue.length > 0;
     memFileInput.disabled = active;
+    if (memFileInputFallback) memFileInputFallback.disabled = active;
     document.getElementById('mem-staged-list').setAttribute('aria-busy', active ? 'true' : 'false');
     document.getElementById('mem-status').setAttribute('aria-busy', active ? 'true' : 'false');
+    const loaderWrap = document.getElementById('mem-batch-loader');
+    if (loaderWrap) loaderWrap.setAttribute('aria-busy', active ? 'true' : 'false');
     syncPickerLabelState();
   }
 
@@ -1116,6 +1309,7 @@
         if (entry.thumbUrl) URL.revokeObjectURL(entry.thumbUrl);
         uploadQueue = uploadQueue.filter(q => q.localId !== entry.localId);
         memBatchDoneCount++;
+        memBatchBytesDone += entry.file.size;
         renderQueueList();
         processUploadQueue();
         scheduleMemSync();
@@ -1270,6 +1464,7 @@
       if (completeRes.ok && succeeded) {
         uploadQueue = uploadQueue.filter(q => q.localId !== entry.localId);
         memBatchDoneCount++;
+        memBatchBytesDone += entry.file.size;
         renderQueueList();
         processUploadQueue();
         scheduleMemSync();
@@ -1290,7 +1485,98 @@
   }
 
   const memFileInput = document.getElementById('mem-file-input');
+  const memFileInputFallback = document.getElementById('mem-file-input-fallback');
   const memStatusEl = document.getElementById('mem-status');
+
+  // ==========================================================================================
+  // CERINTA 4 (2026-08-31, fallback "Colectii" iPhone) — diagnostic MINIM (niciodata nume de
+  // fisier, continut media, albume sau alte date private), identic ca principiu cu memLog() deja
+  // existent in comanda-mea.html/succes.html pentru aceeasi pagina de incarcare.
+  // ==========================================================================================
+  function memLog(event, data) {
+    try { console.debug('[naluna-media]', { orderId, event, ...(data || {}) }); } catch (e) { /* diagnosticul nu opreste fluxul real */ }
+  }
+  const memIsIOS = /iP(hone|od|ad)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const memIsInAppBrowser = /FBAN|FBAV|Instagram|Line\/|Twitter|WhatsApp|Telegram/i.test(navigator.userAgent);
+
+  // Panou de recuperare — afisat STRICT dupa 'cancel' sau 'change' cu 0 fisiere de la ORICARE
+  // dintre cele doua selectoare (niciodata preemptiv, niciodata redeschis programatic). Ascuns
+  // automat imediat ce un lot real de fisiere e primit (handleFilesReceived mai jos).
+  const memRecoveryEl = document.getElementById('mem-recovery');
+  function showRecoveryUI() {
+    if (!memRecoveryEl) return;
+    const safariHint = document.getElementById('mem-recovery-safari');
+    if (safariHint) safariHint.style.display = memIsInAppBrowser ? 'block' : 'none';
+    memRecoveryEl.style.display = 'block';
+    memLog('recovery_shown', { ios: memIsIOS, inAppBrowser: memIsInAppBrowser });
+  }
+  function hideRecoveryUI() {
+    if (memRecoveryEl) memRecoveryEl.style.display = 'none';
+  }
+
+  // Logica COMUNA de "am primit fisiere" — apelata identic de ambele inputuri (Photos normal SI
+  // fallback-ul "Alege din Fișiere"), ca loaderul agregat si coada sa se comporte identic
+  // indiferent de care selector a livrat fisierele.
+  function handleFilesReceived(files) {
+    hideRecoveryUI();
+    // Cerinta 4: comutarea la etapa de incarcare (a doua "vedere", acelasi document) se face
+    // STRICT AICI — imediat DUPA copierea sincrona a FileList-ului de catre apelant, niciodata
+    // inainte. Fisierele raman in memorie (obiecte File reale, deja copiate) — comutarea e STRICT
+    // vizuala.
+    enterUploadStage();
+    // Mesaj SINCRON, cu numarul REAL de materiale primite — cerinta explicita (2026-08-29):
+    // "Am primit N materiale. Se pregătesc și se încarcă automat. Nu închide pagina."
+    memStatusEl.textContent = t.memories_received_count(files.length);
+    memStatusEl.className = 'mem-status';
+
+    memBatchTotal += files.length;
+    memBatchTotalBytes += files.reduce((s, f) => s + (f.size || 0), 0);
+
+    const newEntries = [];
+    files.forEach(file => {
+      try {
+        const entry = {
+          localId: 'q' + Math.random().toString(36).slice(2),
+          file,
+          section: null,
+          status: 'pending',
+          progress: 0,
+          errorMsg: null,
+          thumbUrl: null,
+          xhr: null,
+          multipartSessionId: null,
+          abortRequested: false
+        };
+        uploadQueue.push(entry);
+        newEntries.push(entry);
+      } catch (err) {
+        uploadQueue.push({
+          localId: 'q' + Math.random().toString(36).slice(2),
+          file,
+          section: null,
+          status: 'error',
+          progress: 0,
+          errorMsg: t.memories_upload_error,
+          thumbUrl: null,
+          xhr: null,
+          multipartSessionId: null,
+          abortRequested: false
+        });
+      }
+    });
+    // Toate randurile intra IMEDIAT, sincron, in interfata — inainte de orice operatiune
+    // costisitoare (thumbnailuri/upload). updateBatchActiveState() (in renderQueueList) blocheaza
+    // selectorul chiar in acest tick, sincron cu randarea.
+    renderQueueList();
+    // CORECȚIE (2026-08-29, "lasa browserului cel putin un frame sa picteze feedbackul inainte
+    // de procesarea mai grea"): thumbnailurile si pornirea uploadurilor asteapta explicit un
+    // requestAnimationFrame dupa randarea sincrona de mai sus, ca browserul sa apuce sa
+    // deseneze cele N randuri INAINTE sa inceapa munca grea (decodare imagini, XHR).
+    requestAnimationFrame(() => {
+      processUploadQueue();
+      newEntries.forEach(entry => { if (!isVideoFile(entry.file)) scheduleLocalThumbnail(entry); });
+    });
+  }
 
   // ==========================================================================================
   // CORECȚIE (2026-08-29, runda 2 — "selectorul ramane blocat, galeria nu se mai deschide"):
@@ -1364,6 +1650,9 @@
     clearPickerMessages();
     memStatusEl.textContent = '';
     memStatusEl.className = 'mem-status';
+    memLog('picker_cancel', {});
+    // CERINTA 4: recuperarea apare STRICT dupa un cancel REAL — niciodata preemptiv.
+    showRecoveryUI();
   });
 
   memFileInput.addEventListener('change', () => {
@@ -1371,67 +1660,33 @@
     clearPickerMessages();
     const files = Array.from(memFileInput.files);
     memFileInput.value = '';
+    memLog('change', { filesLength: files.length, ios: memIsIOS });
     if (files.length === 0) {
       memStatusEl.textContent = t.memories_no_files_selected;
       memStatusEl.className = 'mem-status err';
+      // CERINTA 4: revenire din selector FARA niciun fisier — al doilea moment declansator al
+      // panoului de recuperare (pe langa 'cancel' de mai sus).
+      showRecoveryUI();
       return;
     }
-    // Cerinta 4: comutarea la etapa de incarcare (a doua "vedere", acelasi document) se face
-    // STRICT AICI — imediat DUPA copierea sincrona de mai sus (Array.from), niciodata inainte.
-    // Fisierele raman in memorie (obiecte File reale, deja copiate) — comutarea e STRICT vizuala.
-    enterUploadStage();
-    // Mesaj SINCRON, cu numarul REAL de materiale primite — cerinta explicita (2026-08-29):
-    // "Am primit N materiale. Se pregătesc și se încarcă automat. Nu închide pagina."
-    memStatusEl.textContent = t.memories_received_count(files.length);
-    memStatusEl.className = 'mem-status';
-
-    memBatchTotal += files.length;
-
-    const newEntries = [];
-    files.forEach(file => {
-      try {
-        const entry = {
-          localId: 'q' + Math.random().toString(36).slice(2),
-          file,
-          section: null,
-          status: 'pending',
-          progress: 0,
-          errorMsg: null,
-          thumbUrl: null,
-          xhr: null,
-          multipartSessionId: null,
-          abortRequested: false
-        };
-        uploadQueue.push(entry);
-        newEntries.push(entry);
-      } catch (err) {
-        uploadQueue.push({
-          localId: 'q' + Math.random().toString(36).slice(2),
-          file,
-          section: null,
-          status: 'error',
-          progress: 0,
-          errorMsg: t.memories_upload_error,
-          thumbUrl: null,
-          xhr: null,
-          multipartSessionId: null,
-          abortRequested: false
-        });
-      }
-    });
-    // Toate randurile intra IMEDIAT, sincron, in interfata — inainte de orice operatiune
-    // costisitoare (thumbnailuri/upload). updateBatchActiveState() (in renderQueueList) blocheaza
-    // selectorul chiar in acest tick, sincron cu randarea.
-    renderQueueList();
-    // CORECȚIE (2026-08-29, "lasa browserului cel putin un frame sa picteze feedbackul inainte
-    // de procesarea mai grea"): thumbnailurile si pornirea uploadurilor asteapta explicit un
-    // requestAnimationFrame dupa randarea sincrona de mai sus, ca browserul sa apuce sa
-    // deseneze cele N randuri INAINTE sa inceapa munca grea (decodare imagini, XHR).
-    requestAnimationFrame(() => {
-      processUploadQueue();
-      newEntries.forEach(entry => { if (!isVideoFile(entry.file)) scheduleLocalThumbnail(entry); });
-    });
+    handleFilesReceived(files);
   });
+
+  // CERINTA 4 (2026-08-31) — al doilea input STATIC, FARA accept, folosit STRICT din panoul de
+  // recuperare ("Alege din Fișiere"). Aceleasi reguli sigure ca inputul principal: niciun
+  // input.click() programatic, niciun preventDefault() pe gest, activare STRICT prin <label>,
+  // copiere sincrona a FileList-ului, resetarea value() dupa copiere. Fisierele primite trec prin
+  // ACEEASI validare client+server ca traseul normal — handleFilesReceived() e functia comuna.
+  if (memFileInputFallback) {
+    memFileInputFallback.addEventListener('cancel', () => { memLog('fallback_picker_cancel', {}); });
+    memFileInputFallback.addEventListener('change', () => {
+      const files = Array.from(memFileInputFallback.files);
+      memFileInputFallback.value = '';
+      memLog('fallback_change', { filesLength: files.length });
+      if (files.length === 0) return; // ramane pe panoul de recuperare deja vizibil, nimic nou de aratat
+      handleFilesReceived(files);
+    });
+  }
 
   // Avertizare best-effort la parasirea paginii cat timp un upload e activ — cerinta explicita.
   window.addEventListener('beforeunload', (e) => {

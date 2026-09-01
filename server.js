@@ -85,6 +85,7 @@ const {
   detectOnsets
 } = require('./lib/media-analysis');
 const { getGiftVariant } = require('./lib/entitlements');
+const { DICTION_INSTRUCTIONS, getDictionInstruction, normalizeSingingText } = require('./lib/diction');
 
 // -------- Validare stricta a variabilelor de mediu obligatorii, la pornire --------
 // Mai bine esueaza clar la boot decat sa porneasca "pe jumatate" si sa pice abia la prima comanda.
@@ -139,7 +140,14 @@ const PLAN_PRICES = { standard: 15, premium: 25, video: 35 };
 // facea "Cadou video" sa ceara doua genuri de la inceput, exact ca Premium).
 const PLAN_VARIANT_COUNT = { standard: 1, premium: 2, video: 1 };
 const ALLOWED_OCCASIONS = ['dor', 'onomastica', 'aniversare', 'declaratie', 'nunta', 'pierdere', 'pentru-mine', 'altceva', 'bunici', 'parinti', 'matusa-unchi', 'socri', 'frati'];
-const ALLOWED_GENRES = ['emotional', 'suflet', 'pop', 'acustic', 'petrecere', 'balada', 'manele', 'copii', 'populara', 'rock', 'colind', 'modern', 'hiphop', 'manele_suflet', 'motivational'];
+// CORECȚIE (2026-08-31, "16 genuri + pagina de gen separata"): lista noua, aratata clientilor
+// NOI (comanda.html/melodia-mea.html), inlocuieste complet grila veche de pe pagina de comanda —
+// dar cele 7 chei VECHI de mai jos raman valide aici STRICT pentru compatibilitatea comenzilor
+// deja existente (citire, afisare, editare/regenerare fara sa schimbe genul) — niciodata aratate
+// intr-un selector nou. Nu rescrie retroactiv nicio comanda din baza de date.
+const LEGACY_ONLY_GENRES = ['emotional', 'suflet', 'acustic', 'petrecere', 'balada', 'manele', 'modern'];
+const NEW_GENRES = ['pop', 'ballad_emotional', 'acoustic_folk', 'rnb', 'country', 'jazz', 'rock', 'hiphop', 'edm_dance', 'manele_suflet', 'manele_jale', 'populara', 'copii', 'colind', 'romantic', 'motivational'];
+const ALLOWED_GENRES = [...LEGACY_ONLY_GENRES, ...NEW_GENRES];
 const ALLOWED_LANGS = ['ro', 'en', 'de', 'es', 'it', 'fr', 'bg', 'tr'];
 
 // MODIFICARE STRICTĂ — pagina de ocazie (hotfix 2026-08-08): sistem generalizat de relatii de
@@ -6929,21 +6937,35 @@ const STORY_MIN_RESERVE = 190;
 // mapei — testat empiric (sandbox local) ca ramane sub bugetul de 600 caractere chiar si in cel
 // mai incarcat scenariu real (nume maxime, ocazie nunta, voce duet). Niciun nume de artist,
 // piesa sau link TikTok in text — doar caracteristici muzicale generale.
+// CORECȚIE (2026-08-31, "16 genuri, nu doar etichete — caracterul muzical real al fiecaruia"):
+// cheile LEGACY_ONLY_GENRES de mai jos raman NESCHIMBATE (folosite STRICT la regenerarea
+// comenzilor vechi care le au deja stocate) — cheile NEW_GENRES sunt cele aratate in noul
+// selector si folosesc mapari mai bogate/precise catre furnizor, per directia ceruta explicit.
 const GENRE_STYLE_MAP = {
+  // --- LEGACY_ONLY_GENRES — pastrate byte-cu-byte pentru regenerarea comenzilor vechi ---
   emotional: 'cinematic orchestral ballad, swelling strings and piano, rubato build, breathy vulnerable vocal, tearful climax',
   suflet: 'intimate de suflet ballad, sparse guitar or piano, close warm vocal, quiet confessional unpolished mood',
-  pop: 'commercial pop, 100-120bpm, verse-chorus-bridge, synth hook, polished vocal, radio-ready energy',
   acustic: 'unplugged acoustic folk, fingerpicked guitar, light percussion, natural room sound, plain sincere vocal',
   petrecere: 'fast Romanian party beat, 130+bpm, syncopated dance rhythm, horns and synth stabs, shouted chorus, club energy',
   balada: 'slow rubato piano ballad, sustained strings, no beat, dramatic dynamic swells, powerful sustained vocal',
   manele: 'Romanian manele de jale, oriental scale, mournful clarinet, melismatic vocal slides, minor key grief',
-  copii: 'cheerful childrens song, simple major-key melody, glockenspiel and ukulele, bouncy rhythm, bright vocal',
-  populara: 'Romanian muzica populara, taraf violin and accordion, rustic dance rhythm, unornamented vocal, no autotune',
-  rock: 'live rock sound, distorted electric guitar riff, power chords, electric bass, energetic drums, strong vocal, dynamic verses building to a big chorus, guitar and vocal upfront',
-  colind: 'traditional Romanian carol, sleigh bells and choir, warm acoustic guitar, gentle festive reverent vocal',
   modern: 'sleek modern pop-electronic, deep 808 sub bass, glossy synth pads, vocal chops, minimalist premium production',
+  // --- NEW_GENRES — cele 16 genuri noi aratate clientilor ---
+  pop: 'contemporary pop, 100-120bpm, verse-chorus-bridge, catchy memorable chorus hook, clean polished production, radio-ready vocal',
+  ballad_emotional: 'emotional piano and strings ballad, rubato build, expressive heartfelt vocal, cinematic emotional climax, slow tempo, cathartic dynamic swell',
+  acoustic_folk: 'acoustic folk, fingerpicked guitar, organic natural instrumentation, light percussion, warm intimate atmosphere, sincere unpolished vocal',
+  rnb: 'contemporary R&B, warm groove, deep bass, smooth soulful vocal, natural ad-libs, laid-back modern production',
+  country: 'modern country, acoustic and electric guitar, warm storytelling vocal, driving rhythm, contemporary country-pop production',
+  jazz: 'jazz combo, piano, upright bass, brushed drums, elegant sophisticated harmony, smooth expressive vocal',
+  rock: 'live rock sound, distorted electric guitar riff, power chords, electric bass, energetic drums, strong vocal, dynamic verses building to a big chorus, guitar and vocal upfront',
   hiphop: 'modern hip-hop, punchy kick, firm snare/clap, syncopated hi-hats, deep bass, short repeatable hook, rhythmic near-rap verses, clear diction, melodic chorus, clean modern mix',
+  edm_dance: 'EDM dance, four-on-the-floor kick, driving synth arpeggios, big build-up and energetic drop, festival-ready energy, processed vocal hook',
   manele_suflet: 'Romanian manele de suflet, oriental scale, romantic clarinet, warm melismatic vocal, devoted love build',
+  manele_jale: 'Romanian manele de jale, minor key oriental scale, mournful clarinet, melismatic vocal slides, intense heartfelt grief',
+  populara: 'Romanian muzica populara, taraf violin and accordion, rustic dance rhythm, unornamented vocal, no autotune',
+  copii: 'cheerful childrens song, simple major-key melody, glockenspiel and ukulele, bouncy rhythm, bright vocal',
+  colind: 'traditional Romanian carol, sleigh bells and choir, warm acoustic guitar, gentle festive reverent vocal',
+  romantic: 'intimate romantic ballad, warm close vocal, soft piano and strings, tender atmosphere, slow loving mood',
   motivational: 'inspirational anthem, driving toms, major-key triumphant chords, confident vocal, uplifting final chorus'
 };
 const LYRICS_LANGUAGE_NAMES = {
@@ -7308,9 +7330,14 @@ function buildPrompt(order, feedback, genreOverride) {
   // din nou aici, sigur, pe caractere Unicode complete. Pentru un combo protejat, plafonul e
   // mult mai mare (doua nume de maxim 60 caractere fiecare + conjunctia), niciodata cel al
   // unui singur nume (RECIPIENT_MAX_LEN) — ar taia al doilea nume chiar la acest prim pas.
-  let recipient = truncateSafely(String(order.recipient || '').trim(), recipientIsProtectedCombo ? 140 : RECIPIENT_MAX_LEN);
-  let sender = hasSender ? truncateSafely(order.senderName.trim(), SENDER_MAX_LEN) : '';
-  let relationship = hasRelationship ? truncateSafely(order.relationship.trim(), RELATIONSHIP_MAX_LEN) : '';
+  // CERINTA 3 (2026-08-31, "pronuntie naturala"): normalizeSingingText() ruleaza AICI, INAINTE
+  // de orice trunchiere de buget — NFC + eliminare caractere invizibile/control + corectie
+  // ş/ţ->ș/ț + punctuatie prudenta. Niciodata mareste lungimea textului (doar o poate scurta
+  // usor, prin eliminarea caracterelor invizibile), deci nu poate destabiliza cascada de
+  // scurtare deja testata mai jos — o face, daca ceva, marginal mai permisiva.
+  let recipient = truncateSafely(normalizeSingingText(String(order.recipient || '').trim()), recipientIsProtectedCombo ? 140 : RECIPIENT_MAX_LEN);
+  let sender = hasSender ? truncateSafely(normalizeSingingText(order.senderName.trim()), SENDER_MAX_LEN) : '';
+  let relationship = hasRelationship ? truncateSafely(normalizeSingingText(order.relationship.trim()), RELATIONSHIP_MAX_LEN) : '';
 
   // Instructiunea de voce e SEPARATA de personalizare (nume, relatie, poveste) — o propozitie
   // proprie, scurta, niciodata amestecata in aceeasi fraza cu destinatarul/expeditorul/relatia.
@@ -7339,6 +7366,7 @@ function buildPrompt(order, feedback, genreOverride) {
     if (requestedVoicePref === 'auto') return '';
     return useShortVoiceInstruction ? VOICE_INSTRUCTIONS_SHORT[requestedVoicePref] : VOICE_INSTRUCTIONS_FULL[requestedVoicePref];
   }
+
 
   // Doua variante de instructiune: completa (calitate mai buna a personalizarii) si una
   // scurta, folosita DOAR daca partea fixa tot nu incape in buget dupa scurtarea campurilor
@@ -7562,18 +7590,35 @@ function buildPrompt(order, feedback, genreOverride) {
   }
   if (remaining < 0) remaining = 0;
 
-  // povestea umple spatiul ramas (cel putin STORY_MIN_RESERVE, cu exceptia cazului extrem
-  // in care head-ul singur ar depasi deja limita totala — practic imposibil dupa scurtarile
-  // de mai sus, dar tratat sigur oricum). Alegem eticheta cea mai instructiva care tot lasa
-  // cel putin MIN_USEFUL_STORY_CHARS pentru continutul real al povestii.
-  let storyLabel = storyLabelFull;
-  if (remaining - storyLabel.length < MIN_USEFUL_STORY_CHARS) storyLabel = storyLabelShort;
-  if (remaining - storyLabel.length < MIN_USEFUL_STORY_CHARS) storyLabel = storyLabelPlain;
+  // CERINTA 3 (2026-08-31, "pronuntie naturala in cele 8 limbi"): instructiune de dictie
+  // SPECIFICA limbii versurilor (lib/diction.js, forma "short"). CORECȚIE (gasita direct in
+  // timpul acestei dezvoltari, DOUA runde): (1) o adaugare STRICT "daca mai ramane loc" DUPA ce
+  // povestea si-a consumat deja tot bugetul (povestea "umple mereu tot spatiul ramas" prin
+  // design, vezi mai jos) nu gasea aproape NICIODATA loc, nici macar pentru o comanda tipica; (2)
+  // rezervarea spatiului dictiei folosind eticheta de poveste DEJA aleasa (fara sa o retreaca prin
+  // cascada) tot rata cazuri normale — eticheta cea mai lunga (storyLabelFull) putea incape
+  // SINGURA, dar nu mai lasa loc si pentru dictie, desi o eticheta mai scurta (storyLabelShort/
+  // Plain) ar fi eliberat suficient spatiu pentru amandoua. Solutia finala: alegem eticheta de
+  // poveste TINAND CONT de spatiul dictiei INCA DE LA INCEPUT — daca nici cea mai scurta eticheta
+  // (storyLabelPlain) nu lasa loc pentru amandoua, renuntam la rezervare si recalculam eticheta
+  // DOAR pentru poveste (comportamentul original) — dictia e omisa cu gratie STRICT in acel caz
+  // extrem, NICIODATA in detrimentul rezervei garantate pentru poveste (STORY_MIN_RESERVE).
+  const dictionInstruction = getDictionInstruction(order.lang, 'short');
+  function pickStoryLabel(reserveForDiction) {
+    const extra = reserveForDiction ? dictionInstruction.length : 0;
+    let label = storyLabelFull;
+    if (remaining - label.length - extra < MIN_USEFUL_STORY_CHARS) label = storyLabelShort;
+    if (remaining - label.length - extra < MIN_USEFUL_STORY_CHARS) label = storyLabelPlain;
+    return label;
+  }
+  let storyLabel = pickStoryLabel(true);
+  const canReserveForDiction = (remaining - storyLabel.length - dictionInstruction.length) >= MIN_USEFUL_STORY_CHARS;
+  if (!canReserveForDiction) storyLabel = pickStoryLabel(false);
+  const storyBudget = remaining - storyLabel.length - (canReserveForDiction ? dictionInstruction.length : 0);
 
   let storyFull = '';
-  const storyBudget = remaining - storyLabel.length;
   if (storyBudget > 0) {
-    const storyTrimmed = truncateSafely(order.story, storyBudget);
+    const storyTrimmed = truncateSafely(normalizeSingingText(order.story), storyBudget);
     if (storyTrimmed) {
       storyFull = `${storyLabel}${storyTrimmed}`;
     }
@@ -7586,6 +7631,13 @@ function buildPrompt(order, feedback, genreOverride) {
   // lungime cu buildHeadPart1(...) + buildHeadPart2() — doar promptul FINAL trimis catre Suno
   // are ordinea schimbata.
   let prompt = `${buildHeadPart1(recipient, sender, relationship)}${storyFull}${buildHeadPart2()}${feedbackFull}`;
+
+  // Adaugam instructiunea de dictie DOAR daca am reusit sa-i rezervam spatiu mai sus FARA sa
+  // coboram povestea sub pragul de utilitate — verificarea finala de lungime ramane oricum o
+  // plasa de siguranta (feedback-ul/alte piese pot varia usor fata de estimarea initiala).
+  if (canReserveForDiction && prompt.length + dictionInstruction.length <= SUNO_PROMPT_MAX_LEN) {
+    prompt += dictionInstruction;
+  }
 
   // plasa de siguranta — in teorie nu ar trebui sa se intample, dat fiind bugetul calculat mai sus,
   // dar nu trimitem niciodata catre Suno un prompt mai lung decat limita documentata
@@ -7612,8 +7664,17 @@ function buildPrompt(order, feedback, genreOverride) {
 // intr-un camp separat ar fi doar zgomot si ar concura inutil cu bugetul de caractere.
 // Returneaza {style, title, lyrics} — vezi callMusicProvider() pentru cum sunt trimise mai
 // departe catre furnizor.
+// CERINTA 3 (2026-08-31, "displayLyrics ramane neschimbat, subtitrarile/versurile folosesc
+// textul corect"): `exactLyrics` primit aici (order.variants[i].editedLyrics/lyricsInput in DB)
+// e STRICT "displayLyrics" — textul original, aratat clientului, NICIODATA modificat sau
+// rescris de aceasta functie. `lyrics` (variabila locala de mai jos, folosita STRICT in
+// payloadul trimis catre Suno, niciodata persistata sau afisata) e echivalentul local al
+// "singingLyrics" — o copie normalizata in siguranta (NFC, fara caractere invizibile, ș/ț
+// corectate), NICIODATA o rescriere fonetica sau de continut. Subtitrarile video (buildCaptionLines/
+// toAss) si orice afisare catre client continua sa citeasca STRICT campul original din DB,
+// niciodata aceasta copie locala.
 function buildExactLyricsRequest(order, exactLyrics, genreOverride, voicePreference, feedback) {
-  const lyrics = String(exactLyrics || '').trim();
+  const lyrics = normalizeSingingText(String(exactLyrics || '').trim());
   if (!lyrics) {
     throw new Error('Versurile editate sunt goale — cererea cu versuri exacte nu poate fi trimisa.');
   }
@@ -7648,7 +7709,11 @@ function buildExactLyricsRequest(order, exactLyrics, genreOverride, voicePrefere
   // suplimentar catre furnizor, fara sa schimbe contractul (versurile raman STRICT in `lyrics`,
   // niciodata duplicate/alterate aici).
   const feedbackText = feedback ? String(feedback).trim() : '';
-  let style = `${styleTags}. Sing entirely in ${lyricsLanguage}. Short natural intro, vocals starting around 8-10 seconds. Fully sung vocal performance throughout.${VOICE_STYLE_NOTE[effectiveVoice]} Sing these exact lyrics precisely as written, word for word — never paraphrase, alter, skip, or add words.`;
+  // CERINTA 3 (2026-08-31): forma "full" (mai bogata) a instructiunii de dictie, specifica
+  // limbii versurilor — bugetul `style` (1000 caractere) e mult mai generos decat cel al
+  // buildPrompt() (600), asa ca aici NU trebuie comprimata la forma "short".
+  const dictionInstruction = getDictionInstruction(order.lang, 'full');
+  let style = `${styleTags}. Sing entirely in ${lyricsLanguage}. Short natural intro, vocals starting around 8-10 seconds. Fully sung vocal performance throughout.${VOICE_STYLE_NOTE[effectiveVoice]}${dictionInstruction} Sing these exact lyrics precisely as written, word for word — never paraphrase, alter, skip, or add words.`;
   if (feedbackText) {
     const isVideoPlan = order.plan === 'video';
     const label = isVideoPlan ? VIDEO_FEEDBACK_PRIORITY_LABEL : ' ';

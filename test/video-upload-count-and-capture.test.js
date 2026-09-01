@@ -162,13 +162,27 @@ test('amintiri-video.html: renderQueueRowInner() foloseste isVideoFile() (nu fil
 // 4. Capturarea intregii selectii — verificare structurala a handler-ului de `change`:
 //    fiecare fisier din FileList e adaugat necondiționat in coada, indiferent de tip.
 // ---------------------------------------------------------------------------------------------
-test('amintiri-video.html: handler-ul de change NU filtreaza dupa tip (photo/video) — fiecare fisier din FileList primeste o intrare in coada, fara exceptie', () => {
-  const idx = melodiaMea.indexOf("memFileInput.addEventListener('change'");
-  const end = melodiaMea.indexOf('processUploadQueue();', idx);
+// CORECȚIE (2026-08-31, cerinta 5 "un singur loader mare" — extragerea logicii comune
+// handleFilesReceived(), folosita acum de AMBELE selectoare: cel principal Photos si fallback-ul
+// "Alege din Fișiere", cerinta 4): bucla `files.forEach` traieste acum in handleFilesReceived(),
+// nu direct in handler-ul de 'change' (care doar copiaza FileList sincron si apeleaza functia
+// comuna) — verificam functia comuna, nu fereastra ingusta a listener-ului.
+test('amintiri-video.html: handleFilesReceived() NU filtreaza dupa tip (photo/video) — fiecare fisier din lot primeste o intrare in coada, fara exceptie', () => {
+  const idx = melodiaMea.indexOf('function handleFilesReceived(files) {');
+  assert.notEqual(idx, -1, 'functia comuna handleFilesReceived trebuie sa existe');
+  const end = melodiaMea.indexOf('requestAnimationFrame(() => {', idx);
   const snippet = melodiaMea.slice(idx, end);
-  assert.ok(snippet.includes('files.forEach(file => {'), 'TOATE fisierele din FileList trebuie parcurse, nu doar files[0]');
+  assert.ok(snippet.includes('files.forEach(file => {'), 'TOATE fisierele din lot trebuie parcurse, nu doar files[0]');
   assert.ok(!snippet.includes('.filter('), 'niciun filtru care ar putea elimina videoclipuri sau fotografii din selectie');
   assert.ok(!/if\s*\(\s*file\.type/.test(snippet), 'nu trebuie sa existe nicio conditie care exclude fisiere dupa tip inainte de a le adauga in coada');
+});
+
+test('amintiri-video.html: handler-ul de change deleaga la handleFilesReceived() dupa copierea sincrona a FileList-ului', () => {
+  const idx = melodiaMea.indexOf("memFileInput.addEventListener('change'");
+  assert.notEqual(idx, -1);
+  const snippet = melodiaMea.slice(idx, idx + 700);
+  assert.ok(snippet.includes('const files = Array.from(memFileInput.files);'));
+  assert.ok(snippet.includes('handleFilesReceived(files);'), 'handler-ul de change trebuie sa delege la functia comuna');
 });
 
 test('amintiri-video.html: FileList e copiat SINCRON intr-un array stabil (Array.from), inainte de orice alta operatie — nicio referinta pastrata la FileList-ul original peste operatii asincrone', () => {
@@ -202,15 +216,33 @@ test('amintiri-video.html: eroarea la construirea unei intrari (try/catch per fi
 // 5. Un singur input, un singur eveniment de confirmare — fara selectoare separate pentru
 //    fotografii/videoclipuri, fara `capture`.
 // ---------------------------------------------------------------------------------------------
-test('amintiri-video.html: inputul ramane unic, "multiple", accepta simultan image/* si video/*, fara atributul capture', () => {
-  const inputMatch = melodiaMea.match(/<input type="file"[^>]*>/);
+// CORECȚIE (2026-08-31, cerinta 4 "fallback Alege din Fișiere"): al doilea input, STATIC, e acum
+// asteptat intentionat — dar STRICT fara `accept` (ca sa nu forteze din nou Photos) si respectand
+// aceleasi reguli sigure ca primul (fara capture, activare prin <label>, niciun click()
+// programatic). Inputul PRINCIPAL ramane neschimbat: multiple + accept image/*,video/*, fara
+// capture.
+test('amintiri-video.html: inputul principal ramane "multiple", accepta simultan image/* si video/*, fara atributul capture', () => {
+  const inputMatch = melodiaMea.match(/<input type="file" id="mem-file-input"[^>]*>/);
   assert.ok(inputMatch);
   const tag = inputMatch[0];
   assert.ok(/\bmultiple\b/.test(tag));
   assert.ok(tag.includes('accept="image/*,video/*"'));
   assert.ok(!tag.includes('capture'), 'atributul capture ar forta camera, blocand selectia din galerie — nu trebuie sa existe');
-  const allInputs = (melodiaMea.match(/<input type="file"/g) || []).length;
-  assert.equal(allInputs, 1, 'trebuie sa existe STRICT un singur input de fisiere pentru materiale');
+});
+
+test('amintiri-video.html: exista EXACT doua inputuri de fisiere (principal + fallback "Alege din Fișiere") — fallback-ul e static, fara accept, fara capture', () => {
+  const allInputs = [...melodiaMea.matchAll(/<input type="file"[^>]*>/g)].map(m => m[0]);
+  assert.equal(allInputs.length, 2, 'trebuie sa existe EXACT doua inputuri de fisiere: principal + fallback');
+  const fallback = allInputs.find(tag => tag.includes('mem-file-input-fallback'));
+  assert.ok(fallback, 'al doilea input trebuie sa fie fallback-ul "Alege din Fișiere"');
+  assert.ok(/\bmultiple\b/.test(fallback));
+  assert.ok(!fallback.includes('accept='), 'fallback-ul NU trebuie sa aiba accept — altfel ar forta din nou selectorul Photos');
+  assert.ok(!fallback.includes('capture'));
+});
+
+test('amintiri-video.html: fallback-ul e activat STRICT printr-un <label>, niciodata printr-un input.click() programatic', () => {
+  assert.match(melodiaMea, /<label class="btn-pick-files-fallback" for="mem-file-input-fallback"/);
+  assert.ok(!melodiaMea.includes('memFileInputFallback.click()'), 'niciun click() programatic pe fallback');
 });
 
 // ---------------------------------------------------------------------------------------------

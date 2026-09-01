@@ -131,17 +131,20 @@ for (const [name, html] of Object.entries(PAGES)) {
   // in fisier (Cerinta 7, giftVariant) a introdus intamplator un `.filter(`, care a picat in
   // acel fragment mult prea larg. Fixul nu slabeste verificarea — o face STRICT corecta,
   // marginita real la corpul handler-ului.
+  // CORECȚIE (2026-08-30/31, Cerintele 4/5): logica de constructie a cozii (files.forEach,
+  // try/catch per fisier, randare) a fost mutata din handler-ul de 'change' in functia comuna
+  // handleFilesReceived(files) — folosita acum de AMBELE selectoare (principal + fallback "Alege
+  // din Fisiere"). Verificam functia comuna, nu handler-ul de 'change' (care doar copiaza
+  // FileList sincron si deleaga).
   test(`${name}: fiecare fisier din selectie e adaugat necondiționat in coada (files.forEach, fara .filter, fara conditie dupa file.type)`, () => {
-    const snippet = extractFunction(html, "fileInput.addEventListener('change', () => {");
+    const snippet = extractFunction(html, 'function handleFilesReceived(files) {');
     assert.ok(snippet.includes('files.forEach(file => {'));
     assert.ok(!snippet.includes('.filter('));
     assert.ok(!/if\s*\(\s*file\.type/.test(snippet));
   });
 
   test(`${name}: eroarea la construirea unei intrari (try/catch) NU scoate fisierul din lot — ramane vizibil, cu status "error"`, () => {
-    const idx = html.indexOf("fileInput.addEventListener('change', () => {");
-    const end = html.indexOf('renderQueueList();\n      processUploadQueue();', idx);
-    const snippet = html.slice(idx, end);
+    const snippet = extractFunction(html, 'function handleFilesReceived(files) {');
     assert.ok(snippet.includes('} catch (err) {'));
     const catchBlock = snippet.slice(snippet.indexOf('} catch (err) {'));
     assert.ok(catchBlock.includes('uploadQueue.push('));
@@ -161,15 +164,24 @@ for (const [name, html] of Object.entries(PAGES)) {
   // -----------------------------------------------------------------------------------------
   // 6. Un singur input, "multiple", accepta simultan image/* si video/*, fara capture.
   // -----------------------------------------------------------------------------------------
-  test(`${name}: inputul ramane unic, "multiple", accept="image/*,video/*", fara atributul capture (neschimbat fata de runda anterioara)`, () => {
-    const inputMatch = html.match(/<input type="file"[^>]*>/);
-    assert.ok(inputMatch);
+  // CORECȚIE (2026-08-31, Cerinta 4): al doilea input, STATIC, e acum intentionat — fallback-ul
+  // "Alege din Fisiere", fara accept (ca sa nu forteze din nou Photos), fara capture.
+  test(`${name}: inputul principal ramane unic identificabil, "multiple", accept="image/*,video/*", fara atributul capture (neschimbat fata de runda anterioara)`, () => {
+    const inputMatch = html.match(/<input type="file" id="mem-file-input"[^>]*>/);
+    assert.ok(inputMatch, 'inputul principal trebuie identificabil prin id');
     const tag = inputMatch[0];
     assert.ok(/\bmultiple\b/.test(tag));
     assert.ok(tag.includes('accept="image/*,video/*"'));
     assert.ok(!tag.includes('capture'));
-    const allInputs = (html.match(/<input type="file"/g) || []).length;
-    assert.equal(allInputs, 1);
+  });
+
+  test(`${name}: exista EXACT doua inputuri de fisiere (principal + fallback "Alege din Fisiere"), fallback-ul fara accept/capture`, () => {
+    const allInputs = [...html.matchAll(/<input type="file"[^>]*>/g)].map(m => m[0]);
+    assert.equal(allInputs.length, 2, 'trebuie sa existe principal + fallback (Cerinta 4)');
+    const fallback = allInputs.find(tag => tag.includes('fallback'));
+    assert.ok(fallback, 'trebuie sa existe fallback-ul "Alege din Fisiere"');
+    assert.ok(!fallback.includes('accept='), 'fallback-ul nu trebuie sa forteze Photos prin accept');
+    assert.ok(!fallback.includes('capture'));
   });
 
   // -----------------------------------------------------------------------------------------

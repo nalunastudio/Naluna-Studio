@@ -55,22 +55,26 @@ test('comanda.html: mini-pagina reutilizeaza EXACT cheile de traducere existente
   assert.ok(body.includes('data-i18n-placeholder="ph_story"'));
 });
 
-test('comanda.html: mini-pagina apare STRICT dupa pasul 6 (data-prev="6") si nu exista pentru Standard/Video (getTotalSteps ramane 4 pentru ele)', () => {
-  const stepIdx = comanda.indexOf('data-step="7"');
+// CORECȚIE (2026-08-31, cerinta 2D "renumerotarea pasilor" — pasul dedicat de voce, +1
+// pretutindeni): mini-pagina e acum pasul 8 (era 7), redirectarea catre ea pleaca de la pasul 7
+// (era 6), iar Standard/Video au acum 5 pasi (era 4) — vezi test/wizard-step-renumbering.test.js
+// pentru suita completa dedicata renumerotarii.
+test('comanda.html: mini-pagina apare STRICT dupa pasul 7 (data-prev="7") si nu exista pentru Standard/Video (getTotalSteps ramane 5 pentru ele)', () => {
+  const stepIdx = comanda.indexOf('data-step="8"');
   const nextStepIdx = comanda.indexOf('</form>', stepIdx);
   const body = comanda.slice(stepIdx, nextStepIdx);
-  assert.ok(body.includes('data-prev="6"'));
-  assert.match(comanda, /function getTotalSteps\(\) \{\s*if \(selectedPlan\.id !== 'premium'\) return 4;/);
+  assert.ok(body.includes('data-prev="7"'));
+  assert.match(comanda, /function getTotalSteps\(\) \{\s*if \(selectedPlan\.id !== 'premium'\) return 5;/);
 });
 
-test('comanda.html: pasul 7 apare STRICT cand "Pentru altă persoană" a fost ales (getTotalSteps intoarce 7 doar in acel caz) — "Pentru aceeași persoană" ramane la 6 pasi', () => {
-  assert.match(comanda, /return song2TargetInput\.value === 'other' \? 7 : 6;/);
+test('comanda.html: pasul 8 apare STRICT cand "Pentru altă persoană" a fost ales (getTotalSteps intoarce 8 doar in acel caz) — "Pentru aceeași persoană" ramane la 7 pasi', () => {
+  assert.match(comanda, /return song2TargetInput\.value === 'other' \? 8 : 7;/);
 });
 
-test('comanda.html: submit handler-ul de pe pasul 6 redirectioneaza catre pasul 7 (nu trimite direct comanda) STRICT cand song2Target=other — acelasi tipar ca redirectarea pasului 4->5', () => {
+test('comanda.html: submit handler-ul de pe pasul 7 redirectioneaza catre pasul 8 (nu trimite direct comanda) STRICT cand song2Target=other — acelasi tipar ca redirectarea pasului 5->6', () => {
   const idx = comanda.indexOf("form.addEventListener('submit'");
   const body = comanda.slice(idx, idx + 2000);
-  assert.match(body, /if \(selectedPlan\.id === 'premium' && currentStep === 6 && song2TargetInput\.value === 'other'\) \{\s*updateSong2DetailsContinueState\(\);\s*showStep\(7\);\s*return;\s*\}/);
+  assert.match(body, /if \(selectedPlan\.id === 'premium' && currentStep === 7 && song2TargetInput\.value === 'other'\) \{\s*updateSong2DetailsContinueState\(\);\s*showStep\(8\);\s*return;\s*\}/);
 });
 
 test('comanda.html: campul de nume ramane vizibil condiționat (ascuns cand "Amândoi" e ales) — mecanismul refreshSong2OtherUI() ramane neschimbat, doar elementul a fost mutat', () => {

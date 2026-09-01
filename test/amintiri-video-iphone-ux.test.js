@@ -147,7 +147,15 @@ function loadPickerLockSandbox() {
     uploadQueue: [],
     t: T.ro,
     escapeHtml: (s) => s,
-    Date
+    Date,
+    // CERINTA 4 (2026-08-31, fallback "Colectii" iPhone): memLog()/showRecoveryUI() sunt acum
+    // apelate din handler-ul 'cancel' — irelevante pentru testele de sincronizare a lock-ului de
+    // mai jos, dar trebuie sa existe ca no-op-uri, altfel sandboxul minimal ar arunca
+    // ReferenceError la extragerea acestei portiuni de cod real.
+    memLog: () => {},
+    showRecoveryUI: () => {},
+    memIsIOS: false,
+    memIsInAppBrowser: false
   };
   const context = vm.createContext(sandbox);
   vm.runInContext(src, context);
@@ -401,8 +409,15 @@ test('amintiri-video.html: updateBatchActiveState() dezactiveaza selectorul si s
   assert.match(body, /setAttribute\('aria-busy', active \? 'true' : 'false'\)/);
 });
 
-test('amintiri-video.html: #mem-staged-list si #mem-status au aria-live/aria-busy declarate in markup, pentru cititoarele de ecran', () => {
-  assert.match(page, /<div class="mem-list" id="mem-staged-list" aria-live="polite" aria-busy="false">/);
+// CORECȚIE (2026-08-31, cerinta 5 "o singura regiune aria-live=polite" pentru loaderul agregat):
+// #mem-staged-list (lista statica per-material) NU mai e o regiune aria-live proprie — ar
+// concura cu #mem-batch-status (acum SINGURA regiune polite care anunta progresul), producand
+// anunturi duplicate/confuze pentru cititoarele de ecran. #mem-status ramane assertive
+// (mesaje urgente, separate de progresul agregat), neschimbat.
+test('amintiri-video.html: #mem-staged-list ramane STRICT aria-busy (fara aria-live propriu — #mem-batch-status e SINGURA regiune polite a loaderului), #mem-status ramane assertive', () => {
+  assert.match(page, /<div class="mem-list" id="mem-staged-list" aria-busy="false">/);
+  assert.ok(!/<div class="mem-list" id="mem-staged-list"[^>]*aria-live/.test(page), '#mem-staged-list nu mai trebuie sa aiba propriul aria-live');
+  assert.match(page, /<p class="mem-batch-status" id="mem-batch-status" aria-live="polite">/);
   assert.match(page, /<p class="mem-status" id="mem-status" role="status" aria-live="assertive" aria-busy="false">/);
 });
 
@@ -502,17 +517,26 @@ test('amintiri-video.html: chenarul #iphone-hint foloseste bordura/fundal portoc
 //     input, multiple, accept="image/*,video/*", fara capture/webkitdirectory, fara
 //     showOpenFilePicker, fara click programatic, fara preventDefault pe pointerdown/click.
 // ===============================================================================================
-test('amintiri-video.html: selectorul ramane STRICT unic, multiple, image/*+video/*, fara capture/webkitdirectory/showOpenFilePicker/click programatic', () => {
+// CORECȚIE (2026-08-31, cerinta 4 "fallback Alege din Fișiere"): al doilea input, STATIC, e
+// acum intentionat — FARA accept (ca sa nu forteze din nou Photos), respectand aceleasi reguli
+// sigure ca primul.
+test('amintiri-video.html: selectorul principal ramane multiple, image/*+video/*, fara capture/webkitdirectory/showOpenFilePicker/click programatic; al doilea (fallback) e static, fara accept', () => {
   const inputMatches = page.match(/<input type="file"[^>]*>/g) || [];
-  assert.equal(inputMatches.length, 1, 'trebuie sa existe STRICT un singur <input type="file">');
-  const tag = inputMatches[0];
-  assert.ok(tag.includes('id="mem-file-input"'));
+  assert.equal(inputMatches.length, 2, 'trebuie sa existe EXACT doua inputuri de fisiere: principal + fallback');
+  const tag = inputMatches.find(t => t.includes('id="mem-file-input"'));
+  assert.ok(tag);
   assert.match(tag, /\bmultiple\b/);
   assert.ok(tag.includes('accept="image/*,video/*"'));
   assert.ok(!tag.includes('capture'), 'capture ar favoriza camera, nu accesul la Albume');
   assert.ok(!tag.includes('webkitdirectory'));
+  const fallbackTag = inputMatches.find(t => t.includes('mem-file-input-fallback'));
+  assert.ok(fallbackTag, 'al doilea input trebuie sa fie fallback-ul "Alege din Fișiere"');
+  assert.match(fallbackTag, /\bmultiple\b/);
+  assert.ok(!fallbackTag.includes('accept='), 'fallback-ul NU trebuie sa aiba accept');
+  assert.ok(!fallbackTag.includes('capture'));
   assert.ok(!page.includes('showOpenFilePicker'), 'nu trebuie folosit showOpenFilePicker ca inlocuitor pentru input[type=file]');
-  assert.ok(!page.includes('memFileInput.click('), 'nu trebuie adaugat niciun click programatic pe selector');
+  assert.ok(!page.includes('memFileInput.click('), 'nu trebuie adaugat niciun click programatic pe selectorul principal');
+  assert.ok(!page.includes('memFileInputFallback.click('), 'nu trebuie adaugat niciun click programatic pe fallback');
 });
 
 // ===============================================================================================

@@ -43,6 +43,7 @@ function extractFn(source, signature) {
 function loadUpdateMemoriesCta() {
   const fnSrc = extractFn(melodia, 'function updateMemoriesCta(order, pendingVariantChoice) {');
   const sandboxSrc = `
+    const { normalizeSingingText, getDictionInstruction } = require('../lib/diction.js');
     let menuExpanded = false;
     let editingVariantId = null;
     const ctaEl = { display: 'block' };
@@ -55,7 +56,7 @@ function loadUpdateMemoriesCta() {
       getDisplay: () => ctaEl.display
     };
   `;
-  return new Function(sandboxSrc)();
+  return new Function('require', sandboxSrc)(require);
 }
 
 test('updateMemoriesCta: vizibil pentru Video, editor inchis, fara alegere in asteptare, video nu e ready', () => {
@@ -184,13 +185,14 @@ function loadPromptBuilders() {
   const endIdx = server.indexOf(exactEnd) + exactEnd.length;
   const snippet = server.slice(startIdx, endIdx);
   const sandboxSrc = `
+    const { normalizeSingingText, getDictionInstruction } = require('../lib/diction.js');
     const VOICE_PREFERENCES = ['female', 'male', 'duet', 'auto'];
     const FAMILY_OCCASIONS = ['bunici', 'parinti', 'matusa-unchi', 'socri'];
     const FAMILY_RECIPIENT_ROLE_VALUES = ['grandmother', 'grandfather', 'grandparents', 'mother', 'father', 'parents', 'aunt', 'uncle', 'aunt_uncle', 'mother_in_law', 'father_in_law', 'parents_in_law', 'sister', 'brother'];
     ${snippet}
     return { buildPrompt, buildExactLyricsRequest, detectsBrightenMoodFeedback, BRIGHTEN_MOOD_CLAUSE, VIDEO_FEEDBACK_PRIORITY_LABEL };
   `;
-  return new Function(sandboxSrc)();
+  return new Function('require', sandboxSrc)(require);
 }
 const { buildPrompt, buildExactLyricsRequest, detectsBrightenMoodFeedback, BRIGHTEN_MOOD_CLAUSE, VIDEO_FEEDBACK_PRIORITY_LABEL } = loadPromptBuilders();
 
@@ -325,6 +327,7 @@ test('server.js: runGeneration() preferă feedback-ul persistat pe comanda (orde
   // inainte de acest job), acela e cel folosit, INDIFERENT de parametrul primit — exact
   // scenariul "procesul a repornit, parametrul din memorie a disparut, dar DB inca il are".
   const sandboxSrc = `
+    const { normalizeSingingText, getDictionInstruction } = require('../lib/diction.js');
     ${fnSrc.replace(/^async function runGeneration/, 'function runGeneration')}
     return runGeneration;
   `;

@@ -114,10 +114,12 @@
   .voice-card.active{ border-color:var(--gold); background:rgba(168,131,75,.07); }
   .voice-name{ font-weight:600; font-size:14px; }
 
-  /* Grila de genuri muzicale — toate cele 15 vizibile deodata, fara dropdown si fara
-     scroll intern. 2 coloane implicit (mobil si tablet), 3 coloane pe ecrane mai late
-     (spatiu suficient in interiorul cardului de 640px), 1 coloana DOAR pe ecrane foarte
-     inguste, unde 2 coloane ar deveni ilizibile. */
+  /* Grila de genuri muzicale — toate cele 16 vizibile deodata, fara dropdown si fara scroll
+     intern. CORECȚIE (2026-08-31, "pastreaza exact doua coloane"): EXACT 2 coloane pe orice
+     latime de ecran — nu se mai transforma in 3 coloane pe desktop, nici intr-o coloana pe
+     iPhone-uri foarte inguste (ambele variante existau inainte). Pe ecrane foarte inguste,
+     spatiul se ajusteaza STRICT prin font/padding mai mici, niciodata prin schimbarea
+     numarului de coloane. */
   .genre-grid{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:4px; }
   .genre-card{
     border:1px solid var(--line); border-radius:12px; padding:12px 10px; cursor:pointer;
@@ -127,11 +129,8 @@
   }
   .genre-card:hover{ transform:translateY(-1px); }
   .genre-card.active{ border-color:var(--gold); background:rgba(168,131,75,.07); }
-  @media (min-width: 600px){
-    .genre-grid{ grid-template-columns:1fr 1fr 1fr; }
-  }
   @media (max-width: 340px){
-    .genre-grid{ grid-template-columns:1fr; }
+    .genre-card{ padding:9px 6px; font-size:11.5px; min-height:40px; }
   }
 
   .plan-list{ display:flex; flex-direction:column; gap:12px; }
@@ -183,8 +182,9 @@
 
   /* MODIFICARE STRICTĂ — fluxul pachetului Premium £25 (hotfix 2026-08-09; CORECȚIE 2026-08-23,
      eliminarea ecranului separat "Pachet Premium"): ecranele de configurare a celei de-a doua
-     melodii (step 5/6). .premium-price-hero ramane in CSS (nefolosita in HTML dupa eliminarea
-     ecranului de sumar) doar pentru compatibilitate; nicio regresie vizuala pe pasul 4, care
+     melodii (step 6/7, renumerotate 2026-08-31 dupa introducerea pasului dedicat de voce).
+     .premium-price-hero ramane in CSS (nefolosita in HTML dupa eliminarea
+     ecranului de sumar) doar pentru compatibilitate; nicio regresie vizuala pe pasul 5 (pachet), care
      foloseste exact acelasi bloc .benefits-card ca inainte. Reutilizeaza clasele existente
      (.theme-card, .theme-grid, .field-error, .btn etc.) — noile clase de mai jos acopera DOAR
      sectiunile "obligatorii" cu contrast puternic de pe ecranele de configurare. */
@@ -216,8 +216,8 @@
     padding:2px 9px; border-radius:999px; display:inline-block;
   }
   /* Eticheta genului al doilea — DOAR in contextul Premium (genre2-field reparentat aici, vezi
-     placeGenre2Field()); pasul 4 (Video, locatia originala a campului) ramane complet neatins,
-     acest selector nu se aplica acolo niciodata. */
+     placeGenre2Field()); pasul 5 (Video, locatia originala a campului, pachet) ramane complet
+     neatins, acest selector nu se aplica acolo niciodata. */
   #song2-genre-slot label{ font-size:16px; font-weight:700; color:var(--gold-deep); margin-bottom:10px; }
   #song2-genre-slot label::before{ content:'🎵 '; }
 
@@ -312,7 +312,7 @@
              din partea de jos a paginii raman EXACT neschimbate. -->
 
         <div class="theme-card" data-theme="declaratie">
-          <div class="theme-name" data-i18n="theme_declaratie_name">Te iubesc, pe note</div>
+          <div class="theme-name" data-i18n="theme_declaratie_name">Te iubesc</div>
           <div class="theme-desc" data-i18n="theme_declaratie_desc">Când mesajul nu ajunge</div>
         </div>
         <div class="theme-card" data-theme="nunta">
@@ -487,50 +487,34 @@
       </div>
     </div>
 
+    <!-- CERINTA 2A (2026-08-31, "genuri muzicale si pagina separata pentru voce"): pasul 3
+         devine EXCLUSIV genul muzical — vocea a fost mutata pe propriul ei pas dedicat (pasul 4,
+         imediat mai jos), cerinta explicita ("elimina de aici toate optiunile pentru voce"). -->
     <div class="step-card" data-step="3" style="display:none;">
-      <h1 data-i18n="wizard_step3_title">Alege stilul și vocea</h1>
+      <h1 data-i18n="wizard_step3_title">Alege genul muzical</h1>
 
       <div class="field">
         <label data-i18n="label_genre">Gen muzical</label>
-        <div class="genre-grid" id="genre-grid">
-          <div class="genre-card" data-genre="emotional"><span data-i18n="genre_emotional">Emoțional</span></div>
-          <div class="genre-card" data-genre="suflet"><span data-i18n="genre_suflet">De suflet</span></div>
-          <div class="genre-card" data-genre="pop"><span>Pop</span></div>
-          <div class="genre-card" data-genre="acustic"><span data-i18n="genre_acustic">Acustic / Folk</span></div>
-          <div class="genre-card" data-genre="petrecere"><span data-i18n="genre_petrecere">Muzică de petrecere</span></div>
-          <div class="genre-card" data-genre="balada"><span data-i18n="genre_balada">Baladă</span></div>
-          <div class="genre-card" data-genre="manele"><span data-i18n="genre_manele">Manele de jale</span></div>
-          <div class="genre-card" data-genre="copii"><span data-i18n="genre_copii">Pentru copii</span></div>
-          <div class="genre-card" data-genre="populara"><span data-i18n="genre_populara">Populară</span></div>
-          <div class="genre-card" data-genre="rock"><span data-i18n="genre_rock">Rock</span></div>
-          <div class="genre-card" data-genre="colind"><span data-i18n="genre_colind">Colind</span></div>
-          <div class="genre-card" data-genre="modern"><span data-i18n="genre_modern">Modern</span></div>
-          <div class="genre-card" data-genre="hiphop"><span data-i18n="genre_hiphop">Hip-hop</span></div>
-          <div class="genre-card" data-genre="manele_suflet"><span data-i18n="genre_manele_suflet">Manele de suflet</span></div>
-          <div class="genre-card" data-genre="motivational"><span data-i18n="genre_motivational">Motivațional</span></div>
+        <div class="genre-grid" id="genre-grid" role="radiogroup" aria-label="Gen muzical">
+          <div class="genre-card" data-genre="pop" role="radio" aria-selected="false" tabindex="0"><span data-i18n="genre_pop">Pop</span></div>
+          <div class="genre-card" data-genre="ballad_emotional" role="radio" aria-selected="false" tabindex="0"><span data-i18n="genre_ballad_emotional">Baladă / Emoțional</span></div>
+          <div class="genre-card" data-genre="acoustic_folk" role="radio" aria-selected="false" tabindex="0"><span data-i18n="genre_acoustic_folk">Acoustic / Folk</span></div>
+          <div class="genre-card" data-genre="rnb" role="radio" aria-selected="false" tabindex="0"><span data-i18n="genre_rnb">R&amp;B</span></div>
+          <div class="genre-card" data-genre="country" role="radio" aria-selected="false" tabindex="0"><span data-i18n="genre_country">Country</span></div>
+          <div class="genre-card" data-genre="jazz" role="radio" aria-selected="false" tabindex="0"><span data-i18n="genre_jazz">Jazz</span></div>
+          <div class="genre-card" data-genre="rock" role="radio" aria-selected="false" tabindex="0"><span data-i18n="genre_rock">Rock</span></div>
+          <div class="genre-card" data-genre="hiphop" role="radio" aria-selected="false" tabindex="0"><span data-i18n="genre_hiphop">Hip-hop</span></div>
+          <div class="genre-card" data-genre="edm_dance" role="radio" aria-selected="false" tabindex="0"><span data-i18n="genre_edm_dance">EDM / Dance</span></div>
+          <div class="genre-card" data-genre="manele_suflet" role="radio" aria-selected="false" tabindex="0"><span data-i18n="genre_manele_suflet">Manele de suflet</span></div>
+          <div class="genre-card" data-genre="manele_jale" role="radio" aria-selected="false" tabindex="0"><span data-i18n="genre_manele_jale">Manele de jale</span></div>
+          <div class="genre-card" data-genre="populara" role="radio" aria-selected="false" tabindex="0"><span data-i18n="genre_populara">Populară</span></div>
+          <div class="genre-card" data-genre="copii" role="radio" aria-selected="false" tabindex="0"><span data-i18n="genre_copii">Pentru copii</span></div>
+          <div class="genre-card" data-genre="colind" role="radio" aria-selected="false" tabindex="0"><span data-i18n="genre_colind">Colind</span></div>
+          <div class="genre-card" data-genre="romantic" role="radio" aria-selected="false" tabindex="0"><span data-i18n="genre_romantic">Romantic</span></div>
+          <div class="genre-card" data-genre="motivational" role="radio" aria-selected="false" tabindex="0"><span data-i18n="genre_motivational">Motivațional</span></div>
         </div>
         <input type="hidden" id="genre" value="">
         <div class="field-error" id="err-genre"></div>
-      </div>
-
-      <div class="field">
-        <label data-i18n="voice_label">Ce voce să cânte?</label>
-        <div class="voice-grid" id="voice-grid">
-          <div class="voice-card" data-voice="female">
-            <div class="voice-name" data-i18n="voice_female">Voce feminină</div>
-          </div>
-          <div class="voice-card" data-voice="male">
-            <div class="voice-name" data-i18n="voice_male">Voce masculină</div>
-          </div>
-          <div class="voice-card" data-voice="duet">
-            <div class="voice-name" data-i18n="voice_duet">Duet feminin + masculin</div>
-          </div>
-          <div class="voice-card active" data-voice="auto">
-            <div class="voice-name" data-i18n="voice_auto">Alegem pentru tine ❤️</div>
-          </div>
-        </div>
-        <input type="hidden" id="voice-preference" value="auto">
-        <div class="price-note" style="margin-top:6px;" data-i18n="voice_note">Vom alege vocea care se potrivește cel mai bine poveștii tale</div>
       </div>
 
       <div class="wizard-nav">
@@ -539,7 +523,41 @@
       </div>
     </div>
 
+    <!-- CERINTA 2C (2026-08-31, "Ce voce sa cante?"): pas nou, dedicat EXCLUSIV vocii — mutat
+         aici din fostul pas 3 combinat. Selectorul de TIP de voce ramane cel real, deja folosit
+         la generare (voicePreference) — 'auto' ramane disponibil intentionat (comanda vocala pe
+         profil/timbru cu mostre audio reale nu e inca publicata, vezi raportul final; 'auto' nu
+         e o optiune "veche needisponibila", ci alegerea onesta, functionala, pana atunci). -->
     <div class="step-card" data-step="4" style="display:none;">
+      <h1 data-i18n="wizard_step_voice_title">Ce voce să cânte?</h1>
+
+      <div class="field">
+        <label data-i18n="voice_label">Ce voce să cânte?</label>
+        <div class="voice-grid" id="voice-grid" role="radiogroup" aria-label="Ce voce să cânte?">
+          <div class="voice-card" data-voice="female" role="radio" aria-selected="false" tabindex="0">
+            <div class="voice-name" data-i18n="voice_female">Voce feminină</div>
+          </div>
+          <div class="voice-card" data-voice="male" role="radio" aria-selected="false" tabindex="0">
+            <div class="voice-name" data-i18n="voice_male">Voce masculină</div>
+          </div>
+          <div class="voice-card" data-voice="duet" role="radio" aria-selected="false" tabindex="0">
+            <div class="voice-name" data-i18n="voice_duet">Duet feminin + masculin</div>
+          </div>
+          <div class="voice-card active" data-voice="auto" role="radio" aria-selected="true" tabindex="0">
+            <div class="voice-name" data-i18n="voice_auto">Alegem pentru tine ❤️</div>
+          </div>
+        </div>
+        <input type="hidden" id="voice-preference" value="auto">
+        <div class="price-note" style="margin-top:6px;" data-i18n="voice_note">Vom alege vocea care se potrivește cel mai bine poveștii tale</div>
+      </div>
+
+      <div class="wizard-nav">
+        <button type="button" class="btn btn-ghost btn-back" data-prev="3" data-i18n="btn_back">Înapoi</button>
+        <button type="button" class="btn btn-primary btn-continue" id="step4-continue-btn" data-next="5" data-validate="4" data-i18n="btn_continue">Continuă</button>
+      </div>
+    </div>
+
+    <div class="step-card" data-step="5" style="display:none;">
       <h1 data-i18n="wizard_step4_title">Alege pachetul</h1>
 
       <div class="plan-list" id="plan-list" role="radiogroup" aria-label="Pachet">
@@ -574,22 +592,23 @@
 
       <div class="field" id="genre2-field" style="display:none;">
         <label data-i18n="label_genre2">Genul celei de-a doua melodii</label>
-        <div class="genre-grid" id="genre2-grid">
-          <div class="genre-card genre2-card" data-genre="emotional"><span data-i18n="genre_emotional">Emoțional</span></div>
-          <div class="genre-card genre2-card" data-genre="suflet"><span data-i18n="genre_suflet">De suflet</span></div>
-          <div class="genre-card genre2-card" data-genre="pop"><span>Pop</span></div>
-          <div class="genre-card genre2-card" data-genre="acustic"><span data-i18n="genre_acustic">Acustic / Folk</span></div>
-          <div class="genre-card genre2-card" data-genre="petrecere"><span data-i18n="genre_petrecere">Muzică de petrecere</span></div>
-          <div class="genre-card genre2-card" data-genre="balada"><span data-i18n="genre_balada">Baladă</span></div>
-          <div class="genre-card genre2-card" data-genre="manele"><span data-i18n="genre_manele">Manele de jale</span></div>
-          <div class="genre-card genre2-card" data-genre="copii"><span data-i18n="genre_copii">Pentru copii</span></div>
-          <div class="genre-card genre2-card" data-genre="populara"><span data-i18n="genre_populara">Populară</span></div>
-          <div class="genre-card genre2-card" data-genre="rock"><span data-i18n="genre_rock">Rock</span></div>
-          <div class="genre-card genre2-card" data-genre="colind"><span data-i18n="genre_colind">Colind</span></div>
-          <div class="genre-card genre2-card" data-genre="modern"><span data-i18n="genre_modern">Modern</span></div>
-          <div class="genre-card genre2-card" data-genre="hiphop"><span data-i18n="genre_hiphop">Hip-hop</span></div>
-          <div class="genre-card genre2-card" data-genre="manele_suflet"><span data-i18n="genre_manele_suflet">Manele de suflet</span></div>
-          <div class="genre-card genre2-card" data-genre="motivational"><span data-i18n="genre_motivational">Motivațional</span></div>
+        <div class="genre-grid" id="genre2-grid" role="radiogroup" aria-label="Genul celei de-a doua melodii">
+          <div class="genre-card genre2-card" data-genre="pop" role="radio" aria-selected="false" tabindex="0"><span data-i18n="genre_pop">Pop</span></div>
+          <div class="genre-card genre2-card" data-genre="ballad_emotional" role="radio" aria-selected="false" tabindex="0"><span data-i18n="genre_ballad_emotional">Baladă / Emoțional</span></div>
+          <div class="genre-card genre2-card" data-genre="acoustic_folk" role="radio" aria-selected="false" tabindex="0"><span data-i18n="genre_acoustic_folk">Acoustic / Folk</span></div>
+          <div class="genre-card genre2-card" data-genre="rnb" role="radio" aria-selected="false" tabindex="0"><span data-i18n="genre_rnb">R&amp;B</span></div>
+          <div class="genre-card genre2-card" data-genre="country" role="radio" aria-selected="false" tabindex="0"><span data-i18n="genre_country">Country</span></div>
+          <div class="genre-card genre2-card" data-genre="jazz" role="radio" aria-selected="false" tabindex="0"><span data-i18n="genre_jazz">Jazz</span></div>
+          <div class="genre-card genre2-card" data-genre="rock" role="radio" aria-selected="false" tabindex="0"><span data-i18n="genre_rock">Rock</span></div>
+          <div class="genre-card genre2-card" data-genre="hiphop" role="radio" aria-selected="false" tabindex="0"><span data-i18n="genre_hiphop">Hip-hop</span></div>
+          <div class="genre-card genre2-card" data-genre="edm_dance" role="radio" aria-selected="false" tabindex="0"><span data-i18n="genre_edm_dance">EDM / Dance</span></div>
+          <div class="genre-card genre2-card" data-genre="manele_suflet" role="radio" aria-selected="false" tabindex="0"><span data-i18n="genre_manele_suflet">Manele de suflet</span></div>
+          <div class="genre-card genre2-card" data-genre="manele_jale" role="radio" aria-selected="false" tabindex="0"><span data-i18n="genre_manele_jale">Manele de jale</span></div>
+          <div class="genre-card genre2-card" data-genre="populara" role="radio" aria-selected="false" tabindex="0"><span data-i18n="genre_populara">Populară</span></div>
+          <div class="genre-card genre2-card" data-genre="copii" role="radio" aria-selected="false" tabindex="0"><span data-i18n="genre_copii">Pentru copii</span></div>
+          <div class="genre-card genre2-card" data-genre="colind" role="radio" aria-selected="false" tabindex="0"><span data-i18n="genre_colind">Colind</span></div>
+          <div class="genre-card genre2-card" data-genre="romantic" role="radio" aria-selected="false" tabindex="0"><span data-i18n="genre_romantic">Romantic</span></div>
+          <div class="genre-card genre2-card" data-genre="motivational" role="radio" aria-selected="false" tabindex="0"><span data-i18n="genre_motivational">Motivațional</span></div>
         </div>
         <input type="hidden" id="genre2" value="">
         <div class="price-note" style="margin-top:6px;" data-i18n="genre2_hint">Alege un gen diferit de primul, pentru cea de-a doua melodie completă.</div>
@@ -614,49 +633,49 @@
       <div id="status-msg"></div>
 
       <div class="wizard-nav">
-        <button type="button" class="btn btn-ghost btn-back" data-prev="3" data-i18n="btn_back">Înapoi</button>
+        <button type="button" class="btn btn-ghost btn-back" data-prev="4" data-i18n="btn_back">Înapoi</button>
         <span></span>
       </div>
     </div>
 
-    <!-- MODIFICARE STRICTĂ — beneficiile Premium afișate INLINE pe pasul comun (pasul 4, vezi
+    <!-- MODIFICARE STRICTĂ — beneficiile Premium afișate INLINE pe pasul comun (pasul 5, vezi
          renderBenefits()/selectPlan() mai jos), în loc de un ecran separat de sumar. Ecranul
-         dedicat "Pachet Premium" (fostul pas 5) a fost eliminat — Premium rămâne pe pasul 4,
-         exact ca Standard și Cadou video. -->
+         dedicat "Pachet Premium" (fostul pas 5, inainte de aceasta eliminare) a fost eliminat —
+         Premium rămâne pe pasul 5, exact ca Standard și Cadou video. -->
 
     <!-- MODIFICARE STRICTĂ — fluxul pachetului Premium £25 (hotfix 2026-08-09; SEPARARE ÎN DOI
          PAȘI, hotfix 2026-08-10 runda 2): genul celei de-a doua melodii (obligatoriu, diferit de
          primul) — acum ecran DEDICAT, separat de "Pentru cine este a doua melodie?" (pasul
-         urmator, data-step="6"). Butonul de mai jos NU trimite comanda — doar valideaza genul si
-         trece la pasul urmator (vezi validateStep(5)). -->
-    <div class="step-card" data-step="5" style="display:none;">
+         urmator, data-step="7"). Butonul de mai jos NU trimite comanda — doar valideaza genul si
+         trece la pasul urmator (vezi validateStep(6)). -->
+    <div class="step-card" data-step="6" style="display:none;">
       <h1 data-i18n="song2_config_title">Configurează a doua melodie</h1>
 
       <div class="mandatory-section">
         <span class="required-badge" data-i18n="badge_required">Obligatoriu</span>
         <h2 data-i18n="song2_genre_section_title">1. Alege genul celei de-a doua melodii</h2>
         <div class="song1-genre-hint" id="song1-genre-display"></div>
-        <!-- #genre2-field (definit mai sus, in pasul 4) e REPARENTAT aici DOAR pentru Premium
-             (vezi placeGenre2Field()) — pentru Video ramane exact unde e definit, in pasul 4,
+        <!-- #genre2-field (definit mai sus, in pasul 5) e REPARENTAT aici DOAR pentru Premium
+             (vezi placeGenre2Field()) — pentru Video ramane exact unde e definit, in pasul 5,
              comportament complet neschimbat. Acelasi element unic, niciodata duplicat. -->
         <div id="song2-genre-slot"></div>
       </div>
 
-      <button type="button" class="btn btn-primary btn-continue" data-next="6" data-validate="5" data-i18n="btn_continue" style="width:100%; justify-content:center; margin-top:20px;">Continuă</button>
+      <button type="button" class="btn btn-primary btn-continue" data-next="7" data-validate="6" data-i18n="btn_continue" style="width:100%; justify-content:center; margin-top:20px;">Continuă</button>
 
       <div class="wizard-nav">
-        <button type="button" class="btn btn-ghost btn-back" data-prev="4" data-i18n="btn_back">Înapoi</button>
+        <button type="button" class="btn btn-ghost btn-back" data-prev="5" data-i18n="btn_back">Înapoi</button>
         <span></span>
       </div>
     </div>
 
     <!-- MODIFICARE STRICTĂ — fluxul pachetului Premium £25 (hotfix 2026-08-09; SEPARARE ÎN DOI
          PAȘI, hotfix 2026-08-10 runda 2): destinatarul celei de-a doua melodii (obligatoriu:
-         aceeași persoană sau altcineva) — ecran DEDICAT, dupa alegerea genului (pasul 5). Genul
+         aceeași persoană sau altcineva) — ecran DEDICAT, dupa alegerea genului (pasul 6). Genul
          ramane pastrat (nu e resetat) daca utilizatorul apasa Înapoi si revine aici. Butonul
          final ramane dezactivat pana cand toate alegerile obligatorii sunt complete si valide —
          vezi updateSong2ContinueState(). -->
-    <div class="step-card" data-step="6" style="display:none;">
+    <div class="step-card" data-step="7" style="display:none;">
       <h1 data-i18n="song2_config_title">Configurează a doua melodie</h1>
 
       <div class="mandatory-section">
@@ -774,19 +793,19 @@
       <div id="status-msg-song2"></div>
 
       <div class="wizard-nav">
-        <button type="button" class="btn btn-ghost btn-back" data-prev="5" data-i18n="btn_back">Înapoi</button>
+        <button type="button" class="btn btn-ghost btn-back" data-prev="6" data-i18n="btn_back">Înapoi</button>
         <span></span>
       </div>
     </div>
 
     <!-- ADAUGAT (2026-08-13) — mini-pagina dedicata pentru datele persoanei/melodiei 2, EXCLUSIV
-         Premium SI EXCLUSIV cand "Pentru altă persoană" a fost ales (pasul 6). Reutilizeaza EXACT
+         Premium SI EXCLUSIV cand "Pentru altă persoană" a fost ales (pasul 7). Reutilizeaza EXACT
          componentele/stilul campurilor de pe pasul 2 (acelasi tipar .field/label/input/textarea,
          aceleasi chei de traducere pentru sender/relationship/story — niciun text nou pentru ele).
-         Campul de nume (id="song2-recipient-name") e MUTAT AICI de pe pasul 6 (nu duplicat) —
+         Campul de nume (id="song2-recipient-name") e MUTAT AICI de pe pasul 7 (nu duplicat) —
          acelasi element, acelasi id, toata logica JS existenta (validare, draft, payload) ramane
          neschimbata. Ordinea cerută explicit: nume, expeditor, relație, poveste. -->
-    <div class="step-card" data-step="7" style="display:none;">
+    <div class="step-card" data-step="8" style="display:none;">
       <h1 data-i18n="song2_config_title">Configurează a doua melodie</h1>
 
       <!-- Numele destinatarului cand NU e "Amândoi" — pentru orice ocazie (generica SAU rol
@@ -823,7 +842,7 @@
       <div id="status-msg-song2-details"></div>
 
       <div class="wizard-nav">
-        <button type="button" class="btn btn-ghost btn-back" data-prev="6" data-i18n="btn_back">Înapoi</button>
+        <button type="button" class="btn btn-ghost btn-back" data-prev="7" data-i18n="btn_back">Înapoi</button>
         <span></span>
       </div>
     </div>
@@ -846,7 +865,7 @@
       theme_onomastica_desc: 'Onomastică, sfinți, familie',
       theme_aniversare_name: 'E ziua lui/ei',
       theme_aniversare_desc: 'La mulți ani, dar personal',
-      theme_declaratie_name: 'Te iubesc, pe note',
+      theme_declaratie_name: 'Te iubesc',
       theme_declaratie_desc: 'Când mesajul nu ajunge',
       theme_nunta_name: 'Nuntă/Botez',
       theme_nunta_desc: 'Primul dans sau surpriză pentru miri, fini sau nași',
@@ -906,15 +925,14 @@
       genre_choose: 'Alege genul',
       label_genre2: 'Genul celei de-a doua melodii',
       genre2_hint: 'Alege un gen diferit de primul, pentru cea de-a doua melodie completă.',
-      genre_emotional: 'Emoțional',
-      genre_suflet: 'De suflet',
-      genre_acustic: 'Acustic / Folk',
-      genre_petrecere: 'Muzică de petrecere',
-      genre_balada: 'Baladă',
-      genre_manele: 'Manele de jale',
-      genre_copii: 'Pentru copii',
-      genre_populara: 'Populară', genre_rock: 'Rock', genre_colind: 'Colind', genre_modern: 'Modern', genre_hiphop: 'Hip-hop',
-      genre_manele_suflet: 'Manele de suflet', genre_motivational: 'Motivațional',
+      genre_pop: 'Pop', genre_ballad_emotional: 'Baladă / Emoțional', genre_acoustic_folk: 'Acoustic / Folk', genre_rnb: 'R&B',
+      genre_country: 'Country', genre_jazz: 'Jazz', genre_rock: 'Rock', genre_hiphop: 'Hip-hop', genre_edm_dance: 'EDM / Dance',
+      genre_manele_suflet: 'Manele de suflet', genre_manele_jale: 'Manele de jale', genre_populara: 'Populară',
+      genre_copii: 'Pentru copii', genre_colind: 'Colind', genre_romantic: 'Romantic', genre_motivational: 'Motivațional',
+      // chei VECHI (2026-08-31, "16 genuri") — pastrate STRICT pentru comenzile deja existente cu
+      // aceste chei (afisate in melodia-mea.html la editare/regenerare) — comanda.html NU le mai
+      // foloseste in noul selector, dar constanta ALLOWED_GENRES din server.js le accepta in continuare.
+      genre_emotional: 'Emoțional', genre_suflet: 'De suflet', genre_acustic: 'Acustic / Folk', genre_petrecere: 'Muzică de petrecere', genre_balada: 'Baladă', genre_manele: 'Manele de jale', genre_modern: 'Modern',
       voice_label: 'Ce voce să cânte?',
       voice_female: 'Voce feminină',
       voice_male: 'Voce masculină',
@@ -966,7 +984,8 @@
       msg_try_again: 'încearcă din nou',
       wizard_step1_title: 'Pentru ce moment vrei cântecul?',
       wizard_step2_title: 'Spune-ne pentru cine este cântecul',
-      wizard_step3_title: 'Alege stilul și vocea',
+      wizard_step3_title: 'Alege genul muzical',
+      wizard_step_voice_title: 'Ce voce să cânte?',
       wizard_step4_title: 'Alege pachetul',
       btn_continue: 'Continuă',
       btn_back: 'Înapoi',
@@ -1011,7 +1030,7 @@
       theme_onomastica_desc: 'Name day, saints, family.',
       theme_aniversare_name: 'It is their birthday',
       theme_aniversare_desc: 'Happy birthday, made personal.',
-      theme_declaratie_name: 'I love you, in song',
+      theme_declaratie_name: 'I love you',
       theme_declaratie_desc: 'When words are not enough.',
       theme_nunta_name: 'Wedding/Christening',
       theme_nunta_desc: 'First dance or a surprise for the couple, godchildren or godparents.',
@@ -1071,15 +1090,11 @@
       genre_choose: 'Choose a genre',
       label_genre2: "Second song's genre",
       genre2_hint: 'Choose a genre different from the first, for the second complete song.',
-      genre_emotional: 'Emotional',
-      genre_suflet: 'Soulful',
-      genre_acustic: 'Acoustic / Folk',
-      genre_petrecere: 'Party music',
-      genre_balada: 'Ballad',
-      genre_manele: 'Mournful manele',
-      genre_copii: 'For kids',
-      genre_populara: 'Folk-pop', genre_rock: 'Rock', genre_colind: 'Christmas carol', genre_modern: 'Modern', genre_hiphop: 'Hip-hop',
-      genre_manele_suflet: 'Soulful manele', genre_motivational: 'Motivational',
+      genre_pop: 'Pop', genre_ballad_emotional: 'Ballad / Emotional', genre_acoustic_folk: 'Acoustic / Folk', genre_rnb: 'R&B',
+      genre_country: 'Country', genre_jazz: 'Jazz', genre_rock: 'Rock', genre_hiphop: 'Hip-hop', genre_edm_dance: 'EDM / Dance',
+      genre_manele_suflet: 'Soulful manele', genre_manele_jale: 'Mournful manele', genre_populara: 'Folk-pop',
+      genre_copii: 'For kids', genre_colind: 'Christmas carol', genre_romantic: 'Romantic', genre_motivational: 'Motivational',
+      genre_emotional: 'Emotional', genre_suflet: 'Soulful', genre_acustic: 'Acoustic / Folk', genre_petrecere: 'Party music', genre_balada: 'Ballad', genre_manele: 'Mournful manele', genre_modern: 'Modern',
       voice_label: 'Which voice should sing?',
       voice_female: 'Female voice',
       voice_male: 'Male voice',
@@ -1131,7 +1146,8 @@
       msg_try_again: 'please try again.',
       wizard_step1_title: 'What moment is the song for?',
       wizard_step2_title: 'Tell us who the song is for',
-      wizard_step3_title: 'Choose the style and voice',
+      wizard_step3_title: 'Choose the musical genre',
+      wizard_step_voice_title: 'Which voice should sing?',
       wizard_step4_title: 'Choose your package',
       btn_continue: 'Continue',
       btn_back: 'Back',
@@ -1175,7 +1191,7 @@
       theme_onomastica_desc: 'Namenstag, Feiertag, Familie.',
       theme_aniversare_name: 'Geburtstag',
       theme_aniversare_desc: 'Alles Gute, ganz persönlich.',
-      theme_declaratie_name: 'Ich liebe dich, in Liedform',
+      theme_declaratie_name: 'Ich liebe dich',
       theme_declaratie_desc: 'Wenn Worte nicht reichen.',
       theme_nunta_name: 'Hochzeit/Taufe',
       theme_nunta_desc: 'Erster Tanz oder Überraschung fürs Brautpaar, Patenkinder oder Paten.',
@@ -1235,15 +1251,11 @@
       genre_choose: 'Genre wählen',
       label_genre2: 'Musikrichtung des zweiten Liedes',
       genre2_hint: 'Wähle eine andere Musikrichtung als beim ersten Lied, für das zweite vollständige Lied.',
-      genre_emotional: 'Emotional',
-      genre_suflet: 'Gefühlvoll',
-      genre_acustic: 'Akustik / Folk',
-      genre_petrecere: 'Partymusik',
-      genre_balada: 'Ballade',
-      genre_manele: 'Manele der Trauer',
-      genre_copii: 'Für Kinder',
-      genre_populara: 'Volkstümlich', genre_rock: 'Rock', genre_colind: 'Weihnachtslied', genre_modern: 'Modern', genre_hiphop: 'Hip-Hop',
-      genre_manele_suflet: 'Manele mit Seele', genre_motivational: 'Motivierend',
+      genre_pop: 'Pop', genre_ballad_emotional: 'Ballade / Emotional', genre_acoustic_folk: 'Akustik / Folk', genre_rnb: 'R&B',
+      genre_country: 'Country', genre_jazz: 'Jazz', genre_rock: 'Rock', genre_hiphop: 'Hip-Hop', genre_edm_dance: 'EDM / Dance',
+      genre_manele_suflet: 'Manele mit Seele', genre_manele_jale: 'Manele der Trauer', genre_populara: 'Volkstümlich',
+      genre_copii: 'Für Kinder', genre_colind: 'Weihnachtslied', genre_romantic: 'Romantisch', genre_motivational: 'Motivierend',
+      genre_emotional: 'Emotional', genre_suflet: 'Gefühlvoll', genre_acustic: 'Akustik / Folk', genre_petrecere: 'Partymusik', genre_balada: 'Ballade', genre_manele: 'Manele der Trauer', genre_modern: 'Modern',
       voice_label: 'Welche Stimme soll singen?',
       voice_female: 'Weibliche Stimme',
       voice_male: 'Männliche Stimme',
@@ -1295,7 +1307,8 @@
       msg_try_again: 'bitte versuche es erneut.',
       wizard_step1_title: 'Für welchen Moment ist das Lied?',
       wizard_step2_title: 'Sag uns, für wen das Lied ist',
-      wizard_step3_title: 'Wähle Stil und Stimme',
+      wizard_step3_title: 'Wähle die Musikrichtung',
+      wizard_step_voice_title: 'Welche Stimme soll singen?',
       wizard_step4_title: 'Wähle dein Paket',
       btn_continue: 'Weiter',
       btn_back: 'Zurück',
@@ -1339,7 +1352,7 @@
       theme_onomastica_desc: 'Santo, festividad, familia.',
       theme_aniversare_name: 'Es su cumpleaños',
       theme_aniversare_desc: 'Feliz cumpleaños, muy personal.',
-      theme_declaratie_name: 'Te quiero, en canción',
+      theme_declaratie_name: 'Te quiero',
       theme_declaratie_desc: 'Cuando las palabras no bastan.',
       theme_nunta_name: 'Boda/Bautizo',
       theme_nunta_desc: 'Primer baile o sorpresa para los novios, ahijados o padrinos.',
@@ -1399,15 +1412,11 @@
       genre_choose: 'Elige un género',
       label_genre2: 'Género de la segunda canción',
       genre2_hint: 'Elige un género diferente al primero, para la segunda canción completa.',
-      genre_emotional: 'Emotivo',
-      genre_suflet: 'Con alma',
-      genre_acustic: 'Acústico / Folk',
-      genre_petrecere: 'Música de fiesta',
-      genre_balada: 'Balada',
-      genre_manele: 'Manele de duelo',
-      genre_copii: 'Para niños',
-      genre_populara: 'Popular', genre_rock: 'Rock', genre_colind: 'Villancico', genre_modern: 'Moderno', genre_hiphop: 'Hip-hop',
-      genre_manele_suflet: 'Manele con sentimiento', genre_motivational: 'Motivacional',
+      genre_pop: 'Pop', genre_ballad_emotional: 'Balada / Emotivo', genre_acoustic_folk: 'Acústico / Folk', genre_rnb: 'R&B',
+      genre_country: 'Country', genre_jazz: 'Jazz', genre_rock: 'Rock', genre_hiphop: 'Hip-hop', genre_edm_dance: 'EDM / Dance',
+      genre_manele_suflet: 'Manele con sentimiento', genre_manele_jale: 'Manele de duelo', genre_populara: 'Popular',
+      genre_copii: 'Para niños', genre_colind: 'Villancico', genre_romantic: 'Romántico', genre_motivational: 'Motivacional',
+      genre_emotional: 'Emotivo', genre_suflet: 'Con alma', genre_acustic: 'Acústico / Folk', genre_petrecere: 'Música de fiesta', genre_balada: 'Balada', genre_manele: 'Manele de duelo', genre_modern: 'Moderno',
       voice_label: '¿Qué voz debe cantar?',
       voice_female: 'Voz femenina',
       voice_male: 'Voz masculina',
@@ -1459,7 +1468,8 @@
       msg_try_again: 'inténtalo de nuevo.',
       wizard_step1_title: '¿Para qué momento es la canción?',
       wizard_step2_title: 'Dinos para quién es la canción',
-      wizard_step3_title: 'Elige el estilo y la voz',
+      wizard_step3_title: 'Elige el género musical',
+      wizard_step_voice_title: '¿Qué voz debe cantar?',
       wizard_step4_title: 'Elige tu paquete',
       btn_continue: 'Continuar',
       btn_back: 'Atrás',
@@ -1503,7 +1513,7 @@
       theme_onomastica_desc: 'Onomastico, festività, famiglia.',
       theme_aniversare_name: 'È il suo compleanno',
       theme_aniversare_desc: 'Buon compleanno, in modo personale.',
-      theme_declaratie_name: 'Ti amo, in canzone',
+      theme_declaratie_name: 'Ti amo',
       theme_declaratie_desc: 'Quando le parole non bastano.',
       theme_nunta_name: 'Matrimonio/Battesimo',
       theme_nunta_desc: 'Primo ballo o sorpresa per gli sposi, figliocci o padrini.',
@@ -1563,15 +1573,11 @@
       genre_choose: 'Scegli un genere',
       label_genre2: 'Genere della seconda canzone',
       genre2_hint: "Scegli un genere diverso dal primo, per la seconda canzone completa.",
-      genre_emotional: 'Emozionante',
-      genre_suflet: 'Con anima',
-      genre_acustic: 'Acustico / Folk',
-      genre_petrecere: 'Musica da festa',
-      genre_balada: 'Ballata',
-      genre_manele: 'Manele di lutto',
-      genre_copii: 'Per bambini',
-      genre_populara: 'Popolare', genre_rock: 'Rock', genre_colind: 'Canto natalizio', genre_modern: 'Moderno', genre_hiphop: 'Hip-hop',
-      genre_manele_suflet: 'Manele con anima', genre_motivational: 'Motivazionale',
+      genre_pop: 'Pop', genre_ballad_emotional: 'Ballata / Emotivo', genre_acoustic_folk: 'Acustico / Folk', genre_rnb: 'R&B',
+      genre_country: 'Country', genre_jazz: 'Jazz', genre_rock: 'Rock', genre_hiphop: 'Hip-hop', genre_edm_dance: 'EDM / Dance',
+      genre_manele_suflet: 'Manele con anima', genre_manele_jale: 'Manele di lutto', genre_populara: 'Popolare',
+      genre_copii: 'Per bambini', genre_colind: 'Canto natalizio', genre_romantic: 'Romantico', genre_motivational: 'Motivazionale',
+      genre_emotional: 'Emozionante', genre_suflet: 'Con anima', genre_acustic: 'Acustico / Folk', genre_petrecere: 'Musica da festa', genre_balada: 'Ballata', genre_manele: 'Manele di lutto', genre_modern: 'Moderno',
       voice_label: 'Quale voce deve cantare?',
       voice_female: 'Voce femminile',
       voice_male: 'Voce maschile',
@@ -1623,7 +1629,8 @@
       msg_try_again: 'riprova.',
       wizard_step1_title: 'Per quale momento è la canzone?',
       wizard_step2_title: 'Dicci per chi è la canzone',
-      wizard_step3_title: 'Scegli lo stile e la voce',
+      wizard_step3_title: 'Scegli il genere musicale',
+      wizard_step_voice_title: 'Quale voce deve cantare?',
       wizard_step4_title: 'Scegli il pacchetto',
       btn_continue: 'Continua',
       btn_back: 'Indietro',
@@ -1667,7 +1674,7 @@
       theme_onomastica_desc: 'Fête, saints, famille.',
       theme_aniversare_name: 'C\'est son anniversaire',
       theme_aniversare_desc: 'Joyeux anniversaire, en version personnelle.',
-      theme_declaratie_name: 'Je t\'aime, en chanson',
+      theme_declaratie_name: 'Je t\'aime',
       theme_declaratie_desc: 'Quand les mots ne suffisent pas.',
       theme_nunta_name: 'Mariage/Baptême',
       theme_nunta_desc: 'Première danse ou surprise pour les mariés, filleuls ou parrains.',
@@ -1727,15 +1734,11 @@
       genre_choose: 'Choisissez un genre',
       label_genre2: 'Genre de la deuxième chanson',
       genre2_hint: 'Choisissez un genre différent du premier, pour la deuxième chanson complète.',
-      genre_emotional: 'Émouvant',
-      genre_suflet: 'Avec âme',
-      genre_acustic: 'Acoustique / Folk',
-      genre_petrecere: 'Musique de fête',
-      genre_balada: 'Ballade',
-      genre_manele: 'Manele de deuil',
-      genre_copii: 'Pour enfants',
-      genre_populara: 'Populaire', genre_rock: 'Rock', genre_colind: 'Chant de Noël', genre_modern: 'Moderne', genre_hiphop: 'Hip-hop',
-      genre_manele_suflet: 'Manele avec âme', genre_motivational: 'Motivant',
+      genre_pop: 'Pop', genre_ballad_emotional: 'Ballade / Émouvant', genre_acoustic_folk: 'Acoustique / Folk', genre_rnb: 'R&B',
+      genre_country: 'Country', genre_jazz: 'Jazz', genre_rock: 'Rock', genre_hiphop: 'Hip-hop', genre_edm_dance: 'EDM / Dance',
+      genre_manele_suflet: 'Manele avec âme', genre_manele_jale: 'Manele de deuil', genre_populara: 'Populaire',
+      genre_copii: 'Pour enfants', genre_colind: 'Chant de Noël', genre_romantic: 'Romantique', genre_motivational: 'Motivant',
+      genre_emotional: 'Émouvant', genre_suflet: 'Avec âme', genre_acustic: 'Acoustique / Folk', genre_petrecere: 'Musique de fête', genre_balada: 'Ballade', genre_manele: 'Manele de deuil', genre_modern: 'Moderne',
       voice_label: 'Quelle voix doit chanter ?',
       voice_female: 'Voix féminine',
       voice_male: 'Voix masculine',
@@ -1787,7 +1790,8 @@
       msg_try_again: 'veuillez réessayer.',
       wizard_step1_title: 'Pour quel moment est la chanson ?',
       wizard_step2_title: 'Dites-nous pour qui est la chanson',
-      wizard_step3_title: 'Choisissez le style et la voix',
+      wizard_step3_title: 'Choisissez le genre musical',
+      wizard_step_voice_title: 'Quelle voix doit chanter ?',
       wizard_step4_title: 'Choisissez votre pack',
       btn_continue: 'Continuer',
       btn_back: 'Retour',
@@ -1831,7 +1835,7 @@
       theme_onomastica_desc: 'Именен ден, празник, семейство.',
       theme_aniversare_name: 'Има рожден ден',
       theme_aniversare_desc: 'Честит рожден ден, съвсем лично.',
-      theme_declaratie_name: 'Обичам те, в песен',
+      theme_declaratie_name: 'Обичам те',
       theme_declaratie_desc: 'Когато думите не стигат.',
       theme_nunta_name: 'Сватба/Кръщене',
       theme_nunta_desc: 'Първи танц или изненада за младоженците, кръщелниците или кумовете.',
@@ -1891,15 +1895,11 @@
       genre_choose: 'Избери жанр',
       label_genre2: 'Жанр на втората песен',
       genre2_hint: 'Избери жанр, различен от първия, за втората пълна песен.',
-      genre_emotional: 'Емоционално',
-      genre_suflet: 'Душевно',
-      genre_acustic: 'Акустика / Фолк',
-      genre_petrecere: 'Парти музика',
-      genre_balada: 'Балада',
-      genre_manele: 'Тъжни манеле',
-      genre_copii: 'За деца',
-      genre_populara: 'Народна', genre_rock: 'Рок', genre_colind: 'Коледна песен', genre_modern: 'Модерна', genre_hiphop: 'Хип-хоп',
-      genre_manele_suflet: 'Задушевни манеле', genre_motivational: 'Мотивационна',
+      genre_pop: 'Поп', genre_ballad_emotional: 'Балада / Емоционално', genre_acoustic_folk: 'Акустика / Фолк', genre_rnb: 'R&B',
+      genre_country: 'Кънтри', genre_jazz: 'Джаз', genre_rock: 'Рок', genre_hiphop: 'Хип-хоп', genre_edm_dance: 'EDM / Денс',
+      genre_manele_suflet: 'Задушевни манеле', genre_manele_jale: 'Тъжни манеле', genre_populara: 'Народна',
+      genre_copii: 'За деца', genre_colind: 'Коледна песен', genre_romantic: 'Романтична', genre_motivational: 'Мотивационна',
+      genre_emotional: 'Емоционално', genre_suflet: 'Душевно', genre_acustic: 'Акустика / Фолк', genre_petrecere: 'Парти музика', genre_balada: 'Балада', genre_manele: 'Тъжни манеле', genre_modern: 'Модерна',
       voice_label: 'Какъв глас да пее?',
       voice_female: 'Женски глас',
       voice_male: 'Мъжки глас',
@@ -1951,7 +1951,8 @@
       msg_try_again: 'опитай отново.',
       wizard_step1_title: 'За кой момент е песента?',
       wizard_step2_title: 'Кажи ни за кого е песента',
-      wizard_step3_title: 'Избери стила и гласа',
+      wizard_step3_title: 'Избери музикалния жанр',
+      wizard_step_voice_title: 'Какъв глас да пее?',
       wizard_step4_title: 'Избери пакета',
       btn_continue: 'Продължи',
       btn_back: 'Назад',
@@ -1995,7 +1996,7 @@
       theme_onomastica_desc: 'İsim günü, bayram, aile.',
       theme_aniversare_name: 'Doğum günü',
       theme_aniversare_desc: 'Kişiye özel, doğum günü kutlaması.',
-      theme_declaratie_name: 'Seni seviyorum, şarkıyla',
+      theme_declaratie_name: 'Seni seviyorum',
       theme_declaratie_desc: 'Kelimeler yetmediğinde.',
       theme_nunta_name: 'Düğün/Vaftiz',
       theme_nunta_desc: 'İlk dans veya çift, vaftiz çocukları ya da vaftiz ebeveynleri için sürpriz.',
@@ -2055,15 +2056,11 @@
       genre_choose: 'Bir tür seçin',
       label_genre2: 'İkinci şarkının türü',
       genre2_hint: 'İkinci tam şarkı için ilkinden farklı bir tür seçin.',
-      genre_emotional: 'Duygusal',
-      genre_suflet: 'İçten',
-      genre_acustic: 'Akustik / Folk',
-      genre_petrecere: 'Parti müziği',
-      genre_balada: 'Balad',
-      genre_manele: 'Hüzünlü manele',
-      genre_copii: 'Çocuklar için',
-      genre_populara: 'Popüler', genre_rock: 'Rock', genre_colind: 'Noel ilahisi', genre_modern: 'Modern', genre_hiphop: 'Hip-hop',
-      genre_manele_suflet: 'Duygusal manele', genre_motivational: 'Motivasyonel',
+      genre_pop: 'Pop', genre_ballad_emotional: 'Balad / Duygusal', genre_acoustic_folk: 'Akustik / Folk', genre_rnb: 'R&B',
+      genre_country: 'Country', genre_jazz: 'Jazz', genre_rock: 'Rock', genre_hiphop: 'Hip-hop', genre_edm_dance: 'EDM / Dans',
+      genre_manele_suflet: 'Duygusal manele', genre_manele_jale: 'Hüzünlü manele', genre_populara: 'Popüler',
+      genre_copii: 'Çocuklar için', genre_colind: 'Noel ilahisi', genre_romantic: 'Romantik', genre_motivational: 'Motivasyonel',
+      genre_emotional: 'Duygusal', genre_suflet: 'İçten', genre_acustic: 'Akustik / Folk', genre_petrecere: 'Parti müziği', genre_balada: 'Balad', genre_manele: 'Hüzünlü manele', genre_modern: 'Modern',
       voice_label: 'Hangi ses söylemeli?',
       voice_female: 'Kadın sesi',
       voice_male: 'Erkek sesi',
@@ -2115,7 +2112,8 @@
       msg_try_again: 'lütfen tekrar deneyin.',
       wizard_step1_title: 'Şarkı hangi an için?',
       wizard_step2_title: 'Şarkının kimin için olduğunu söyleyin',
-      wizard_step3_title: 'Stili ve sesi seçin',
+      wizard_step3_title: 'Müzik türünü seçin',
+      wizard_step_voice_title: 'Hangi ses söylemeli?',
       wizard_step4_title: 'Paketinizi seçin',
       btn_continue: 'Devam et',
       btn_back: 'Geri',
@@ -2174,23 +2172,37 @@
   }
 
   const STEP_KEY = 'currentStep';
+  // CERINTA 2D (2026-08-31, "renumerotarea pasilor... migreaza drafturile vechi"): un draft
+  // salvat INAINTE de introducerea pasului dedicat de voce stoca numarul BRUT al pasului, in
+  // vechea numerotare (1=moment, 2=detalii, 3=gen+voce combinate, 4=pachet, 5=genul melodiei 2,
+  // 6=destinatarul melodiei 2, 7=mini-pagina). WIZARD_STEP_VERSION_KEY marcheaza explicit
+  // numerotarea curenta — un draft FARA aceasta cheie (sau cu o valoare veche) e tratat ca fiind
+  // in schema VECHE si numarul lui de pas e remapat o singura data (WIZARD_STEP_MIGRATION_MAP),
+  // ca sa nu redeschida clientul pe un pas gresit (ex. vechiul pas 4 "Pachet" ar fi aratat acum,
+  // fara migrare, noul pas 4 "Ce voce sa cante?" — un ecran complet diferit).
+  const WIZARD_STEP_VERSION_KEY = 'nds_wizard_step_version';
+  const CURRENT_WIZARD_STEP_VERSION = '2';
+  const WIZARD_STEP_MIGRATION_MAP = { 1: 1, 2: 2, 3: 3, 4: 5, 5: 6, 6: 7, 7: 8 };
   let currentStep = 1;
 
   // MODIFICARE STRICTĂ — fluxul pachetului Premium £25 (hotfix 2026-08-09; SEPARARE ÎN DOI PAȘI,
   // hotfix 2026-08-10 runda 2; CORECȚIE 2026-08-23, eliminarea ecranului separat "Pachet
-  // Premium"): Standard si Video raman la EXACT 4 pasi, neschimbat — Premium ramane STRICT pe
-  // pasul 4 (beneficiile afisate inline in acelasi bloc, ca Standard/Video, fara ecran separat de
-  // sumar) si capata inca 2 pasi dedicati (genul melodiei 2, destinatarul melodiei 2).
+  // Premium"): Standard si Video raman la EXACT 5 pasi (era 4, +1 dupa introducerea pasului
+  // dedicat de voce, cerinta 2D, 2026-08-31), neschimbat altfel — Premium ramane STRICT pe
+  // pasul 5 (pachet, beneficiile afisate inline in acelasi bloc, ca Standard/Video, fara ecran
+  // separat de sumar) si capata inca 2 pasi dedicati (genul melodiei 2, destinatarul melodiei 2).
   // `selectedPlan` e declarat mai jos in acest script, dar functia insasi ruleaza abia dupa
   // initializare completa, deci referinta e sigura.
-  // ADAUGAT (2026-08-13): Premium capata un al 7-lea pas, DAR STRICT DOAR cand "Pentru altă
-  // persoană" a fost ales (mini-pagina dedicata datelor persoanei 2) — "Pentru aceeași
-  // persoană" ramane la 6 pasi, neschimbat (nimic nou de completat pentru melodia 2 in acel
-  // caz). song2TargetInput e declarat mai jos in acest script, dar functia insasi ruleaza
+  // ADAUGAT (2026-08-13): Premium capata un al 8-lea pas (era 7), DAR STRICT DOAR cand "Pentru
+  // altă persoană" a fost ales (mini-pagina dedicata datelor persoanei 2) — "Pentru aceeași
+  // persoană" ramane la 7 pasi (era 6), neschimbat (nimic nou de completat pentru melodia 2 in
+  // acel caz). song2TargetInput e declarat mai jos in acest script, dar functia insasi ruleaza
   // abia dupa initializare completa (acelasi principiu ca la selectedPlan mai sus).
+  // CERINTA 2D (2026-08-31, "renumerotarea pasilor"): +1 pretutindeni fata de numerele vechi —
+  // pasul nou de voce (4) impinge pachetul la 5 si tot ce urmeaza pentru Premium cu inca un pas.
   function getTotalSteps() {
-    if (selectedPlan.id !== 'premium') return 4;
-    return song2TargetInput.value === 'other' ? 7 : 6;
+    if (selectedPlan.id !== 'premium') return 5;
+    return song2TargetInput.value === 'other' ? 8 : 7;
   }
 
   const stepCards = document.querySelectorAll('.step-card');
@@ -2210,11 +2222,15 @@
     });
     // MODIFICARE STRICTĂ — fluxul pachetului Premium £25 (hotfix 2026-08-09): eticheta "Prima
     // melodie: [gen]" trebuie sa ramana corecta indiferent CUM a ajuns clientul pe acest pas
-    // (click direct, revenire din pasul 6, restaurare din draft) — actualizata aici, o singura
+    // (click direct, revenire din pasul 7, restaurare din draft) — actualizata aici, o singura
     // data, in loc de la fiecare punct posibil care ar putea schimba genul primei melodii.
-    if (n === 5 && typeof updateSong1GenreDisplay === 'function') updateSong1GenreDisplay();
+    // CERINTA 2D (2026-08-31): 5 -> 6 (pasul de gen pentru a doua melodie s-a mutat).
+    if (n === 6 && typeof updateSong1GenreDisplay === 'function') updateSong1GenreDisplay();
     updateProgressLabel();
-    try { localStorage.setItem(STEP_KEY, String(n)); } catch (err) { /* ignoram */ }
+    try {
+      localStorage.setItem(STEP_KEY, String(n));
+      localStorage.setItem(WIZARD_STEP_VERSION_KEY, CURRENT_WIZARD_STEP_VERSION);
+    } catch (err) { /* ignoram */ }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
@@ -2331,13 +2347,24 @@
       if (!genre) { ok = false; firstInvalid = 'genre'; }
     }
 
+    // CERINTA 2C (2026-08-31, "Ce voce sa cante?"): validare defensiva a pasului dedicat vocii —
+    // voiceInput are mereu o valoare (implicit 'auto'), deci in practica aceasta ramane
+    // intotdeauna adevarata (acelasi comportament ca inainte de separarea in doua pasi), dar
+    // verificam explicit, ca sursa unica de adevar sa fie clara daca alegerea devine vreodata
+    // obligatorie fara implicit.
+    if (n === 4) {
+      const voice = voiceInput.value;
+      if (!voice) { ok = false; firstInvalid = 'voice-preference'; }
+    }
+
     // MODIFICARE STRICTĂ — fluxul Premium, ecranul dedicat de gen pentru a doua melodie (hotfix
     // 2026-08-10 runda 2): genul e obligatoriu SI diferit de primul — click-ul pe un gen identic
     // e deja blocat mai sus (genre2Cards click handler), dar validam din nou aici, defensiv,
     // inainte de a trece la ecranul urmator (persoana). genre2Field e un element vizibil
     // (hidden inputul propriu-zis nu poate primi focus vizibil), deci derulam explicit catre el,
     // acelasi tipar deja folosit la validarea finala de trimitere (mai jos in acest fisier).
-    if (n === 5) {
+    // CERINTA 2D (2026-08-31): 5 -> 6 (ecranul de gen pentru a doua melodie s-a mutat).
+    if (n === 6) {
       const g2 = genre2Input.value;
       if (!g2) {
         setFieldError('genre2', t('val_genre2_required'));
@@ -2704,50 +2731,69 @@
   const genre2Input = document.getElementById('genre2');
   const step3ContinueBtn = document.getElementById('step3-continue-btn');
 
-  // Butonul "Continua" de pe pasul 3 ramane dezactivat pana cand exista atat un gen CAT
-  // si o voce selectate. Vocea are mereu o valoare implicita ('auto'), deci in practica
-  // singura conditie reala e alegerea unui gen — dar verificam explicit ambele, cerinta
-  // explicita.
+  // CERINTA 2A (2026-08-31): pasul 3 e acum EXCLUSIV genul — butonul "Continuă" ramane
+  // dezactivat pana la alegerea unui gen. Vocea s-a mutat pe propriul ei pas (4), vezi
+  // updateStep4ContinueState mai jos.
   function updateStep3ContinueState() {
-    const hasGenre = !!genreInput.value;
-    const hasVoice = !!voiceInput.value;
-    step3ContinueBtn.disabled = !(hasGenre && hasVoice);
+    step3ContinueBtn.disabled = !genreInput.value;
   }
 
+  const step4ContinueBtn = document.getElementById('step4-continue-btn');
+  // CERINTA 2C (2026-08-31): pasul 4 (voce) — vocea are mereu o valoare implicita ('auto'), deci
+  // in practica butonul nu e niciodata blocat de aceasta conditie (acelasi comportament efectiv
+  // ca inainte de separarea in doi pasi) — verificam explicit oricum, sursa unica de adevar,
+  // pregatita pentru cazul in care alegerea devine obligatorie (fara implicit) mai tarziu.
+  function updateStep4ContinueState() {
+    if (step4ContinueBtn) step4ContinueBtn.disabled = !voiceInput.value;
+  }
+
+  // CORECȚIE (2026-08-31, "selectia trebuie sa functioneze si prin tastatura si tehnologii
+  // asistive"): rol=radio + tabindex + aria-selected (acelasi tipar deja folosit de .plan mai
+  // jos) + activare cu Enter/Space, nu doar click cu mouse-ul.
+  function selectGenreCard(c) {
+    genreCards.forEach(x => { x.classList.remove('active'); x.setAttribute('aria-selected', 'false'); });
+    c.classList.add('active');
+    c.setAttribute('aria-selected', 'true');
+    genreInput.value = c.dataset.genre;
+    setFieldError('genre', '');
+    updateStep3ContinueState();
+    saveDraft();
+  }
   genreCards.forEach(c => {
-    c.addEventListener('click', () => {
-      genreCards.forEach(x => x.classList.remove('active'));
-      c.classList.add('active');
-      genreInput.value = c.dataset.genre;
-      setFieldError('genre', '');
-      updateStep3ContinueState();
-      saveDraft();
+    c.addEventListener('click', () => selectGenreCard(c));
+    c.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectGenreCard(c); }
     });
   });
 
   // Genul celei de-a doua melodii — vizibil STRICT pentru Premium (vezi updateGenre2Visibility,
-  // apelata la fiecare schimbare de pachet pe pasul 4). Standard SI Video (corectie 2026-08-14,
+  // apelata la fiecare schimbare de pachet pe pasul 5). Standard SI Video (corectie 2026-08-14,
   // "Cadou video ramane la o singura melodie initiala, exact ca Standard") NU au a doua melodie
   // initiala, deci acest camp nu se mai afiseaza si nu se mai trimite pentru ele.
   // CONTINUARE (hotfix 2026-08-09): pentru Premium, un gen identic cu primul e blocat CHIAR LA
   // CLICK (nu doar la trimitere) — cerinta explicita de validare frontend pentru fluxul nou.
+  function selectGenre2Card(c) {
+    if (selectedPlan.id === 'premium' && c.dataset.genre === genreInput.value) {
+      setFieldError('genre2', t('val_genre_same'));
+      return;
+    }
+    genre2Cards.forEach(x => { x.classList.remove('active'); x.setAttribute('aria-selected', 'false'); });
+    c.classList.add('active');
+    c.setAttribute('aria-selected', 'true');
+    genre2Input.value = c.dataset.genre;
+    setFieldError('genre2', '');
+    updateSong2ContinueState();
+    saveDraft();
+  }
   genre2Cards.forEach(c => {
-    c.addEventListener('click', () => {
-      if (selectedPlan.id === 'premium' && c.dataset.genre === genreInput.value) {
-        setFieldError('genre2', t('val_genre_same'));
-        return;
-      }
-      genre2Cards.forEach(x => x.classList.remove('active'));
-      c.classList.add('active');
-      genre2Input.value = c.dataset.genre;
-      setFieldError('genre2', '');
-      updateSong2ContinueState();
-      saveDraft();
+    c.addEventListener('click', () => selectGenre2Card(c));
+    c.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectGenre2Card(c); }
     });
   });
 
   // Folosita la validarea FINALA de trimitere (submit handler, mai jos) — STRICT Premium
-  // are nevoie de un al doilea gen, diferit de primul, colectat pe ecranul dedicat, pasul 5.
+  // are nevoie de un al doilea gen, diferit de primul, colectat pe ecranul dedicat, pasul 6.
   // CORECȚIE (2026-08-14, "Cadou video ramane la o singura melodie initiala, exact ca
   // Standard"): Video nu mai cere niciun al doilea gen la crearea comenzii — vezi
   // PLAN_VARIANT_COUNT.video in server.js.
@@ -2756,7 +2802,7 @@
   }
 
   // MODIFICARE STRICTĂ — fluxul pachetului Premium £25 (hotfix 2026-08-09): genre2Field e un
-  // element UNIC, reparentat (nu duplicat) intre locul lui default (pasul 4, nefolosit de
+  // element UNIC, reparentat (nu duplicat) intre locul lui default (pasul 5, nefolosit de
   // niciun pachet acum) si sectiunea dedicata de pe pasul 6 (folosita DOAR de Premium) —
   // acelasi tipar deja stabilit pentru familyRelationPanel/bothNamesField mai sus in acest
   // fisier. Standard/Video parcurg STRICT ramura finala (originala, neschimbata, ramane
@@ -3154,13 +3200,21 @@
     if (song2DetailsContinueBtn) song2DetailsContinueBtn.disabled = !song2DetailsAllValid();
   }
 
+  // CORECȚIE (2026-08-31, "selectia trebuie sa functioneze si prin tastatura si tehnologii
+  // asistive"): acelasi tipar deja folosit la genre-card (role=radio + tabindex + aria-selected
+  // + activare cu Enter/Space).
+  function selectVoiceCard(c) {
+    voiceCards.forEach(x => { x.classList.remove('active'); x.setAttribute('aria-selected', 'false'); });
+    c.classList.add('active');
+    c.setAttribute('aria-selected', 'true');
+    voiceInput.value = c.dataset.voice;
+    updateStep4ContinueState();
+    saveDraft();
+  }
   voiceCards.forEach(c => {
-    c.addEventListener('click', () => {
-      voiceCards.forEach(x => x.classList.remove('active'));
-      c.classList.add('active');
-      voiceInput.value = c.dataset.voice;
-      updateStep3ContinueState();
-      saveDraft();
+    c.addEventListener('click', () => selectVoiceCard(c));
+    c.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectVoiceCard(c); }
     });
   });
 
@@ -3209,7 +3263,7 @@
     updateGenre2Visibility();
     // MODIFICARE STRICTĂ — fluxul pachetului Premium £25 (hotfix 2026-08-09): totalul de pasi
     // (getTotalSteps()) depinde de planul ales — daca clientul comuta INTRE Premium si
-    // Standard/Video FARA sa schimbe pasul (ex. de pe pasul 4 direct), eticheta si bara de
+    // Standard/Video FARA sa schimbe pasul (ex. de pe pasul 5 direct), eticheta si bara de
     // progres trebuie sa reflecte imediat noul total, nu doar la urmatoarea navigare de pas.
     updateProgressLabel();
     saveDraft();
@@ -3393,11 +3447,19 @@
     if (draft.story) document.getElementById('story').value = draft.story;
     if (draft.genre) {
       genreInput.value = draft.genre;
-      genreCards.forEach(c => c.classList.toggle('active', c.dataset.genre === draft.genre));
+      genreCards.forEach(c => {
+        const on = c.dataset.genre === draft.genre;
+        c.classList.toggle('active', on);
+        c.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
     }
     if (draft.genre2) {
       genre2Input.value = draft.genre2;
-      genre2Cards.forEach(c => c.classList.toggle('active', c.dataset.genre === draft.genre2));
+      genre2Cards.forEach(c => {
+        const on = c.dataset.genre === draft.genre2;
+        c.classList.toggle('active', on);
+        c.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
     }
     // CORECȚIE STRICTĂ — configurarea pachetului Premium (hotfix 2026-08-09, 2026-08-10):
     // restaurate INAINTE de refreshSong2OtherUI() (apelata mai jos, dupa ce planul e restaurat),
@@ -3421,7 +3483,11 @@
     if (draft.song2Story) song2StoryInput.value = draft.song2Story;
     if (draft.voicePreference) {
       voiceInput.value = draft.voicePreference;
-      voiceCards.forEach(c => c.classList.toggle('active', c.dataset.voice === draft.voicePreference));
+      voiceCards.forEach(c => {
+        const on = c.dataset.voice === draft.voicePreference;
+        c.classList.toggle('active', on);
+        c.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
     }
     if (draft.plan) {
       const planEl = document.querySelector(`.plan[data-plan="${draft.plan}"]`);
@@ -3444,15 +3510,24 @@
     // planul efectiv restaurat din draft.
     updateGenre2Visibility();
     // refreshSong2OtherUI() dupa restaurarea planului si a tuturor campurilor song2 de mai sus —
-    // functie idempotenta, reface intreaga stare vizuala a ecranului 6 dintr-o singura trecere.
+    // functie idempotenta, reface intreaga stare vizuala a ecranului 7 dintr-o singura trecere.
     refreshSong2OtherUI();
   }
   restoreDraft();
   updateStep3ContinueState();
+  updateStep4ContinueState();
 
   let restoredStep = 1;
   try {
-    const savedStep = Number(localStorage.getItem(STEP_KEY));
+    let savedStep = Number(localStorage.getItem(STEP_KEY));
+    const savedVersion = localStorage.getItem(WIZARD_STEP_VERSION_KEY);
+    // CERINTA 2D — migrare: orice draft FARA versiunea curenta e presupus in schema VECHE de
+    // numerotare (dinainte de pasul dedicat de voce) — remapam o singura data, niciodata invers,
+    // niciodata pentru un draft deja migrat (savedVersion === CURRENT_WIZARD_STEP_VERSION).
+    if (savedVersion !== CURRENT_WIZARD_STEP_VERSION && WIZARD_STEP_MIGRATION_MAP[savedStep]) {
+      savedStep = WIZARD_STEP_MIGRATION_MAP[savedStep];
+      try { localStorage.setItem(STEP_KEY, String(savedStep)); localStorage.setItem(WIZARD_STEP_VERSION_KEY, CURRENT_WIZARD_STEP_VERSION); } catch (err2) { /* ignoram */ }
+    }
     if (savedStep >= 1 && savedStep <= getTotalSteps()) restoredStep = savedStep;
   } catch (err) { /* ignoram */ }
 
@@ -3494,24 +3569,26 @@
 
     // MODIFICARE STRICTĂ — fluxul pachetului Premium £25 (hotfix 2026-08-09; CORECȚIE 2026-08-23,
     // eliminarea ecranului separat "Pachet Premium"): butonul "Generează previzualizarea
-    // gratuită" de pe pasul 4 e butonul REAL de continuare pentru Premium (nu doar o plasa de
-    // siguranta) — Premium ramane pe pasul 4 (beneficiile afisate inline, vezi selectPlan()),
-    // deci acest buton trebuie sa avanseze explicit catre prima configurare obligatorie a celei
-    // de-a doua melodii (genul, pasul 5), fara sa trimita comanda direct.
-    if (selectedPlan.id === 'premium' && currentStep === 4) {
-      showStep(5);
+    // gratuită" de pe pasul pachetului e butonul REAL de continuare pentru Premium (nu doar o
+    // plasa de siguranta) — Premium ramane pe acest pas (beneficiile afisate inline, vezi
+    // selectPlan()), deci acest buton trebuie sa avanseze explicit catre prima configurare
+    // obligatorie a celei de-a doua melodii (genul), fara sa trimita comanda direct.
+    // CERINTA 2D (2026-08-31): pachetul e acum pasul 5 (era 4), genul melodiei 2 e acum pasul 6
+    // (era 5) — vezi renumerotarea completa, getTotalSteps().
+    if (selectedPlan.id === 'premium' && currentStep === 5) {
+      showStep(6);
       return;
     }
 
-    // ADAUGAT (2026-08-13) — mini-pagina dedicata datelor persoanei 2 (pasul 7): butonul pasului
-    // 6 ("song2-continue-btn") ramane type="submit" (acelasi tipar ca mai sus, pentru Enter
-    // implicit), dar cand "Pentru altă persoană" a fost ales, NU trimite direct comanda —
-    // redirectioneaza catre mini-pagina, exact acelasi tipar ca redirectarea pasului 4->5.
-    // "Pentru aceeași persoană" ramane neschimbat: pasul 6 e in continuare pasul final pentru
-    // acel caz (getTotalSteps() intoarce 6, nu 7), deci aceasta ramura nu se activeaza.
-    if (selectedPlan.id === 'premium' && currentStep === 6 && song2TargetInput.value === 'other') {
+    // ADAUGAT (2026-08-13) — mini-pagina dedicata datelor persoanei 2 (pasul 8, era 7): butonul
+    // pasului 7 ("song2-continue-btn", era 6) ramane type="submit" (acelasi tipar ca mai sus,
+    // pentru Enter implicit), dar cand "Pentru altă persoană" a fost ales, NU trimite direct
+    // comanda — redirectioneaza catre mini-pagina, exact acelasi tipar ca redirectarea de mai sus.
+    // "Pentru aceeași persoană" ramane neschimbat: pasul 7 e in continuare pasul final pentru
+    // acel caz (getTotalSteps() intoarce 7, nu 8), deci aceasta ramura nu se activeaza.
+    if (selectedPlan.id === 'premium' && currentStep === 7 && song2TargetInput.value === 'other') {
       updateSong2DetailsContinueState();
-      showStep(7);
+      showStep(8);
       return;
     }
 
@@ -3618,7 +3695,7 @@
 
     // MODIFICARE STRICTĂ — fluxul pachetului Premium £25 (hotfix 2026-08-09): butonul REAL de
     // trimitere difera dupa pachet — Standard/Video folosesc butonul "Generează..." de pe
-    // pasul 4 (neschimbat), Premium foloseste butonul "Continuă..." de pe pasul 7 ("Pentru
+    // pasul 5 (pachet), Premium foloseste butonul "Continuă..." de pe pasul 7 ("Pentru
     // aceeași persoană") SAU butonul mini-paginii, pasul 8 ("Pentru altă persoană" — ADAUGAT
     // 2026-08-13). Restul logicii de mai jos (creare comanda + /generate) e complet comuna,
     // reutilizata identic pentru toate cazurile.

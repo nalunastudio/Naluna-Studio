@@ -139,10 +139,14 @@ test('server.js: runGeneration/reluari NU mai citesc genul din varianta VECHE (s
   assert.ok(occurrences >= 3, `genul trebuie aflat prin eliminare (folosind varianta sora) in toate cele 3 locuri (runGeneration, resumeExistingTaskPolling, callback) — gasite ${occurrences}`);
 });
 
-test('melodia-mea.html: selectorul de gen la editare exista, populat cu genurile reale ale formularului', () => {
+// CORECȚIE (2026-08-31, "16 genuri, pagina de gen separata"): EDIT_GENRE_KEYS a trecut de la
+// 15 chei vechi la cele 16 noi (pop/ballad_emotional/acoustic_folk/rnb/country/jazz/rock/
+// hiphop/edm_dance/manele_suflet/manele_jale/populara/copii/colind/romantic/motivational) —
+// vezi test/genre-16-new-list.test.js pentru suita completa dedicata acestei corectii.
+test('melodia-mea.html: selectorul de gen la editare exista, populat cu cele 16 genuri NOI ale formularului', () => {
   const html = read('public/melodia-mea.html');
   assert.ok(html.includes('id="edit-genre-select"'), 'selectorul de gen trebuie sa existe in zona de editare');
-  assert.ok(html.includes("EDIT_GENRE_KEYS = ['emotional', 'suflet', 'pop'"), 'trebuie sa foloseasca aceeasi lista reala de genuri ca formularul de comanda');
+  assert.ok(html.includes("EDIT_GENRE_KEYS = ['pop', 'ballad_emotional', 'acoustic_folk'"), 'trebuie sa foloseasca cele 16 genuri noi ale formularului de comanda');
   assert.ok(html.includes('function populateGenreSelect'), 'selectorul trebuie populat dinamic cu genul curent al variantei editate');
 });
 

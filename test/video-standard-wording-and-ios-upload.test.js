@@ -108,8 +108,14 @@ test('amintiri-video.html: fotografiile din coada de asteptare raman randate ca 
 // si e populat ASINCRON, controlat, cu un thumbnail MIC (createImageBitmap + canvas), STRICT
 // pentru fotografii (videoclipurile raman pe iconita, niciodata trimise la generarea de
 // thumbnail — vezi scheduleLocalThumbnail, apelat doar cand !isVideoFile(entry.file)).
+// CORECȚIE (2026-08-30/31, Cerintele 4/5): logica de constructie a cozii (thumbUrl, try/catch
+// per fisier, forEach, randare) a fost mutata din handler-ul de 'change' in functia comuna
+// handleFilesReceived(files) — folosita acum de AMBELE selectoare (principal + fallback "Alege
+// din Fisiere"). Verificam functia comuna, nu handler-ul de 'change' (care doar copiaza FileList
+// sincron si deleaga).
 test('amintiri-video.html: thumbUrl porneste gol si e populat asincron STRICT pentru fotografii (scheduleLocalThumbnail) — niciun videoclip din coada nu e trimis la generarea de thumbnail', () => {
-  const idx = amintiriVideo.indexOf("memFileInput.addEventListener('change'");
+  const idx = amintiriVideo.indexOf('function handleFilesReceived(files) {');
+  assert.notEqual(idx, -1);
   const end = amintiriVideo.indexOf('newEntries.forEach(entry =>', idx) + 200;
   const snippet = amintiriVideo.slice(idx, end);
   assert.ok(snippet.includes('thumbUrl: null,'));
@@ -117,7 +123,7 @@ test('amintiri-video.html: thumbUrl porneste gol si e populat asincron STRICT pe
 });
 
 test('amintiri-video.html: fiecare fisier din selectie e adaugat in coada intr-un try/catch — o exceptie la un singur fisier nu mai opreste tot handler-ul de change', () => {
-  const idx = amintiriVideo.indexOf("memFileInput.addEventListener('change'");
+  const idx = amintiriVideo.indexOf('function handleFilesReceived(files) {');
   assert.notEqual(idx, -1);
   const end = amintiriVideo.indexOf('renderQueueList();', idx);
   const snippet = amintiriVideo.slice(idx, end);
@@ -128,7 +134,7 @@ test('amintiri-video.html: fiecare fisier din selectie e adaugat in coada intr-u
 });
 
 test('amintiri-video.html: renderQueueList() se apeleaza necondiționat dupa forEach, indiferent daca vreun fisier a esuat la construire', () => {
-  const idx = amintiriVideo.indexOf("memFileInput.addEventListener('change'");
+  const idx = amintiriVideo.indexOf('function handleFilesReceived(files) {');
   const forEachStart = amintiriVideo.indexOf('files.forEach(file => {', idx);
   assert.notEqual(forEachStart, -1);
   const forEachEnd = amintiriVideo.indexOf('});', forEachStart) + 3;

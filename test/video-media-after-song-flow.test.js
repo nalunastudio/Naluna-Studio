@@ -250,7 +250,7 @@ test('server.js: checkout-ul ramane STRICT gatat pe mediaConfirmedAt + videoclip
 
 test('melodia-mea.html: fluxul Premium (renderPremiumFlow) ramane complet separat si neatins', () => {
   assert.ok(melodiaMea.includes('function renderPremiumFlow(order, isResumeFlag) {'));
-  assert.ok(melodiaMea.includes("if (order.plan === 'premium') {\n      renderPremiumFlow(order, isResume);\n      return;\n    }"));
+  assert.ok(melodiaMea.includes("if (order.plan === 'premium') {\r\n      renderPremiumFlow(order, isResume);\r\n      return;\r\n    }"));
 });
 
 test('amintiri-video.html: uploadul multipart direct catre R2 (Round 6) ramane neschimbat', () => {
