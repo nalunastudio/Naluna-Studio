@@ -689,7 +689,7 @@
 
   // CSP (2026-09-01): butoanele "Redă videoclipul" sunt inserate dinamic (innerHTML, dupa
   // /api/testimonials) — activare STRICT prin delegare de evenimente pe containerul stabil
-  // #testimonial-grid, niciodata onclick="" inline. Comportamentul ramane identic.
+  // #testimonial-grid, niciodata un atribut onclick inline. Comportamentul ramane identic.
   document.getElementById('testimonial-grid').addEventListener('click', (e) => {
     const btn = e.target.closest('.testimonial-play');
     if (btn) playTestimonialVideo(btn);
