@@ -22,6 +22,8 @@
 // raportul final pentru cum e tratat acest gol, explicit, fara sa fie inlocuit cu o
 // presupunere prezentata ca fapt verificat.
 
+const { htmlToPlainText } = require('./lib/email-text');
+
 const VERIFIED_CREDITS_PER_GENERATION = 12; // masurat direct, vezi comentariul de mai sus
 
 // Configurabil prin variabile de mediu — toate cu valori implicite rezonabile, verificate
@@ -210,7 +212,8 @@ async function checkThresholdsAndAlert(db) {
           from: process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev',
           to: ADMIN_ALERT_EMAIL,
           subject: `Naluna: credite SunoAPI sub ${pctLabel}`,
-          html: `<p>${message}</p>`
+          html: `<p>${message}</p>`,
+          text: message
         })
       });
       if (!res.ok) {
@@ -347,7 +350,8 @@ async function sendThresholdAlertEmail({ currentBalance, previousBalance, stats 
       from: process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev',
       to: ADMIN_ALERT_EMAIL,
       subject: `Naluna Alert: Credits Reached ${FIXED_ALERT_THRESHOLD}`,
-      html
+      html,
+      text: htmlToPlainText(html)
     })
   });
 

@@ -86,6 +86,7 @@ const {
 } = require('./lib/media-analysis');
 const { getGiftVariant } = require('./lib/entitlements');
 const { DICTION_INSTRUCTIONS, getDictionInstruction, normalizeSingingText } = require('./lib/diction');
+const { htmlToPlainText } = require('./lib/email-text');
 
 // -------- Validare stricta a variabilelor de mediu obligatorii, la pornire --------
 // Mai bine esueaza clar la boot decat sa porneasca "pe jumatate" si sa pice abia la prima comanda.
@@ -7871,7 +7872,10 @@ async function sendDeliveryEmail(order) {
       // Raspunsul clientului la emailul de livrare (intrebari, probleme cu comanda) trebuie
       // sa ajunga la adresa publica de contact, nu la adresa tehnica de trimitere automata.
       reply_to: 'contact@nalunastudio.com',
-      to: order.email, subject: template.subject, html: template.html
+      to: order.email, subject: template.subject, html: template.html,
+      // Deliverability: varianta text/plain, ceruta explicit de Resend Deliverability Insights
+      // ca sa nu fim tratati ca suspecti pentru un email STRICT HTML.
+      text: htmlToPlainText(template.html)
     })
   }, 15000);
 
