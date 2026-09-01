@@ -87,6 +87,7 @@ const {
 const { getGiftVariant } = require('./lib/entitlements');
 const { DICTION_INSTRUCTIONS, getDictionInstruction, normalizeSingingText } = require('./lib/diction');
 const { htmlToPlainText } = require('./lib/email-text');
+const { buildCspDirectives } = require('./lib/csp');
 
 // -------- Validare stricta a variabilelor de mediu obligatorii, la pornire --------
 // Mai bine esueaza clar la boot decat sa porneasca "pe jumatate" si sa pice abia la prima comanda.
@@ -964,7 +965,7 @@ async function processConfirmedPayment(event, session) {
 
 // -------- securitate: headere HTTP standard. CSP dezactivat explicit — paginile folosesc
 // script/style inline, o politica CSP stricta le-ar rupe fara o refactorizare separata. --------
-app.use(helmet({ contentSecurityPolicy: false }));
+app.use(helmet({ contentSecurityPolicy: buildCspDirectives() }));
 // Permissions-Policy: site-ul nu foloseste camera/microfon/geolocatie/plati-web-API etc. —
 // blocarea lor explicita nu costa nimic functional si reduce suprafata de atac daca vreun
 // script tert (sau o vulnerabilitate viitoare) ar incerca sa le acceseze.
@@ -7988,6 +7989,32 @@ function checkUploadCorsAtBoot() {
   });
 }
 
+// LAUNCH SAFETY (2026-09-01): vezi comentariul de la db.getStuckInFlightOrders — reia automat,
+// la fiecare pornire a serverului, polling-ul pentru orice comanda ramasa 'generating'/
+// 'processing_provider_result' cu un task Suno real deja creat, INDIFERENT daca vreun client
+// mai revine sau nu pe se-compune.html. Reutilizeaza EXACT aceeasi logica dual/single si
+// aceleasi functii deja existente (resumeDualTaskPolling/resumeExistingTaskPolling) — nicio
+// logica noua de reluare, doar un declansator suplimentar. Sigur la reluare dubla (acelasi
+// task, reluat si de un client care revine separat pe se-compune.html): finalizeVariantsIfNeeded
+// foloseste db.claimOrderForProviderFinalization, o preluare atomica — a doua reluare gaseste
+// pur si simplu comanda deja preluata si nu face nimic.
+async function resumeStuckGenerationsOnBoot() {
+  try {
+    const stuck = await db.getStuckInFlightOrders();
+    if (stuck.length === 0) return;
+    console.log(`Recuperare la pornire: ${stuck.length} comanda(e) ramasa(e) 'generating' dintr-o repornire anterioara — reluu polling-ul.`);
+    for (const order of stuck) {
+      if (order.musicTaskId2) {
+        resumeDualTaskPolling(order.id);
+      } else if (order.musicTaskId) {
+        resumeExistingTaskPolling(order.id, order.musicTaskId);
+      }
+    }
+  } catch (err) {
+    console.error('Recuperare la pornire: eroare la interogarea comenzilor blocate:', err.message);
+  }
+}
+
 // -------- pornire: verificam intai conexiunea la baza de date --------
 db.initDb()
   .then(() => {
@@ -7995,6 +8022,7 @@ db.initDb()
     checkExiftoolAvailability(); // fire-and-forget, acelasi motiv
     checkHeifConvertAvailability(); // fire-and-forget, acelasi motiv
     checkUploadCorsAtBoot(); // fire-and-forget, acelasi motiv
+    resumeStuckGenerationsOnBoot(); // fire-and-forget, acelasi motiv
     app.listen(PORT, () => {
       console.log(`NALUNA ruleaza pe ${DOMAIN}`);
     });

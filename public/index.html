@@ -666,7 +666,7 @@
       // ca sa nu se descarce niciun byte de video pana cand cineva chiar vrea sa il vada.
       return `
         <div class="testimonial-media" data-video-src="${escapeHtmlPublic(t.mediaPath)}">
-          <button class="testimonial-play" aria-label="Redă videoclipul" onclick="playTestimonialVideo(this)">
+          <button class="testimonial-play" aria-label="Redă videoclipul">
             <span class="testimonial-play-icon"></span>
           </button>
         </div>
@@ -675,7 +675,7 @@
     return '';
   }
 
-  window.playTestimonialVideo = function(btn) {
+  function playTestimonialVideo(btn) {
     const wrap = btn.closest('.testimonial-media');
     const src = wrap.getAttribute('data-video-src');
     const video = document.createElement('video');
@@ -685,7 +685,15 @@
     video.playsInline = true;
     wrap.innerHTML = '';
     wrap.appendChild(video);
-  };
+  }
+
+  // CSP (2026-09-01): butoanele "Redă videoclipul" sunt inserate dinamic (innerHTML, dupa
+  // /api/testimonials) — activare STRICT prin delegare de evenimente pe containerul stabil
+  // #testimonial-grid, niciodata onclick="" inline. Comportamentul ramane identic.
+  document.getElementById('testimonial-grid').addEventListener('click', (e) => {
+    const btn = e.target.closest('.testimonial-play');
+    if (btn) playTestimonialVideo(btn);
+  });
 
   async function loadTestimonialsSection() {
     try {

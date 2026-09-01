@@ -154,7 +154,7 @@
 
   <div class="field">
     <input type="text" id="token" placeholder="cod din emailul de confirmare" autocomplete="off">
-    <button onclick="lookup()" id="btn-search">Caută</button>
+    <button id="btn-search">Caută</button>
   </div>
 
   <div id="results"></div>
@@ -1309,6 +1309,10 @@
       results.innerHTML = `<p class="empty">${t.conn_error}</p>`;
     }
   }
+
+  // CSP (2026-09-01): activare STRICT prin addEventListener, niciodata onclick="" inline —
+  // singura schimbare fata de inainte e mecanismul de declansare, comportamentul ramane identic.
+  document.getElementById('btn-search').addEventListener('click', () => lookup());
 
   // daca vine dintr-un link din email (?token=...), cautam automat, fara sa mai tasteze nimic
   const urlToken = new URLSearchParams(window.location.search).get('token');

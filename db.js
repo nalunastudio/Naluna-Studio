@@ -620,6 +620,21 @@ async function getOrderByAnyMusicTaskId(taskId) {
   return rowToOrder(result.rows[0]);
 }
 
+// LAUNCH SAFETY (2026-09-01, "risc de pierdere a comenzilor"): la o repornire a serverului
+// (deploy Railway) exact in mijlocul unui polling Suno, reluarea era pana acum STRICT reactiva
+// — necesita ca clientul sa revina chiar pe se-compune.html, singura pagina care re-declanseaza
+// resumeExistingTaskPolling/resumeDualTaskPolling. Daca inchide tab-ul definitiv (asteapta doar
+// emailul) si repornirea a picat exact in acea fereastra, comanda ramanea 'generating' la
+// nesfarsit, fara nicio reluare automata, indiferent daca era o generare initiala GRATUITA sau
+// o REGENERARE deja PLATITA. Folosita la pornirea serverului (vezi finalul acestui fisier) —
+// gaseste STRICT comenzile cu un task Suno real, deja pornit, dar niciodata finalizat.
+async function getStuckInFlightOrders() {
+  const result = await pool.query(
+    `SELECT * FROM orders WHERE status IN ('generating', 'processing_provider_result') AND music_task_id IS NOT NULL`
+  );
+  return result.rows.map(rowToOrder);
+}
+
 // ==================================================================================
 // PRELUARE ATOMICA a unei comenzi pentru procesare (descarcare + upload), inainte sa
 // atingem vreun fisier. Polling-ul si callback-ul SunoAPI pot ajunge la SUCCESS aproape
@@ -1263,6 +1278,7 @@ async function moveTestimonial(id, direction) {
 
 module.exports = {
   pool, initDb, createOrder, getOrderById, getOrderByToken, getOrderByMusicTaskId, getOrderByAnyMusicTaskId,
+  getStuckInFlightOrders,
   updateGenerationPhaseIfLater,
   startRegenerationJob, updateRegenerationPhaseIfLater, markRegenerationStatus,
   claimOrderForProviderFinalization, claimOrderForRegeneration, claimOrderForInitialGeneration,
