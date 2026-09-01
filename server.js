@@ -114,6 +114,7 @@ const app = express();
 app.set('trust proxy', 1);
 
 const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
+const { Webhook } = require('svix'); // verificare semnatura webhook Resend (Faza 6, launch safety)
 
 const PORT = process.env.PORT || 3000;
 const DOMAIN = process.env.DOMAIN;
@@ -835,6 +836,65 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, 
     // intentionat: Stripe va reincerca automat evenimentul mai tarziu, in loc sa-l
     // consideram "procesat" cand de fapt clientul ar ramane platit fara livrare.
     console.error('Eroare tranzitorie la procesarea webhook-ului, Stripe va reincerca:', err.message);
+    res.status(500).json({ error: 'Eroare temporară la procesare — se va reîncerca automat.' });
+  }
+});
+
+// ==========================================================================================
+// LAUNCH SAFETY (2026-09-01, Faza 6 — bounce/complaint handling production-safe).
+// Resend semneaza webhook-urile prin Svix (svix-id/svix-timestamp/svix-signature) — trebuie
+// raw body, la fel ca la Stripe mai sus. RESEND_WEBHOOK_SECRET e o valoare SEPARATA de
+// RESEND_API_KEY, generata de Resend cand se creeaza webhook-ul din dashboard-ul lor (nu poate
+// fi creat prin API cu o cheie "Sending access" — verificat direct, 401 restricted_api_key).
+//
+// Actionam STRICT pe:
+// - email.bounced — documentat explicit de Resend ca respingere PERMANENTA (nu ambiguu cu
+//   bounce temporar — acela e email.delivery_delayed, un eveniment SEPARAT, pe care NU il
+//   tratam ca motiv de suprimare).
+// - email.complained — plangere de spam.
+// Orice alt tip de eveniment (delivered, opened, clicked, sent, delivery_delayed etc.) e doar
+// confirmat cu 200, fara nicio actiune — nu suprimam niciodata pe baza lor.
+app.post('/api/resend/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+  if (!process.env.RESEND_WEBHOOK_SECRET) {
+    console.error('RESEND_WEBHOOK_SECRET lipseste din mediu — webhook-ul Resend nu poate fi verificat, refuzat.');
+    return res.status(503).json({ error: 'Webhook not configured' });
+  }
+
+  let event;
+  try {
+    const wh = new Webhook(process.env.RESEND_WEBHOOK_SECRET);
+    const payload = wh.verify(req.body, {
+      'svix-id': req.headers['svix-id'],
+      'svix-timestamp': req.headers['svix-timestamp'],
+      'svix-signature': req.headers['svix-signature']
+    });
+    event = payload;
+  } catch (err) {
+    console.error('Webhook Resend: semnatura svix invalida:', err.message);
+    return res.status(400).json({ error: 'Webhook Error: invalid signature' });
+  }
+
+  try {
+    const eventId = req.headers['svix-id'];
+    const isNew = eventId ? await db.recordResendEventIfNew(eventId) : true;
+    if (!isNew) {
+      return res.json({ received: true, duplicate: true });
+    }
+
+    const recipientEmail = event?.data?.to && Array.isArray(event.data.to) ? event.data.to[0] : (event?.data?.to || null);
+
+    if (event.type === 'email.bounced' && recipientEmail) {
+      await db.addEmailSuppression(recipientEmail, 'email.bounced');
+      console.warn(`Resend: ${recipientEmail} respins PERMANENT (email.bounced) — adaugat la suprimare, nu mai trimitem automat.`);
+    } else if (event.type === 'email.complained' && recipientEmail) {
+      await db.addEmailSuppression(recipientEmail, 'email.complained');
+      console.warn(`Resend: ${recipientEmail} a marcat un email ca spam (email.complained) — adaugat la suprimare.`);
+    }
+    // orice alt tip de eveniment (delivered/opened/clicked/sent/delivery_delayed/...) — fara actiune
+
+    res.json({ received: true });
+  } catch (err) {
+    console.error('Eroare tranzitorie la procesarea webhook-ului Resend:', err.message);
     res.status(500).json({ error: 'Eroare temporară la procesare — se va reîncerca automat.' });
   }
 });
@@ -7765,6 +7825,17 @@ function escapeHtmlForEmail(str) {
 async function sendDeliveryEmail(order) {
   if (!process.env.RESEND_API_KEY) {
     console.warn('RESEND_API_KEY lipsa din .env — email de livrare NU a fost trimis.');
+    return;
+  }
+
+  // LAUNCH SAFETY (2026-09-01, Faza 6): nu retrimitem automat catre o adresa deja marcata
+  // suprimata (bounce PERMANENT sau plangere de spam confirmate de Resend) — clientul tot are
+  // acces la melodie prin succes.html/comanda-mea.html (link direct, independent de email),
+  // deci nimic nu se pierde; doar oprim o trimitere care oricum ar esua sau ar dauna
+  // reputatiei domeniului. Loghez explicit, niciodata silentios.
+  const suppressed = await db.isEmailSuppressed(order.email).catch(() => false);
+  if (suppressed) {
+    console.warn(`Email de livrare NETRIMIS catre ${order.email} — adresa e in email_suppressions (bounce/complaint anterior).`);
     return;
   }
 

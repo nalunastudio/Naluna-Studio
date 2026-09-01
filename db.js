@@ -318,6 +318,31 @@ async function initDb() {
     );
   `);
 
+  // LAUNCH SAFETY (2026-09-01, Faza 6 — bounce/complaint handling): dedup persistent la nivel
+  // de eveniment Resend individual (svix-id), pe modelul EXACT verificat deja pentru webhook-ul
+  // Stripe (processed_stripe_events, vezi comentariul de mai sus) — svix (biblioteca de semnare
+  // folosita de Resend) poate reincerca livrarea aceluiasi eveniment.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS processed_resend_events (
+      event_id TEXT PRIMARY KEY,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `);
+
+  // email_suppressions: adrese catre care NU mai trimitem automat, dupa un bounce PERMANENT
+  // (email.bounced — Resend documenteaza explicit acest eveniment ca fiind STRICT respingere
+  // permanenta, distinct de email.delivery_delayed pentru probleme temporare — deci NU
+  // suprimam niciodata pe baza unei intarzieri temporare) sau o plangere de spam
+  // (email.complained). `reason` retine STRICT valoarea evenimentului Resend care a declansat
+  // suprimarea, pentru audit — niciodata inventata.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS email_suppressions (
+      email TEXT PRIMARY KEY,
+      reason TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `);
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS testimonials (
       id UUID PRIMARY KEY,
@@ -886,6 +911,34 @@ async function recordStripeEventIfNew(eventId, orderId) {
   return result.rows.length > 0; // true = eveniment nou (de procesat), false = deja procesat
 }
 
+// LAUNCH SAFETY (2026-09-01, Faza 6): acelasi tipar exact ca recordStripeEventIfNew de mai sus,
+// pentru webhook-ul Resend (svix poate reincerca livrarea aceluiasi eveniment).
+async function recordResendEventIfNew(eventId) {
+  const result = await pool.query(
+    `INSERT INTO processed_resend_events (event_id) VALUES ($1)
+     ON CONFLICT (event_id) DO NOTHING
+     RETURNING event_id`,
+    [eventId]
+  );
+  return result.rows.length > 0;
+}
+
+async function addEmailSuppression(email, reason) {
+  await pool.query(
+    `INSERT INTO email_suppressions (email, reason) VALUES ($1, $2)
+     ON CONFLICT (email) DO UPDATE SET reason = EXCLUDED.reason, created_at = now()`,
+    [email.toLowerCase().trim(), reason]
+  );
+}
+
+async function isEmailSuppressed(email) {
+  const result = await pool.query(
+    `SELECT 1 FROM email_suppressions WHERE email = $1`,
+    [String(email || '').toLowerCase().trim()]
+  );
+  return result.rows.length > 0;
+}
+
 // ==================================================================================
 // PROCESARE ATOMICA a unui eveniment Stripe de plata reusita: dedup (processed_stripe_events)
 // SI actualizarea comenzii (status='ready', paid_at, date de tranzactie) in ACEEASI
@@ -1284,6 +1337,7 @@ module.exports = {
   claimOrderForProviderFinalization, claimOrderForRegeneration, claimOrderForInitialGeneration,
   refundEditIfReserved,
   claimVideoRender, releaseVideoRender, recordStripeEventIfNew, recordPaidOrderAtomically,
+  recordResendEventIfNew, addEmailSuppression, isEmailSuppressed,
   isVideoClaimStillCurrent, mutateOrderMediaAtomically, confirmMediaSelection,
   updateOrder, listOrders, computeRevenue,
   logCreditEvent, getCreditEventsSince, getSetting, setSetting,
