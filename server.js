@@ -7868,6 +7868,9 @@ async function sendDeliveryEmail(order) {
     headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       from: process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev',
+      // Raspunsul clientului la emailul de livrare (intrebari, probleme cu comanda) trebuie
+      // sa ajunga la adresa publica de contact, nu la adresa tehnica de trimitere automata.
+      reply_to: 'contact@nalunastudio.com',
       to: order.email, subject: template.subject, html: template.html
     })
   }, 15000);
