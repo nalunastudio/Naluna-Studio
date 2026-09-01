@@ -97,7 +97,7 @@ test('server.js: numarul de materiale (30 maximum, 3 minimum)', () => {
 test('server.js: fiecare fisier e validat/urcat INDEPENDENT (per-fisier, nu tot-sau-nimic) — un material problematic nu pierde restul selectiei', () => {
   assert.ok(server.includes('PER-FISIER, NU TOT-SAU-NIMIC'));
   const idx = server.indexOf("app.post('/api/orders/:orderId/media'");
-  const snippet = server.slice(idx, idx + 3500);
+  const snippet = server.slice(idx, idx + 3600);
   assert.ok(snippet.includes('failed.push({ filename: label,'), 'un fisier respins trebuie raportat individual, nu sa opreasca tot batch-ul');
   assert.ok(snippet.includes('continue;'), 'bucla trebuie sa continue cu urmatorul fisier dupa un esec individual');
 });

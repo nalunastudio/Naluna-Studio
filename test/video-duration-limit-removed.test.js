@@ -114,7 +114,7 @@ test('REAL (ffmpeg): verificarile TEHNICE reale raman — un fisier corupt (nu u
 //    fisierului), extrasa verbatim din ruta /multipart/init.
 // ---------------------------------------------------------------------------------------------
 test('server.js: logica de validare a marimii din POST .../multipart/init accepta acum un fisier "simulat" de 750MB (respins inainte de vechea limita de 700MB), fara sa fi creat vreun fixture urias', () => {
-  const fnSrc = extractFn(server, "app.post('/api/orders/:orderId/media/multipart/init', requireOrderToken, async (req, res, next) => {");
+  const fnSrc = extractFn(server, "app.post('/api/orders/:orderId/media/multipart/init', mediaUploadLimiter, requireOrderToken, async (req, res, next) => {");
   const checkMatch = fnSrc.match(/if \(!Number\.isInteger\(totalBytes\) \|\| totalBytes <= 0 \|\| totalBytes > ORDER_MEDIA_MAX_BYTES\) \{/);
   assert.ok(checkMatch, 'verificarea de dimensiune trebuie sa existe in continuare (nu eliminata complet)');
 

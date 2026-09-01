@@ -203,7 +203,7 @@ test('storage.js: getSignedUploadPartUrl() semneaza STRICT un UploadPartCommand 
 //    e idempotenta; sesiunile abandonate sunt curatate (inclusiv la R2, nu doar local).
 // -------------------------------------------------------------------------------------------
 test('server.js: cele 5 rute de upload multipart exista, toate protejate de requireOrderToken', () => {
-  assert.match(server, /app\.post\('\/api\/orders\/:orderId\/media\/multipart\/init', requireOrderToken/);
+  assert.match(server, /app\.post\('\/api\/orders\/:orderId\/media\/multipart\/init', mediaUploadLimiter, requireOrderToken/);
   assert.match(server, /app\.post\('\/api\/orders\/:orderId\/media\/multipart\/:sessionId\/part-url', requireOrderToken/);
   // CORECȚIE (2026-08-30, "IMG_6810.mov"): ruta noua de rezerva, independenta de CORS, pentru
   // citirea ETag-ului unui fragment deja urcat direct de la R2.
@@ -214,7 +214,7 @@ test('server.js: cele 5 rute de upload multipart exista, toate protejate de requ
 
 test('server.js: NICIO ruta multipart nu accepta un body de fisier/octet-stream — Railway nu mai vede niciodata continutul video (doar JSON: filename/size/mimeType/partNumber/parts)', () => {
   assert.ok(!/express\.raw\(\s*\{\s*type:\s*['"]application\/octet-stream['"]/.test(server), 'nu mai trebuie sa existe nicio ruta care primeste octeti bruti de fisier pe acest server');
-  const initSrc = extractFunction(server, "app.post('/api/orders/:orderId/media/multipart/init', requireOrderToken, async (req, res, next) => {");
+  const initSrc = extractFunction(server, "app.post('/api/orders/:orderId/media/multipart/init', mediaUploadLimiter, requireOrderToken, async (req, res, next) => {");
   assert.ok(initSrc.includes('const { filename, size, mimeType, section } = req.body'));
 });
 
@@ -245,7 +245,7 @@ test('server.js: /complete verifica decodabilitatea DIRECT dintr-un URL semnat R
 });
 
 test('server.js: init valideaza dimensiunea, tipul (STRICT video) si stocarea cloud inainte de a crea o sesiune multipart la R2', () => {
-  const src = extractFunction(server, "app.post('/api/orders/:orderId/media/multipart/init', requireOrderToken, async (req, res, next) => {");
+  const src = extractFunction(server, "app.post('/api/orders/:orderId/media/multipart/init', mediaUploadLimiter, requireOrderToken, async (req, res, next) => {");
   assert.ok(src.includes('ORDER_MEDIA_MAX_BYTES'));
   assert.ok(src.includes("inferredForInit.type !== 'video'"));
   assert.ok(src.includes('storage.CLOUD_ENABLED'));

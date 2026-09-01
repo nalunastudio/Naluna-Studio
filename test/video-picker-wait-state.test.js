@@ -232,7 +232,7 @@ for (const [name, html] of Object.entries(ALL_PAGES)) {
 
 test('server.js: rutele multipart (/media/multipart/init|part-url|complete) raman neschimbate de aceasta corectie (STRICT frontend)', () => {
   const server = read('server.js');
-  assert.match(server, /app\.post\('\/api\/orders\/:orderId\/media\/multipart\/init', requireOrderToken/);
+  assert.match(server, /app\.post\('\/api\/orders\/:orderId\/media\/multipart\/init', mediaUploadLimiter, requireOrderToken/);
   assert.match(server, /app\.post\('\/api\/orders\/:orderId\/media\/multipart\/:sessionId\/part-url', requireOrderToken/);
   assert.match(server, /app\.post\('\/api\/orders\/:orderId\/media\/multipart\/:sessionId\/complete', requireOrderToken/);
 });

@@ -1064,6 +1064,19 @@ const lookupLimiter = rateLimit({
   keyGenerator: realClientIp,
   message: { error: 'Prea multe încercări. Încearcă din nou mai târziu' }
 });
+// LAUNCH SAFETY (2026-09-01, Faza 3 — vector DoS evident): endpoint-urile de upload media
+// (Cadou video) erau protejate doar de requireOrderToken (imposibil de ghicit, dar odata
+// cunoscut un token real, cererile puteau fi repetate nelimitat). Aplicat STRICT pe
+// "inceperea" unui upload (POST direct + init sesiune multipart) — max 60/15 min e generos
+// pentru un lot legitim de pana la 30 de materiale, dar opreste spam-ul. NU aplicat pe
+// part-url/complete (chemate legitim de zeci de ori pentru UN singur videoclip mare, deja
+// impartit in fragmente — limitarea acolo ar rupe uploadul real, fara sa reduca vreun risc
+// semnificativ: fiecare fragment tot cere un token de comanda real, valid).
+const mediaUploadLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, max: 60, standardHeaders: true, legacyHeaders: false,
+  keyGenerator: realClientIp,
+  message: { error: 'Prea multe încercări de încărcare. Încearcă din nou mai târziu' }
+});
 // Panoul de admin e cel mai privilegiat punct de acces din aplicatie (acces la toate
 // comenzile/emailurile clientilor) si, spre deosebire de toate rutele de mai sus, nu avea
 // NICIUN rate limiting — Basic Auth putea fi incercat la nesfarsit. skipSuccessfulRequests:
@@ -2754,7 +2767,7 @@ app.post('/api/orders/:orderId/checkout', requireOrderToken, async (req, res, ne
 // Raspunsul intoarce explicit ce a reusit si ce nu, cu motiv, ca frontend-ul sa poata arata
 // fiecare fisier cu starea lui reala, fara sa piarda restul batch-ului.
 const ORDER_MEDIA_UPLOADABLE_STATUSES = ['draft', 'preview_ready', 'generation_failed', 'ready'];
-app.post('/api/orders/:orderId/media', requireOrderToken, handleOrderMediaUpload, async (req, res, next) => {
+app.post('/api/orders/:orderId/media', mediaUploadLimiter, requireOrderToken, handleOrderMediaUpload, async (req, res, next) => {
   const files = req.files || [];
   // curatare INCONDITIONATA a fisierelor temporare de pe disc la iesire — reusite (deja
   // urcate in R2, copia locala nu mai e necesara) sau esuate deopotriva. Fara asta, fisiere
@@ -2975,7 +2988,7 @@ setInterval(() => {
   }
 }, 5 * 60 * 1000).unref();
 
-app.post('/api/orders/:orderId/media/multipart/init', requireOrderToken, async (req, res, next) => {
+app.post('/api/orders/:orderId/media/multipart/init', mediaUploadLimiter, requireOrderToken, async (req, res, next) => {
   try {
     const order = req.order;
     if (order.plan !== 'video') return res.status(400).json({ error: 'Doar pachetul video acceptă fotografii/videoclipuri.' });
