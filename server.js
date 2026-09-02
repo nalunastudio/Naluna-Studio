@@ -135,7 +135,7 @@ const PLAN_PRICES = { standard: 15, premium: 25, video: 35 };
 // Retur era in vigoare cand clientul a bifat consimtamantul, la fiecare comanda — se schimba
 // STRICT daca textul acelor pagini se modifica material ulterior, niciodata retroactiv pentru
 // comenzi deja platite.
-const CONSENT_POLICY_VERSION = '2026-09-02';
+const CONSENT_POLICY_VERSION = '2026-09-02-v2';
 // REGULA FINALA A PACHETELOR (2026-08-14, corectata — vezi si comentariul de la
 // getGiftVariant in lib/entitlements.js): sursa unica server-side pentru cate melodii
 // (variante) primeste fiecare plan — nu doar text in UI. Standard SI Video = o singura
