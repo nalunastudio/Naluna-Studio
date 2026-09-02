@@ -36,6 +36,29 @@ for (const page of ['terms.html', 'privacy.html', 'refund.html']) {
   });
 }
 
+test('terms.html: dezvaluirea numelui proprietarului (Natalia Andoni, cerinta CA2006 s.1201) apare STRICT in interiorul entity-box, ca text simplu — fara heading, bold sau evidentiere separata', () => {
+  const html = read('public/terms.html');
+  const idx = html.indexOf('Natalia Andoni');
+  assert.notEqual(idx, -1, 'terms.html trebuie sa dezvaluie numele proprietarului (cerinta legala CA2006 s.1201)');
+  const boxStart = html.indexOf('class="entity-box"');
+  const boxEnd = html.indexOf('</div>', boxStart);
+  assert.ok(idx > boxStart && idx < boxEnd, 'numele trebuie sa fie in interiorul entity-box, alaturi de restul informatiilor legale ale firmei');
+  const boxContent = html.slice(boxStart, boxEnd);
+  assert.ok(!/<(h1|h2|h3|h4|h5|h6|strong|b)[ >]/i.test(boxContent), 'entity-box nu trebuie sa contina niciun heading/bold — text simplu, ca restul continutului legal');
+});
+
+test('numele personal (Natalia Andoni) NU apare NICAIERI altundeva in site (alte pagini publice, server.js/db.js, emailuri, footere, metadate) — vizibilitate STRICT minima, doar in terms.html', () => {
+  const publicDir = path.join(__dirname, '..', 'public');
+  const htmlFiles = fs.readdirSync(publicDir).filter(f => f.endsWith('.html') && f !== 'terms.html');
+  for (const file of htmlFiles) {
+    const html = read(`public/${file}`);
+    assert.ok(!html.includes('Natalia Andoni'), `${file} NU trebuie sa contina numele personal al proprietarului`);
+    assert.ok(!html.includes('Andoni'), `${file} NU trebuie sa contina numele de familie al proprietarului`);
+  }
+  assert.ok(!server.includes('Natalia Andoni') && !server.includes('Andoni'), 'server.js (inclusiv emailurile de livrare) nu trebuie sa contina numele personal');
+  assert.ok(!db.includes('Natalia Andoni') && !db.includes('Andoni'), 'db.js nu trebuie sa contina numele personal');
+});
+
 test('Cele 3 pagini legale se leaga reciproc (footer identic pe toate)', () => {
   for (const page of ['terms.html', 'privacy.html', 'refund.html']) {
     const html = read(`public/${page}`);
