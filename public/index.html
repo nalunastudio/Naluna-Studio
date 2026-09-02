@@ -170,6 +170,23 @@
   .step h3{ font-family:'Fraunces', serif; font-weight:500; font-size:19px; margin:14px 0 8px; }
   .step p{ color:var(--text-secondary); font-size:14px; }
 
+  /* PRETURI — acelasi tipar vizual ca .steps (grid cu gap 1px pe fundal var(--line)),
+     nicio culoare/font noua. LAUNCH SAFETY: pretul real trebuie sa fie vizibil pe homepage
+     (gasit lipsa in auditul initial de lansare) — reutilizeaza EXACT numele/subtitlurile/
+     descrierile deja traduse in comanda.html (plan_standard/premium/video_*), niciun text nou. */
+  .pricing-grid{
+    display:grid; grid-template-columns:repeat(3,1fr); gap:1px;
+    background:var(--line); border:1px solid var(--line); border-radius:16px; overflow:hidden;
+  }
+  .pricing-card{ background:var(--bg-secondary); padding:32px 26px; display:flex; flex-direction:column; gap:6px; }
+  .pricing-name{ font-family:'Fraunces', serif; font-weight:500; font-size:19px; }
+  .pricing-subtitle{ color:var(--gold-deep); font-size:13px; }
+  .pricing-amount{ font-family:'Fraunces', serif; font-weight:500; font-size:32px; margin:10px 0 2px; }
+  .pricing-desc{ color:var(--text-secondary); font-size:14px; line-height:1.5; }
+  @media (max-width: 860px){
+    .pricing-grid{ grid-template-columns:1fr; }
+  }
+
   /* REACTII CLIENTI */
   .testimonial-grid{
     display:grid; grid-template-columns:repeat(3, 1fr); gap:24px;
@@ -278,6 +295,9 @@
 <body>
 
 <div class="mobile-sticky-cta">
+  <div style="text-align:center; margin-bottom:8px;">
+    <a href="/comanda-mea.html" data-i18n="nav_myorder" style="font-size:13px; color:var(--text-secondary); text-decoration:underline; text-underline-offset:2px;">Comanda mea</a>
+  </div>
   <a href="/comanda.html" class="btn btn-primary" data-i18n="order_now_btn">Comandă acum</a>
 </div>
 
@@ -368,6 +388,37 @@
     </div>
   </section>
 
+  <section id="preturi">
+    <div class="section-head">
+      <div class="eyebrow" data-i18n="pricing_eyebrow">Prețuri</div>
+      <h2 data-i18n="pricing_title">Plătești o singură dată, fără abonament</h2>
+      <p data-i18n="pricing_sub">Alege pachetul potrivit pentru cadoul tău — plătești doar după ce asculți gratuit melodia</p>
+    </div>
+    <div class="pricing-grid">
+      <div class="pricing-card">
+        <div class="pricing-name" data-i18n="plan_standard_name">Standard</div>
+        <div class="pricing-subtitle" data-i18n="plan_standard_subtitle">O melodie personalizată</div>
+        <div class="pricing-amount">£15</div>
+        <div class="pricing-desc" data-i18n="plan_standard_desc">Melodie personalizată, livrare pe email</div>
+      </div>
+      <div class="pricing-card">
+        <div class="pricing-name" data-i18n="plan_premium_name">Premium</div>
+        <div class="pricing-subtitle" data-i18n="plan_premium_subtitle">Două melodii complete, două genuri diferite</div>
+        <div class="pricing-amount">£25</div>
+        <div class="pricing-desc" data-i18n="plan_premium_desc">Alegi 2 genuri diferite; a doua poate fi pentru altă persoană; primești ambele complete după plată</div>
+      </div>
+      <div class="pricing-card">
+        <div class="pricing-name" data-i18n="plan_video_name">Cadou video</div>
+        <div class="pricing-subtitle" data-i18n="plan_video_subtitle">Melodie personalizată cu videoclip</div>
+        <div class="pricing-amount">£35</div>
+        <div class="pricing-desc" data-i18n="plan_video_desc">Melodie + videoclip sincronizat, cu pozele și filmările tale</div>
+      </div>
+    </div>
+    <div style="text-align:center; margin-top:44px;">
+      <a href="/comanda.html" class="btn btn-primary" data-i18n="order_now_btn">Comandă acum</a>
+    </div>
+  </section>
+
   <section id="reactii" style="display:none;">
     <div class="section-head">
       <div class="eyebrow" data-i18n="reviews_eyebrow">Reacții reale</div>
@@ -433,6 +484,11 @@
       disc_label: 'SE COMPUNE',
       how_eyebrow: 'Proces', how_title: 'Patru pași, fără studio, fără compozitor',
       how_sub: 'Motorul de compoziție scrie versurile pe baza poveștii tale și generează melodia cu voce, în orice gen muzical alegi',
+      pricing_eyebrow: 'Prețuri', pricing_title: 'Plătești o singură dată, fără abonament',
+      pricing_sub: 'Alege pachetul potrivit pentru cadoul tău — plătești doar după ce asculți gratuit melodia',
+      plan_standard_name: 'Standard', plan_standard_subtitle: 'O melodie personalizată', plan_standard_desc: 'Melodie personalizată, livrare pe email',
+      plan_premium_name: 'Premium', plan_premium_subtitle: 'Două melodii complete, două genuri diferite', plan_premium_desc: 'Alegi 2 genuri diferite; a doua poate fi pentru altă persoană; primești ambele complete după plată',
+      plan_video_name: 'Cadou video', plan_video_subtitle: 'Melodie personalizată cu videoclip', plan_video_desc: 'Melodie + videoclip sincronizat, cu pozele și filmările tale',
       step1_title: 'Povestea', step1_desc: 'Nume, ocazie, detalii care contează — 2-3 minute de completat un formular',
       step2_title: 'Stilul', step2_desc: 'Alegi genul muzical, tonul (vesel, emoționant, solemn) și limba',
       step3_title: 'Previzualizarea', step3_desc: 'Asculți gratuit 2 variante și ceri editări dacă nu e exact ce vrei',
@@ -458,6 +514,11 @@
       disc_label: 'COMPOSING',
       how_eyebrow: 'Process', how_title: 'Four steps, no studio, no composer.',
       how_sub: 'The composition engine writes the lyrics from your story and generates the song with vocals, in any musical style you choose.',
+      pricing_eyebrow: 'Pricing', pricing_title: 'Pay once, no subscription',
+      pricing_sub: 'Choose the package that fits your gift — you only pay after listening to your song for free',
+      plan_standard_name: 'Standard', plan_standard_subtitle: 'A personalised song', plan_standard_desc: 'A personalised song, delivered by email',
+      plan_premium_name: 'Premium', plan_premium_subtitle: 'Two complete songs, two different genres', plan_premium_desc: 'Choose 2 different genres; the second can be for someone else; get both complete after payment',
+      plan_video_name: 'Video gift', plan_video_subtitle: 'Personalised song with video', plan_video_desc: 'Song + synced video with your own photos and clips',
       step1_title: 'The story', step1_desc: 'Name, occasion, details that matter — a 2-3 minute form.',
       step2_title: 'The style', step2_desc: 'Choose the musical genre, tone (joyful, emotional, solemn) and language.',
       step3_title: 'The preview', step3_desc: 'Listen to 2 versions for free and request edits if it is not quite right.',
@@ -483,6 +544,11 @@
       disc_label: 'WIRD KOMPONIERT',
       how_eyebrow: 'Ablauf', how_title: 'Vier Schritte, kein Studio, kein Komponist.',
       how_sub: 'Die Kompositions-Engine schreibt den Text aus deiner Geschichte und erzeugt das Lied mit Gesang, in jedem gewünschten Musikstil.',
+      pricing_eyebrow: 'Preise', pricing_title: 'Einmal zahlen, kein Abo',
+      pricing_sub: 'Wähle das passende Paket für dein Geschenk — du zahlst erst, nachdem du dein Lied kostenlos angehört hast',
+      plan_standard_name: 'Standard', plan_standard_subtitle: 'Ein persönliches Lied', plan_standard_desc: 'Persönliches Lied, per E-Mail geliefert',
+      plan_premium_name: 'Premium', plan_premium_subtitle: 'Zwei vollständige Lieder, zwei verschiedene Genres', plan_premium_desc: 'Wähle 2 verschiedene Genres; das zweite kann für eine andere Person sein; du erhältst beide vollständig nach der Zahlung',
+      plan_video_name: 'Video-Geschenk', plan_video_subtitle: 'Persönliches Lied mit Video', plan_video_desc: 'Lied + synchronisiertes Video mit deinen eigenen Fotos und Clips',
       step1_title: 'Die Geschichte', step1_desc: 'Name, Anlass, wichtige Details — ein 2-3-minütiges Formular.',
       step2_title: 'Der Stil', step2_desc: 'Wähle Musikrichtung, Stimmung (fröhlich, emotional, feierlich) und Sprache.',
       step3_title: 'Die Vorschau', step3_desc: 'Höre kostenlos 2 Versionen und fordere Änderungen an, falls nötig.',
@@ -508,6 +574,11 @@
       disc_label: 'COMPONIENDO',
       how_eyebrow: 'Proceso', how_title: 'Cuatro pasos, sin estudio, sin compositor.',
       how_sub: 'El motor de composición escribe la letra a partir de tu historia y genera la canción con voz, en el género musical que elijas.',
+      pricing_eyebrow: 'Precios', pricing_title: 'Pagas una sola vez, sin suscripción',
+      pricing_sub: 'Elige el paquete adecuado para tu regalo — solo pagas después de escuchar tu canción gratis',
+      plan_standard_name: 'Estándar', plan_standard_subtitle: 'Una canción personalizada', plan_standard_desc: 'Canción personalizada, entrega por email',
+      plan_premium_name: 'Premium', plan_premium_subtitle: 'Dos canciones completas, dos géneros diferentes', plan_premium_desc: 'Eliges 2 géneros diferentes; la segunda puede ser para otra persona; recibes ambas completas después del pago',
+      plan_video_name: 'Regalo en video', plan_video_subtitle: 'Canción personalizada con video', plan_video_desc: 'Canción + video sincronizado con tus propias fotos y videos',
       step1_title: 'La historia', step1_desc: 'Nombre, ocasión, detalles importantes — un formulario de 2-3 minutos.',
       step2_title: 'El estilo', step2_desc: 'Elige el género musical, el tono (alegre, emotivo, solemne) y el idioma.',
       step3_title: 'La previsualización', step3_desc: 'Escucha 2 versiones gratis y pide cambios si no es exactamente lo que quieres.',
@@ -533,6 +604,11 @@
       disc_label: 'IN COMPOSIZIONE',
       how_eyebrow: 'Processo', how_title: 'Quattro passi, senza studio, senza compositore.',
       how_sub: 'Il motore di composizione scrive il testo dalla tua storia e genera la canzone con voce, nel genere musicale che scegli.',
+      pricing_eyebrow: 'Prezzi', pricing_title: 'Paghi una sola volta, senza abbonamento',
+      pricing_sub: 'Scegli il pacchetto giusto per il tuo regalo — paghi solo dopo aver ascoltato gratis la tua canzone',
+      plan_standard_name: 'Standard', plan_standard_subtitle: 'Una canzone personalizzata', plan_standard_desc: 'Canzone personalizzata, consegna via email',
+      plan_premium_name: 'Premium', plan_premium_subtitle: 'Due canzoni complete, due generi diversi', plan_premium_desc: 'Scegli 2 generi diversi; la seconda può essere per un\'altra persona; ricevi entrambe complete dopo il pagamento',
+      plan_video_name: 'Regalo video', plan_video_subtitle: 'Canzone personalizzata con video', plan_video_desc: 'Canzone + video sincronizzato con le tue foto e i tuoi video',
       step1_title: 'La storia', step1_desc: 'Nome, occasione, dettagli importanti — un modulo di 2-3 minuti.',
       step2_title: 'Lo stile', step2_desc: 'Scegli il genere musicale, il tono (allegro, emozionante, solenne) e la lingua.',
       step3_title: 'L\'anteprima', step3_desc: 'Ascolti gratis 2 versioni e chiedi modifiche se non è esattamente quello che vuoi.',
@@ -558,6 +634,11 @@
       disc_label: 'EN COMPOSITION',
       how_eyebrow: 'Processus', how_title: 'Quatre étapes, sans studio, sans compositeur.',
       how_sub: 'Le moteur de composition écrit les paroles à partir de votre histoire et génère la chanson avec voix, dans le genre musical de votre choix.',
+      pricing_eyebrow: 'Tarifs', pricing_title: 'Vous payez une seule fois, sans abonnement',
+      pricing_sub: 'Choisissez le pack adapté à votre cadeau — vous ne payez qu\'après avoir écouté votre chanson gratuitement',
+      plan_standard_name: 'Standard', plan_standard_subtitle: 'Une chanson personnalisée', plan_standard_desc: 'Chanson personnalisée, livrée par email',
+      plan_premium_name: 'Premium', plan_premium_subtitle: 'Deux chansons complètes, deux genres différents', plan_premium_desc: 'Vous choisissez 2 genres différents ; la deuxième peut être pour une autre personne ; vous recevez les deux complètes après paiement',
+      plan_video_name: 'Cadeau vidéo', plan_video_subtitle: 'Chanson personnalisée avec vidéo', plan_video_desc: 'Chanson + vidéo synchronisée avec vos propres photos et vidéos',
       step1_title: 'L\'histoire', step1_desc: 'Prénom, occasion, détails importants — un formulaire de 2-3 minutes.',
       step2_title: 'Le style', step2_desc: 'Choisissez le genre musical, le ton (joyeux, émouvant, solennel) et la langue.',
       step3_title: 'L\'aperçu', step3_desc: 'Écoutez gratuitement 2 versions et demandez des modifications si besoin.',
@@ -583,6 +664,11 @@
       disc_label: 'СЕ КОМПОЗИРА',
       how_eyebrow: 'Процес', how_title: 'Четири стъпки, без студио, без композитор.',
       how_sub: 'Двигателят за композиране пише текста по твоята история и генерира песента с вокал, в избрания от теб музикален жанр.',
+      pricing_eyebrow: 'Цени', pricing_title: 'Плащаш веднъж, без абонамент',
+      pricing_sub: 'Избери подходящия пакет за твоя подарък — плащаш едва след като чуеш песента си безплатно',
+      plan_standard_name: 'Стандартен', plan_standard_subtitle: 'Персонализирана песен', plan_standard_desc: 'Персонализирана песен, доставка по имейл',
+      plan_premium_name: 'Премиум', plan_premium_subtitle: 'Две пълни песни, два различни жанра', plan_premium_desc: 'Избираш 2 различни жанра; втората може да е за друг човек; получаваш и двете пълни след плащане',
+      plan_video_name: 'Видео подарък', plan_video_subtitle: 'Персонализирана песен с видео', plan_video_desc: 'Песен + синхронизирано видео с твоите снимки и видеоклипове',
       step1_title: 'Историята', step1_desc: 'Име, повод, важни детайли — формуляр за 2-3 минути.',
       step2_title: 'Стилът', step2_desc: 'Избираш музикален жанр, настроение (весело, емоционално, тържествено) и език.',
       step3_title: 'Прегледът', step3_desc: 'Слушаш безплатно 2 версии и искаш промени, ако не е точно както искаш.',
@@ -608,6 +694,11 @@
       disc_label: 'BESTELENİYOR',
       how_eyebrow: 'Süreç', how_title: 'Stüdyosuz, bestecisiz dört adım.',
       how_sub: 'Kompozisyon motoru hikayenizden yola çıkarak sözleri yazar ve seçtiğiniz müzik türünde vokalli şarkıyı oluşturur.',
+      pricing_eyebrow: 'Fiyatlar', pricing_title: 'Tek seferlik ödeme, abonelik yok',
+      pricing_sub: 'Hediyene uygun paketi seç — şarkını ücretsiz dinledikten sonra ödeme yaparsın',
+      plan_standard_name: 'Standart', plan_standard_subtitle: 'Kişiye özel bir şarkı', plan_standard_desc: 'Kişiye özel şarkı, e-posta ile teslim',
+      plan_premium_name: 'Premium', plan_premium_subtitle: 'İki tam şarkı, iki farklı tür', plan_premium_desc: '2 farklı tür seçersiniz; ikincisi başka biri için olabilir; ödemeden sonra ikisini de tam olarak alırsınız',
+      plan_video_name: 'Video hediye', plan_video_subtitle: 'Videolu kişiye özel şarkı', plan_video_desc: 'Şarkı + kendi fotoğraf ve videolarınızla senkronize video',
       step1_title: 'Hikaye', step1_desc: 'İsim, özel gün, önemli detaylar — 2-3 dakikalık bir form.',
       step2_title: 'Tarz', step2_desc: 'Müzik türünü, tonu (neşeli, duygusal, ciddi) ve dili seçin.',
       step3_title: 'Ön izleme', step3_desc: '2 versiyonu ücretsiz dinleyin, tam istediğiniz gibi değilse değişiklik isteyin.',
