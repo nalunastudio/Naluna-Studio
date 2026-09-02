@@ -59,6 +59,50 @@ test('numele personal (Natalia Andoni) NU apare NICAIERI altundeva in site (alte
   assert.ok(!db.includes('Natalia Andoni') && !db.includes('Andoni'), 'db.js nu trebuie sa contina numele personal');
 });
 
+test('refund.html si terms.html: NU exista niciun termen general de "14 zile" impus pentru RECLAMAREA unui defect — nu e cerut legal (CRA 2015 nu impune un astfel de termen, doar termenul de plata a rambursarii dupa acceptare)', () => {
+  const refund = read('public/refund.html');
+  const terms = read('public/terms.html');
+  assert.ok(!/within 14 days of delivery/i.test(refund), 'refund.html nu trebuie sa impuna un termen de 14 zile pentru raportarea unui defect');
+  assert.ok(!/within 14 days of delivery/i.test(terms));
+  assert.ok(/within 14 days.*(agree|agreeing)/i.test(refund), 'refund.html poate mentiona 14 zile STRICT ca termen de PLATA a rambursarii dupa ce a fost acceptata (cerinta reala CRA 2015 s.44/45)');
+});
+
+test('refund.html si terms.html: NU exista rambursare voluntara doar pentru schimbarea parerii/nu-mi place rezultatul, dupa livrare', () => {
+  for (const page of ['refund.html', 'terms.html']) {
+    const html = read(`public/${page}`);
+    assert.ok(/not entitled to a (voluntary )?refund/i.test(html), `${page} trebuie sa afirme explicit ca nu exista rambursare pentru schimbarea parerii`);
+    assert.ok(/change (your|my) mind/i.test(html) || /change of mind/i.test(html));
+  }
+});
+
+test('refund.html si terms.html: rambursare GARANTATA daca Naluna esueaza sa livreze din cauza unui defect tehnic/de sistem propriu si nu poate fi remediat rezonabil', () => {
+  for (const page of ['refund.html', 'terms.html']) {
+    const html = read(`public/${page}`);
+    assert.ok(/technical or system failure/i.test(html), `${page} trebuie sa promita rambursare pentru esec tehnic/de sistem propriu`);
+    assert.ok(/refund what you paid/i.test(html) || /refund (in full|the full price)/i.test(html));
+  }
+});
+
+test('refund.html si terms.html: drepturile STATUTARE (CRA 2015) pentru continut defect/neconform/nelivrat sunt pastrate — reparare/inlocuire, apoi reducere de pret pana la 100%, fara excludere', () => {
+  for (const page of ['refund.html', 'terms.html']) {
+    const html = read(`public/${page}`);
+    assert.ok(/repair.*or.*(correct|replacement)|repair or correct/i.test(html), `${page} trebuie sa mentioneze dreptul la reparare/inlocuire`);
+    assert.ok(/price reduction/i.test(html), `${page} trebuie sa mentioneze reducerea de pret`);
+    assert.ok(/full price/i.test(html), `${page} trebuie sa clarifice ca reducerea poate ajunge la pretul integral`);
+    assert.ok(/cannot be excluded|cannot exclude/i.test(html), `${page} trebuie sa clarifice ca aceste drepturi statutare nu pot fi excluse`);
+  }
+});
+
+test('melodia-mea.html: toate cele 8 limbi ale consent_text includ clauza "nu exista rambursare pentru schimbarea parerii", pastrand neafectate drepturile pentru continut defect/nelivrat din vina Naluna', () => {
+  const html = read('public/melodia-mea.html');
+  const matches = html.match(/consent_text: '/g) || [];
+  assert.equal(matches.length, 8, 'trebuie sa existe exact 8 chei consent_text (una per limba)');
+  const faultMarkers = ["fault on Naluna\\'s side", 'din vina Naluna', 'eines Fehlers von Naluna', 'un fallo de Naluna', 'un errore di Naluna', 'défaillance de Naluna', 'грешка на Naluna', 'Naluna kaynaklı bir hata'];
+  for (const marker of faultMarkers) {
+    assert.ok(html.includes(marker), `lipseste mentiunea drepturilor pastrate pentru esecul din vina Naluna: "${marker}"`);
+  }
+});
+
 test('Cele 3 pagini legale se leaga reciproc (footer identic pe toate)', () => {
   for (const page of ['terms.html', 'privacy.html', 'refund.html']) {
     const html = read(`public/${page}`);
