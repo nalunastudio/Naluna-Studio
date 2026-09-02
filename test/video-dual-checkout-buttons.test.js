@@ -188,9 +188,10 @@ test('goToCheckout(): FUNCTIONAL — a doua apasare (pe ORICARE buton) cat timp 
     const checkoutBtn = { disabled: false };
     const checkoutBtn2 = { disabled: false };
     const statusMsgEl = { textContent: '', className: '' };
-    const t = { msg_preparing_payment: '...', msg_error_prefix: 'Eroare: ', msg_try_again: 'incearca din nou', msg_conn_error: 'eroare conexiune' };
+    const t = { msg_preparing_payment: '...', msg_error_prefix: 'Eroare: ', msg_try_again: 'incearca din nou', msg_conn_error: 'eroare conexiune', consent_required_error: 'bifeaza mai intai' };
     const orderId = 'test-order';
     const accessToken = 'test-token';
+    const checkoutConsentCheckbox = { checked: true, focus: () => {} };
     async function fetch(url, opts) { __recordFetchCall(); return { json: async () => (await __fetchPromise) }; }
     ${fnSrc}
     return { goToCheckout, getCheckoutBtn: () => checkoutBtn, getCheckoutBtn2: () => checkoutBtn2, getInFlight: () => checkoutInFlight };
@@ -212,9 +213,10 @@ test('goToCheckout(): la eroare, AMBELE butoane sunt reactivate (nu ramane bloca
     const checkoutBtn = { disabled: false };
     const checkoutBtn2 = { disabled: false };
     const statusMsgEl = { textContent: '', className: '' };
-    const t = { msg_preparing_payment: '...', msg_error_prefix: 'Eroare: ', msg_try_again: 'incearca din nou', msg_conn_error: 'eroare conexiune' };
+    const t = { msg_preparing_payment: '...', msg_error_prefix: 'Eroare: ', msg_try_again: 'incearca din nou', msg_conn_error: 'eroare conexiune', consent_required_error: 'bifeaza mai intai' };
     const orderId = 'test-order';
     const accessToken = 'test-token';
+    const checkoutConsentCheckbox = { checked: true, focus: () => {} };
     async function fetch() { return { json: async () => ({ url: null, error: 'a esuat' }) }; }
     ${fnSrc}
     return { goToCheckout, getCheckoutBtn: () => checkoutBtn, getCheckoutBtn2: () => checkoutBtn2 };

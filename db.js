@@ -274,6 +274,16 @@ async function initDb() {
   // a deschis checkout-ul, apoi incearca sa plateasca vechiul link) nu mai poate debloca
   // sau livra o versiune care nu mai e cea aprobata.
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS checkout_session_id TEXT;`);
+  // LAUNCH SAFETY (2026-09-02, Faza 2 — checkout legal consent): dovada asociata comenzii ca
+  // clientul a bifat explicit, INAINTE de plata, consimtamantul pentru inceperea imediata a
+  // continutului digital si pierderea dreptului de retragere. consent_policy_version identifica
+  // EXACT ce text de Termeni/Refund era in vigoare la momentul bifarii (util daca textul se
+  // modifica ulterior) — niciodata rescris retroactiv pentru comenzi vechi.
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS consent_given_at TIMESTAMPTZ;`);
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS consent_policy_version TEXT;`);
+  // Faza 5 — data retention/deletion: audit minim (cine/cand) al unei cereri GDPR executate —
+  // vezi anonymizeOrder() mai jos.
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS anonymized_at TIMESTAMPTZ;`);
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS checkout_variant_id TEXT;`);
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS checkout_media_revision INTEGER;`);
 
@@ -530,6 +540,8 @@ function rowToOrder(row) {
     mediaRevision: row.media_revision || 0,
     videoRenderMediaRevision: row.video_render_media_revision !== null && row.video_render_media_revision !== undefined ? Number(row.video_render_media_revision) : null,
     checkoutSessionId: row.checkout_session_id || null,
+    consentGivenAt: row.consent_given_at || null,
+    consentPolicyVersion: row.consent_policy_version || null,
     checkoutVariantId: row.checkout_variant_id || null,
     checkoutMediaRevision: row.checkout_media_revision !== null && row.checkout_media_revision !== undefined ? Number(row.checkout_media_revision) : null,
     // MODIFICARE STRICTĂ — fluxul Premium: editare selectiva + comparare finala (hotfix
@@ -931,6 +943,37 @@ async function addEmailSuppression(email, reason) {
   );
 }
 
+// LAUNCH SAFETY (2026-09-02, Faza 5 — data retention/deletion): sters REAL identitatea/
+// continutul personal al unei comenzi (cerere GDPR), pastrand STRICT ce e necesar contabil
+// (id, pret, data platii, plan, status, ID-uri Stripe) — vezi apelantul (POST
+// /api/admin/orders/:orderId/anonymize) pentru garda "comanda nu e activa" si stergerea REALA
+// a fisierelor din storage, facuta INAINTE de acest apel. email ramane NOT NULL in schema —
+// inlocuit cu un placeholder pe domeniul rezervat .invalid (RFC 2606), niciodata livrabil,
+// niciodata confundabil cu o adresa reala.
+async function anonymizeOrder(id) {
+  await pool.query(
+    `UPDATE orders SET
+      recipient = '[deleted]',
+      email = $2,
+      story = '[deleted]',
+      sender_name = NULL,
+      relationship = NULL,
+      phone = NULL,
+      recipient_names = NULL,
+      recipient_2 = NULL,
+      sender_name_2 = NULL,
+      relationship_2 = NULL,
+      story_2 = NULL,
+      recipient_names_2 = NULL,
+      regenerate_feedback = NULL,
+      uploaded_media = '[]'::jsonb,
+      variants = '[]'::jsonb,
+      anonymized_at = now()
+    WHERE id = $1`,
+    [id, `deleted-${id}@nalunastudio.invalid`]
+  );
+}
+
 async function isEmailSuppressed(email) {
   const result = await pool.query(
     `SELECT 1 FROM email_suppressions WHERE email = $1`,
@@ -1149,6 +1192,8 @@ const COLUMN_MAP = {
   mediaConfirmedAt: 'media_confirmed_at',
   videoStaleReason: 'video_stale_reason',
   checkoutSessionId: 'checkout_session_id',
+  consentGivenAt: 'consent_given_at',
+  consentPolicyVersion: 'consent_policy_version',
   checkoutVariantId: 'checkout_variant_id',
   checkoutMediaRevision: 'checkout_media_revision',
   // MODIFICARE STRICTĂ — fluxul Premium: editare selectiva + comparare finala (hotfix
@@ -1332,6 +1377,7 @@ async function moveTestimonial(id, direction) {
 module.exports = {
   pool, initDb, createOrder, getOrderById, getOrderByToken, getOrderByMusicTaskId, getOrderByAnyMusicTaskId,
   getStuckInFlightOrders,
+  anonymizeOrder,
   updateGenerationPhaseIfLater,
   startRegenerationJob, updateRegenerationPhaseIfLater, markRegenerationStatus,
   claimOrderForProviderFinalization, claimOrderForRegeneration, claimOrderForInitialGeneration,

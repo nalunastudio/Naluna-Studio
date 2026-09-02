@@ -131,6 +131,11 @@ const FETCH_TIMEOUT_MS = 25000;
 // Preturile NU vin niciodata de la client. Un client care modifica payload-ul (curl/devtools)
 // nu poate plati mai putin decat pretul real al pachetului ales.
 const PLAN_PRICES = { standard: 15, premium: 25, video: 35 };
+// LAUNCH SAFETY (2026-09-02, Faza 2): identifica EXACT ce versiune a Termenilor/Politicii de
+// Retur era in vigoare cand clientul a bifat consimtamantul, la fiecare comanda — se schimba
+// STRICT daca textul acelor pagini se modifica material ulterior, niciodata retroactiv pentru
+// comenzi deja platite.
+const CONSENT_POLICY_VERSION = '2026-09-02';
 // REGULA FINALA A PACHETELOR (2026-08-14, corectata — vezi si comentariul de la
 // getGiftVariant in lib/entitlements.js): sursa unica server-side pentru cate melodii
 // (variante) primeste fiecare plan — nu doar text in UI. Standard SI Video = o singura
@@ -1136,6 +1141,68 @@ app.get('/api/admin/orders', async (req, res, next) => {
     const list = await db.listOrders();
     const revenue = await db.computeRevenue();
     res.json({ orders: list, revenue, count: list.length });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ==========================================================================================
+// LAUNCH SAFETY (2026-09-02, Faza 5 — data retention/deletion): unealta REALA pentru cereri de
+// stergere GDPR ("dreptul la uitare"), declansata manual de admin (contact@nalunastudio.com
+// primeste cererea, admin o executa aici) — nu automata, nu programata, exact cum a fost decis
+// (retentie implicita nedefinita + stergere la cerere, nu o perioada inventata).
+//
+// Ce sterge REAL: identitate/contact (destinatar, email -> placeholder, poveste, expeditor,
+// relatie, telefon, numele destinatarilor pentru fiecare limba/persoana), TOATE materialele
+// media incarcate de client (poze/video, R2) si TOATE fisierele audio/video generate (preview +
+// complet + video), reale, din storage — nu doar referintele din baza de date.
+// Ce NU sterge (pastrat intentionat, evidenta contabila): id, pret, data platii, plan, status,
+// ID-urile Stripe — necesare legal pentru contabilitate (vezi Privacy Policy, sectiunea Retentie).
+//
+// Refuza STRICT o comanda inca ACTIVA (generare/regenerare/randare video in desfasurare) — o
+// stergere la mijlocul unei operatii ar lasa fisiere orfane sau o stare inconsistenta. Fiecare
+// stergere de fisier e izolata (try/catch propriu) — un fisier deja lipsa/esuat NU opreste
+// restul stergerilor, dar e raportat explicit admin-ului, niciodata ascuns silentios.
+app.post('/api/admin/orders/:orderId/anonymize', async (req, res, next) => {
+  try {
+    const order = await db.getOrderById(req.params.orderId);
+    if (!order) return res.status(404).json({ error: 'Comanda nu există.' });
+
+    if (
+      order.status === 'generating' || order.status === 'processing_provider_result' ||
+      order.regenerationStatus === 'running' || isVideoLockActive(order)
+    ) {
+      return res.status(409).json({ error: 'Comanda are o operație activă (generare/regenerare/randare video) — reîncearcă după ce se termină.' });
+    }
+
+    const keysToDelete = [];
+    for (const v of (order.variants || [])) {
+      if (v.fullKey) keysToDelete.push(v.fullKey);
+      if (v.previewKey) keysToDelete.push(v.previewKey);
+      if (v.videoKey) keysToDelete.push(v.videoKey);
+    }
+    for (const m of (order.uploadedMedia || [])) {
+      if (m.key) keysToDelete.push(m.key);
+    }
+
+    const fileDeleteFailures = [];
+    for (const key of keysToDelete) {
+      try {
+        await storage.deletePrivateFile(key);
+      } catch (err) {
+        fileDeleteFailures.push({ key, error: err.message });
+      }
+    }
+
+    await db.anonymizeOrder(order.id);
+
+    console.warn(`Admin: comanda ${order.id} a fost anonimizată (cerere GDPR) — ${keysToDelete.length - fileDeleteFailures.length}/${keysToDelete.length} fișiere șterse din storage.`);
+    res.json({
+      ok: true,
+      filesDeleted: keysToDelete.length - fileDeleteFailures.length,
+      filesTotal: keysToDelete.length,
+      fileDeleteFailures
+    });
   } catch (err) {
     next(err);
   }
@@ -2632,6 +2699,16 @@ app.post('/api/orders/:orderId/checkout', requireOrderToken, async (req, res, ne
       return res.status(400).json({ error: 'Alege exact două melodii înainte de plată.' });
     }
 
+    // LAUNCH SAFETY (2026-09-02, Faza 2 — checkout legal consent): validare SERVER-SIDE,
+    // niciodata doar client-side (butonul dezactivat in UI poate fi ocolit printr-un apel
+    // direct catre acest endpoint). Fara consimtamant explicit, plata nu poate incepe deloc —
+    // consecvent cu Consumer Contracts Regulations 2013 (UK) / Art. 16(m) Directiva 2011/83/UE:
+    // clientul trebuie sa ceara EXPRES inceperea imediata a continutului digital si sa
+    // recunoasca pierderea dreptului de retragere, INAINTE de a plati.
+    if (req.body?.consentGiven !== true) {
+      return res.status(400).json({ error: 'Trebuie să confirmi acordul privind începerea imediată a livrării înainte de a plăti.' });
+    }
+
     // ======================================================================================
     // Fluxul obligatoriu "Cadou video" — cerinta 11: plata e permisa NUMAI cand: varianta
     // audio finala e selectata (verificat mai sus, comun tuturor pachetelor); videoclipul
@@ -2757,7 +2834,9 @@ app.post('/api/orders/:orderId/checkout', requireOrderToken, async (req, res, ne
       checkoutSessionId: session.id,
       checkoutVariantId: order.selectedVariantId,
       checkoutVariantId2: order.selectedVariantId2 || null,
-      checkoutMediaRevision: order.mediaRevision
+      checkoutMediaRevision: order.mediaRevision,
+      consentGivenAt: new Date(),
+      consentPolicyVersion: CONSENT_POLICY_VERSION
     });
 
     res.json({ url: session.url });
@@ -7943,23 +8022,39 @@ async function sendDeliveryEmail(order) {
   };
   const extrasNote = (EXTRAS_NOTE[order.plan] && EXTRAS_NOTE[order.plan][order.lang]) || '';
 
+  // LAUNCH SAFETY (2026-09-02, Faza 2 — durable confirmation): confirmarea REALA, pe suport
+  // durabil (acest email), a consimtamantului dat la checkout — ceruta explicit de Consumer
+  // Contracts Regulations 2013 (UK) / Directiva 2011/83/UE. Link-uri ABSOLUTE (DOMAIN) — un link
+  // relativ intr-un client de email nu are context de la ce origine sa porneasca.
+  const LEGAL_NOTE = {
+    ro: `<p style="font-size:13px;color:#6b6b6b;">Prin finalizarea comenzii ai fost de acord ca lucrul la comanda ta personalizată să înceapă imediat și că, astfel, pierzi dreptul de anulare de 14 zile odată ce a început. Vezi <a href="${DOMAIN}/terms.html">Termenii</a> și <a href="${DOMAIN}/refund.html">Politica de anulare și rambursare</a>.</p>`,
+    en: `<p style="font-size:13px;color:#6b6b6b;">By completing this purchase, you agreed that work on your personalised order would begin immediately, and that you would lose your 14-day right to cancel once it started. See our <a href="${DOMAIN}/terms.html">Terms</a> and <a href="${DOMAIN}/refund.html">Cancellation &amp; Refund Policy</a>.</p>`,
+    de: `<p style="font-size:13px;color:#6b6b6b;">Mit Abschluss dieses Kaufs hast du zugestimmt, dass die Arbeit an deiner personalisierten Bestellung sofort beginnt und du damit dein 14-tägiges Widerrufsrecht verlierst, sobald sie begonnen hat. Siehe unsere <a href="${DOMAIN}/terms.html">AGB</a> und <a href="${DOMAIN}/refund.html">Stornierungs- und Rückerstattungsrichtlinie</a>.</p>`,
+    es: `<p style="font-size:13px;color:#6b6b6b;">Al completar esta compra, aceptaste que el trabajo en tu pedido personalizado comenzara de inmediato y que, por ello, pierdes tu derecho de desistimiento de 14 días en cuanto comienza. Consulta nuestros <a href="${DOMAIN}/terms.html">Términos</a> y la <a href="${DOMAIN}/refund.html">Política de cancelación y reembolso</a>.</p>`,
+    it: `<p style="font-size:13px;color:#6b6b6b;">Completando questo acquisto hai accettato che il lavoro sul tuo ordine personalizzato iniziasse immediatamente, perdendo così il diritto di recesso di 14 giorni non appena iniziato. Consulta i nostri <a href="${DOMAIN}/terms.html">Termini</a> e la <a href="${DOMAIN}/refund.html">Politica di cancellazione e rimborso</a>.</p>`,
+    fr: `<p style="font-size:13px;color:#6b6b6b;">En finalisant cet achat, vous avez accepté que le travail sur votre commande personnalisée commence immédiatement, et que vous perdiez ainsi votre droit de rétractation de 14 jours dès son commencement. Voir nos <a href="${DOMAIN}/terms.html">Conditions</a> et notre <a href="${DOMAIN}/refund.html">Politique d'annulation et de remboursement</a>.</p>`,
+    bg: `<p style="font-size:13px;color:#6b6b6b;">Завършвайки тази покупка, ти се съгласи работата по персонализираната ти поръчка да започне незабавно и че по този начин губиш правото си на отказ от 14 дни веднага щом тя започне. Виж нашите <a href="${DOMAIN}/terms.html">Общи условия</a> и <a href="${DOMAIN}/refund.html">Политика за анулиране и възстановяване</a>.</p>`,
+    tr: `<p style="font-size:13px;color:#6b6b6b;">Bu satın alma işlemini tamamlayarak, kişiselleştirilmiş siparişiniz üzerindeki çalışmanın hemen başlamasını ve böylece başladığı anda 14 günlük cayma hakkınızı kaybetmeyi kabul ettiniz. <a href="${DOMAIN}/terms.html">Şartlarımıza</a> ve <a href="${DOMAIN}/refund.html">İptal ve İade Politikamıza</a> bakın.</p>`
+  };
+  const legalLine = LEGAL_NOTE[order.lang] || LEGAL_NOTE.ro;
+
   const templates = {
     ro: { subject: `Cântecul tău pentru ${order.recipient} e gata`,
-      html: `<p>Salut,</p><p>Cântecul tău personalizat pentru <strong>${safeRecipient}</strong> e gata.</p><p><a href="${downloadUrl}">Descarcă melodia</a></p>${giftLine}${videoLine}<p>Le poți regăsi oricând la <a href="${accessUrl}">acest link</a>.${extrasNote}</p><p>— NALUNA</p>` },
+      html: `<p>Salut,</p><p>Cântecul tău personalizat pentru <strong>${safeRecipient}</strong> e gata.</p><p><a href="${downloadUrl}">Descarcă melodia</a></p>${giftLine}${videoLine}<p>Le poți regăsi oricând la <a href="${accessUrl}">acest link</a>.${extrasNote}</p>${legalLine}<p>— NALUNA</p>` },
     en: { subject: `Your song for ${order.recipient} is ready`,
-      html: `<p>Hi,</p><p>Your personalised song for <strong>${safeRecipient}</strong> is ready.</p><p><a href="${downloadUrl}">Download your song</a></p>${giftLine}${videoLine}<p>You can find them anytime at <a href="${accessUrl}">this link</a>.${extrasNote}</p><p>— NALUNA</p>` },
+      html: `<p>Hi,</p><p>Your personalised song for <strong>${safeRecipient}</strong> is ready.</p><p><a href="${downloadUrl}">Download your song</a></p>${giftLine}${videoLine}<p>You can find them anytime at <a href="${accessUrl}">this link</a>.${extrasNote}</p>${legalLine}<p>— NALUNA</p>` },
     de: { subject: `Dein Lied für ${order.recipient} ist fertig`,
-      html: `<p>Hallo,</p><p>Dein persönliches Lied für <strong>${safeRecipient}</strong> ist fertig.</p><p><a href="${downloadUrl}">Lied herunterladen</a></p>${giftLine}${videoLine}<p>Du findest sie jederzeit über <a href="${accessUrl}">diesen Link</a>.${extrasNote}</p><p>— NALUNA</p>` },
+      html: `<p>Hallo,</p><p>Dein persönliches Lied für <strong>${safeRecipient}</strong> ist fertig.</p><p><a href="${downloadUrl}">Lied herunterladen</a></p>${giftLine}${videoLine}<p>Du findest sie jederzeit über <a href="${accessUrl}">diesen Link</a>.${extrasNote}</p>${legalLine}<p>— NALUNA</p>` },
     es: { subject: `Tu canción para ${order.recipient} está lista`,
-      html: `<p>Hola,</p><p>Tu canción personalizada para <strong>${safeRecipient}</strong> está lista.</p><p><a href="${downloadUrl}">Descargar la canción</a></p>${giftLine}${videoLine}<p>Puedes encontrarlas siempre en <a href="${accessUrl}">este enlace</a>.${extrasNote}</p><p>— NALUNA</p>` },
+      html: `<p>Hola,</p><p>Tu canción personalizada para <strong>${safeRecipient}</strong> está lista.</p><p><a href="${downloadUrl}">Descargar la canción</a></p>${giftLine}${videoLine}<p>Puedes encontrarlas siempre en <a href="${accessUrl}">este enlace</a>.${extrasNote}</p>${legalLine}<p>— NALUNA</p>` },
     it: { subject: `La tua canzone per ${order.recipient} è pronta`,
-      html: `<p>Ciao,</p><p>La tua canzone personalizzata per <strong>${safeRecipient}</strong> è pronta.</p><p><a href="${downloadUrl}">Scarica la canzone</a></p>${giftLine}${videoLine}<p>Puoi trovarle sempre su <a href="${accessUrl}">questo link</a>.${extrasNote}</p><p>— NALUNA</p>` },
+      html: `<p>Ciao,</p><p>La tua canzone personalizzata per <strong>${safeRecipient}</strong> è pronta.</p><p><a href="${downloadUrl}">Scarica la canzone</a></p>${giftLine}${videoLine}<p>Puoi trovarle sempre su <a href="${accessUrl}">questo link</a>.${extrasNote}</p>${legalLine}<p>— NALUNA</p>` },
     fr: { subject: `Votre chanson pour ${order.recipient} est prête`,
-      html: `<p>Bonjour,</p><p>Votre chanson personnalisée pour <strong>${safeRecipient}</strong> est prête.</p><p><a href="${downloadUrl}">Télécharger la chanson</a></p>${giftLine}${videoLine}<p>Vous pouvez les retrouver à tout moment via <a href="${accessUrl}">ce lien</a>.${extrasNote}</p><p>— NALUNA</p>` },
+      html: `<p>Bonjour,</p><p>Votre chanson personnalisée pour <strong>${safeRecipient}</strong> est prête.</p><p><a href="${downloadUrl}">Télécharger la chanson</a></p>${giftLine}${videoLine}<p>Vous pouvez les retrouver à tout moment via <a href="${accessUrl}">ce lien</a>.${extrasNote}</p>${legalLine}<p>— NALUNA</p>` },
     bg: { subject: `Твоята песен за ${order.recipient} е готова`,
-      html: `<p>Здравей,</p><p>Твоята персонализирана песен за <strong>${safeRecipient}</strong> е готова.</p><p><a href="${downloadUrl}">Изтегли песента</a></p>${giftLine}${videoLine}<p>Можеш да ги намериш винаги на <a href="${accessUrl}">този линк</a>.${extrasNote}</p><p>— NALUNA</p>` },
+      html: `<p>Здравей,</p><p>Твоята персонализирана песен за <strong>${safeRecipient}</strong> е готова.</p><p><a href="${downloadUrl}">Изтегли песента</a></p>${giftLine}${videoLine}<p>Можеш да ги намериш винаги на <a href="${accessUrl}">този линк</a>.${extrasNote}</p>${legalLine}<p>— NALUNA</p>` },
     tr: { subject: `${order.recipient} için şarkınız hazır`,
-      html: `<p>Merhaba,</p><p><strong>${safeRecipient}</strong> için kişiselleştirilmiş şarkınız hazır.</p><p><a href="${downloadUrl}">Şarkınızı indirin</a></p>${giftLine}${videoLine}<p><a href="${accessUrl}">Bu bağlantıdan</a> her zaman ulaşabilirsiniz.${extrasNote}</p><p>— NALUNA</p>` }
+      html: `<p>Merhaba,</p><p><strong>${safeRecipient}</strong> için kişiselleştirilmiş şarkınız hazır.</p><p><a href="${downloadUrl}">Şarkınızı indirin</a></p>${giftLine}${videoLine}<p><a href="${accessUrl}">Bu bağlantıdan</a> her zaman ulaşabilirsiniz.${extrasNote}</p>${legalLine}<p>— NALUNA</p>` }
   };
 
   const template = templates[order.lang] || templates.ro;

@@ -241,7 +241,10 @@
   textarea{ min-height:110px; resize:vertical; }
   input:focus, select:focus, textarea:focus{ outline:2px solid var(--gold); outline-offset:1px; border-color:var(--gold); }
 
-  footer{ padding:44px 0; color:var(--text-secondary); font-size:13px; display:flex; justify-content:space-between; align-items:center; border-top:1px solid var(--line); }
+  footer{ padding:44px 0; color:var(--text-secondary); font-size:13px; display:flex; flex-wrap:wrap; gap:12px 24px; justify-content:space-between; align-items:center; border-top:1px solid var(--line); }
+  .footer-legal{ display:flex; flex-wrap:wrap; gap:6px 16px; width:100%; order:3; padding-top:16px; border-top:1px solid var(--line); }
+  .footer-legal a{ color:var(--text-secondary); text-decoration:underline; text-underline-offset:2px; }
+  .footer-legal a:hover{ color:var(--text); }
   .footer-logo{ display:flex; align-items:center; gap:10px; }
   .footer-logo .logo-mark{ width:22px; }
 
@@ -405,6 +408,13 @@
       <span>© 2026 NALUNA</span>
     </div>
     <span data-i18n="footer_note">Compoziție originală personalizată pe baza poveștii tale</span>
+    <div class="footer-legal">
+      <a href="/terms.html">Terms &amp; Conditions</a>
+      <a href="/privacy.html">Privacy Policy</a>
+      <a href="/refund.html">Cancellation &amp; Refund Policy</a>
+      <a href="mailto:contact@nalunastudio.com">contact@nalunastudio.com</a>
+      <span>Naluna Studio, 5 Brayford Square, London, E1 0SG, United Kingdom</span>
+    </div>
   </footer>
 </div>
 
