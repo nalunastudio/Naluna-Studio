@@ -84,6 +84,14 @@ test('db.js: consent_given_at/consent_policy_version exista in schema, rowToOrde
 // ---------------------------------------------------------------------------------------------
 // Checkout consent — client-side (melodia-mea.html)
 // ---------------------------------------------------------------------------------------------
+test('melodia-mea.html: bara de consimtamant (#checkout-consent-bar) apare INAINTE de <script> in HTML — REGRESIE REALA gasita live: applyStaticTexts() ruleaza sincron la parsare si arunca daca elementul nu exista inca in DOM, oprind silentios toata initializarea paginii', () => {
+  const barIdx = melodia.indexOf('id="checkout-consent-bar"');
+  const scriptIdx = melodia.indexOf('<script>');
+  assert.notEqual(barIdx, -1);
+  assert.notEqual(scriptIdx, -1);
+  assert.ok(barIdx < scriptIdx, 'bara de consimtamant trebuie sa fie in DOM INAINTE ca <script> sa ruleze applyStaticTexts()');
+});
+
 test('melodia-mea.html: exista checkbox-ul de consimtamant, NEBIFAT implicit (fara atributul checked)', () => {
   const idx = melodia.indexOf('id="checkout-consent-checkbox"');
   assert.notEqual(idx, -1);
