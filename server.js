@@ -862,13 +862,18 @@ app.post('/api/resend/webhook', express.raw({ type: 'application/json' }), async
 
   let event;
   try {
+    // BUG REAL gasit prin testare live (2026-09-02, nu presupunere): svix Webhook.verify()
+    // arunca la semnatura invalida, dar returneaza STRICT `undefined` la succes — verificat
+    // direct in sursa pachetului (node_modules/svix/src/webhook.ts), apeleaza intern
+    // verify(..., { jsonParse: false }). Payload-ul JSON trebuie parsat SEPARAT, DUPA
+    // verificare, din req.body (Buffer, cerut de express.raw pentru semnatura).
     const wh = new Webhook(process.env.RESEND_WEBHOOK_SECRET);
-    const payload = wh.verify(req.body, {
+    wh.verify(req.body, {
       'svix-id': req.headers['svix-id'],
       'svix-timestamp': req.headers['svix-timestamp'],
       'svix-signature': req.headers['svix-signature']
     });
-    event = payload;
+    event = JSON.parse(req.body.toString('utf8'));
   } catch (err) {
     console.error('Webhook Resend: semnatura svix invalida:', err.message);
     return res.status(400).json({ error: 'Webhook Error: invalid signature' });
@@ -883,9 +888,19 @@ app.post('/api/resend/webhook', express.raw({ type: 'application/json' }), async
 
     const recipientEmail = event?.data?.to && Array.isArray(event.data.to) ? event.data.to[0] : (event?.data?.to || null);
 
-    if (event.type === 'email.bounced' && recipientEmail) {
-      await db.addEmailSuppression(recipientEmail, 'email.bounced');
-      console.warn(`Resend: ${recipientEmail} respins PERMANENT (email.bounced) — adaugat la suprimare, nu mai trimitem automat.`);
+    // CORECȚIE (2026-09-02, gasita prin testare REALA cu bounced@resend.dev, nu presupunere):
+    // documentatia de nivel general a Resend descrie email.bounced ca "permanent", dar payload-ul
+    // REAL (docs.resend.com/docs/webhooks/emails/bounced) arata explicit un camp
+    // data.bounce.type, cu valori "Permanent" SAU "Transient" — deci acelasi tip de eveniment
+    // poate fi si un bounce TEMPORAR (cutie postala plina, mesaj prea mare etc). Suprimam STRICT
+    // cand type === 'Permanent' — orice alta valoare (Transient, lipsa, neasteptata) NU suprima,
+    // exact cerinta explicita "nu bloca gresit bounce-uri temporare".
+    const bounceType = event?.data?.bounce?.type || null;
+    if (event.type === 'email.bounced' && recipientEmail && bounceType === 'Permanent') {
+      await db.addEmailSuppression(recipientEmail, 'email.bounced:Permanent');
+      console.warn(`Resend: ${recipientEmail} respins PERMANENT (email.bounced, bounce.type=Permanent) — adaugat la suprimare, nu mai trimitem automat.`);
+    } else if (event.type === 'email.bounced' && recipientEmail) {
+      console.warn(`Resend: ${recipientEmail} a avut un bounce NEPERMANENT (bounce.type=${bounceType || 'necunoscut'}) — NU suprimat, poate fi reincercat.`);
     } else if (event.type === 'email.complained' && recipientEmail) {
       await db.addEmailSuppression(recipientEmail, 'email.complained');
       console.warn(`Resend: ${recipientEmail} a marcat un email ca spam (email.complained) — adaugat la suprimare.`);

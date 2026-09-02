@@ -55,13 +55,29 @@ test('server.js: dedup prin db.recordResendEventIfNew(svix-id) INAINTE de a acti
   assert.match(fn, /if\s*\(!isNew\)\s*\{\s*return res\.json\(\{ received: true, duplicate: true \}\);/);
 });
 
-test('server.js: suprima STRICT pe email.bounced si email.complained — niciun alt tip de eveniment (delivery_delayed, delivered, opened, clicked, sent) nu suprima', () => {
+test('server.js: suprima STRICT pe email.bounced CU bounce.type==="Permanent", si pe email.complained — niciun alt caz nu suprima', () => {
   const fn = extractFn(server, "app.post('/api/resend/webhook', express.raw({ type: 'application/json' }), async (req, res) => {");
-  assert.match(fn, /event\.type === 'email\.bounced'/);
+  // CORECȚIE (2026-09-02, gasita prin testare REALA cu bounced@resend.dev): payload-ul REAL
+  // Resend pentru email.bounced contine data.bounce.type ('Permanent' SAU 'Transient') — acelasi
+  // tip de eveniment poate fi un bounce TEMPORAR. Suprimarea trebuie sa verifice explicit
+  // bounceType === 'Permanent', nu doar event.type === 'email.bounced'.
+  assert.match(fn, /const bounceType = event\?\.data\?\.bounce\?\.type \|\| null;/);
+  assert.match(fn, /event\.type === 'email\.bounced' && recipientEmail && bounceType === 'Permanent'/);
   assert.match(fn, /event\.type === 'email\.complained'/);
-  assert.ok(!fn.includes("'email.delivery_delayed'"), 'nu trebuie sa existe nicio ramura care actioneaza pe delivery_delayed (bounce TEMPORAR — Resend il documenteaza explicit ca eveniment separat de email.bounced)');
-  assert.match(fn, /db\.addEmailSuppression\(recipientEmail, 'email\.bounced'\)/);
+  assert.ok(!fn.includes("'email.delivery_delayed'"), 'nu trebuie sa existe nicio ramura care actioneaza explicit pe delivery_delayed');
+  assert.match(fn, /db\.addEmailSuppression\(recipientEmail, 'email\.bounced:Permanent'\)/);
   assert.match(fn, /db\.addEmailSuppression\(recipientEmail, 'email\.complained'\)/);
+});
+
+test('server.js: un bounce NEPERMANENT (bounce.type absent sau "Transient") NU suprima, chiar daca event.type === "email.bounced"', () => {
+  const fn = extractFn(server, "app.post('/api/resend/webhook', express.raw({ type: 'application/json' }), async (req, res) => {");
+  assert.match(fn, /else if\s*\(event\.type === 'email\.bounced' && recipientEmail\)\s*\{\s*console\.warn/, 'trebuie sa existe o ramura explicita pentru bounce NEPERMANENT, care doar logheaza, fara sa suprime');
+});
+
+test('server.js: JSON.parse(req.body) se face DUPA verificarea semnaturii svix, niciodata din valoarea de retur a wh.verify() (care e mereu undefined — verificat direct in sursa svix)', () => {
+  const fn = extractFn(server, "app.post('/api/resend/webhook', express.raw({ type: 'application/json' }), async (req, res) => {");
+  assert.match(fn, /wh\.verify\(req\.body,/);
+  assert.match(fn, /event = JSON\.parse\(req\.body\.toString\('utf8'\)\);/);
 });
 
 test('server.js: sendDeliveryEmail() verifica db.isEmailSuppressed() INAINTE de a trimite, si se opreste (fara sa arunce, fara sa trimita) daca adresa e suprimata', () => {
