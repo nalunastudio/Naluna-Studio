@@ -284,6 +284,13 @@ async function initDb() {
   // Faza 5 — data retention/deletion: audit minim (cine/cand) al unei cereri GDPR executate —
   // vezi anonymizeOrder() mai jos.
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS anonymized_at TIMESTAMPTZ;`);
+  // Retentie date (rescriere legala 2026-09-05): materialele SURSA incarcate de client
+  // (foto/video originale, pachetul video) nu mai au niciun scop dupa ce videoclipul final a
+  // fost randat si livrat — pastrarea lor pe termen nelimitat nu are o justificare, spre
+  // deosebire de melodia/videoclipul FINAL cumparat, a carui perioada de acces e o decizie
+  // de business separata (vezi Privacy Policy, sectiunea Retentie). source_media_purged_at e
+  // audit minim (cand a rulat curatarea), NICIODATA folosit pentru a atinge variants/videoKey.
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS source_media_purged_at TIMESTAMPTZ;`);
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS checkout_variant_id TEXT;`);
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS checkout_media_revision INTEGER;`);
 
@@ -974,6 +981,35 @@ async function anonymizeOrder(id) {
   );
 }
 
+// Retentie date — curatare periodica a materialelor SURSA (foto/video incarcate de client,
+// pachetul video), separata STRICT de anonymizeOrder() de mai sus si de melodia/videoclipul
+// FINAL cumparat (variants, videoKey) — acelea NU sunt atinse aici, sub nicio forma.
+// Eligibila: plan video, status='ready' (comanda finalizata/livrata), exista materiale de
+// sters, comanda NU e intr-o operatie activa (regenerare/randare video in desfasurare — un
+// render in curs poate inca avea nevoie de sursa), inca ne-curatata, si a trecut fereastra
+// operationala declarata public in Privacy Policy de la plata (paid_at).
+async function findOrdersEligibleForSourceMediaPurge(cutoffDate) {
+  const result = await pool.query(
+    `SELECT * FROM orders
+     WHERE plan = 'video'
+       AND status = 'ready'
+       AND uploaded_media <> '[]'::jsonb
+       AND source_media_purged_at IS NULL
+       AND regeneration_status IS DISTINCT FROM 'running'
+       AND paid_at IS NOT NULL AND paid_at < $1
+     ORDER BY paid_at ASC`,
+    [cutoffDate]
+  );
+  return result.rows.map(rowToOrder);
+}
+
+async function purgeOrderSourceMedia(id) {
+  await pool.query(
+    `UPDATE orders SET uploaded_media = '[]'::jsonb, source_media_purged_at = now() WHERE id = $1`,
+    [id]
+  );
+}
+
 async function isEmailSuppressed(email) {
   const result = await pool.query(
     `SELECT 1 FROM email_suppressions WHERE email = $1`,
@@ -1378,6 +1414,8 @@ module.exports = {
   pool, initDb, createOrder, getOrderById, getOrderByToken, getOrderByMusicTaskId, getOrderByAnyMusicTaskId,
   getStuckInFlightOrders,
   anonymizeOrder,
+  findOrdersEligibleForSourceMediaPurge,
+  purgeOrderSourceMedia,
   updateGenerationPhaseIfLater,
   startRegenerationJob, updateRegenerationPhaseIfLater, markRegenerationStatus,
   claimOrderForProviderFinalization, claimOrderForRegeneration, claimOrderForInitialGeneration,

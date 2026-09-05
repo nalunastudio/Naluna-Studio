@@ -103,6 +103,54 @@ test('melodia-mea.html: toate cele 8 limbi ale consent_text includ clauza "nu ex
   }
 });
 
+test('Cele 3 pagini legale NU mai contin nicio referinta la "AI"/"artificial intelligence" — EU AI Act art.50 (deepfake) nu se aplica unui cantec personalizat/unui montaj din pozele reale ale clientului, deci nu e o dezvaluire ceruta legal; formularea a fost mutata spre limbaj neutru de produs, fara a pretinde "handmade" sau compus de muzicieni', () => {
+  for (const page of ['terms.html', 'privacy.html', 'refund.html']) {
+    const html = read(`public/${page}`);
+    assert.ok(!/\bAI\b/.test(html), `${page} nu trebuie sa mai contina "AI"`);
+    assert.ok(!/artificial intelligence/i.test(html), `${page} nu trebuie sa mai contina "artificial intelligence"`);
+    assert.ok(!/\b(handmade|hand-made|composed by our|created personally by)\b/i.test(html), `${page} nu trebuie sa introduca o pretentie falsa de creatie umana in locul AI`);
+  }
+});
+
+test('Privacy Policy: tabelul de destinatari foloseste CATEGORII (nu nume de furnizori tehnici) — permis explicit de UK GDPR art.13(1)(e)/14(1)(e) ("recipients OR categories of recipients") — Stripe ramane numit explicit (motiv real de transparenta despre plati)', () => {
+  const html = read('public/privacy.html');
+  assert.ok(html.includes('Stripe'), 'Stripe poate ramane numit explicit');
+  for (const vendor of ['Our AI music generation provider', 'Resend', 'Cloudflare', 'Railway (hosting']) {
+    assert.ok(!html.includes(vendor), `${vendor} nu trebuie sa mai apara — foloseste categoria, nu numele furnizorului tehnic`);
+  }
+  assert.ok(html.includes('The service that generates your song'));
+  assert.ok(html.includes('email delivery provider'));
+  assert.ok(html.includes('cloud storage provider'));
+  assert.ok(html.includes('hosting provider'));
+});
+
+test('Privacy Policy: eticheta "(data controller)" nu mai apare ca element de branding in entity-box — termenul "controller" e explicat natural in corpul textului, informatia de identitate a operatorului ramane intacta', () => {
+  const html = read('public/privacy.html');
+  assert.ok(!html.includes('(data controller)'), 'eticheta stil-branding trebuie eliminata din entity-box');
+  assert.match(html, /makes us the ["']controller["'] of that data/, 'termenul controller trebuie explicat in text, nu doar afisat ca eticheta');
+  const boxStart = html.indexOf('class="entity-box"');
+  const boxEnd = html.indexOf('</div>', boxStart);
+  assert.ok(html.slice(boxStart, boxEnd).includes('5 Brayford Square'), 'identitatea/adresa operatorului trebuie sa ramana in entity-box');
+});
+
+test('Terms.html: "Last updated" nu mai e afisat proeminent sub H1 — mutat discret in footer, fara sa rupa nimic altceva', () => {
+  for (const page of ['terms.html', 'privacy.html', 'refund.html']) {
+    const html = read(`public/${page}`);
+    const h1End = html.indexOf('</h1>');
+    const entityBoxStart = html.indexOf('class="entity-box"');
+    assert.ok(!html.slice(h1End, entityBoxStart).includes('Last updated'), `${page}: "Last updated" nu trebuie sa mai fie intre <h1> si entity-box`);
+    const footerStart = html.indexOf('<footer>');
+    assert.ok(html.slice(footerStart).includes('Last updated'), `${page}: "Last updated" trebuie sa existe discret in footer`);
+  }
+});
+
+test('Numele "Maria" nu apare niciodata ca identitate a proprietarului/afacerii in paginile legale (poate exista doar ca exemplu generic de nume in alte pagini, ex. placeholder de formular)', () => {
+  for (const page of ['terms.html', 'privacy.html', 'refund.html']) {
+    const html = read(`public/${page}`);
+    assert.ok(!html.includes('Maria'), `${page} nu trebuie sa contina "Maria"`);
+  }
+});
+
 test('Cele 3 pagini legale se leaga reciproc (footer identic pe toate)', () => {
   for (const page of ['terms.html', 'privacy.html', 'refund.html']) {
     const html = read(`public/${page}`);
@@ -255,9 +303,68 @@ test('db.js: anonymized_at exista in schema (audit minim)', () => {
   assert.match(db, /ALTER TABLE orders ADD COLUMN IF NOT EXISTS anonymized_at TIMESTAMPTZ;/);
 });
 
-test('Privacy Policy reflecta STRICT ce exista real in sistem: retentie nedefinita + stergere la cerere, transfer international (Railway SUA), NU inventeaza o perioada fixa', () => {
+// ---------------------------------------------------------------------------------------------
+// Retentie materiale SURSA (Faza 6, 2026-09-05) — categorie STRICT separata de produsul FINAL
+// ---------------------------------------------------------------------------------------------
+test('db.js: source_media_purged_at exista in schema, findOrdersEligibleForSourceMediaPurge cauta STRICT plan video + status ready + regenerare inactiva, purgeOrderSourceMedia NU atinge variants/videoKey', () => {
+  assert.match(db, /ALTER TABLE orders ADD COLUMN IF NOT EXISTS source_media_purged_at TIMESTAMPTZ;/);
+  const findFn = extractFn(db, 'async function findOrdersEligibleForSourceMediaPurge(cutoffDate) {');
+  assert.match(findFn, /plan = 'video'/);
+  assert.match(findFn, /status = 'ready'/);
+  assert.match(findFn, /regeneration_status IS DISTINCT FROM 'running'/);
+  assert.match(findFn, /source_media_purged_at IS NULL/);
+  const purgeFn = extractFn(db, 'async function purgeOrderSourceMedia(id) {');
+  assert.match(purgeFn, /uploaded_media = '\[\]'::jsonb/);
+  assert.ok(!purgeFn.includes('variants'), 'purgeOrderSourceMedia nu trebuie sa atinga variants (produsul final)');
+  assert.ok(!purgeFn.includes('videoKey') && !purgeFn.includes('video_key'), 'purgeOrderSourceMedia nu trebuie sa atinga videoKey (produsul final)');
+});
+
+test('server.js: SOURCE_MEDIA_RETENTION_DAYS=90 e o alegere operationala declarata ca atare in cod, purgeStaleSourceMedia NU sterge o comanda cu randare video activa sau incompleta (videoKey/videoPreviewKey lipsa)', () => {
+  assert.match(server, /const SOURCE_MEDIA_RETENTION_DAYS = 90;/);
+  const fn = extractFn(server, 'async function purgeStaleSourceMedia() {');
+  assert.match(fn, /isVideoLockActive\(order\)/);
+  assert.match(fn, /currentVariant\.videoKey/);
+  assert.match(fn, /currentVariant\.videoPreviewKey/);
+  assert.match(fn, /db\.purgeOrderSourceMedia\(order\.id\)/);
+});
+
+test('server.js: curatarea materialelor sursa ruleaza automat (setInterval, .unref()) SI e declansabila manual pentru testare/audit prin /api/admin/retention/purge-source-media, protejata de acelasi middleware admin', () => {
+  assert.match(server, /setInterval\(\(\) => \{ purgeStaleSourceMedia\(\)\.catch/);
+  assert.match(server, /\.unref\(\);/);
+  const routeIdx = server.indexOf("app.post('/api/admin/retention/purge-source-media'");
+  assert.notEqual(routeIdx, -1);
+  const adminMwIdx = server.indexOf("app.use('/api/admin', adminAuthLimiter, requireAdminAuth);");
+  assert.ok(adminMwIdx !== -1 && adminMwIdx < routeIdx, 'ruta trebuie inregistrata DUPA middleware-ul de autentificare admin');
+});
+
+test('Privacy Policy: accesul la produsul FINAL cumparat ramane neschimbat (legat de existenta comenzii), fara nicio perioada in zile inventata langa acea propozitie — decizie de business separata, NU luata aici', () => {
   const html = read('public/privacy.html');
-  assert.ok(html.includes('do not currently apply an automatic deletion schedule') || html.includes('as long as your order record exists'));
+  const idx = html.indexOf('purchased song or video, and your order record');
+  assert.notEqual(idx, -1, 'trebuie sa existe categoria separata pentru produsul final cumparat');
+  const sentenceEnd = html.indexOf('</li>', idx);
+  const sentence = html.slice(idx, sentenceEnd);
+  assert.ok(sentence.includes('for as long as your order exists'), 'accesul la produsul final ramane legat de existenta comenzii, neschimbat');
+  assert.ok(!/\b\d+\s*(day|days|month|months|year|years)\b/i.test(sentence), 'NU trebuie sa apara nicio perioada calendaristica langa produsul final — e o decizie separata, ne-luata inca');
+  assert.ok(!/\b(permanent|lifetime|forever)\b/i.test(html), 'nu trebuie promisa o disponibilitate "permanenta"/"lifetime" nerealist de garantat');
+});
+
+test('Privacy Policy: retentia materialelor SURSA (foto/video incarcate) e diferentiata de produsul final si REAL implementata (90 zile = SOURCE_MEDIA_RETENTION_DAYS din server.js, nu un numar inventat)', () => {
+  const html = read('public/privacy.html');
+  const server = read('server.js');
+  assert.match(html, /original photos\/videos you uploaded within 90 days/);
+  assert.match(server, /const SOURCE_MEDIA_RETENTION_DAYS = 90;/, 'perioada declarata public trebuie sa corespunda EXACT constantei reale din server.js');
+  assert.ok(html.includes('operational choice'), 'trebuie sa clarifice ca perioada de 90 de zile e o alegere operationala, nu o obligatie legala');
+});
+
+test('Privacy Policy: retentia inregistrarilor de consimtamant (6 ani) si a celor contabile/fiscale (5 ani de la 31 ianuarie) sunt distincte, cu sursa legala/justificare pentru fiecare', () => {
+  const html = read('public/privacy.html');
+  assert.match(html, /consent you gave at checkout.*kept for 6 years/s);
+  assert.match(html, /kept for 5 years from the 31 January/);
+  assert.ok(html.includes('HMRC'), 'perioada contabila trebuie legata explicit de o obligatie legala reala (HMRC), nu inventata');
+});
+
+test('Privacy Policy: transferul international mentioneaza tara reala (United States) si NU afirma safeguard-uri nesustinute — angajament declarat, nu fapt istoric neverificabil despre furnizori', () => {
+  const html = read('public/privacy.html');
   assert.ok(html.includes('United States'));
-  assert.ok(!/\b(30|60|90|180|365)\s*days\b/i.test(html), 'nu trebuie inventata o perioada fixa de retentie, nesustinuta de o implementare reala');
+  assert.ok(html.includes('we only work with providers who commit contractually'), 'formularea trebuie sa fie un angajament al Naluna, nu o afirmatie despre documentatia deja semnata a fiecarui furnizor');
 });

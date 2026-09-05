@@ -1209,6 +1209,75 @@ app.post('/api/admin/orders/:orderId/anonymize', async (req, res, next) => {
 });
 
 // ==========================================================================================
+// Retentie date (rescriere legala 2026-09-05) — curatare REALA a materialelor SURSA (foto/video
+// incarcate de client pentru pachetul "Cadou video"), o categorie STRICT separata de melodia/
+// videoclipul FINAL cumparat (variants/videoKey), a carui perioada de acces clientului NU este
+// atinsa aici si ramane neschimbata pana la o decizie de business separata.
+//
+// De ce 90 de zile: materialele sursa nu mai au niciun scop dupa ce videoclipul final a fost
+// randat cu succes si livrat — sunt pastrate doar atat cat e rezonabil ca un client sa observe
+// o problema si sa ceara o corectie/re-editare (simetric cu "termen rezonabil" folosit deja in
+// Sectiunea 8 din terms.html pentru reclamarea unui defect). E o alegere OPERATIONALA declarata
+// public in Privacy Policy, nu o obligatie legala — vezi acolo distinctia explicita.
+const SOURCE_MEDIA_RETENTION_DAYS = 90;
+
+async function purgeStaleSourceMedia() {
+  const cutoff = new Date(Date.now() - SOURCE_MEDIA_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+  let candidates = [];
+  try {
+    candidates = await db.findOrdersEligibleForSourceMediaPurge(cutoff);
+  } catch (err) {
+    console.error('Retentie: nu am putut interoga comenzile eligibile pentru curatarea materialelor sursa:', err.message);
+    return { checked: 0, purged: 0, skipped: 0 };
+  }
+
+  let purged = 0, skipped = 0;
+  for (const order of candidates) {
+    // Re-verificare defensiva in JS (dincolo de filtrul SQL): nu atingem o comanda cu o
+    // randare video inca activa, si randam sursa doar daca videoclipul curent chiar exista
+    // (fullKey/videoKey) — o comanda fara randare reusita inca poate avea nevoie de sursa.
+    if (isVideoLockActive(order)) { skipped++; continue; }
+    const currentVariant = (order.variants || []).find(v => v.id === order.selectedVariantId);
+    if (!currentVariant || !currentVariant.videoKey || !currentVariant.videoPreviewKey) { skipped++; continue; }
+
+    const keysToDelete = (order.uploadedMedia || []).map(m => m.key).filter(Boolean);
+    for (const key of keysToDelete) {
+      try {
+        await storage.deletePrivateFile(key);
+      } catch (err) {
+        // izolat, ca la anonymize — un fisier deja lipsa/esuat nu opreste restul si nu
+        // blocheaza marcarea comenzii ca "curatata" (uploaded_media e oricum golit mai jos)
+      }
+    }
+    try {
+      await db.purgeOrderSourceMedia(order.id);
+      purged++;
+    } catch (err) {
+      console.error(`Retentie: nu am putut marca comanda ${order.id} ca avand materialele sursa curatate:`, err.message);
+    }
+  }
+  if (purged > 0 || skipped > 0) {
+    console.warn(`Retentie: materiale sursa curatate pentru ${purged} comenzi, ${skipped} sarite (randare inca activa/incompleta), din ${candidates.length} eligibile.`);
+  }
+  return { checked: candidates.length, purged, skipped };
+}
+
+// Rulare zilnica automata, in proces — fara nicio configurare externa (cron Railway etc.).
+// unref() la fel ca celelalte curatari periodice din acest fisier: nu tine procesul viu doar
+// pentru acest timer.
+setInterval(() => { purgeStaleSourceMedia().catch(() => {}); }, 24 * 60 * 60 * 1000).unref();
+
+// Declansare manuala (verificare/testare admin) — aceeasi logica, fara sa astepti 24h.
+app.post('/api/admin/retention/purge-source-media', async (req, res, next) => {
+  try {
+    const result = await purgeStaleSourceMedia();
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ==========================================================================================
 // PANOU CREDITE SUNO — vizibilitate completa asupra sistemului de protectie a creditelor
 // (vezi credits.js): balanta live, rezerva de siguranta, mod de urgenta, statistici zilnice,
 // estimare comenzi ramase, detectare consum neobisnuit. Protejat de acelasi middleware
