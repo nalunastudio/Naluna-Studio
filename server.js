@@ -6439,6 +6439,66 @@ async function concatBatchWithCrossfades(segmentPaths, shots, order, batchTag) {
   return outPath;
 }
 
+// PUNCT 7 (2026-09-06, "fuzioneaza ultimul nivel de concat cu mux-ul final"): masurat direct —
+// dupa optimizarea CONCAT_BATCH_SIZE de mai sus, timpul local total (fundal + mux separat) ramanea
+// la ~126s pentru un cantec de 200s (92.6s fundal + 32.7s mux) — inca peste pragul de 120s. Cauza:
+// ULTIMUL lot de concatenare produce un fundal MUT, care e apoi reencodat INTEGRAL A DOUA OARA,
+// separat, doar ca sa i se adauge audio+subtitrari (mux-ul final, mai jos in aceasta functie).
+// Aceasta functie face EXACT ce face concatBatchWithCrossfades (acelasi filter_complex de
+// crossfade, aceleasi tranzitii, aceeasi durata) dar adauga DIRECT, in ACELASI proces ffmpeg:
+// subtitrarile arse (acelasi filtru 'subtitles', acelasi fisier .ass) + fluxul audio complet +
+// codarea la calitatea FINALA (VIDEO_FINAL_CRF, BT.709, AAC, faststart) — eliminand o trecere
+// INTREAGA de reencodare a intregului videoclip. Folosita STRICT pentru ultimul lot (cel care
+// produce rezultatul final, un singur fisier) — vezi concatWithCrossfadesAndMux mai jos, care
+// decide care lot e "ultimul". Daca acest apel esueaza (input neobisnuit, eroare ffmpeg
+// neasteptata), apelantul revine automat la pipeline-ul vechi (concat separat + mux separat,
+// NESCHIMBAT, dovedit) — nicio comanda nu ramane blocata din cauza acestei optimizari.
+async function concatFinalBatchWithMux(segmentPaths, shots, order, audioFilePath, assForFilter) {
+  const outPath = path.join(TEMP_DIR, `${order.id}-memory-fused-final.mp4`);
+  const inputArgs = [];
+  segmentPaths.forEach(p => inputArgs.push('-i', p));
+  const audioInputIndex = segmentPaths.length;
+  inputArgs.push('-i', audioFilePath);
+
+  // Identic cu bucla din concatBatchWithCrossfades — construieste lantul de crossfade-uri intre
+  // segmentele acestui lot (posibil un singur segment, daca planul intreg incape intr-un singur
+  // lot — cazul TIPIC pentru comenzi cu putine materiale/cadre, nu doar un caz limita).
+  let filter = '';
+  let lastLabel = '0:v';
+  if (segmentPaths.length > 1) {
+    let cumulative = shots[0].duration;
+    for (let i = 1; i < segmentPaths.length; i++) {
+      const xfadeDuration = (typeof shots[i - 1].transitionDuration === 'number' && shots[i - 1].transitionDuration >= 0)
+        ? shots[i - 1].transitionDuration
+        : MEMORY_XFADE_SECONDS;
+      const offset = Math.max(0, cumulative - xfadeDuration);
+      const outLabel = `xf${i}`;
+      const transition = shots[i - 1].transitionOut || 'fade';
+      filter += `[${lastLabel}][${i}:v]xfade=transition=${transition}:duration=${xfadeDuration}:offset=${offset.toFixed(3)}[${outLabel}];`;
+      lastLabel = outLabel;
+      cumulative += shots[i].duration - xfadeDuration;
+    }
+  }
+  // Subtitrarile arse (acelasi filtru, acelasi fisier .ass, aceeasi sintaxa de scapare a caii,
+  // ca in mux-ul vechi separat, mai jos in generateLyricVideo) se aplica DUPA ultimul crossfade —
+  // exact ordinea din pipeline-ul vechi (concat -> subtitrari), doar in acelasi proces.
+  filter += `[${lastLabel}]subtitles='${assForFilter}'[vout]`;
+
+  await execFfmpeg([
+    '-y', ...inputArgs,
+    '-filter_complex', filter,
+    '-map', '[vout]', '-map', `${audioInputIndex}:a`,
+    '-c:v', 'libx264', '-preset', VIDEO_ENCODE_PRESET, '-crf', String(VIDEO_FINAL_CRF), '-pix_fmt', 'yuv420p',
+    ...VIDEO_BT709_TAG_ARGS,
+    '-c:a', 'aac', '-b:a', '192k',
+    '-movflags', '+faststart',
+    '-shortest',
+    outPath
+  ], { timeout: 600000 });
+
+  return outPath;
+}
+
 // Punct de intrare NESCHIMBAT pentru apelant (buildMemoryBackground) — reduce planul complet
 // de cadre la un singur fundal, pe niveluri, niciodata cu mai mult de CONCAT_BATCH_SIZE
 // intrari simultan intr-un proces ffmpeg. Durata fiecarui rezultat intermediar e MASURATA REAL
@@ -6551,6 +6611,119 @@ async function concatWithCrossfades(segmentPaths, shots, order) {
   }
 }
 
+// PUNCT 7 (2026-09-06, "fuzioneaza ultimul nivel de concat cu mux-ul final"): varianta FUZIONATA
+// a concatWithCrossfades() de mai sus — IDENTICA la orice nivel INTERMEDIAR (acelasi batching,
+// aceeasi concurenta CONCAT_BATCH_CONCURRENCY, acelasi filter_complex de crossfade), cu o SINGURA
+// diferenta: ULTIMUL lot (cel care produce rezultatul final, un singur fisier — pentru comenzi
+// tipice, cu putine materiale/cadre, acesta e chiar PRIMUL si singurul nivel) foloseste
+// concatFinalBatchWithMux() in loc de concatBatchWithCrossfades() — produce DIRECT videoclipul
+// final livrat (subtitrari + audio + codare finala), nu doar fundalul mut. Daca fuziunea esueaza
+// la acel ultim pas (input neobisnuit, eroare ffmpeg neasteptata), REVINE STRICT la pipeline-ul
+// vechi, NESCHIMBAT (concatBatchWithCrossfades, fundal mut) — apelantul (buildMemoryBackground)
+// recunoaste esecul prin `muxed:false` si trece prin mux-ul separat, dovedit, exact ca inainte de
+// aceasta optimizare. Nicio comanda nu poate ramane blocata din cauza acestei optimizari.
+//
+// Returneaza { path, muxed } — muxed:true inseamna ca `path` e deja videoclipul FINAL complet
+// (subtitrari+audio+codare finala aplicate), muxed:false inseamna ca `path` e STRICT fundalul mut,
+// exact ca returnul lui concatWithCrossfades() de mai sus (apelantul trebuie sa faca mux-ul
+// separat, ca inainte).
+async function concatWithCrossfadesAndMux(segmentPaths, shots, order, audioFilePath, assForFilter) {
+  let currentSegments = segmentPaths;
+  let currentShots = shots;
+  let level = 0;
+  const intermediates = [];
+  let finalPath = null;
+  try {
+    // Cazul cu UN SINGUR cadru total (nicio reducere necesara) — bucla de mai jos nu ruleaza
+    // niciodata; tot trebuie fuzionat (subtitrari+audio+codare), spre deosebire de
+    // concatWithCrossfades() (acolo returnul brut era corect, pentru ca apelantul facea oricum
+    // mux-ul separat).
+    if (currentSegments.length === 1) {
+      try {
+        const fused = await concatFinalBatchWithMux(currentSegments, currentShots, order, audioFilePath, assForFilter);
+        finalPath = fused;
+        return { path: fused, muxed: true };
+      } catch (err) {
+        console.error(`Comanda ${order.id}: fuziunea concat+mux (un singur cadru) a esuat, revin la pipeline-ul vechi (fundal mut + mux separat): ${err.message}`);
+        return { path: currentSegments[0], muxed: false };
+      }
+    }
+
+    while (currentSegments.length > 1) {
+      const batchStarts = [];
+      for (let i = 0; i < currentSegments.length; i += CONCAT_BATCH_SIZE) batchStarts.push(i);
+      const isLastLevel = batchStarts.length === 1; // acest nivel produce STRICT 1 rezultat -> ultimul
+
+      if (isLastLevel) {
+        try {
+          const fused = await concatFinalBatchWithMux(currentSegments, currentShots, order, audioFilePath, assForFilter);
+          finalPath = fused;
+          return { path: fused, muxed: true };
+        } catch (err) {
+          console.error(`Comanda ${order.id}: fuziunea concat+mux a esuat, revin la pipeline-ul vechi (concat separat + mux separat): ${err.message}`);
+          const silentPath = await concatBatchWithCrossfades(currentSegments, currentShots, order, `L${level}-0`);
+          finalPath = silentPath;
+          return { path: silentPath, muxed: false };
+        }
+      }
+
+      // Nivel INTERMEDIAR — identic cu concatWithCrossfades() de mai sus, neschimbat.
+      const nextSegments = new Array(batchStarts.length);
+      const nextShots = new Array(batchStarts.length);
+
+      let batchCursor = 0;
+      async function processNextBatch() {
+        while (batchCursor < batchStarts.length) {
+          const b = batchCursor++;
+          const i = batchStarts[b];
+          const batchSegments = currentSegments.slice(i, i + CONCAT_BATCH_SIZE);
+          const batchShots = currentShots.slice(i, i + CONCAT_BATCH_SIZE);
+          const batchTag = `L${level}-${i}`;
+          const merged = await concatBatchWithCrossfades(batchSegments, batchShots, order, batchTag);
+          let mergedDuration;
+          if (batchSegments.length > 1) {
+            intermediates.push(merged);
+            try {
+              mergedDuration = await getVideoSourceDurationSeconds(merged);
+            } catch (err) { /* fallback aritmetic mai jos daca ffprobe esueaza, tranzitoriu */ }
+            if (!mergedDuration) {
+              let sum = batchShots.reduce((s, sh) => s + sh.duration, 0);
+              for (let j = 1; j < batchShots.length; j++) {
+                const xfadeHere = (typeof batchShots[j - 1].transitionDuration === 'number' && batchShots[j - 1].transitionDuration >= 0)
+                  ? batchShots[j - 1].transitionDuration
+                  : MEMORY_XFADE_SECONDS;
+                sum -= xfadeHere;
+              }
+              mergedDuration = sum;
+            }
+          } else {
+            mergedDuration = batchShots[0].duration;
+          }
+          nextSegments[b] = merged;
+          nextShots[b] = {
+            duration: mergedDuration,
+            transitionOut: batchShots[batchShots.length - 1].transitionOut,
+            transitionDuration: batchShots[batchShots.length - 1].transitionDuration
+          };
+        }
+      }
+      const settled = await Promise.allSettled(new Array(Math.min(CONCAT_BATCH_CONCURRENCY, batchStarts.length)).fill(0).map(processNextBatch));
+      const firstFailure = settled.find(s => s.status === 'rejected');
+      if (firstFailure) throw firstFailure.reason;
+
+      perfLog(order.id, 'memory_concat_level', `nivel=${level}, intrari=${currentSegments.length}, rezultate=${nextSegments.length}, lot_max=${CONCAT_BATCH_SIZE}, concurenta=${CONCAT_BATCH_CONCURRENCY}`);
+      currentSegments = nextSegments;
+      currentShots = nextShots;
+      level++;
+    }
+    // Nu ar trebui sa se ajunga aici (bucla se termina STRICT prin fuziune, mai sus, de indata ce
+    // currentSegments.length ajunge la 1) — plasa de siguranta, niciodata declansata in practica.
+    return { path: currentSegments[0], muxed: false };
+  } finally {
+    intermediates.forEach(p => { if (p !== finalPath) { try { fs.unlinkSync(p); } catch (e) { /* best-effort */ } } });
+  }
+}
+
 // Numarul de cadre randate simultan — CONCURENTA LIMITATA (nu strict secvential, ar fi inutil
 // de lent cu 30-50 cadre scurte; nici nelimitat in paralel, ar suprasolicita CPU-ul deja
 // limitat al containerului Railway — cerinta explicita a clientului).
@@ -6590,6 +6763,10 @@ async function extractAudioOnsets(audioFilePath, orderId) {
 // ramane (returnat apelantului, care il curata la randul lui).
 // `songFilePath` (2026-08-24): calea locala a melodiei REALE a comenzii, pentru analiza audio de
 // mai sus — optional (comenzi/cai de apel vechi ramana pe fallback fara aliniere la impuls).
+// `assForFilter` (2026-09-06, PUNCT 7 — fuziune concat+mux): calea (deja scapata pentru filtrul
+// ffmpeg 'subtitles') a fisierului .ass cu subtitrarile — optional; daca lipseste (apelant vechi/
+// test), fuziunea nu poate rula fara subtitrari si aceasta functie revine STRICT la vechiul
+// comportament (fundal mut, `muxed:false`), nemodificat.
 //
 // CERINTA F (2026-08-31, "30 de materiale nu trebuie sa epuizeze diskul temporar Railway"):
 // ÎNAINTE de aceasta corectie, TOATE sursele erau descarcate DINAINTE de a randa vreun cadru
@@ -6603,7 +6780,7 @@ async function extractAudioOnsets(audioFilePath, orderId) {
 // aceluiasi fisier) si STEARSA imediat ce ULTIMUL cadru care o foloseste s-a terminat de randat
 // (numarator de referinte per material, decrementat DUPA ce randarea acelui cadru s-a incheiat
 // — deci orice worker concurent care mai citea acel fisier a terminat deja de citit el).
-async function buildMemoryBackground(order, mediaItems, durationSeconds, sectionTimings, songFilePath) {
+async function buildMemoryBackground(order, mediaItems, durationSeconds, sectionTimings, songFilePath, assForFilter) {
   const ordered = sortMediaBySection(mediaItems);
   const cleanupPaths = [];
   try {
@@ -6670,14 +6847,21 @@ async function buildMemoryBackground(order, mediaItems, durationSeconds, section
     await Promise.all(new Array(Math.min(SHOT_RENDER_CONCURRENCY, shotPlan.length)).fill(0).map(renderNextShot));
     segments.forEach(p => cleanupPaths.push(p));
 
-    const backgroundPath = await concatWithCrossfades(segments, shotPlan, order);
-    // fundalul final nu trebuie sters aici daca a fost produs de concat (dar TREBUIE sters
-    // daca era un singur segment, caz in care concatWithCrossfades a returnat direct
-    // segmentul — deja in cleanupPaths, l-am scoate de acolo ca sa nu-l stergem prea devreme)
+    // PUNCT 7 (2026-09-06): fuziunea concat+mux (elimina o trecere intreaga de reencodare, vezi
+    // concatWithCrossfadesAndMux) necesita audio+subtitrari deja pregatite — daca apelantul nu le
+    // furnizeaza (cale veche de apel, sau vreun test care nu le simuleaza), revine STRICT la
+    // pipeline-ul vechi, neschimbat (fundal mut, mux separat facut de apelant, exact ca inainte).
+    const canFuse = !!(songFilePath && assForFilter);
+    const { path: backgroundPath, muxed } = canFuse
+      ? await concatWithCrossfadesAndMux(segments, shotPlan, order, songFilePath, assForFilter)
+      : { path: await concatWithCrossfades(segments, shotPlan, order), muxed: false };
+    // fundalul/videoclipul final nu trebuie sters aici daca a fost produs de concat (dar TREBUIE
+    // sters daca era un singur segment brut, caz in care concat a returnat direct segmentul —
+    // deja in cleanupPaths, l-am scoate de acolo ca sa nu-l stergem prea devreme)
     const finalIndex = cleanupPaths.indexOf(backgroundPath);
     if (finalIndex !== -1) cleanupPaths.splice(finalIndex, 1);
 
-    return { backgroundPath, cleanupPaths };
+    return { backgroundPath, cleanupPaths, muxed };
   } catch (err) {
     cleanupPaths.forEach(p => { try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch (e) { /* best-effort */ } });
     throw err;
@@ -6737,59 +6921,80 @@ async function generateLyricVideo(order, variant, tempFullMp3Path) {
       // pentru video. Fundalul solid ramane folosit DOAR cand clientul chiar nu are
       // materiale incarcate (mediaItems.length === 0) — caz limita pentru comenzi vechi,
       // nu un fallback de eroare.
-      memoryBackground = await buildMemoryBackground(order, mediaItems, durationSeconds, sectionTimings, tempFullMp3Path);
-      perfLog(order.id, 'memory_background_ready', `elemente=${mediaItems.length}`);
+      memoryBackground = await buildMemoryBackground(order, mediaItems, durationSeconds, sectionTimings, tempFullMp3Path, assForFilter);
+      perfLog(order.id, 'memory_background_ready', `elemente=${mediaItems.length}, fuzionat=${!!memoryBackground.muxed}`);
     }
 
-    // Verificat direct pe Railway (2026-08-03, comanda 59ae99f9, plata reala): libass,
-    // subtitrarile si fonturile functioneaza corect pe containerul de productie — encodarea
-    // CHIAR pornea si avansa (frame=45, fps~15) cand a fost omorata de limita de 180000ms (3
-    // minute, la momentul acelei masuratori). Estimarea de atunci — un videoclip de 4 minute la
-    // 25fps/1080x1920 are nevoie de 400+ secunde, nu 180 — a dus initial la o coborare temporara
-    // la 720x1280. CORECȚIE (2026-08-29, "calitate video clara"): revenire la 1080x1920, de data
-    // asta SIGUR — timeout-ul de mai jos e deja 600000ms (10 minute, marit ulterior acelei
-    // masuratori initiale), suficient pentru estimarea originala de 400+s chiar la un cantec de 4
-    // minute; preset-ul ramane "ultrafast" (VIDEO_ENCODE_PRESET, NESCHIMBAT ca viteza fata de
-    // masuratoarea originala — vezi comentariul detaliat de la declararea lui, mai sus, pentru
-    // motivul exact pentru care preset-ul nu a fost schimbat desi cerinta initiala sugera
-    // "veryfast/superfast"). Calitatea vine STRICT din CRF mult mai mic (VIDEO_FINAL_CRF=19 fata
-    // de vechiul 26), care NU modifica semnificativ timpul de encodare (benchmark direct: sub 3%).
-    const videoInputArgs = memoryBackground
-      ? ['-i', memoryBackground.backgroundPath]
-      : ['-f', 'lavfi', '-i', `color=c=${VIDEO_BG_COLOR}:s=${MEMORY_VIDEO_WIDTH}x${MEMORY_VIDEO_HEIGHT}:d=${durationSeconds}`];
+    // PUNCT 7 (2026-09-06, "fuzioneaza ultimul nivel de concat cu mux-ul final"): daca
+    // buildMemoryBackground a reusit fuziunea (muxed:true), memoryBackground.backgroundPath e
+    // DEJA videoclipul final complet (subtitrari+audio+codare finala aplicate, in ACELASI proces
+    // ffmpeg care a facut ultima concatenare) — mutat direct la calea asteptata de restul functiei
+    // (upload/previzualizare mai jos), SARIND COMPLET peste mux-ul separat de mai jos (elimina o
+    // trecere INTREAGA de reencodare a intregului videoclip). Daca fuziunea NU a rulat sau a
+    // esuat (muxed:false — pipeline vechi, dovedit, NESCHIMBAT), codul de mai jos ramane identic
+    // cu inainte de aceasta optimizare.
+    if (memoryBackground && memoryBackground.muxed) {
+      try {
+        fs.renameSync(memoryBackground.backgroundPath, tempVideo);
+      } catch (err) {
+        fs.copyFileSync(memoryBackground.backgroundPath, tempVideo);
+        try { fs.unlinkSync(memoryBackground.backgroundPath); } catch (e2) { /* best-effort */ }
+      }
+      perfLog(order.id, 'final_mux_start');
+      perfLog(order.id, 'final_mux_done', 'fuzionat cu ultimul nivel de concat — nicio trecere separata de reencodare');
+    } else {
+      // Verificat direct pe Railway (2026-08-03, comanda 59ae99f9, plata reala): libass,
+      // subtitrarile si fonturile functioneaza corect pe containerul de productie — encodarea
+      // CHIAR pornea si avansa (frame=45, fps~15) cand a fost omorata de limita de 180000ms (3
+      // minute, la momentul acelei masuratori). Estimarea de atunci — un videoclip de 4 minute la
+      // 25fps/1080x1920 are nevoie de 400+ secunde, nu 180 — a dus initial la o coborare temporara
+      // la 720x1280. CORECȚIE (2026-08-29, "calitate video clara"): revenire la 1080x1920, de data
+      // asta SIGUR — timeout-ul de mai jos e deja 600000ms (10 minute, marit ulterior acelei
+      // masuratori initiale), suficient pentru estimarea originala de 400+s chiar la un cantec de 4
+      // minute; preset-ul ramane "ultrafast" (VIDEO_ENCODE_PRESET, NESCHIMBAT ca viteza fata de
+      // masuratoarea originala — vezi comentariul detaliat de la declararea lui, mai sus, pentru
+      // motivul exact pentru care preset-ul nu a fost schimbat desi cerinta initiala sugera
+      // "veryfast/superfast"). Calitatea vine STRICT din CRF mult mai mic (VIDEO_FINAL_CRF=19 fata
+      // de vechiul 26), care NU modifica semnificativ timpul de encodare (benchmark direct: sub 3%).
+      // PUNCT 7 (2026-09-06): acest bloc ruleaza acum STRICT cand fuziunea de mai sus nu a rulat
+      // sau a esuat (memoryBackground.muxed !== true) — pipeline-ul vechi, dovedit, NESCHIMBAT.
+      const videoInputArgs = memoryBackground
+        ? ['-i', memoryBackground.backgroundPath]
+        : ['-f', 'lavfi', '-i', `color=c=${VIDEO_BG_COLOR}:s=${MEMORY_VIDEO_WIDTH}x${MEMORY_VIDEO_HEIGHT}:d=${durationSeconds}`];
 
-    // CORECȚIE (2026-08-24, "output compatibil mobil: MP4 H.264, AAC, yuv420p, faststart"):
-    // -pix_fmt yuv420p adaugat explicit (nu doar mostenit implicit din sursa) — garanteaza
-    // compatibilitate universala cu playerele mobile/social (unele nu reda deloc alte
-    // subesantionari de crominanta). -movflags +faststart muta atomul moov la inceputul
-    // fisierului — necesar ca Reels/WhatsApp/browserul mobil sa poata incepe reda inainte ca
-    // fisierul intreg sa fie descarcat. Previzualizarea (taiata mai jos cu -c copy din acest
-    // fisier) mosteneste automat ambele proprietati, fara nicio schimbare suplimentara acolo.
-    // CORECȚIE (2026-08-29): etichetare EXPLICITA BT.709 pe fisierul FINAL, intotdeauna — nu doar
-    // cand un cadru anume a fost tonemapat din HDR (vezi buildHdrToneMapFilterIfNeeded) — sursele
-    // SDR sunt deja, de fapt, in BT.709, dar containerul MP4 nu avea NICIUN tag de spatiu de
-    // culoare explicit inainte de aceasta corectie; playerele stricte (unele browsere mobile)
-    // pot interpreta gresit un flux fara tag, mai ales dupa un lant de reencodari.
-    // MASURATOARE (2026-08-30, "obiectiv real de maximum 2 minute"): instrumentare noua,
-    // STRICT de citire (niciun efect asupra randarii) — pana acum, timpul dintre
-    // memory_background_ready si video_ready era o singura gaura opaca ce inglobat mixajul
-    // final (subtitrari + audio + encodare), taierea previzualizarii SI ambele incarcari.
-    // Aceste marcaje separa cele 4 etape ca sa se poata masura REAL fiecare, inainte de a
-    // decide daca mai merita optimizata vreuna dintre ele.
-    perfLog(order.id, 'final_mux_start');
-    await execFfmpeg([
-      '-y',
-      ...videoInputArgs,
-      '-i', tempFullMp3Path,
-      '-vf', `subtitles='${assForFilter}'`,
-      '-c:v', 'libx264', '-preset', VIDEO_ENCODE_PRESET, '-crf', String(VIDEO_FINAL_CRF), '-pix_fmt', 'yuv420p',
-      ...VIDEO_BT709_TAG_ARGS,
-      '-c:a', 'aac', '-b:a', '192k',
-      '-movflags', '+faststart',
-      '-shortest',
-      tempVideo
-    ], { timeout: 600000 });
-    perfLog(order.id, 'final_mux_done');
+      // CORECȚIE (2026-08-24, "output compatibil mobil: MP4 H.264, AAC, yuv420p, faststart"):
+      // -pix_fmt yuv420p adaugat explicit (nu doar mostenit implicit din sursa) — garanteaza
+      // compatibilitate universala cu playerele mobile/social (unele nu reda deloc alte
+      // subesantionari de crominanta). -movflags +faststart muta atomul moov la inceputul
+      // fisierului — necesar ca Reels/WhatsApp/browserul mobil sa poata incepe reda inainte ca
+      // fisierul intreg sa fie descarcat. Previzualizarea (taiata mai jos cu -c copy din acest
+      // fisier) mosteneste automat ambele proprietati, fara nicio schimbare suplimentara acolo.
+      // CORECȚIE (2026-08-29): etichetare EXPLICITA BT.709 pe fisierul FINAL, intotdeauna — nu doar
+      // cand un cadru anume a fost tonemapat din HDR (vezi buildHdrToneMapFilterIfNeeded) — sursele
+      // SDR sunt deja, de fapt, in BT.709, dar containerul MP4 nu avea NICIUN tag de spatiu de
+      // culoare explicit inainte de aceasta corectie; playerele stricte (unele browsere mobile)
+      // pot interpreta gresit un flux fara tag, mai ales dupa un lant de reencodari.
+      // MASURATOARE (2026-08-30, "obiectiv real de maximum 2 minute"): instrumentare noua,
+      // STRICT de citire (niciun efect asupra randarii) — pana acum, timpul dintre
+      // memory_background_ready si video_ready era o singura gaura opaca ce inglobat mixajul
+      // final (subtitrari + audio + encodare), taierea previzualizarii SI ambele incarcari.
+      // Aceste marcaje separa cele 4 etape ca sa se poata masura REAL fiecare, inainte de a
+      // decide daca mai merita optimizata vreuna dintre ele.
+      perfLog(order.id, 'final_mux_start');
+      await execFfmpeg([
+        '-y',
+        ...videoInputArgs,
+        '-i', tempFullMp3Path,
+        '-vf', `subtitles='${assForFilter}'`,
+        '-c:v', 'libx264', '-preset', VIDEO_ENCODE_PRESET, '-crf', String(VIDEO_FINAL_CRF), '-pix_fmt', 'yuv420p',
+        ...VIDEO_BT709_TAG_ARGS,
+        '-c:a', 'aac', '-b:a', '192k',
+        '-movflags', '+faststart',
+        '-shortest',
+        tempVideo
+      ], { timeout: 600000 });
+      perfLog(order.id, 'final_mux_done');
+    }
   } finally {
     try { fs.unlinkSync(assPath); } catch (e) { /* best-effort */ }
     if (memoryBackground) {

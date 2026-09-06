@@ -216,7 +216,7 @@ test('lib/media-analysis.js si server.js nu folosesc Math.random() nicaieri in C
 // ===============================================================================================
 test('server.js: buildMemoryBackground() construieste shotPlan din `ordered` (metadate), NU din surse deja descarcate — planul e cunoscut INTEGRAL inainte de a descarca ceva', () => {
   const serverSrc = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
-  const idx = serverSrc.indexOf('async function buildMemoryBackground(order, mediaItems, durationSeconds, sectionTimings, songFilePath) {');
+  const idx = serverSrc.indexOf('async function buildMemoryBackground(order, mediaItems, durationSeconds, sectionTimings, songFilePath, assForFilter) {');
   assert.notEqual(idx, -1);
   let depth = 0, i = serverSrc.indexOf('{', idx);
   const start = idx;

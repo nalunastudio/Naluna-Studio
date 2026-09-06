@@ -257,8 +257,8 @@ test('server.js: durata TOTALA a fundalului cinematic ramane exact durata melodi
   // CORECȚIE (2026-08-24, "reel dinamic sincronizat cu melodia"): semnatura a primit un al
   // cincilea parametru, songFilePath — calea locala a melodiei REALE, pentru analiza audio
   // (onset/impuls) — vezi extractAudioOnsets(); durationSeconds/sectionTimings raman neschimbate.
-  assert.ok(server.includes('async function buildMemoryBackground(order, mediaItems, durationSeconds, sectionTimings, songFilePath) {'));
-  assert.ok(server.includes('memoryBackground = await buildMemoryBackground(order, mediaItems, durationSeconds, sectionTimings, tempFullMp3Path);'));
+  assert.ok(server.includes('async function buildMemoryBackground(order, mediaItems, durationSeconds, sectionTimings, songFilePath, assForFilter) {'));
+  assert.ok(server.includes('memoryBackground = await buildMemoryBackground(order, mediaItems, durationSeconds, sectionTimings, tempFullMp3Path, assForFilter);'));
 });
 
 // CORECȚIE (2026-08-24): computeSectionAwareSegmentDurations() (un singur segment lung per
