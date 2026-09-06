@@ -149,3 +149,30 @@ test('hotfix Premium blocat: pagina de asteptare reverifica statusul imediat la 
   assert.ok(html.includes("visibilitychange"), 'trebuie sa existe un listener pentru revenirea tab-ului in prim-plan');
   assert.ok(html.includes('forceImmediatePoll'), 'revenirea in prim-plan trebuie sa forteze o verificare imediata a starii reale');
 });
+
+test('index.html: cele 4 linkuri din footer (.footer-legal) folosesc EXACT var(--gold-deep) — acelasi token de culoare deja folosit de linkurile din paginile legale (terms/privacy/refund) — in toate starile (normal/link/visited/hover/focus/active), niciodata gri sau mov implicit de browser', () => {
+  const html = read('public/index.html');
+  const ruleMatch = html.match(/\.footer-legal a,[^{]*\{[^}]*\}/);
+  assert.notEqual(ruleMatch, null, 'trebuie sa existe o regula CSS pentru .footer-legal a');
+  const rule = ruleMatch[0];
+  for (const state of [' .footer-legal a,', '.footer-legal a:link,', '.footer-legal a:visited,', '.footer-legal a:hover,', '.footer-legal a:focus,', '.footer-legal a:active{']) {
+    assert.ok(rule.includes(state.trim()), `lipseste starea ${state.trim()} din regula .footer-legal a`);
+  }
+  assert.match(rule, /color:var\(--gold-deep\)/, 'trebuie sa refoloseasca EXACT var(--gold-deep), nu o culoare noua aproximativa');
+  assert.match(rule, /text-decoration:underline/, 'underline-ul existent trebuie pastrat');
+  assert.match(rule, /text-underline-offset:2px/, 'offset-ul underline-ului trebuie pastrat neschimbat');
+});
+
+test('index.html: var(--gold-deep) e definit identic (#8B6D3F) ca in terms.html/privacy.html/refund.html — acelasi token, nu o valoare noua coincidenta', () => {
+  const index = read('public/index.html');
+  const terms = read('public/terms.html');
+  assert.match(index, /--gold-deep:#8B6D3F/);
+  assert.match(terms, /--gold-deep:#8B6D3F/);
+});
+
+test('index.html: NU s-a atins nimic altceva din footer — culoarea generala a footer-ului (text-secondary, pentru copyright si footer_note), adresa fizica, si butoanele CTA raman neschimbate', () => {
+  const html = read('public/index.html');
+  assert.match(html, /footer\{[^}]*color:var\(--text-secondary\)/, 'culoarea generala a footer-ului (copyright/footer_note) trebuie sa ramana text-secondary, neschimbata');
+  assert.ok(html.includes('© 2026 NALUNA') || html.includes('2026 NALUNA'), 'textul de copyright trebuie sa existe neschimbat');
+  assert.ok(html.includes('data-i18n="footer_note"'), 'footer_note trebuie sa ramana un element tradus normal, neatins');
+});
