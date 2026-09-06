@@ -47,34 +47,91 @@ test('terms.html: dezvaluirea numelui proprietarului (Natalia Andoni, cerinta CA
   assert.ok(!/<(h1|h2|h3|h4|h5|h6|strong|b)[ >]/i.test(boxContent), 'entity-box nu trebuie sa contina niciun heading/bold — text simplu, ca restul continutului legal');
 });
 
-test('terms.html: "Naluna Studio" (nume de brand) e marcat translate="no" + class="notranslate" (metoda HTML standard, respectata de Google Translate si de traducerea nativa Chrome) la TOATE cele 3 aparitii din pagina — Google Translate RO altfel il transforma in "Studioul Naluna"', () => {
-  const html = read('public/terms.html');
-  const wrapped = (html.match(/<span translate="no" class="notranslate">Naluna Studio<\/span>/g) || []).length;
-  const totalOccurrences = (html.match(/Naluna Studio/g) || []).length;
-  assert.equal(wrapped, 3, `asteptat 3 aparitii ale "Naluna Studio" impachetate in span notranslate, gasit ${wrapped}`);
-  assert.equal(wrapped, totalOccurrences, 'FIECARE aparitie a "Naluna Studio" din pagina trebuie protejata, nu doar unele');
-});
+// ---------------------------------------------------------------------------------------------
+// Audit traducere automata (2026-09-06, runda 5) — toate cele 3 pagini legale, toate aparitiile
+// "Naluna Studio"/"Natalia Andoni". Cauza radacina reala (confirmata pe 2 exemple live gasite de
+// utilizator — "deNaluna Studio" si "Naluna Studiocreeaza"): Google Translate/traducerea nativa
+// Chrome trateaza fiecare span notranslate ca un bloc opac si RETRADUCE separat textul din jur;
+// motoarele de traducere elimina de regula spatiile de la marginea unui segment tradus (leading/
+// trailing trim). Un spatiu care sta IN AFARA span-ului notranslate, la granita cu acesta, e deci
+// mereu in pericol sa fie sters — indiferent daca span-ul e la inceputul sau la sfarsitul
+// segmentului tradus. Solutia ROBUSTA (ceruta explicit — nu spatii fragile) e sa mutam spatiul
+// de granita IN INTERIORUL span-ului notranslate, pe partea unde atinge text traductibil —
+// continutul notranslate e copiat neschimbat, niciodata trecut prin trim-ul motorului de
+// traducere. Aplicata simetric: spatiu la INCEPUTUL span-ului daca text traductibil il precede,
+// spatiu la SFARSITUL span-ului daca text traductibil il urmeaza.
+const NOTRANSLATE_BRAND_SITES = {
+  'terms.html': [
+    // entity-box: "Naluna Studio" izolat pe propriul rand (intre <br>-uri) — fara risc de
+    // adiacenta, span simplu, fara spatiu suplimentar necesar.
+    { pattern: /<span translate="no" class="notranslate">Naluna Studio<\/span><br>/, desc: 'entity-box: Naluna Studio' },
+    // entity-box: precedat de "Operated by" (text traductibil) — spatiul de granita STANGA
+    // mutat in interiorul span-ului.
+    { pattern: /Operated by<span translate="no" class="notranslate"> Natalia Andoni<\/span><br>/, desc: 'entity-box: Operated by Natalia Andoni' },
+    // Sectiunea 1: precedat de "operated by" — acelasi tipar, spatiu STANGA mutat inauntru;
+    // dupa span urmeaza STRICT o virgula (punctuatie, nu spatiu) — fara risc pe partea dreapta.
+    { pattern: /operated by<span translate="no" class="notranslate"> Naluna Studio<\/span>, trading/, desc: 'Sectiunea 1: operated by Naluna Studio,' },
+    // Sectiunea 2: urmat de "creates" (text traductibil) — spatiul de granita DREAPTA mutat in
+    // interiorul span-ului; span-ul e la inceputul paragrafului, fara text inainte.
+    { pattern: /<span translate="no" class="notranslate">Naluna Studio <\/span>creates personalised/, desc: 'Sectiunea 2: Naluna Studio creates' }
+  ],
+  'privacy.html': [
+    { pattern: /<span translate="no" class="notranslate">Naluna Studio<\/span><br>/, desc: 'entity-box: Naluna Studio' },
+    // ambele aparitii din Sectiunea 1 au text traductibil PE AMBELE PARTI — spatiu mutat
+    // inauntru pe AMBELE laturi ale span-ului.
+    { pattern: /personal data<span translate="no" class="notranslate"> Naluna Studio <\/span>collects/, desc: 'Sectiunea 1: personal data Naluna Studio collects' },
+    { pattern: /with it\.<span translate="no" class="notranslate"> Naluna Studio <\/span>decides/, desc: 'Sectiunea 1: with it. Naluna Studio decides' }
+  ],
+  'refund.html': [
+    { pattern: /<span translate="no" class="notranslate">Naluna Studio<\/span><br>/, desc: 'entity-box: Naluna Studio' }
+  ]
+};
 
-test('terms.html: "Natalia Andoni" (nume propriu) e marcat translate="no" + class="notranslate", DAR "Operated by" ramane text simplu, netraductor-blocat — traducerea automata a restului expresiei/paginii nu trebuie afectata. Spatiul dintre ele e MUTAT in interiorul span-ului (regresie reala gasita live: Google Translate RO afisa "Operat deNatalia Andoni", fara spatiu) — face parte din continutul protejat, nu se mai poate pierde la reconstructia traducerii', () => {
-  const html = read('public/terms.html');
-  assert.match(html, /Operated by<span translate="no" class="notranslate"> Natalia Andoni<\/span>/, 'spatiul trebuie sa fie DUPA deschiderea span-ului, nu inainte de el');
-  assert.ok(!html.includes('Operated by <span'), 'nu trebuie sa mai existe un spatiu inainte de span (acolo se pierdea la traducere)');
-  assert.ok(!html.includes('translate="no">Operated by'), '"Operated by" nu trebuie inclus in span-ul notranslate — lasat sa se traduca normal (cerinta explicita)');
-});
-
-test('terms.html: pagina engleza ramane vizual neschimbata — span-urile notranslate sunt inline, fara CSS nou, fara sa rupa structura entity-box sau layout-ul <br>', () => {
-  const html = read('public/terms.html');
-  assert.ok(!html.includes('.notranslate{'), 'notranslate e STRICT un hook semantic pentru Google Translate, nu are nevoie de stil CSS propriu');
-  const boxStart = html.indexOf('class="entity-box"');
-  const boxEnd = html.indexOf('</div>', boxStart);
-  const boxContent = html.slice(boxStart, boxEnd);
-  assert.equal((boxContent.match(/<br>/g) || []).length, 6, 'structura pe linii a entity-box (6 <br>) trebuie sa ramana neschimbata');
-});
-
-test('privacy.html si refund.html raman NEATINSE de aceasta ajustare — cerinta a fost STRICT pentru pagina Terms & Conditions, nu extinsa la celelalte pagini legale', () => {
-  for (const page of ['privacy.html', 'refund.html']) {
+for (const [page, sites] of Object.entries(NOTRANSLATE_BRAND_SITES)) {
+  test(`${page}: TOATE aparitiile "Naluna Studio"/"Natalia Andoni" sunt protejate translate="no"+notranslate, cu spatiul de granita MUTAT in interiorul span-ului pe partea unde atinge text traductibil (fix robust, nu spatii fragile) — verificat exact per aparitie`, () => {
     const html = read(`public/${page}`);
-    assert.ok(!html.includes('translate="no"'), `${page} nu trebuie modificat de aceasta cerinta, scopata STRICT la terms.html`);
+    for (const { pattern, desc } of sites) {
+      assert.match(html, pattern, `${page} — lipseste sau e incorect formatul asteptat pentru: ${desc}`);
+    }
+    const brandOccurrences = (html.match(/Naluna Studio/g) || []).length;
+    const expectedBrandSites = sites.filter(s => s.desc.includes('Naluna Studio')).length;
+    assert.equal(brandOccurrences, expectedBrandSites, `${page}: numarul de aparitii "Naluna Studio" (${brandOccurrences}) nu corespunde cu numarul de situri verificate (${expectedBrandSites}) — a aparut sau a disparut o aparitie neverificata`);
+    const nameOccurrences = (html.match(/Natalia Andoni/g) || []).length;
+    const expectedNameSites = sites.filter(s => s.desc.includes('Natalia Andoni')).length;
+    assert.equal(nameOccurrences, expectedNameSites, `${page}: numarul de aparitii "Natalia Andoni" (${nameOccurrences}) nu corespunde cu numarul de situri verificate (${expectedNameSites})`);
+  });
+}
+
+test('Regresie reala (2026-09-06): NICIUN text traductibil nu mai atinge direct un span notranslate FARA spatiu de granita in interior — tiparele exacte "deNaluna Studio"/"deNatalia Andoni"/"Naluna Studiocreeaza" (raportate live de utilizator, engleza sursa: "by<span...>", "<span...>creates") sunt structural imposibile acum, nu doar absente intamplator', () => {
+  for (const page of ['terms.html', 'privacy.html', 'refund.html']) {
+    const html = read(`public/${page}`);
+    // niciun span notranslate nu incepe/se termina cu textul brandului FARA spatiul de granita
+    // acolo unde e nevoie — verificat prin absenta explicita a variantelor gresite posibile.
+    assert.ok(!/[a-zA-Z]<span translate="no" class="notranslate">Naluna Studio<\/span>[a-zA-Z]/.test(html), `${page}: niciun span notranslate nu trebuie lipit direct de litere pe ambele parti fara spatiu de granita mutat inauntru`);
+    assert.ok(!html.includes(' <span translate="no" class="notranslate">Naluna Studio</span>creat'), `${page}: verificare explicita a tiparului de bug raportat`);
+  }
+});
+
+test('terms.html/privacy.html/refund.html: pagina engleza ramane vizual neschimbata — span-urile notranslate sunt inline, fara CSS nou, fara sa rupa structura entity-box sau layout-ul <br>', () => {
+  for (const page of ['terms.html', 'privacy.html', 'refund.html']) {
+    const html = read(`public/${page}`);
+    assert.ok(!html.includes('.notranslate{'), `${page}: notranslate e STRICT un hook semantic pentru Google Translate, nu are nevoie de stil CSS propriu`);
+  }
+  const termsHtml = read('public/terms.html');
+  const boxStart = termsHtml.indexOf('class="entity-box"');
+  const boxEnd = termsHtml.indexOf('</div>', boxStart);
+  const boxContent = termsHtml.slice(boxStart, boxEnd);
+  assert.equal((boxContent.match(/<br>/g) || []).length, 6, 'structura pe linii a entity-box din terms.html (6 <br>) trebuie sa ramana neschimbata');
+});
+
+test('Stripe, adresele de email si domeniul nalunastudio.com raman NEATINSE (fara translate="no") — nicio dovada de risc real de traducere gresita, motoarele de traducere le recunosc deja ca token-uri netraductibile; adaugarea unor marcaje inutile ar fi complicat implementarea fara beneficiu demonstrat', () => {
+  const privacy = read('public/privacy.html');
+  const idx = privacy.indexOf('Stripe');
+  assert.notEqual(idx, -1);
+  assert.ok(!privacy.slice(Math.max(0, idx - 60), idx + 60).includes('translate="no"'), 'Stripe nu are nevoie de protectie — nicio dovada de risc');
+  for (const page of ['terms.html', 'privacy.html', 'refund.html']) {
+    const html = read(`public/${page}`);
+    assert.ok(!/translate="no"[^>]*>contact@nalunastudio\.com/.test(html) && !/translate="no"[^>]*>nalunastudio\.com/.test(html), `${page}: emailul/domeniul nu au nevoie de protectie separata`);
   }
 });
 
