@@ -565,6 +565,28 @@ function isHostedAccessExpired(order) {
 // Content-Disposition: attachment — vezi comentariul din storage.js getSignedDownloadUrl().
 // RFC 5987 (filename*=UTF-8''...) pentru diacritice (nume de destinatari), plus un fallback
 // ASCII simplu in campul "filename" simplu, pentru browsere vechi care nu citesc filename*.
+// Minimizare loguri (decizie de business 2026-09-06, runda 2) — adresa de email a clientului
+// nu are nevoie sa apara IN CLAR in loguri de operare (bounce/suprimare) ca sa fie utila:
+// mecanismul REAL de suprimare ramane tabelul email_suppressions (adresa completa, necesara
+// functional acolo); logul e strict diagnostic, deci un identificator mascat e suficient.
+function maskEmailForLog(email) {
+  const str = String(email || '');
+  const at = str.indexOf('@');
+  if (at <= 0) return '[email]';
+  const local = str.slice(0, at);
+  const domain = str.slice(at + 1);
+  const dot = domain.lastIndexOf('.');
+  const maskedDomain = dot > 0 ? `${domain[0]}***${domain.slice(dot)}` : '***';
+  return `${local[0]}***@${maskedDomain}`;
+}
+
+// Acelasi motiv ca mai sus, aplicat mesajelor de eroare venite de la un provider extern
+// (ex. Resend poate ecoua adresa "to" intr-un mesaj de eroare) — nu putem controla exact
+// formatul acelor mesaje, deci redactam defensiv orice tipar de email inainte de a loga.
+function redactEmailsInText(text) {
+  return String(text || '').replace(/[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+/g, '[email]');
+}
+
 function attachmentDisposition(baseName, ext) {
   const clean = String(baseName || 'fisier').replace(/["\r\n]/g, '').trim() || 'fisier';
   const asciiFallback = clean.replace(/[^\x20-\x7E]/g, '').trim() || 'fisier';
@@ -938,12 +960,12 @@ app.post('/api/resend/webhook', express.raw({ type: 'application/json' }), async
     const bounceType = event?.data?.bounce?.type || null;
     if (event.type === 'email.bounced' && recipientEmail && bounceType === 'Permanent') {
       await db.addEmailSuppression(recipientEmail, 'email.bounced:Permanent');
-      console.warn(`Resend: ${recipientEmail} respins PERMANENT (email.bounced, bounce.type=Permanent) — adaugat la suprimare, nu mai trimitem automat.`);
+      console.warn(`Resend: ${maskEmailForLog(recipientEmail)} respins PERMANENT (email.bounced, bounce.type=Permanent) — adaugat la suprimare, nu mai trimitem automat.`);
     } else if (event.type === 'email.bounced' && recipientEmail) {
-      console.warn(`Resend: ${recipientEmail} a avut un bounce NEPERMANENT (bounce.type=${bounceType || 'necunoscut'}) — NU suprimat, poate fi reincercat.`);
+      console.warn(`Resend: ${maskEmailForLog(recipientEmail)} a avut un bounce NEPERMANENT (bounce.type=${bounceType || 'necunoscut'}) — NU suprimat, poate fi reincercat.`);
     } else if (event.type === 'email.complained' && recipientEmail) {
       await db.addEmailSuppression(recipientEmail, 'email.complained');
-      console.warn(`Resend: ${recipientEmail} a marcat un email ca spam (email.complained) — adaugat la suprimare.`);
+      console.warn(`Resend: ${maskEmailForLog(recipientEmail)} a marcat un email ca spam (email.complained) — adaugat la suprimare.`);
     }
     // orice alt tip de eveniment (delivered/opened/clicked/sent/delivery_delayed/...) — fara actiune
 
@@ -1063,7 +1085,7 @@ async function processConfirmedPayment(event, session) {
 
   const updated = result.order;
   sendDeliveryEmail(updated).catch(err => {
-    console.error('Email de livrare esuat pentru comanda', orderId, err.message);
+    console.error('Email de livrare esuat pentru comanda', orderId, redactEmailsInText(err.message));
     // nu blocam livrarea — clientul tot poate lua melodia din pagina de succes
   });
   // Extrasul WAV (premium/video) porneste asincron dupa plata — generatePremiumExtras insasi
@@ -1372,6 +1394,65 @@ setInterval(() => { expireStaleFinalMedia().catch(() => {}); }, 24 * 60 * 60 * 1
 app.post('/api/admin/retention/expire-final-media', async (req, res, next) => {
   try {
     const result = await expireStaleFinalMedia();
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ==========================================================================================
+// Retentie poveste/text de personalizare (decizie de business 2026-09-06, runda 2) — categorie
+// SEPARATA de produsul final (HOSTED_ACCESS_DAYS, de mai sus): povestea nu are niciun scop
+// continuu dupa ce melodia a fost creata, in afara de a permite o corectie/regenerare/cerere
+// de suport intr-o fereastra rezonabila dupa livrare.
+//
+// De ce 60 de zile (nu 30, nu 90): fereastra trebuie sa acopere scenariul realist "clientul
+// observa o problema aproape de finalul celor 30 de zile de acces si contacteaza suportul" —
+// 30 de zile de acces + 30 de zile suplimentare ca suportul sa poata actiona, fara sa expire
+// povestea la mijlocul unei cereri in curs. E cea mai scurta perioada care nu risca sa stearga
+// povestea INAINTE ca un client sa fi avut sansa reala sa raporteze o problema si sa fie
+// rezolvata — nu 90 (ar pastra inutil de mult text personal fata de necesitatea reala).
+//
+// IMPORTANT (verificat explicit): NICIUN cod de regenerare/corectie post-plata din acest fisier
+// nu citeste order.story pentru o comanda deja 'ready' — validateLyricsCoherence()/buildPrompt-
+// urile care folosesc story ruleaza STRICT in fluxul de generare/regenerare PRE-plata (blocat
+// dupa 'ready', vezi cele 5 verificari "status === 'ready'" de pe rutele de editare/regenerare);
+// singurul job post-plata (retry-extras, WAV/video) NU foloseste story deloc. Stergerea
+// povestii NU poate deci sa strice vreun flux automat existent. O corectie genuina de continut
+// dupa aceasta fereastra ramane posibila prin contact direct (Sectiunea 8, terms.html) — ca si
+// cum clientul si-ar fi pierdut singur notitele originale, suportul ar cere din nou detaliile.
+const STORY_RETENTION_DAYS = 60;
+
+async function anonymizeStaleStories() {
+  const cutoff = new Date(Date.now() - STORY_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+  let candidates = [];
+  try {
+    candidates = await db.findOrdersEligibleForStoryAnonymization(cutoff);
+  } catch (err) {
+    console.error('Retentie: nu am putut interoga comenzile eligibile pentru anonimizarea povestii:', err.message);
+    return { checked: 0, anonymized: 0 };
+  }
+
+  let anonymized = 0;
+  for (const order of candidates) {
+    try {
+      await db.anonymizeOrderStory(order.id);
+      anonymized++;
+    } catch (err) {
+      console.error(`Retentie: nu am putut anonimiza povestea comenzii ${order.id}:`, err.message);
+    }
+  }
+  if (anonymized > 0) {
+    console.warn(`Retentie: povestea/textul de personalizare anonimizat pentru ${anonymized} comenzi, din ${candidates.length} eligibile.`);
+  }
+  return { checked: candidates.length, anonymized };
+}
+
+setInterval(() => { anonymizeStaleStories().catch(() => {}); }, 24 * 60 * 60 * 1000).unref();
+
+app.post('/api/admin/retention/anonymize-stale-stories', async (req, res, next) => {
+  try {
+    const result = await anonymizeStaleStories();
     res.json({ ok: true, ...result });
   } catch (err) {
     next(err);
@@ -8136,7 +8217,7 @@ async function sendDeliveryEmail(order) {
   // reputatiei domeniului. Loghez explicit, niciodata silentios.
   const suppressed = await db.isEmailSuppressed(order.email).catch(() => false);
   if (suppressed) {
-    console.warn(`Email de livrare NETRIMIS catre ${order.email} — adresa e in email_suppressions (bounce/complaint anterior).`);
+    console.warn(`Email de livrare NETRIMIS catre ${maskEmailForLog(order.email)} — adresa e in email_suppressions (bounce/complaint anterior).`);
     return;
   }
 

@@ -447,13 +447,23 @@ test('comanda-mea.html: cand hostedAccessExpired e true, se afiseaza STRICT star
   assert.match(fn, /!accessExpired && \(o\.plan === 'premium' \|\| o\.plan === 'video'\) && o\.hasWav/);
 });
 
-test('comanda-mea.html: toate cele 8 limbi au access_expired_title, access_expired_body si download_tip (ghidare descarcare mobil, FARA promisiunea falsa de salvare automata in Poze/Galerie)', () => {
+test('comanda-mea.html: toate cele 8 limbi au access_expired_title, access_expired_body, download_tip_ios si download_tip_android (ghidare descarcare SEPARATA per dispozitiv, FARA promisiunea falsa de salvare automata in Poze/Galerie)', () => {
   const html = read('public/comanda-mea.html');
-  for (const key of ['access_expired_title', 'access_expired_body', 'download_tip']) {
+  for (const key of ['access_expired_title', 'access_expired_body', 'download_tip_ios', 'download_tip_android']) {
     const count = (html.match(new RegExp(`${key}:`, 'g')) || []).length;
     assert.equal(count, 8, `asteptat 8 aparitii ${key}, gasit ${count}`);
   }
   assert.ok(!/automatically save[sd]? to (your )?(photos|gallery|camera roll)/i.test(html), 'nu trebuie afirmata o salvare automata in Poze/Galerie — necesita mereu o actiune a utilizatorului');
+});
+
+test('comanda-mea.html: getDeviceDownloadTip() arata STRICT sfatul relevant (iOS/Android), niciodata ambele combinate, si nimic pe desktop', () => {
+  const html = read('public/comanda-mea.html');
+  const fn = extractFn(html, 'function getDeviceDownloadTip() {');
+  assert.match(fn, /iPhone\|iPad\|iPod/i);
+  assert.match(fn, /Android/i);
+  assert.match(fn, /return t\.download_tip_ios/);
+  assert.match(fn, /return t\.download_tip_android/);
+  assert.match(fn, /return '';/, 'pe desktop (niciun UA de mobil detectat) nu trebuie afisat niciun sfat');
 });
 
 test('melodia-mea.html: checkout_access_note (dezvaluire pre-cumparare a celor 30 de zile) exista in toate cele 8 limbi si e afisat langa bara de consimtamant, INAINTE de plata', () => {
@@ -475,6 +485,71 @@ test('server.js: emailul de livrare mentioneaza EXPLICIT "30 days"/"30 de zile" 
   assert.equal(count, 8, `asteptat downloadReminder in toate cele 8 sabloane, gasit ${count}`);
   assert.match(fn, /DOWNLOAD_REMINDER = \{/);
   assert.match(fn, /30 days from delivery/);
+});
+
+// ---------------------------------------------------------------------------------------------
+// Runda 2 — poveste/personalizare (60 zile), loguri de securitate, robustete paidAt
+// ---------------------------------------------------------------------------------------------
+test('db.js: story_anonymized_at exista, findOrdersEligibleForStoryAnonymization cauta STRICT status ready + neanonimizata + regenerare inactiva, anonymizeOrderStory NU atinge recipient/senderName/relationship/pret/status', () => {
+  assert.match(db, /ALTER TABLE orders ADD COLUMN IF NOT EXISTS story_anonymized_at TIMESTAMPTZ;/);
+  const findFn = extractFn(db, 'async function findOrdersEligibleForStoryAnonymization(cutoffDate) {');
+  assert.match(findFn, /status = 'ready'/);
+  assert.match(findFn, /anonymized_at IS NULL/);
+  assert.match(findFn, /regeneration_status IS DISTINCT FROM 'running'/);
+  const anonFn = extractFn(db, 'async function anonymizeOrderStory(id) {');
+  assert.match(anonFn, /story = '\[expired\]'/);
+  assert.ok(!anonFn.includes('recipient') && !anonFn.includes('sender_name') && !anonFn.includes('relationship') && !anonFn.includes('price') && !anonFn.includes('status ='));
+});
+
+test('server.js: STORY_RETENTION_DAYS=60 (30 de acces + 30 de rezerva pentru corectii/suport), anonymizeStaleStories() ruleaza zilnic SI e declansabila manual (admin)', () => {
+  assert.match(server, /const STORY_RETENTION_DAYS = 60;/);
+  assert.match(server, /setInterval\(\(\) => \{ anonymizeStaleStories\(\)\.catch/);
+  const routeIdx = server.indexOf("app.post('/api/admin/retention/anonymize-stale-stories'");
+  const adminMwIdx = server.indexOf("app.use('/api/admin', adminAuthLimiter, requireAdminAuth);");
+  assert.ok(routeIdx !== -1 && adminMwIdx !== -1 && adminMwIdx < routeIdx);
+});
+
+test('server.js: NICIUN cod de regenerare/validare a versurilor (care citeste order.story) nu ruleaza pentru o comanda deja "ready" — stergerea povestii dupa 60 de zile nu poate strica un flux automat existent', () => {
+  for (const sig of [
+    "app.post('/api/orders/:orderId/variants/:variantId/lyrics', express.json(), requireOrderToken, async (req, res, next) => {",
+    'async function handlePremiumSelectiveRegenerate(req, res, next) {',
+    'async function handleLegacyRegenerate(req, res, next) {'
+  ]) {
+    const fn = extractFn(server, sig);
+    assert.match(fn, /status === 'ready'/, `${sig} trebuie sa refuze o comanda deja platita`);
+  }
+  const retryFn = extractFn(server, "app.post('/api/admin/orders/:orderId/retry-extras', async (req, res, next) => {");
+  assert.ok(!retryFn.includes('order.story'), 'singurul job post-plata (retry-extras) nu trebuie sa citeasca order.story');
+});
+
+test('server.js: maskEmailForLog()/redactEmailsInText() exista si sunt folosite la TOATE cele 4 locuri unde adresa clientului ar fi altfel logata in clar (bounce/complaint/suprimare/eroare livrare)', () => {
+  const maskFn = extractFn(server, 'function maskEmailForLog(email) {');
+  assert.match(maskFn, /str\[0\]|local\[0\]/);
+  const usages = (server.match(/maskEmailForLog\(/g) || []).length;
+  assert.ok(usages >= 4, `asteptat cel putin 4 folosiri ale maskEmailForLog, gasit ${usages}`);
+  assert.match(server, /redactEmailsInText\(err\.message\)/);
+});
+
+test('Privacy Policy: sectiunea de retentie contine acum reguli CONCRETE pentru poveste (60 zile) si loguri de securitate (criteriu obiectiv: retentia platformei de hosting, fara extindere manuala) — nu mai raman formulari vagi ("tied to order lifecycle", "short"/"weeks")', () => {
+  const html = read('public/privacy.html');
+  assert.match(html, /personal story or details you write for your song.*60 days from delivery/s);
+  assert.match(html, /Security and error logs/);
+  assert.ok(!/\bshort\b.*\bweeks?\b|\bweeks?\b.*\bretained\b/i.test(html), 'nu trebuie sa ramana o formulare vaga tip "short"/"weeks" pentru loguri');
+  assert.match(html, /hosting provider's platform retains them by default/);
+});
+
+test('paidAt: scris o singura data, in tranzactie, cu protectie impotriva evenimentelor Stripe duplicate — niciun alt loc din server.js/db.js nu il suprascrie', () => {
+  const writeSites = (server.match(/paidAt: new Date\(\)\.toISOString\(\)/g) || []).length;
+  assert.equal(writeSites, 1, 'paidAt trebuie scris dintr-un SINGUR loc in server.js');
+  const fn = extractFn(db, 'async function recordPaidOrderAtomically(eventId, orderId, patch) {');
+  assert.match(fn, /FOR UPDATE/, 'citirea comenzii inainte de scriere trebuie sa faca row-lock (evita o cursa intre 2 evenimente Stripe simultane)');
+  assert.match(fn, /current\.status === 'ready'.*alreadyPaid: true/s, 'un al doilea eveniment de plata pentru aceeasi comanda NU trebuie sa suprascrie paid_at');
+});
+
+test('Checkout: pentru pachetul video, atat crearea sesiunii Stripe CAT SI webhook-ul de confirmare verifica INDEPENDENT ca videoKey exista INAINTE de a seta paidAt — livrarea e deja garantata la momentul platii, pentru toate pachetele', () => {
+  const checkoutFn = extractFn(server, "app.post('/api/orders/:orderId/checkout', requireOrderToken, async (req, res, next) => {");
+  assert.match(checkoutFn, /videoVariant\.videoKey/);
+  assert.match(checkoutFn, /status\(400\)\.json\(\{ error: 'Videoclipul tău nu este încă gata/);
 });
 
 test('Privacy Policy: retentia materialelor SURSA (foto/video incarcate) e diferentiata de produsul final si REAL implementata (90 zile = SOURCE_MEDIA_RETENTION_DAYS din server.js, nu un numar inventat)', () => {

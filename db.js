@@ -297,6 +297,12 @@ async function initDb() {
   // (cand a rulat REAL stergerea) — NU controleaza singur accesul (acela e calculat live, din
   // paid_at, ca sa fie corect chiar inainte ca maturarea zilnica sa apuce sa ruleze).
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS final_media_expired_at TIMESTAMPTZ;`);
+  // Decizie de business 2026-09-06 (runda 2): povestea/textul de personalizare (story/story_2)
+  // e o categorie SEPARATA de produsul final — necesara doar cat timp o corectie/regenerare/
+  // cerere de suport e realist posibila, nu cat timp clientul are acces la fisierele finale.
+  // Vezi STORY_RETENTION_DAYS din server.js pentru perioada exacta si motivare.
+  // story_anonymized_at e audit minim (cand a rulat REAL stergerea).
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS story_anonymized_at TIMESTAMPTZ;`);
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS checkout_variant_id TEXT;`);
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS checkout_media_revision INTEGER;`);
 
@@ -1045,6 +1051,41 @@ async function expireOrderFinalMedia(id, newVariants) {
   );
 }
 
+// Poveste/text de personalizare — categorie SEPARATA de produsul final (vezi comentariul de
+// la coloana story_anonymized_at). Eligibila: comanda platita ('ready'), inca ne-anonimizata
+// (nici automat, nici printr-o cerere GDPR anterioara — daca anonymizeOrder() a rulat deja,
+// story e deja '[deleted]', nimic de facut), si NICIO regenerare/corectie activa in curs
+// (o corectie admin-mediata, rara dar posibila, inca poate avea nevoie de poveste).
+async function findOrdersEligibleForStoryAnonymization(cutoffDate) {
+  const result = await pool.query(
+    `SELECT * FROM orders
+     WHERE status = 'ready'
+       AND story_anonymized_at IS NULL
+       AND anonymized_at IS NULL
+       AND regeneration_status IS DISTINCT FROM 'running'
+       AND paid_at IS NOT NULL AND paid_at < $1
+     ORDER BY paid_at ASC`,
+    [cutoffDate]
+  );
+  return result.rows.map(rowToOrder);
+}
+
+// story e NOT NULL in schema — placeholder distinct de '[deleted]' (folosit STRICT de
+// anonymizeOrder(), cererile GDPR), ca sa se poata distinge in audit o stergere AUTOMATA,
+// de retentie, de o stergere CERUTA explicit de client. NU atinge recipient/senderName/
+// relationship/recipientNames — acelea raman (identificarea comenzii pentru suport/
+// contabilitate), STRICT povestea/textul liber e vizat aici.
+async function anonymizeOrderStory(id) {
+  await pool.query(
+    `UPDATE orders SET
+      story = '[expired]',
+      story_2 = CASE WHEN story_2 IS NOT NULL THEN '[expired]' ELSE NULL END,
+      story_anonymized_at = now()
+    WHERE id = $1`,
+    [id]
+  );
+}
+
 async function isEmailSuppressed(email) {
   const result = await pool.query(
     `SELECT 1 FROM email_suppressions WHERE email = $1`,
@@ -1453,6 +1494,8 @@ module.exports = {
   purgeOrderSourceMedia,
   findOrdersEligibleForFinalMediaExpiry,
   expireOrderFinalMedia,
+  findOrdersEligibleForStoryAnonymization,
+  anonymizeOrderStory,
   updateGenerationPhaseIfLater,
   startRegenerationJob, updateRegenerationPhaseIfLater, markRegenerationStatus,
   claimOrderForProviderFinalization, claimOrderForRegeneration, claimOrderForInitialGeneration,
