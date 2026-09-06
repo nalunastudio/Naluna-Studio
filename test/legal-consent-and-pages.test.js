@@ -55,9 +55,10 @@ test('terms.html: "Naluna Studio" (nume de brand) e marcat translate="no" + clas
   assert.equal(wrapped, totalOccurrences, 'FIECARE aparitie a "Naluna Studio" din pagina trebuie protejata, nu doar unele');
 });
 
-test('terms.html: "Natalia Andoni" (nume propriu) e marcat translate="no" + class="notranslate", DAR "Operated by" ramane text simplu, netraductor-blocat — traducerea automata a restului expresiei/paginii nu trebuie afectata', () => {
+test('terms.html: "Natalia Andoni" (nume propriu) e marcat translate="no" + class="notranslate", DAR "Operated by" ramane text simplu, netraductor-blocat — traducerea automata a restului expresiei/paginii nu trebuie afectata. Spatiul dintre ele e MUTAT in interiorul span-ului (regresie reala gasita live: Google Translate RO afisa "Operat deNatalia Andoni", fara spatiu) — face parte din continutul protejat, nu se mai poate pierde la reconstructia traducerii', () => {
   const html = read('public/terms.html');
-  assert.match(html, /Operated by <span translate="no" class="notranslate">Natalia Andoni<\/span>/);
+  assert.match(html, /Operated by<span translate="no" class="notranslate"> Natalia Andoni<\/span>/, 'spatiul trebuie sa fie DUPA deschiderea span-ului, nu inainte de el');
+  assert.ok(!html.includes('Operated by <span'), 'nu trebuie sa mai existe un spatiu inainte de span (acolo se pierdea la traducere)');
   assert.ok(!html.includes('translate="no">Operated by'), '"Operated by" nu trebuie inclus in span-ul notranslate — lasat sa se traduca normal (cerinta explicita)');
 });
 
