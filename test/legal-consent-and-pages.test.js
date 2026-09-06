@@ -337,15 +337,144 @@ test('server.js: curatarea materialelor sursa ruleaza automat (setInterval, .unr
   assert.ok(adminMwIdx !== -1 && adminMwIdx < routeIdx, 'ruta trebuie inregistrata DUPA middleware-ul de autentificare admin');
 });
 
-test('Privacy Policy: accesul la produsul FINAL cumparat ramane neschimbat (legat de existenta comenzii), fara nicio perioada in zile inventata langa acea propozitie — decizie de business separata, NU luata aici', () => {
-  const html = read('public/privacy.html');
-  const idx = html.indexOf('purchased song or video, and your order record');
-  assert.notEqual(idx, -1, 'trebuie sa existe categoria separata pentru produsul final cumparat');
-  const sentenceEnd = html.indexOf('</li>', idx);
-  const sentence = html.slice(idx, sentenceEnd);
-  assert.ok(sentence.includes('for as long as your order exists'), 'accesul la produsul final ramane legat de existenta comenzii, neschimbat');
-  assert.ok(!/\b\d+\s*(day|days|month|months|year|years)\b/i.test(sentence), 'NU trebuie sa apara nicio perioada calendaristica langa produsul final — e o decizie separata, ne-luata inca');
-  assert.ok(!/\b(permanent|lifetime|forever)\b/i.test(html), 'nu trebuie promisa o disponibilitate "permanenta"/"lifetime" nerealist de garantat');
+// ---------------------------------------------------------------------------------------------
+// Acces gazduit 30 de zile la produsul FINAL (decizie de business 2026-09-06 — inlocuieste
+// gate-ul anterior: perioada e acum DECISA si REAL implementata, nu doar descrisa)
+// ---------------------------------------------------------------------------------------------
+test('Privacy Policy/Terms/Refund: perioada de acces gazduit la produsul final e EXACT "30 days"/"30 de zile" peste tot — niciodata "1 month"/"o luna", niciodata "permanent"/"lifetime"', () => {
+  for (const page of ['privacy.html', 'terms.html', 'refund.html']) {
+    const html = read(`public/${page}`);
+    assert.match(html, /30 days? from delivery|30-day/i, `${page} trebuie sa declare explicit 30 de zile`);
+    assert.ok(!/\b1\s*month\b|\bone month\b/i.test(html), `${page} nu trebuie sa foloseasca "1 month"/"one month" in loc de "30 days"`);
+    assert.ok(!/\b(permanent|lifetime|forever)\b/i.test(html), `${page} nu trebuie sa promita o disponibilitate "permanenta"/"lifetime"`);
+  }
+});
+
+test('Terms/Refund/Privacy: expirarea accesului gazduit e declarata explicit ca NEAFECTAND drepturile statutare / evidenta contabila-legala', () => {
+  const terms = read('public/terms.html');
+  const refund = read('public/refund.html');
+  const privacy = read('public/privacy.html');
+  assert.match(terms, /does not affect your statutory rights/);
+  assert.match(refund, /does not affect any of your statutory rights|does not itself entitle you to a refund/);
+  assert.match(privacy, /does not affect your statutory rights/);
+  assert.match(privacy, /order record.*is kept separately and is not deleted at the same time/s);
+});
+
+test('server.js: HOSTED_ACCESS_DAYS=30, hostedAccessExpiresAt calculeaza STRICT din paidAt (nu createdAt), isHostedAccessExpired e time-based', () => {
+  assert.match(server, /const HOSTED_ACCESS_DAYS = 30;/);
+  const fn = extractFn(server, 'function hostedAccessExpiresAt(order) {');
+  assert.match(fn, /order\.paidAt/);
+  assert.ok(!fn.includes('createdAt'), 'reperul trebuie sa fie livrarea (paidAt), niciodata crearea comenzii');
+});
+
+test('server.js: toate cele 4 rute de descarcare a produsului final (/media/full, /media/full/:id/gift, /media/wav, /media/video) refuza cu 410 cand accesul gazduit a expirat, INAINTE de a semna vreun URL', () => {
+  for (const sig of [
+    "app.get('/media/full/:orderId', async (req, res, next) => {",
+    "app.get('/media/full/:orderId/gift', async (req, res, next) => {",
+    "app.get('/media/wav/:orderId', async (req, res, next) => {",
+    "app.get('/media/video/:orderId', async (req, res, next) => {"
+  ]) {
+    const fn = extractFn(server, sig);
+    const expiredIdx = fn.indexOf('isHostedAccessExpired(order)');
+    const signIdx = fn.indexOf('getSignedDownloadUrl');
+    assert.notEqual(expiredIdx, -1, `${sig} trebuie sa verifice isHostedAccessExpired`);
+    assert.ok(signIdx === -1 || expiredIdx < signIdx, `${sig}: verificarea de expirare trebuie sa fie INAINTE de semnarea URL-ului`);
+    assert.match(fn, /res\.status\(410\)/);
+  }
+});
+
+test('server.js: cele 4 rute de descarcare folosesc attachmentDisposition (Content-Disposition: attachment) — descarcare reala pe mobil (Safari iOS deschide altfel inline resursele cross-origin)', () => {
+  for (const sig of [
+    "app.get('/media/full/:orderId', async (req, res, next) => {",
+    "app.get('/media/full/:orderId/gift', async (req, res, next) => {",
+    "app.get('/media/wav/:orderId', async (req, res, next) => {",
+    "app.get('/media/video/:orderId', async (req, res, next) => {"
+  ]) {
+    const fn = extractFn(server, sig);
+    assert.match(fn, /attachmentDisposition\(/, `${sig} trebuie sa foloseasca attachmentDisposition`);
+  }
+  const dispoFn = extractFn(server, 'function attachmentDisposition(baseName, ext) {');
+  assert.match(dispoFn, /filename\*=UTF-8''/, 'trebuie sa suporte diacritice (RFC 5987), nu doar ASCII');
+});
+
+test('storage.js: getSignedDownloadUrl accepta un al treilea parametru contentDisposition, trimis ca ResponseContentDisposition catre R2/S3 DOAR daca e furnizat (preview-urile raman nedistorsionate)', () => {
+  const storage = read('storage.js');
+  const fn = extractFn(storage, 'async function getSignedDownloadUrl(key, expirySeconds = 600, contentDisposition = null) {');
+  assert.match(fn, /ResponseContentDisposition: contentDisposition/);
+});
+
+test('GET /api/orders/access/:token si GET /api/orders/:orderId expun hostedAccessExpiresAt/hostedAccessExpired — calculat live, nu doar dupa ce maturarea zilnica a rulat', () => {
+  const accessFn = extractFn(server, "app.get('/api/orders/access/:token', lookupLimiter, async (req, res, next) => {");
+  assert.match(accessFn, /hostedAccessExpiresAt\(order\)/);
+  assert.match(accessFn, /hostedAccessExpired: isHostedAccessExpired\(order\)/);
+  const orderFn = extractFn(server, "app.get('/api/orders/:orderId', async (req, res, next) => {");
+  assert.match(orderFn, /hostedAccessExpiresAt\(order\)/);
+  assert.match(orderFn, /hostedAccessExpired: isHostedAccessExpired\(order\)/);
+});
+
+test('db.js: final_media_expired_at exista in schema, findOrdersEligibleForFinalMediaExpiry cauta STRICT status ready + neanonimizata + regenerare inactiva, expireOrderFinalMedia scrie STRICT variants+final_media_expired_at (nu atinge recipient/story/pret/status)', () => {
+  assert.match(db, /ALTER TABLE orders ADD COLUMN IF NOT EXISTS final_media_expired_at TIMESTAMPTZ;/);
+  const findFn = extractFn(db, 'async function findOrdersEligibleForFinalMediaExpiry(cutoffDate) {');
+  assert.match(findFn, /status = 'ready'/);
+  assert.match(findFn, /anonymized_at IS NULL/);
+  assert.match(findFn, /regeneration_status IS DISTINCT FROM 'running'/);
+  const expireFn = extractFn(db, 'async function expireOrderFinalMedia(id, newVariants) {');
+  assert.match(expireFn, /UPDATE orders SET variants = \$2::jsonb, final_media_expired_at = now\(\)/);
+  assert.ok(!expireFn.includes('recipient') && !expireFn.includes('story') && !expireFn.includes('price') && !expireFn.includes('status ='));
+});
+
+test('server.js: expireStaleFinalMedia() sterge REAL toate cele 5 chei media (fullKey/previewKey/videoKey/videoPreviewKey/wavKey) din storage, izolat per fisier, sare o randare video activa, ruleaza zilnic (setInterval) SI e declansabila manual (admin)', () => {
+  const fn = extractFn(server, 'async function expireStaleFinalMedia() {');
+  for (const key of ['v.fullKey', 'v.previewKey', 'v.videoKey', 'v.videoPreviewKey', 'v.wavKey']) {
+    assert.ok(fn.includes(key), `expireStaleFinalMedia trebuie sa colecteze ${key} pentru stergere`);
+  }
+  assert.match(fn, /isVideoLockActive\(order\)/);
+  assert.match(fn, /db\.expireOrderFinalMedia\(order\.id, newVariants\)/);
+  assert.match(server, /setInterval\(\(\) => \{ expireStaleFinalMedia\(\)\.catch/);
+  const routeIdx = server.indexOf("app.post('/api/admin/retention/expire-final-media'");
+  const adminMwIdx = server.indexOf("app.use('/api/admin', adminAuthLimiter, requireAdminAuth);");
+  assert.ok(routeIdx !== -1 && adminMwIdx !== -1 && adminMwIdx < routeIdx, 'ruta manuala trebuie protejata de acelasi middleware admin');
+});
+
+test('comanda-mea.html: cand hostedAccessExpired e true, se afiseaza STRICT starea curata de expirare (access_expired_title/body) — NICIODATA playerul/linkurile de descarcare (ar fi sparte)', () => {
+  const html = read('public/comanda-mea.html');
+  const fn = extractFn(html, 'async function lookup(tokenOverride) {');
+  assert.match(fn, /const accessExpired = o\.status === 'ready' && !!o\.hostedAccessExpired;/);
+  assert.match(fn, /accessExpired \? `/);
+  assert.match(fn, /t\.access_expired_title/);
+  assert.match(fn, /t\.access_expired_body/);
+  // playerul/linkurile de extras sunt STRICT conditionate de "!accessExpired"
+  assert.match(fn, /!accessExpired && \(o\.plan === 'premium' \|\| o\.plan === 'video'\) && o\.hasWav/);
+});
+
+test('comanda-mea.html: toate cele 8 limbi au access_expired_title, access_expired_body si download_tip (ghidare descarcare mobil, FARA promisiunea falsa de salvare automata in Poze/Galerie)', () => {
+  const html = read('public/comanda-mea.html');
+  for (const key of ['access_expired_title', 'access_expired_body', 'download_tip']) {
+    const count = (html.match(new RegExp(`${key}:`, 'g')) || []).length;
+    assert.equal(count, 8, `asteptat 8 aparitii ${key}, gasit ${count}`);
+  }
+  assert.ok(!/automatically save[sd]? to (your )?(photos|gallery|camera roll)/i.test(html), 'nu trebuie afirmata o salvare automata in Poze/Galerie — necesita mereu o actiune a utilizatorului');
+});
+
+test('melodia-mea.html: checkout_access_note (dezvaluire pre-cumparare a celor 30 de zile) exista in toate cele 8 limbi si e afisat langa bara de consimtamant, INAINTE de plata', () => {
+  const html = read('public/melodia-mea.html');
+  const count = (html.match(/checkout_access_note:/g) || []).length;
+  assert.equal(count, 8, `asteptat 8 aparitii checkout_access_note, gasit ${count}`);
+  assert.ok(html.includes('id="checkout-access-note"'));
+  const fn = extractFn(html, 'function applyStaticTexts() {');
+  assert.match(fn, /checkout-access-note'\)\.textContent = t\.checkout_access_note;/);
+});
+
+test('server.js: CONSENT_POLICY_VERSION a fost incrementata (v3) fata de v2 — dezvaluirea noua a celor 30 de zile e o informatie materiala noua pre-cumparare, niciodata retroactiva pentru comenzi deja platite', () => {
+  assert.match(server, /const CONSENT_POLICY_VERSION = '2026-09-06-v3';/);
+});
+
+test('server.js: emailul de livrare mentioneaza EXPLICIT "30 days"/"30 de zile" (nu "1 month") si incurajarea de a descarca, in toate cele 8 sabloane', () => {
+  const fn = extractFn(server, 'async function sendDeliveryEmail(order) {');
+  const count = (fn.match(/downloadReminder\}<\/p>/g) || []).length;
+  assert.equal(count, 8, `asteptat downloadReminder in toate cele 8 sabloane, gasit ${count}`);
+  assert.match(fn, /DOWNLOAD_REMINDER = \{/);
+  assert.match(fn, /30 days from delivery/);
 });
 
 test('Privacy Policy: retentia materialelor SURSA (foto/video incarcate) e diferentiata de produsul final si REAL implementata (90 zile = SOURCE_MEDIA_RETENTION_DAYS din server.js, nu un numar inventat)', () => {

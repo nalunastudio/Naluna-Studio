@@ -291,6 +291,12 @@ async function initDb() {
   // de business separata (vezi Privacy Policy, sectiunea Retentie). source_media_purged_at e
   // audit minim (cand a rulat curatarea), NICIODATA folosit pentru a atinge variants/videoKey.
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS source_media_purged_at TIMESTAMPTZ;`);
+  // Decizie de business 2026-09-06: acces GAZDUIT la produsul FINAL cumparat (melodie/WAV/
+  // video) garantat 30 de zile depline de la livrare (paid_at, vezi HOSTED_ACCESS_DAYS din
+  // server.js), apoi fisierele pot fi sterse din storage. final_media_expired_at e audit minim
+  // (cand a rulat REAL stergerea) — NU controleaza singur accesul (acela e calculat live, din
+  // paid_at, ca sa fie corect chiar inainte ca maturarea zilnica sa apuce sa ruleze).
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS final_media_expired_at TIMESTAMPTZ;`);
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS checkout_variant_id TEXT;`);
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS checkout_media_revision INTEGER;`);
 
@@ -1010,6 +1016,35 @@ async function purgeOrderSourceMedia(id) {
   );
 }
 
+// Acces gazduit 30 de zile la produsul FINAL (toate cele 3 pachete — melodie, si unde e cazul
+// WAV/video). Eligibila: comanda platita ('ready'), inca ne-expirata explicit, si NEATINSA de
+// o cerere GDPR anterioara (anonymized_at deja a golit variants — nimic de facut acolo).
+async function findOrdersEligibleForFinalMediaExpiry(cutoffDate) {
+  const result = await pool.query(
+    `SELECT * FROM orders
+     WHERE status = 'ready'
+       AND final_media_expired_at IS NULL
+       AND anonymized_at IS NULL
+       AND regeneration_status IS DISTINCT FROM 'running'
+       AND paid_at IS NOT NULL AND paid_at < $1
+     ORDER BY paid_at ASC`,
+    [cutoffDate]
+  );
+  return result.rows.map(rowToOrder);
+}
+
+// Goleste STRICT cheile de storage ale fiecarei variante (fullKey/previewKey/videoKey/
+// videoPreviewKey/wavKey) — NICIODATA lyrics/id/celelalte metadate ale variantei, si NICIODATA
+// campurile de identitate/contact/poveste ale comenzii (categorie separata, cu propria politica
+// — vezi Privacy Policy). newVariants e calculat in JS de apelant (server.js), dupa ce fisierele
+// au fost deja sterse real din storage.
+async function expireOrderFinalMedia(id, newVariants) {
+  await pool.query(
+    `UPDATE orders SET variants = $2::jsonb, final_media_expired_at = now() WHERE id = $1`,
+    [id, JSON.stringify(newVariants)]
+  );
+}
+
 async function isEmailSuppressed(email) {
   const result = await pool.query(
     `SELECT 1 FROM email_suppressions WHERE email = $1`,
@@ -1416,6 +1451,8 @@ module.exports = {
   anonymizeOrder,
   findOrdersEligibleForSourceMediaPurge,
   purgeOrderSourceMedia,
+  findOrdersEligibleForFinalMediaExpiry,
+  expireOrderFinalMedia,
   updateGenerationPhaseIfLater,
   startRegenerationJob, updateRegenerationPhaseIfLater, markRegenerationStatus,
   claimOrderForProviderFinalization, claimOrderForRegeneration, claimOrderForInitialGeneration,

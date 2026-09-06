@@ -135,7 +135,12 @@ const PLAN_PRICES = { standard: 15, premium: 25, video: 35 };
 // Retur era in vigoare cand clientul a bifat consimtamantul, la fiecare comanda — se schimba
 // STRICT daca textul acelor pagini se modifica material ulterior, niciodata retroactiv pentru
 // comenzi deja platite.
-const CONSENT_POLICY_VERSION = '2026-09-02-v2';
+// v3 (2026-09-06): adaugata dezvaluirea pre-cumparare a perioadei de acces gazduit (30 de zile
+// de la livrare) langa bara de consimtamant din melodia-mea.html — informatie noua, materiala
+// pentru decizia de cumparare a unui continut digital, desi drepturile consimtite (livrare
+// imediata, pierderea dreptului de anulare, fara rambursare pentru schimbarea parerii) raman
+// identice. Niciodata retroactiv pentru comenzi deja platite sub v2.
+const CONSENT_POLICY_VERSION = '2026-09-06-v3';
 // REGULA FINALA A PACHETELOR (2026-08-14, corectata — vezi si comentariul de la
 // getGiftVariant in lib/entitlements.js): sursa unica server-side pentru cate melodii
 // (variante) primeste fiecare plan — nu doar text in UI. Standard SI Video = o singura
@@ -534,6 +539,36 @@ const ORDER_MEDIA_MIN_ITEMS = 3;
 const VIDEO_LOCK_EXPIRY_MS = 20 * 60 * 1000;
 function isVideoLockActive(order) {
   return !!order.videoRenderClaimedAt && (Date.now() - new Date(order.videoRenderClaimedAt).getTime()) < VIDEO_LOCK_EXPIRY_MS;
+}
+
+// ==========================================================================================
+// Acces gazduit la produsul FINAL cumparat (decizie de business 2026-09-06): EXACT 30 de zile
+// depline de la LIVRAREA FINALA, nu de la plata sau crearea comenzii — desi in arhitectura
+// noastra cele doua coincid practic pentru toate cele 3 pachete: webhook-ul de plata REFUZA
+// sa marcheze comanda 'ready' pentru pachetul video daca videoclipul nu exista deja
+// (vezi 'video_not_valid' mai sus), iar Standard/Premium sunt mereu previzualizate GRATUIT
+// inainte de plata — deci continutul de baza exista deja in momentul paid_at. Extra-ul WAV
+// (premium/video) e generat asincron la CATEVA SECUNDE/MINUTE dupa plata (generatePremiumExtras)
+// — tratat aici ca un format suplimentar al ACELUIASI cantec deja livrat, nu ca o livrare
+// separata care ar amana ceasul de 30 de zile (altfel termenul contractual ar deveni ostatic
+// unui proces tehnic de fundal). paid_at ramane deci reperul unic si simplu de "livrare finala".
+const HOSTED_ACCESS_DAYS = 30;
+function hostedAccessExpiresAt(order) {
+  if (!order.paidAt) return null;
+  return new Date(new Date(order.paidAt).getTime() + HOSTED_ACCESS_DAYS * 24 * 60 * 60 * 1000);
+}
+function isHostedAccessExpired(order) {
+  const exp = hostedAccessExpiresAt(order);
+  return !!exp && Date.now() > exp.getTime();
+}
+
+// Content-Disposition: attachment — vezi comentariul din storage.js getSignedDownloadUrl().
+// RFC 5987 (filename*=UTF-8''...) pentru diacritice (nume de destinatari), plus un fallback
+// ASCII simplu in campul "filename" simplu, pentru browsere vechi care nu citesc filename*.
+function attachmentDisposition(baseName, ext) {
+  const clean = String(baseName || 'fisier').replace(/["\r\n]/g, '').trim() || 'fisier';
+  const asciiFallback = clean.replace(/[^\x20-\x7E]/g, '').trim() || 'fisier';
+  return `attachment; filename="${asciiFallback}.${ext}"; filename*=UTF-8''${encodeURIComponent(clean)}.${ext}`;
 }
 
 // STOCARE PE DISC, NU IN MEMORIE — cu memoryStorage(), pana la ORDER_MEDIA_MAX_ITEMS (30)
@@ -1271,6 +1306,72 @@ setInterval(() => { purgeStaleSourceMedia().catch(() => {}); }, 24 * 60 * 60 * 1
 app.post('/api/admin/retention/purge-source-media', async (req, res, next) => {
   try {
     const result = await purgeStaleSourceMedia();
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ==========================================================================================
+// Expirare acces gazduit la produsul FINAL (decizie de business 2026-09-06) — dupa
+// HOSTED_ACCESS_DAYS (30) zile de la paid_at, fisierele REALE (melodie/WAV/video) sunt sterse
+// din storage si cheile golite din variants. NU atinge NICIODATA: id, pret, status, plan,
+// paid_at, consimtamant, referinte Stripe, recipient/story (categorie separata) — doar
+// fisierele media ale produsului FINAL. Accesul clientului e deja blocat time-based (vezi
+// isHostedAccessExpired, verificat live in cele 4 rute /media/*) INDIFERENT daca aceasta
+// maturare a rulat deja — asta e doar curatarea REALA a storage-ului, nu poarta de acces.
+// ==========================================================================================
+async function expireStaleFinalMedia() {
+  const cutoff = new Date(Date.now() - HOSTED_ACCESS_DAYS * 24 * 60 * 60 * 1000);
+  let candidates = [];
+  try {
+    candidates = await db.findOrdersEligibleForFinalMediaExpiry(cutoff);
+  } catch (err) {
+    console.error('Retentie: nu am putut interoga comenzile eligibile pentru expirarea produsului final:', err.message);
+    return { checked: 0, expired: 0, skipped: 0 };
+  }
+
+  let expired = 0, skipped = 0;
+  for (const order of candidates) {
+    if (isVideoLockActive(order)) { skipped++; continue; }
+
+    const keysToDelete = [];
+    const newVariants = (order.variants || []).map(v => {
+      if (v.fullKey) keysToDelete.push(v.fullKey);
+      if (v.previewKey) keysToDelete.push(v.previewKey);
+      if (v.videoKey) keysToDelete.push(v.videoKey);
+      if (v.videoPreviewKey) keysToDelete.push(v.videoPreviewKey);
+      if (v.wavKey) keysToDelete.push(v.wavKey);
+      const { fullKey, previewKey, videoKey, videoPreviewKey, wavKey, ...rest } = v;
+      return rest;
+    });
+
+    for (const key of keysToDelete) {
+      try {
+        await storage.deletePrivateFile(key);
+      } catch (err) {
+        // izolat, ca la anonymize/purgeStaleSourceMedia — nu opreste restul, nu blocheaza
+        // marcarea comenzii ca expirata (cheile sunt oricum golite mai jos)
+      }
+    }
+    try {
+      await db.expireOrderFinalMedia(order.id, newVariants);
+      expired++;
+    } catch (err) {
+      console.error(`Retentie: nu am putut marca comanda ${order.id} ca avand produsul final expirat:`, err.message);
+    }
+  }
+  if (expired > 0 || skipped > 0) {
+    console.warn(`Retentie: produs final expirat pentru ${expired} comenzi, ${skipped} sarite (randare inca activa), din ${candidates.length} eligibile.`);
+  }
+  return { checked: candidates.length, expired, skipped };
+}
+
+setInterval(() => { expireStaleFinalMedia().catch(() => {}); }, 24 * 60 * 60 * 1000).unref();
+
+app.post('/api/admin/retention/expire-final-media', async (req, res, next) => {
+  try {
+    const result = await expireStaleFinalMedia();
     res.json({ ok: true, ...result });
   } catch (err) {
     next(err);
@@ -2735,7 +2836,13 @@ app.get('/api/orders/:orderId', async (req, res, next) => {
       mediaMinItems: ORDER_MEDIA_MIN_ITEMS,
       mediaMaxItems: ORDER_MEDIA_MAX_ITEMS,
       videoStatus,
-      createdAt: order.createdAt
+      createdAt: order.createdAt,
+      // Acces gazduit 30 de zile de la livrare (vezi HOSTED_ACCESS_DAYS) — expus si aici (nu
+      // doar in /api/orders/access/:token) pentru ca succes.html foloseste ACEST endpoint
+      // pentru propriul player/descarcare, imediat dupa plata (practic niciodata expirat in
+      // acel moment, dar expus consecvent, defensiv, niciodata presupus).
+      hostedAccessExpiresAt: hostedAccessExpiresAt(order),
+      hostedAccessExpired: isHostedAccessExpired(order)
     });
   } catch (err) {
     next(err);
@@ -3786,11 +3893,14 @@ app.get('/media/full/:orderId', async (req, res, next) => {
     if (order.status !== 'ready') {
       return res.status(403).send('Melodia completă se deblochează după plată');
     }
+    if (isHostedAccessExpired(order)) {
+      return res.status(410).send('Perioada de acces găzduit de 30 de zile s-a încheiat. Drepturile tale legale nu sunt afectate — scrie-ne la contact@nalunastudio.com.');
+    }
 
     const variant = (order.variants || []).find(v => v.id === order.selectedVariantId);
 
     if (storage.CLOUD_ENABLED && variant && variant.fullKey) {
-      const signedUrl = await storage.getSignedDownloadUrl(variant.fullKey, 600);
+      const signedUrl = await storage.getSignedDownloadUrl(variant.fullKey, 600, attachmentDisposition(`melodie-pentru-${order.recipient}`, 'mp3'));
       return res.redirect(302, signedUrl);
     }
 
@@ -3821,11 +3931,14 @@ app.get('/media/full/:orderId/gift', async (req, res, next) => {
     if (order.status !== 'ready') {
       return res.status(403).send('Melodia cadou se deblochează după plată');
     }
+    if (isHostedAccessExpired(order)) {
+      return res.status(410).send('Perioada de acces găzduit de 30 de zile s-a încheiat. Drepturile tale legale nu sunt afectate — scrie-ne la contact@nalunastudio.com.');
+    }
 
     const giftVariant = getGiftVariant(order);
 
     if (storage.CLOUD_ENABLED && giftVariant && giftVariant.fullKey) {
-      const signedUrl = await storage.getSignedDownloadUrl(giftVariant.fullKey, 600);
+      const signedUrl = await storage.getSignedDownloadUrl(giftVariant.fullKey, 600, attachmentDisposition(`melodie-cadou-pentru-${order.recipient}`, 'mp3'));
       return res.redirect(302, signedUrl);
     }
 
@@ -3857,11 +3970,14 @@ app.get('/media/wav/:orderId', async (req, res, next) => {
 
     if (order.status !== 'ready') return res.status(403).send('Fișierul WAV se deblochează după plată');
     if (order.plan !== 'premium' && order.plan !== 'video') return denyGeneric();
+    if (isHostedAccessExpired(order)) {
+      return res.status(410).send('Perioada de acces găzduit de 30 de zile s-a încheiat. Drepturile tale legale nu sunt afectate — scrie-ne la contact@nalunastudio.com.');
+    }
 
     const variant = (order.variants || []).find(v => v.id === order.selectedVariantId);
     if (!variant || !variant.wavKey) return res.status(202).json({ status: 'processing' });
 
-    const signedUrl = await storage.getSignedDownloadUrl(variant.wavKey, 600);
+    const signedUrl = await storage.getSignedDownloadUrl(variant.wavKey, 600, attachmentDisposition(`melodie-pentru-${order.recipient}`, 'wav'));
     return res.redirect(302, signedUrl);
   } catch (err) {
     next(err);
@@ -3888,11 +4004,14 @@ app.get('/media/video/:orderId', async (req, res, next) => {
     // doua previzualizari audio de 40 de secunde (v.previewUrl, neschimbat).
     if (order.status !== 'ready') return res.status(403).send('Videoclipul se deblochează după plată');
     if (order.plan !== 'video') return denyGeneric();
+    if (isHostedAccessExpired(order)) {
+      return res.status(410).send('Perioada de acces găzduit de 30 de zile s-a încheiat. Drepturile tale legale nu sunt afectate — scrie-ne la contact@nalunastudio.com.');
+    }
 
     const variant = (order.variants || []).find(v => v.id === order.selectedVariantId);
     if (!variant || !variant.videoKey) return res.status(202).json({ status: 'processing' });
 
-    const signedUrl = await storage.getSignedDownloadUrl(variant.videoKey, 600);
+    const signedUrl = await storage.getSignedDownloadUrl(variant.videoKey, 600, attachmentDisposition(`videoclip-pentru-${order.recipient}`, 'mp4'));
     return res.redirect(302, signedUrl);
   } catch (err) {
     next(err);
@@ -3929,7 +4048,13 @@ app.get('/api/orders/access/:token', lookupLimiter, async (req, res, next) => {
       hasWav: !!(selectedVariant && selectedVariant.wavKey),
       hasVideo: !!(selectedVariant && selectedVariant.videoKey),
       hasGiftAudio: !!(giftVariant && giftVariant.fullKey),
-      uploadedMedia: (order.uploadedMedia || []).map(m => ({ type: m.type, section: m.section || null }))
+      uploadedMedia: (order.uploadedMedia || []).map(m => ({ type: m.type, section: m.section || null })),
+      // Acces gazduit 30 de zile de la livrare (vezi HOSTED_ACCESS_DAYS) — expus AICI ca reper
+      // de TIMP, independent de daca stergerea fizica (expireStaleFinalMedia) a rulat deja sau
+      // nu, ca frontend-ul sa arate STRICT starea corecta de "acces expirat" chiar daca fisierul
+      // ar mai exista tehnic inca o vreme in storage (cursa cu maturarea zilnica).
+      hostedAccessExpiresAt: hostedAccessExpiresAt(order),
+      hostedAccessExpired: isHostedAccessExpired(order)
     });
   } catch (err) {
     next(err);
@@ -8091,6 +8216,22 @@ async function sendDeliveryEmail(order) {
   };
   const extrasNote = (EXTRAS_NOTE[order.plan] && EXTRAS_NOTE[order.plan][order.lang]) || '';
 
+  // Decizie de business 2026-09-06: acces gazduit garantat 30 de zile de la livrare — clientul
+  // trebuie incurajat clar sa descarce si sa pastreze fisierele, nu doar informat in Politica de
+  // Confidentialitate. "30 days"/"30 de zile" EXPLICIT peste tot, niciodata "o luna"/"1 month" —
+  // ca perioada contractuala sa fie fara ambiguitate.
+  const DOWNLOAD_REMINDER = {
+    ro: ` Poți asculta/viziona și descărca fișierele tale oricând timp de 30 de zile de la livrare la <a href="${accessUrl}">pagina comenzii tale</a> — îți recomandăm să le descarci și să le păstrezi cât mai curând.`,
+    en: ` You can listen to/watch and download your files anytime for 30 days from delivery at <a href="${accessUrl}">your order page</a> — we recommend downloading and keeping them as soon as you can.`,
+    de: ` Du kannst deine Dateien 30 Tage ab Lieferung jederzeit anhören/ansehen und herunterladen, auf <a href="${accessUrl}">deiner Bestellseite</a> — wir empfehlen, sie so bald wie möglich herunterzuladen und aufzubewahren.`,
+    es: ` Puedes escuchar/ver y descargar tus archivos en cualquier momento durante 30 días desde la entrega en <a href="${accessUrl}">la página de tu pedido</a> — te recomendamos descargarlos y guardarlos lo antes posible.`,
+    it: ` Puoi ascoltare/guardare e scaricare i tuoi file in qualsiasi momento per 30 giorni dalla consegna nella <a href="${accessUrl}">pagina del tuo ordine</a> — ti consigliamo di scaricarli e conservarli il prima possibile.`,
+    fr: ` Vous pouvez écouter/regarder et télécharger vos fichiers à tout moment pendant 30 jours à compter de la livraison sur <a href="${accessUrl}">la page de votre commande</a> — nous vous recommandons de les télécharger et de les conserver dès que possible.`,
+    bg: ` Можеш да слушаш/гледаш и изтеглиш файловете си по всяко време в рамките на 30 дни от доставката на <a href="${accessUrl}">страницата на поръчката ти</a> — препоръчваме ти да ги изтеглиш и запазиш възможно най-скоро.`,
+    tr: ` Dosyalarınızı teslimattan itibaren 30 gün boyunca <a href="${accessUrl}">sipariş sayfanızda</a> istediğiniz zaman dinleyebilir/izleyebilir ve indirebilirsiniz — en kısa sürede indirip saklamanızı öneririz.`
+  };
+  const downloadReminder = DOWNLOAD_REMINDER[order.lang] || DOWNLOAD_REMINDER.ro;
+
   // LAUNCH SAFETY (2026-09-02, Faza 2 — durable confirmation): confirmarea REALA, pe suport
   // durabil (acest email), a consimtamantului dat la checkout — ceruta explicit de Consumer
   // Contracts Regulations 2013 (UK) / Directiva 2011/83/UE. Link-uri ABSOLUTE (DOMAIN) — un link
@@ -8109,21 +8250,21 @@ async function sendDeliveryEmail(order) {
 
   const templates = {
     ro: { subject: `Cântecul tău pentru ${order.recipient} e gata`,
-      html: `<p>Salut,</p><p>Cântecul tău personalizat pentru <strong>${safeRecipient}</strong> e gata.</p><p><a href="${downloadUrl}">Descarcă melodia</a></p>${giftLine}${videoLine}<p>Le poți regăsi oricând la <a href="${accessUrl}">acest link</a>.${extrasNote}</p>${legalLine}<p>— NALUNA</p>` },
+      html: `<p>Salut,</p><p>Cântecul tău personalizat pentru <strong>${safeRecipient}</strong> e gata.</p><p><a href="${downloadUrl}">Descarcă melodia</a></p>${giftLine}${videoLine}<p>Le poți regăsi oricând la <a href="${accessUrl}">acest link</a>.${extrasNote}${downloadReminder}</p>${legalLine}<p>— NALUNA</p>` },
     en: { subject: `Your song for ${order.recipient} is ready`,
-      html: `<p>Hi,</p><p>Your personalised song for <strong>${safeRecipient}</strong> is ready.</p><p><a href="${downloadUrl}">Download your song</a></p>${giftLine}${videoLine}<p>You can find them anytime at <a href="${accessUrl}">this link</a>.${extrasNote}</p>${legalLine}<p>— NALUNA</p>` },
+      html: `<p>Hi,</p><p>Your personalised song for <strong>${safeRecipient}</strong> is ready.</p><p><a href="${downloadUrl}">Download your song</a></p>${giftLine}${videoLine}<p>You can find them anytime at <a href="${accessUrl}">this link</a>.${extrasNote}${downloadReminder}</p>${legalLine}<p>— NALUNA</p>` },
     de: { subject: `Dein Lied für ${order.recipient} ist fertig`,
-      html: `<p>Hallo,</p><p>Dein persönliches Lied für <strong>${safeRecipient}</strong> ist fertig.</p><p><a href="${downloadUrl}">Lied herunterladen</a></p>${giftLine}${videoLine}<p>Du findest sie jederzeit über <a href="${accessUrl}">diesen Link</a>.${extrasNote}</p>${legalLine}<p>— NALUNA</p>` },
+      html: `<p>Hallo,</p><p>Dein persönliches Lied für <strong>${safeRecipient}</strong> ist fertig.</p><p><a href="${downloadUrl}">Lied herunterladen</a></p>${giftLine}${videoLine}<p>Du findest sie jederzeit über <a href="${accessUrl}">diesen Link</a>.${extrasNote}${downloadReminder}</p>${legalLine}<p>— NALUNA</p>` },
     es: { subject: `Tu canción para ${order.recipient} está lista`,
-      html: `<p>Hola,</p><p>Tu canción personalizada para <strong>${safeRecipient}</strong> está lista.</p><p><a href="${downloadUrl}">Descargar la canción</a></p>${giftLine}${videoLine}<p>Puedes encontrarlas siempre en <a href="${accessUrl}">este enlace</a>.${extrasNote}</p>${legalLine}<p>— NALUNA</p>` },
+      html: `<p>Hola,</p><p>Tu canción personalizada para <strong>${safeRecipient}</strong> está lista.</p><p><a href="${downloadUrl}">Descargar la canción</a></p>${giftLine}${videoLine}<p>Puedes encontrarlas siempre en <a href="${accessUrl}">este enlace</a>.${extrasNote}${downloadReminder}</p>${legalLine}<p>— NALUNA</p>` },
     it: { subject: `La tua canzone per ${order.recipient} è pronta`,
-      html: `<p>Ciao,</p><p>La tua canzone personalizzata per <strong>${safeRecipient}</strong> è pronta.</p><p><a href="${downloadUrl}">Scarica la canzone</a></p>${giftLine}${videoLine}<p>Puoi trovarle sempre su <a href="${accessUrl}">questo link</a>.${extrasNote}</p>${legalLine}<p>— NALUNA</p>` },
+      html: `<p>Ciao,</p><p>La tua canzone personalizzata per <strong>${safeRecipient}</strong> è pronta.</p><p><a href="${downloadUrl}">Scarica la canzone</a></p>${giftLine}${videoLine}<p>Puoi trovarle sempre su <a href="${accessUrl}">questo link</a>.${extrasNote}${downloadReminder}</p>${legalLine}<p>— NALUNA</p>` },
     fr: { subject: `Votre chanson pour ${order.recipient} est prête`,
-      html: `<p>Bonjour,</p><p>Votre chanson personnalisée pour <strong>${safeRecipient}</strong> est prête.</p><p><a href="${downloadUrl}">Télécharger la chanson</a></p>${giftLine}${videoLine}<p>Vous pouvez les retrouver à tout moment via <a href="${accessUrl}">ce lien</a>.${extrasNote}</p>${legalLine}<p>— NALUNA</p>` },
+      html: `<p>Bonjour,</p><p>Votre chanson personnalisée pour <strong>${safeRecipient}</strong> est prête.</p><p><a href="${downloadUrl}">Télécharger la chanson</a></p>${giftLine}${videoLine}<p>Vous pouvez les retrouver à tout moment via <a href="${accessUrl}">ce lien</a>.${extrasNote}${downloadReminder}</p>${legalLine}<p>— NALUNA</p>` },
     bg: { subject: `Твоята песен за ${order.recipient} е готова`,
-      html: `<p>Здравей,</p><p>Твоята персонализирана песен за <strong>${safeRecipient}</strong> е готова.</p><p><a href="${downloadUrl}">Изтегли песента</a></p>${giftLine}${videoLine}<p>Можеш да ги намериш винаги на <a href="${accessUrl}">този линк</a>.${extrasNote}</p>${legalLine}<p>— NALUNA</p>` },
+      html: `<p>Здравей,</p><p>Твоята персонализирана песен за <strong>${safeRecipient}</strong> е готова.</p><p><a href="${downloadUrl}">Изтегли песента</a></p>${giftLine}${videoLine}<p>Можеш да ги намериш винаги на <a href="${accessUrl}">този линк</a>.${extrasNote}${downloadReminder}</p>${legalLine}<p>— NALUNA</p>` },
     tr: { subject: `${order.recipient} için şarkınız hazır`,
-      html: `<p>Merhaba,</p><p><strong>${safeRecipient}</strong> için kişiselleştirilmiş şarkınız hazır.</p><p><a href="${downloadUrl}">Şarkınızı indirin</a></p>${giftLine}${videoLine}<p><a href="${accessUrl}">Bu bağlantıdan</a> her zaman ulaşabilirsiniz.${extrasNote}</p>${legalLine}<p>— NALUNA</p>` }
+      html: `<p>Merhaba,</p><p><strong>${safeRecipient}</strong> için kişiselleştirilmiş şarkınız hazır.</p><p><a href="${downloadUrl}">Şarkınızı indirin</a></p>${giftLine}${videoLine}<p><a href="${accessUrl}">Bu bağlantıdan</a> her zaman ulaşabilirsiniz.${extrasNote}${downloadReminder}</p>${legalLine}<p>— NALUNA</p>` }
   };
 
   const template = templates[order.lang] || templates.ro;

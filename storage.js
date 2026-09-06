@@ -237,11 +237,23 @@ function getPublicUrl(key) {
 
 // URL temporar, semnat, pentru fisiere din bucket-ul PRIVAT (melodia completa — doar dupa plata)
 // Expira automat dupa expirySeconds — nu poate fi refolosit la nesfarsit odata generat.
-async function getSignedDownloadUrl(key, expirySeconds = 600) {
+//
+// contentDisposition (optional): fortam R2 sa raspunda cu Content-Disposition: attachment —
+// atributul HTML `download` de pe <a> NU e suficient pentru resurse cross-origin (exact cazul
+// nostru, redirect catre R2) pe Safari iOS, care in schimb DESCHIDE audio/video inline in loc
+// sa descarce. Header-ul de raspuns, setat aici prin R2/S3 (ResponseContentDisposition), e
+// respectat de toate browserele majore, inclusiv Safari iOS — descarcarea reala functioneaza
+// pe mobil, nu doar pe desktop. Omis complet (undefined) pentru preview-uri, care trebuie sa
+// ramana redabile inline, niciodata fortate spre descarcare.
+async function getSignedDownloadUrl(key, expirySeconds = 600, contentDisposition = null) {
   if (!CLOUD_ENABLED) {
     throw new Error('getSignedDownloadUrl() a fost apelat fara stocare cloud activata — folosirea fallback-ului local se face pe alta cale, nu prin URL semnat.');
   }
-  const command = new GetObjectCommand({ Bucket: PRIVATE_BUCKET, Key: key });
+  const command = new GetObjectCommand({
+    Bucket: PRIVATE_BUCKET,
+    Key: key,
+    ...(contentDisposition ? { ResponseContentDisposition: contentDisposition } : {})
+  });
   return getSignedUrl(s3Client, command, { expiresIn: expirySeconds });
 }
 
