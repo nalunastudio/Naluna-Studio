@@ -140,7 +140,16 @@ const PLAN_PRICES = { standard: 15, premium: 25, video: 35 };
 // pentru decizia de cumparare a unui continut digital, desi drepturile consimtite (livrare
 // imediata, pierderea dreptului de anulare, fara rambursare pentru schimbarea parerii) raman
 // identice. Niciodata retroactiv pentru comenzi deja platite sub v2.
-const CONSENT_POLICY_VERSION = '2026-09-06-v3';
+// v4 (2026-09-06, corectie ceruta explicit): consent_text/emailul de livrare spuneau "vreau ca
+// melodia mea sa INCEAPA SA FIE CREATA acum" — fals in raport cu fluxul real (melodia/videoclipul
+// exista DEJA, generate/randate gratuit inainte de plata; verificat exhaustiv ca produsul exista
+// la momentul platii pentru toate cele 3 pachete). Reg. 37 din Consumer Contracts Regulations
+// 2013 (UK) leaga pierderea dreptului de anulare de inceperea LIVRARII/PERFORMANTEI, nu de
+// crearea continutului — formularea a fost corectata sa spuna ca produsul, deja creat, incepe sa
+// fie LIVRAT acum. Substanta drepturilor consimtite ramane identica (livrare imediata, pierderea
+// dreptului de anulare, fara rambursare pentru schimbarea parerii) — doar framing-ul factual s-a
+// schimbat. Niciodata retroactiv pentru comenzi deja platite sub v3.
+const CONSENT_POLICY_VERSION = '2026-09-06-v4';
 // REGULA FINALA A PACHETELOR (2026-08-14, corectata — vezi si comentariul de la
 // getGiftVariant in lib/entitlements.js): sursa unica server-side pentru cate melodii
 // (variante) primeste fiecare plan — nu doar text in UI. Standard SI Video = o singura
@@ -7989,6 +7998,10 @@ function buildPrompt(order, feedback, genreOverride) {
   const storyLabelFull = ' First verse must open with a real detail from this story, never a generic line; include any explicit written message exactly; invent nothing beyond what is written here. Story: ';
   const MIN_USEFUL_STORY_CHARS = 40;
   const feedbackLabel = ' Client-requested adjustment: ';
+  // CORECTIE (2026-09-06, regresie urgenta gasita prin MASURARE directa, nu presupunere):
+  // eticheta scurta, folosita STRICT cand eticheta completa (31 caractere) nu ar lasa loc
+  // pentru text util — vezi mai jos.
+  const feedbackLabelShort = ' Adjust: ';
   const feedbackText = feedback ? String(feedback).trim() : '';
   // CORECȚIE (2026-08-30, "Mai veselă" — vezi comentariul detaliat de la BRIGHTEN_MOOD_PATTERNS
   // mai sus): STRICT pentru Video, eticheta feedback-ului devine explicit de prioritate, iar
@@ -8007,7 +8020,30 @@ function buildPrompt(order, feedback, genreOverride) {
   let feedbackFull = '';
   if (feedbackText) {
     const extraSpace = Math.max(0, remaining - STORY_MIN_RESERVE);
-    const feedbackBudget = Math.max(0, Math.floor(extraSpace * 0.6) - effectiveFeedbackLabel.length);
+    let labelToUse = effectiveFeedbackLabel;
+    let feedbackBudget = Math.max(0, Math.floor(extraSpace * 0.6) - labelToUse.length);
+    // CORECTIE (2026-09-06, REGRESIE URGENTA, gasita prin masurare directa — nu presupunere):
+    // pentru o comanda TIPICA (poveste si ocazie obisnuite, deloc extreme), "remaining" la acest
+    // punct e adesea SUB STORY_MIN_RESERVE (masurat direct: 149 caractere ramase, sub cele 190
+    // rezervate povestii) — extraSpace devine 0, deci feedbackBudget devine 0, iar o cerere
+    // EXPLICITA a clientului la o regenerare deja PLATITA (schimbare de directie/gen, "mai
+    // vesela" etc.) era stearsa COMPLET si silentios, inainte sa ajunga la furnizor — cauza reala
+    // a "editarea nu respecta cerintele" (nu doar clauza de intarire a directiei, corectata mai
+    // sus — fara text de feedback deloc, acea clauza nici nu ajungea sa fie evaluata). Feedback-ul
+    // e o cerere directa a clientului, nu text de umplutura — merita o rezerva mica GARANTATA,
+    // nu doar acces la un surplus care in practica nu exista aproape niciodata pentru o comanda
+    // obisnuita. Rezerva NU vine NICIODATA din STORY_MIN_RESERVE insusi (povestea ramane la fel
+    // de protejata ca inainte) si nu coboara niciodata povestea sub propriul ei prag absolut de
+    // utilitate (storyLabelPlain + MIN_USEFUL_STORY_CHARS) — foloseste STRICT eticheta scurtata,
+    // acelasi principiu de degradare gratioasa deja folosit pentru eticheta povestii si dictie.
+    if (!isVideoPlan && feedbackBudget < 15) {
+      const absoluteStoryFloor = storyLabelPlain.length + MIN_USEFUL_STORY_CHARS;
+      const safeGuaranteedReserve = Math.max(0, Math.min(50, remaining - absoluteStoryFloor));
+      if (safeGuaranteedReserve > feedbackLabelShort.length) {
+        labelToUse = feedbackLabelShort;
+        feedbackBudget = safeGuaranteedReserve - labelToUse.length;
+      }
+    }
     // Cerinta explicita — "nu tăia și nu elimina în tăcere instrucțiunea din cauza bugetului
     // promptului": STRICT pentru Video, daca insusi textul VERBATIM al clientului nu ar incapea
     // (nu doar clauza suplimentara, care e un adaos optional), eroare clara AICI, inainte de a
@@ -8018,9 +8054,14 @@ function buildPrompt(order, feedback, genreOverride) {
     }
     const feedbackTrimmed = truncateSafely(feedbackText, feedbackBudget);
     if (feedbackTrimmed) {
-      feedbackFull = `${effectiveFeedbackLabel}${feedbackTrimmed}`;
+      feedbackFull = `${labelToUse}${feedbackTrimmed}`;
       remaining -= feedbackFull.length;
-      if (isVideoPlan && detectsBrightenMoodFeedback(feedbackText, order.lang)) {
+      // CORECTIE (2026-09-06, regresie urgenta semnalata explicit — "Romantic -> Motivational,
+      // mai vesela" nu se reflecta suficient in Standard/Premium): clauza de intarire a
+      // directiei muzicale era STRICT pentru Video (isVideoPlan &&) — Standard/Premium primeau
+      // doar propozitia simpla de feedback, fara nicio intarire, desi mecanismul de buget e deja
+      // sigur pentru orice plan (verificat mai jos, neschimbat). Extinsa la toate planurile.
+      if (detectsBrightenMoodFeedback(feedbackText, order.lang)) {
         // Clauza suplimentara e un ADAOS — se include DOAR daca incape INTREAGA (niciodata
         // trunchiata la mijlocul unei propozitii, ceea ce ar putea-o face ea insasi confuza)
         // si niciodata pe seama rezervei minime garantate pentru poveste.
@@ -8048,17 +8089,34 @@ function buildPrompt(order, feedback, genreOverride) {
   // DOAR pentru poveste (comportamentul original) — dictia e omisa cu gratie STRICT in acel caz
   // extrem, NICIODATA in detrimentul rezervei garantate pentru poveste (STORY_MIN_RESERVE).
   const dictionInstruction = getDictionInstruction(order.lang, 'short');
-  function pickStoryLabel(reserveForDiction) {
-    const extra = reserveForDiction ? dictionInstruction.length : 0;
+  // PUNCT 3 (2026-09-06): vezi si comentariul de mai jos, la locul unde e efectiv adaugata in
+  // prompt — mutata AICI (calculata devreme) ca sa poata fi rezervata, la fel ca dictia, INAINTE
+  // de a alege eticheta povestii, nu doar incercata "daca mai ramane loc" dupa (verificat direct:
+  // acel tipar "cea mai joasa prioritate" nu gasea NICIODATA loc pentru o comanda tipica, promptul
+  // fiind deja la limita de 600 caractere) — altfel corectia ar fi ramas, in practica, un no-op.
+  const bracketLanguageClause = lyricsLanguage !== 'English'
+    ? ` Bracketed tags/notes also in ${lyricsLanguage}, not English.`
+    : '';
+  function pickStoryLabel(reserveLevel) {
+    // reserveLevel: 2 = dictie + eticheta paranteze, 1 = doar dictie, 0 = niciuna
+    const extra = reserveLevel === 2 ? (dictionInstruction.length + bracketLanguageClause.length)
+      : reserveLevel === 1 ? dictionInstruction.length : 0;
     let label = storyLabelFull;
     if (remaining - label.length - extra < MIN_USEFUL_STORY_CHARS) label = storyLabelShort;
     if (remaining - label.length - extra < MIN_USEFUL_STORY_CHARS) label = storyLabelPlain;
     return label;
   }
-  let storyLabel = pickStoryLabel(true);
-  const canReserveForDiction = (remaining - storyLabel.length - dictionInstruction.length) >= MIN_USEFUL_STORY_CHARS;
-  if (!canReserveForDiction) storyLabel = pickStoryLabel(false);
-  const storyBudget = remaining - storyLabel.length - (canReserveForDiction ? dictionInstruction.length : 0);
+  let storyLabel = pickStoryLabel(2);
+  const canReserveForBoth = (remaining - storyLabel.length - dictionInstruction.length - bracketLanguageClause.length) >= MIN_USEFUL_STORY_CHARS;
+  let canReserveForDiction = canReserveForBoth;
+  if (!canReserveForBoth) {
+    storyLabel = pickStoryLabel(1);
+    canReserveForDiction = (remaining - storyLabel.length - dictionInstruction.length) >= MIN_USEFUL_STORY_CHARS;
+    if (!canReserveForDiction) storyLabel = pickStoryLabel(0);
+  }
+  const reservedExtra = canReserveForBoth ? (dictionInstruction.length + bracketLanguageClause.length)
+    : canReserveForDiction ? dictionInstruction.length : 0;
+  const storyBudget = remaining - storyLabel.length - reservedExtra;
 
   let storyFull = '';
   if (storyBudget > 0) {
@@ -8081,6 +8139,20 @@ function buildPrompt(order, feedback, genreOverride) {
   // plasa de siguranta (feedback-ul/alte piese pot varia usor fata de estimarea initiala).
   if (canReserveForDiction && prompt.length + dictionInstruction.length <= SUNO_PROMPT_MAX_LEN) {
     prompt += dictionInstruction;
+  }
+
+  // PUNCT 3 (2026-09-06, "indicatiile de regie/structura intre paranteze raman in engleza chiar
+  // daca clientul a ales alta limba"): cauza — instructiunea de mai sus ("Write the song lyrics
+  // entirely in X") vorbeste STRICT despre versurile cantate; Suno (customMode:false, aici) mai
+  // adauga adesea, din proprie initiativa, etichete de structura ("[Chorus]") si/sau note de
+  // productie ("[Soft piano swells]") intre paranteze — necantate, deci in afara garantiei de
+  // mai sus — implicit in engleza. Corectat la SURSA (nu prin retraducerea versurilor deja
+  // generate, ceea ce ar risca sa deseze textul afisat de audio): o instructiune EXPLICITA,
+  // separata, cu spatiu REZERVAT mai sus (vezi canReserveForBoth) — un simplu "daca mai incape"
+  // dupa toate celelalte, fara rezervare, nu gasea NICIODATA loc pentru o comanda tipica. Omisa
+  // complet pentru comenzile in engleza, unde nu exista nimic de corectat.
+  if (canReserveForBoth && bracketLanguageClause && prompt.length + bracketLanguageClause.length <= SUNO_PROMPT_MAX_LEN) {
+    prompt += bracketLanguageClause;
   }
 
   // plasa de siguranta — in teorie nu ar trebui sa se intample, dat fiind bugetul calculat mai sus,
@@ -8161,7 +8233,10 @@ function buildExactLyricsRequest(order, exactLyrics, genreOverride, voicePrefere
   if (feedbackText) {
     const isVideoPlan = order.plan === 'video';
     const label = isVideoPlan ? VIDEO_FEEDBACK_PRIORITY_LABEL : ' ';
-    const brighten = (isVideoPlan && detectsBrightenMoodFeedback(feedbackText, order.lang)) ? BRIGHTEN_MOOD_CLAUSE : '';
+    // CORECTIE (2026-09-06): la fel ca in buildPrompt(), intarirea directiei muzicale nu mai
+    // e limitata la Video — bugetul de 1000 caractere (truncateSafely mai jos) ramane plasa de
+    // siguranta pentru toate planurile, neschimbata.
+    const brighten = detectsBrightenMoodFeedback(feedbackText, order.lang) ? BRIGHTEN_MOOD_CLAUSE : '';
     // Cerinta explicita — "nu tăia și nu elimina în tăcere instrucțiunea din cauza bugetului
     // promptului": STRICT pentru Video, daca eticheta+textul VERBATIM al clientului (fara clauza
     // suplimentara, care e doar un adaos) nu ar incapea in bugetul de 1000 caractere al Suno,
@@ -8318,14 +8393,14 @@ async function sendDeliveryEmail(order) {
   // Contracts Regulations 2013 (UK) / Directiva 2011/83/UE. Link-uri ABSOLUTE (DOMAIN) — un link
   // relativ intr-un client de email nu are context de la ce origine sa porneasca.
   const LEGAL_NOTE = {
-    ro: `<p style="font-size:13px;color:#6b6b6b;">Prin finalizarea comenzii ai fost de acord ca lucrul la comanda ta personalizată să înceapă imediat și că, astfel, pierzi dreptul de anulare de 14 zile odată ce a început. Vezi <a href="${DOMAIN}/terms.html">Termenii</a> și <a href="${DOMAIN}/refund.html">Politica de anulare și rambursare</a>.</p>`,
-    en: `<p style="font-size:13px;color:#6b6b6b;">By completing this purchase, you agreed that work on your personalised order would begin immediately, and that you would lose your 14-day right to cancel once it started. See our <a href="${DOMAIN}/terms.html">Terms</a> and <a href="${DOMAIN}/refund.html">Cancellation &amp; Refund Policy</a>.</p>`,
-    de: `<p style="font-size:13px;color:#6b6b6b;">Mit Abschluss dieses Kaufs hast du zugestimmt, dass die Arbeit an deiner personalisierten Bestellung sofort beginnt und du damit dein 14-tägiges Widerrufsrecht verlierst, sobald sie begonnen hat. Siehe unsere <a href="${DOMAIN}/terms.html">AGB</a> und <a href="${DOMAIN}/refund.html">Stornierungs- und Rückerstattungsrichtlinie</a>.</p>`,
-    es: `<p style="font-size:13px;color:#6b6b6b;">Al completar esta compra, aceptaste que el trabajo en tu pedido personalizado comenzara de inmediato y que, por ello, pierdes tu derecho de desistimiento de 14 días en cuanto comienza. Consulta nuestros <a href="${DOMAIN}/terms.html">Términos</a> y la <a href="${DOMAIN}/refund.html">Política de cancelación y reembolso</a>.</p>`,
-    it: `<p style="font-size:13px;color:#6b6b6b;">Completando questo acquisto hai accettato che il lavoro sul tuo ordine personalizzato iniziasse immediatamente, perdendo così il diritto di recesso di 14 giorni non appena iniziato. Consulta i nostri <a href="${DOMAIN}/terms.html">Termini</a> e la <a href="${DOMAIN}/refund.html">Politica di cancellazione e rimborso</a>.</p>`,
-    fr: `<p style="font-size:13px;color:#6b6b6b;">En finalisant cet achat, vous avez accepté que le travail sur votre commande personnalisée commence immédiatement, et que vous perdiez ainsi votre droit de rétractation de 14 jours dès son commencement. Voir nos <a href="${DOMAIN}/terms.html">Conditions</a> et notre <a href="${DOMAIN}/refund.html">Politique d'annulation et de remboursement</a>.</p>`,
-    bg: `<p style="font-size:13px;color:#6b6b6b;">Завършвайки тази покупка, ти се съгласи работата по персонализираната ти поръчка да започне незабавно и че по този начин губиш правото си на отказ от 14 дни веднага щом тя започне. Виж нашите <a href="${DOMAIN}/terms.html">Общи условия</a> и <a href="${DOMAIN}/refund.html">Политика за анулиране и възстановяване</a>.</p>`,
-    tr: `<p style="font-size:13px;color:#6b6b6b;">Bu satın alma işlemini tamamlayarak, kişiselleştirilmiş siparişiniz üzerindeki çalışmanın hemen başlamasını ve böylece başladığı anda 14 günlük cayma hakkınızı kaybetmeyi kabul ettiniz. <a href="${DOMAIN}/terms.html">Şartlarımıza</a> ve <a href="${DOMAIN}/refund.html">İptal ve İade Politikamıza</a> bakın.</p>`
+    ro: `<p style="font-size:13px;color:#6b6b6b;">Prin finalizarea comenzii ai fost de acord ca livrarea melodiei/videoclipului tău personalizat, deja creat, să înceapă imediat și că, astfel, pierzi dreptul de anulare de 14 zile odată ce livrarea a început. Vezi <a href="${DOMAIN}/terms.html">Termenii</a> și <a href="${DOMAIN}/refund.html">Politica de anulare și rambursare</a>.</p>`,
+    en: `<p style="font-size:13px;color:#6b6b6b;">By completing this purchase, you agreed that delivery of your already-created personalised song/video would begin immediately, and that you would lose your 14-day right to cancel once delivery started. See our <a href="${DOMAIN}/terms.html">Terms</a> and <a href="${DOMAIN}/refund.html">Cancellation &amp; Refund Policy</a>.</p>`,
+    de: `<p style="font-size:13px;color:#6b6b6b;">Mit Abschluss dieses Kaufs hast du zugestimmt, dass die Lieferung deines bereits fertigen, personalisierten Lieds/Videos sofort beginnt und du damit dein 14-tägiges Widerrufsrecht verlierst, sobald die Lieferung begonnen hat. Siehe unsere <a href="${DOMAIN}/terms.html">AGB</a> und <a href="${DOMAIN}/refund.html">Stornierungs- und Rückerstattungsrichtlinie</a>.</p>`,
+    es: `<p style="font-size:13px;color:#6b6b6b;">Al completar esta compra, aceptaste que la entrega de tu canción/vídeo personalizado, ya creado, comenzara de inmediato y que, por ello, pierdes tu derecho de desistimiento de 14 días en cuanto comienza la entrega. Consulta nuestros <a href="${DOMAIN}/terms.html">Términos</a> y la <a href="${DOMAIN}/refund.html">Política de cancelación y reembolso</a>.</p>`,
+    it: `<p style="font-size:13px;color:#6b6b6b;">Completando questo acquisto hai accettato che la consegna della tua canzone/video personalizzato, già creato, iniziasse immediatamente, perdendo così il diritto di recesso di 14 giorni non appena inizia la consegna. Consulta i nostri <a href="${DOMAIN}/terms.html">Termini</a> e la <a href="${DOMAIN}/refund.html">Politica di cancellazione e rimborso</a>.</p>`,
+    fr: `<p style="font-size:13px;color:#6b6b6b;">En finalisant cet achat, vous avez accepté que la livraison de votre chanson/vidéo personnalisée, déjà créée, commence immédiatement, et que vous perdiez ainsi votre droit de rétractation de 14 jours dès le début de la livraison. Voir nos <a href="${DOMAIN}/terms.html">Conditions</a> et notre <a href="${DOMAIN}/refund.html">Politique d'annulation et de remboursement</a>.</p>`,
+    bg: `<p style="font-size:13px;color:#6b6b6b;">Завършвайки тази покупка, ти се съгласи доставката на вече готовата ти персонализирана песен/видео да започне незабавно и че по този начин губиш правото си на отказ от 14 дни веднага щом доставката започне. Виж нашите <a href="${DOMAIN}/terms.html">Общи условия</a> и <a href="${DOMAIN}/refund.html">Политика за анулиране и възстановяване</a>.</p>`,
+    tr: `<p style="font-size:13px;color:#6b6b6b;">Bu satın alma işlemini tamamlayarak, zaten oluşturulmuş kişiselleştirilmiş şarkınızın/videonuzun teslimatının hemen başlamasını ve böylece teslimat başladığı anda 14 günlük cayma hakkınızı kaybetmeyi kabul ettiniz. <a href="${DOMAIN}/terms.html">Şartlarımıza</a> ve <a href="${DOMAIN}/refund.html">İptal ve İade Politikamıza</a> bakın.</p>`
   };
   const legalLine = LEGAL_NOTE[order.lang] || LEGAL_NOTE.ro;
 

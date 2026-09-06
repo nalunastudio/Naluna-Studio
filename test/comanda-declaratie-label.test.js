@@ -18,20 +18,23 @@ test('comanda.html: cardul static (markup RO implicit) foloseste noua eticheta "
   assert.ok(!html.includes('Te iubesc, pe note'), 'vechea eticheta nu mai trebuie sa apara nicaieri');
 });
 
-test('comanda.html: descrierea "Cand mesajul nu ajunge" (RO) si echivalentele ei raman NESCHIMBATE in toate limbile', () => {
-  const descriptions = [
-    'Când mesajul nu ajunge',
-    'When words are not enough.',
-    'Wenn Worte nicht reichen.',
-    'Cuando las palabras no bastan.',
-    'Quando le parole non bastano.',
-    'Quand les mots ne suffisent pas.',
-    'Когато думите не стигат.',
-    'Kelimeler yetmediğinde.'
+test('comanda.html: descrierea "Cand mesajul nu ajunge" (RO) a fost inlocuita explicit (2026-09-06, ceruta de utilizator — "nu exprima clar ideea de iubire") cu "Spune-i ce simti" si echivalentele ei naturale in toate cele 8 limbi; nimic altceva de pe card (nume, ordine, layout) nu a fost atins', () => {
+  const oldDescriptions = [
+    'Când mesajul nu ajunge', 'When words are not enough.', 'Wenn Worte nicht reichen.',
+    'Cuando las palabras no bastan.', 'Quando le parole non bastano.', 'Quand les mots ne suffisent pas.',
+    'Когато думите не стигат.', 'Kelimeler yetmediğinde.'
   ];
-  descriptions.forEach(desc => {
+  oldDescriptions.forEach(desc => {
+    assert.ok(!html.includes(desc), `vechea descriere "${desc}" nu mai trebuie sa apara nicaieri`);
+  });
+  const newDescriptions = [
+    'Spune-i ce simți', 'Tell them how you feel.', 'Sag, was du fühlst.',
+    'Dile lo que sientes.', 'Dì cosa provi.', 'Dis-lui ce que tu ressens.',
+    'Кажи какво чувстваш.', 'Ona ne hissettiğini söyle.'
+  ];
+  newDescriptions.forEach(desc => {
     assert.ok(html.includes(`theme_declaratie_desc: '${desc}'`) || html.includes(`data-i18n="theme_declaratie_desc">${desc}<`),
-      `descrierea "${desc}" trebuie sa ramana neschimbata`);
+      `noua descriere "${desc}" trebuie sa fie prezenta`);
   });
 });
 

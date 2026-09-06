@@ -275,12 +275,12 @@ test('detectsBrightenMoodFeedback: feedback neutru (nu cere schimbare de atmosfe
   assert.equal(detectsBrightenMoodFeedback(null, 'ro'), false);
 });
 
-test('Standard/Premium: feedback-ul NU primeste eticheta de prioritate sau clauza suplimentara — comportament byte-identic cu inainte de aceasta corectie', () => {
+test('Standard/Premium: feedback-ul NU primeste eticheta de prioritate STRICT-Video (VIDEO_FEEDBACK_PRIORITY_LABEL ramane video-only) — dar PRIMESTE acum clauza de intarire a veseliei (BRIGHTEN_MOOD_CLAUSE), extinsa la toate planurile (2026-09-06, corectie regresie editare/regenerare: "mai vesela" trebuie respectat si pentru Standard/Premium, nu doar Video)', () => {
   const standardOrder = { ...BASE_VIDEO_ORDER, plan: 'standard' };
   const req = buildExactLyricsRequest(standardOrder, 'Vers exact.', null, 'auto', 'Mai veselă');
   assert.ok(req.style.includes(' Mai veselă'), 'textul verbatim tot trebuie sa ajunga (comportament vechi neschimbat)');
   assert.ok(!req.style.includes(VIDEO_FEEDBACK_PRIORITY_LABEL.trim()), 'Standard nu trebuie sa primeasca eticheta de prioritate STRICT-Video');
-  assert.ok(!req.style.includes(BRIGHTEN_MOOD_CLAUSE.trim().slice(0, 20)), 'Standard nu trebuie sa primeasca clauza suplimentara STRICT-Video');
+  assert.ok(req.style.includes(BRIGHTEN_MOOD_CLAUSE.trim().slice(0, 20)), 'Standard TREBUIE sa primeasca acum clauza de intarire a veseliei — extinsa de la Video-only la toate planurile');
 
   const premiumOrder = { ...BASE_VIDEO_ORDER, plan: 'premium' };
   const promptPremium = buildPrompt(premiumOrder, 'Mai veselă', null);

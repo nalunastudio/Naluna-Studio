@@ -201,6 +201,15 @@ test('melodia-mea.html: toate cele 8 limbi ale consent_text includ clauza "nu ex
   }
 });
 
+test('melodia-mea.html si server.js: consent_text si emailul de livrare NU mai afirma ca melodia/videoclipul "incepe sa fie creat(a)" la momentul consimtamantului — REGRESIE FACTUALA corectata explicit (produsul exista deja, generat/randat gratuit inainte de plata; ce incepe dupa plata e LIVRAREA, conform Reg. 37 Consumer Contracts Regulations 2013 UK)', () => {
+  const html = read('public/melodia-mea.html');
+  assert.ok(!/start(s)? being created|începe să fie creat|jetzt erstellt wird|empiece a crearse|inizi a essere creato|commence à être créée|да започне сега|oluşturulmaya başlamasını/i.test(html), 'consent_text nu mai trebuie sa afirme ca produsul incepe sa fie CREAT la momentul consimtamantului');
+  assert.ok(/already-created|deja creat|bereits fertiges|ya creado|già creato|déjà créée|вече готовата|Zaten oluşturulmuş/i.test(html), 'consent_text trebuie sa recunoasca explicit ca produsul EXISTA DEJA la momentul consimtamantului');
+  const legalNoteFn = extractFn(server, "async function sendDeliveryEmail(order) {");
+  assert.ok(!/work on your personalised order would begin|lucrul la comanda ta personalizată să înceapă/i.test(legalNoteFn), 'emailul de livrare nu mai trebuie sa afirme ca "lucrul" incepe la plata');
+  assert.match(legalNoteFn, /delivery of your already-created personalised song\/video would begin/, 'emailul de livrare trebuie sa reflecte corect ca LIVRAREA incepe, nu crearea');
+});
+
 test('Cele 3 pagini legale NU mai contin nicio referinta la "AI"/"artificial intelligence" — EU AI Act art.50 (deepfake) nu se aplica unui cantec personalizat/unui montaj din pozele reale ale clientului, deci nu e o dezvaluire ceruta legal; formularea a fost mutata spre limbaj neutru de produs, fara a pretinde "handmade" sau compus de muzicieni', () => {
   for (const page of ['terms.html', 'privacy.html', 'refund.html']) {
     const html = read(`public/${page}`);
@@ -241,7 +250,7 @@ test('Cele 3 pagini legale NU mai afiseaza deloc "Last updated"/o data de revizu
 });
 
 test('CONSENT_POLICY_VERSION (versionarea interna, dovada consimtamantului) ramane intacta — eliminarea afisarii publice a "Last updated" NU atinge evidenta interna asociata fiecarei comenzi platite', () => {
-  assert.match(server, /const CONSENT_POLICY_VERSION = '2026-09-06-v3';/);
+  assert.match(server, /const CONSENT_POLICY_VERSION = '2026-09-06-v4';/);
   assert.match(server, /consentPolicyVersion:\s*CONSENT_POLICY_VERSION/);
   assert.match(db, /ALTER TABLE orders ADD COLUMN IF NOT EXISTS consent_policy_version TEXT;/);
 });
@@ -332,10 +341,14 @@ test('melodia-mea.html: fetch-ul de checkout trimite consentGiven:true in body, 
   assert.match(fn, /body:\s*JSON\.stringify\(\{\s*consentGiven:\s*true\s*\}\)/);
 });
 
-test('melodia-mea.html: bara de consimtamant e vizibila STRICT in content-state (centralizat in showState)', () => {
-  const fn = extractFn(melodia, 'function showState(name) {');
-  assert.match(fn, /checkout-consent-bar/);
-  assert.match(fn, /name === 'content-state'/);
+test('melodia-mea.html: bara de consimtamant e vizibila STRICT pe ultima etapa inainte de plata (checkoutBtn efectiv activ), NICIODATA cat timp clientul doar asculta/editeaza — regresie de UX corectata explicit 2026-09-06', () => {
+  const showStateFn = extractFn(melodia, 'function showState(name) {');
+  assert.match(showStateFn, /updateConsentBarVisibility\(\);/, 'showState trebuie sa delege centralizat catre updateConsentBarVisibility()');
+  const visibilityFn = extractFn(melodia, 'function updateConsentBarVisibility() {');
+  assert.match(visibilityFn, /checkout-consent-bar/);
+  assert.match(visibilityFn, /currentStateName === 'content-state'/);
+  assert.match(visibilityFn, /!checkoutBtn\.disabled/, 'bara trebuie sa apara STRICT cand butonul de plata e efectiv activ, nu doar cand pagina e in content-state');
+  assert.match(melodia, /new MutationObserver\(updateConsentBarVisibility\)\.observe\(checkoutBtn, \{ attributes: true, attributeFilter: \['disabled'\] \}\);/, 'vizibilitatea trebuie sa se actualizeze automat la ORICE schimbare a checkoutBtn.disabled, indiferent din care loc al codului vine');
 });
 
 test('melodia-mea.html: toate cele 8 limbi au consent_text (cu linkuri catre /terms.html si /refund.html) si consent_required_error', () => {
@@ -576,8 +589,8 @@ test('melodia-mea.html: checkout_access_note (dezvaluire pre-cumparare a celor 3
   assert.match(fn, /checkout-access-note'\)\.textContent = t\.checkout_access_note;/);
 });
 
-test('server.js: CONSENT_POLICY_VERSION a fost incrementata (v3) fata de v2 — dezvaluirea noua a celor 30 de zile e o informatie materiala noua pre-cumparare, niciodata retroactiva pentru comenzi deja platite', () => {
-  assert.match(server, /const CONSENT_POLICY_VERSION = '2026-09-06-v3';/);
+test('server.js: CONSENT_POLICY_VERSION e la v4 (v3 adaugase dezvaluirea celor 30 de zile; v4 corecteaza framing-ul factual creare->livrare) — niciodata retroactiva pentru comenzi deja platite', () => {
+  assert.match(server, /const CONSENT_POLICY_VERSION = '2026-09-06-v4';/);
 });
 
 test('server.js: emailul de livrare mentioneaza EXPLICIT "30 days"/"30 de zile" (nu "1 month") si incurajarea de a descarca, in toate cele 8 sabloane', () => {
