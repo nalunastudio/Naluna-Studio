@@ -47,9 +47,39 @@ test('terms.html: dezvaluirea numelui proprietarului (Natalia Andoni, cerinta CA
   assert.ok(!/<(h1|h2|h3|h4|h5|h6|strong|b)[ >]/i.test(boxContent), 'entity-box nu trebuie sa contina niciun heading/bold — text simplu, ca restul continutului legal');
 });
 
+test('terms.html: "Naluna Studio" (nume de brand) e marcat translate="no" + class="notranslate" (metoda HTML standard, respectata de Google Translate si de traducerea nativa Chrome) la TOATE cele 3 aparitii din pagina — Google Translate RO altfel il transforma in "Studioul Naluna"', () => {
+  const html = read('public/terms.html');
+  const wrapped = (html.match(/<span translate="no" class="notranslate">Naluna Studio<\/span>/g) || []).length;
+  const totalOccurrences = (html.match(/Naluna Studio/g) || []).length;
+  assert.equal(wrapped, 3, `asteptat 3 aparitii ale "Naluna Studio" impachetate in span notranslate, gasit ${wrapped}`);
+  assert.equal(wrapped, totalOccurrences, 'FIECARE aparitie a "Naluna Studio" din pagina trebuie protejata, nu doar unele');
+});
+
+test('terms.html: "Natalia Andoni" (nume propriu) e marcat translate="no" + class="notranslate", DAR "Operated by" ramane text simplu, netraductor-blocat — traducerea automata a restului expresiei/paginii nu trebuie afectata', () => {
+  const html = read('public/terms.html');
+  assert.match(html, /Operated by <span translate="no" class="notranslate">Natalia Andoni<\/span>/);
+  assert.ok(!html.includes('translate="no">Operated by'), '"Operated by" nu trebuie inclus in span-ul notranslate — lasat sa se traduca normal (cerinta explicita)');
+});
+
+test('terms.html: pagina engleza ramane vizual neschimbata — span-urile notranslate sunt inline, fara CSS nou, fara sa rupa structura entity-box sau layout-ul <br>', () => {
+  const html = read('public/terms.html');
+  assert.ok(!html.includes('.notranslate{'), 'notranslate e STRICT un hook semantic pentru Google Translate, nu are nevoie de stil CSS propriu');
+  const boxStart = html.indexOf('class="entity-box"');
+  const boxEnd = html.indexOf('</div>', boxStart);
+  const boxContent = html.slice(boxStart, boxEnd);
+  assert.equal((boxContent.match(/<br>/g) || []).length, 6, 'structura pe linii a entity-box (6 <br>) trebuie sa ramana neschimbata');
+});
+
+test('privacy.html si refund.html raman NEATINSE de aceasta ajustare — cerinta a fost STRICT pentru pagina Terms & Conditions, nu extinsa la celelalte pagini legale', () => {
+  for (const page of ['privacy.html', 'refund.html']) {
+    const html = read(`public/${page}`);
+    assert.ok(!html.includes('translate="no"'), `${page} nu trebuie modificat de aceasta cerinta, scopata STRICT la terms.html`);
+  }
+});
+
 test('terms.html: identitatea foloseste acum "Operated by Natalia Andoni" (reformulare eleganta 2026-09-06, runda 3) — "trading name of" a disparut COMPLET din tot codul; baza legala (E-Commerce Regs 2002 reg.6 + CA2006 s.1201) nu impune acea fraza exacta, doar prezenta numelui/adresei/contactului', () => {
   const html = read('public/terms.html');
-  assert.match(html, /Operated by Natalia Andoni/);
+  assert.match(html, /Operated by.*Natalia Andoni/s);
   for (const page of ['terms.html', 'privacy.html', 'refund.html']) {
     const pageHtml = read(`public/${page}`);
     assert.ok(!pageHtml.includes('trading name of'), `${page} nu trebuie sa mai contina "trading name of"`);
