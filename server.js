@@ -6070,16 +6070,20 @@ async function downloadOrderMedia(order, items) {
 // start mai bun in renderShot (vezi mai jos), niciodata pentru validare (asta ramane
 // treaba lui verifyMediaDecodable, la upload). Esec/timeout -> null, apelantul revine automat
 // la comportamentul vechi (start de la 0) — nicio eroare aici nu trebuie sa opreasca randarea.
-async function getVideoSourceDurationSeconds(localPath) {
+async function getVideoSourceDurationSeconds(localPath, cache) {
+  if (cache && cache.has(localPath)) return cache.get(localPath);
+  let result;
   try {
     const { stdout } = await execFileAsync('ffprobe', [
       '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', localPath
     ], { timeout: 15000 });
     const d = parseFloat(stdout);
-    return Number.isFinite(d) && d > 0 ? d : null;
+    result = Number.isFinite(d) && d > 0 ? d : null;
   } catch (err) {
-    return null;
+    result = null;
   }
+  if (cache) cache.set(localPath, result);
+  return result;
 }
 
 // CORECȚIE (2026-08-29, "verifica prin ffprobe daca materialele iPhone de test sunt SDR sau
@@ -6090,7 +6094,18 @@ async function getVideoSourceDurationSeconds(localPath) {
 // videoclip vechi fara metadate de culoare) => tratat STRICT ca SDR — nu aplicam niciodata
 // tonemapping "din prudenta" pe un fisier SDR (cerinta explicita), si nu blocam randarea.
 const HDR_COLOR_TRANSFER_VALUES = new Set(['smpte2084', 'arib-std-b67']); // PQ (HDR10/Dolby Vision), HLG
-async function detectHdrVideo(localPath) {
+// PUNCT 7 (2026-09-06, "acelasi asset ffprobe-uit de mai multe ori"): buildShotPlan() poate
+// atribui ACELASI material (localPath) mai multor cadre (mai putine materiale decat cadre
+// necesare) — fara cache, fiecare aparitie repeta identic acelasi apel ffprobe pentru EXACT
+// acelasi fisier, nemodificat intre aparitii. Masurat direct: impactul de timp e neglijabil
+// (ffprobe dureaza sub o milisecunda per apel pe fisierele locale testate) — NU e bottleneck-ul
+// principal (vezi CONCAT_BATCH_SIZE mai sus) — dar ramane un apel redundant real, eliminat aici
+// fara niciun risc: cache-ul (opțional, cache=null pastreaza comportamentul vechi neschimbat
+// pentru orice apelant care nu il transmite) e creat per COMANDA/randare (vezi renderShot),
+// niciodata global/persistent intre comenzi diferite.
+async function detectHdrVideo(localPath, cache) {
+  if (cache && cache.has(localPath)) return cache.get(localPath);
+  let result;
   try {
     // CORECȚIE (2026-08-29, bug REAL gasit prin verificare directa): "-of
     // default=noprint_wrappers=1:nokey=1" (FARA nume de camp) intoarce valorile in ORDINEA
@@ -6116,10 +6131,12 @@ async function detectHdrVideo(localPath) {
     const colorPrimaries = fields.color_primaries || null;
     const colorSpace = fields.color_space || null;
     const isHdr = HDR_COLOR_TRANSFER_VALUES.has(colorTransfer) || colorPrimaries === 'bt2020';
-    return { isHdr, colorTransfer, colorPrimaries, colorSpace };
+    result = { isHdr, colorTransfer, colorPrimaries, colorSpace };
   } catch (err) {
-    return { isHdr: false, colorTransfer: null, colorPrimaries: null, colorSpace: null };
+    result = { isHdr: false, colorTransfer: null, colorPrimaries: null, colorSpace: null };
   }
+  if (cache) cache.set(localPath, result);
+  return result;
 }
 
 // Lant STANDARD de tonemapping HDR->SDR, STRICT cu filtre deja disponibile in imaginea ffmpeg
@@ -6132,8 +6149,8 @@ const HDR_TONEMAP_FILTER = 'zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt
 // Returneaza filtrul de tonemapping STRICT daca sursa e cu adevarat HDR — null (niciun filtru)
 // pentru orice material SDR, marea majoritate a cazurilor reale. Logat explicit (perfLog) cand
 // se aplica, pentru vizibilitate directa in productie daca un client chiar incarca material HDR.
-async function buildHdrToneMapFilterIfNeeded(localPath, orderId, shotIndex) {
-  const info = await detectHdrVideo(localPath);
+async function buildHdrToneMapFilterIfNeeded(localPath, orderId, shotIndex, cache) {
+  const info = await detectHdrVideo(localPath, cache);
   if (!info.isHdr) return null;
   perfLog(orderId, 'memory_hdr_tonemap', `cadru=${shotIndex}, color_transfer=${info.colorTransfer}, color_primaries=${info.colorPrimaries}`);
   return HDR_TONEMAP_FILTER;
@@ -6151,7 +6168,9 @@ const WIDE_PHOTO_ASPECT_RATIO_THRESHOLD = 1.6;
 // Dimensiunile REALE ale unei fotografii sursa — esec controlat (fisier corupt/format
 // neasteptat/camp lipsa): null, apelantul (renderShot) revine automat la decuparea standard,
 // deja dovedita, niciodata nu blocheaza randarea.
-async function getPhotoDimensions(localPath) {
+async function getPhotoDimensions(localPath, cache) {
+  if (cache && cache.has(localPath)) return cache.get(localPath);
+  let result;
   try {
     const { stdout } = await execFileAsync('ffprobe', [
       '-v', 'error', '-select_streams', 'v:0',
@@ -6166,10 +6185,12 @@ async function getPhotoDimensions(localPath) {
     });
     const width = parseInt(fields.width, 10);
     const height = parseInt(fields.height, 10);
-    return (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) ? { width, height } : null;
+    result = (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) ? { width, height } : null;
   } catch (err) {
-    return null;
+    result = null;
   }
+  if (cache) cache.set(localPath, result);
+  return result;
 }
 
 // CORECȚIE (2026-08-14, "nu selecta accidental numai primul fragment al fiecarui clip"):
@@ -6232,6 +6253,12 @@ async function renderShot(item, shot, shotIndex, order) {
   const outPath = path.join(TEMP_DIR, `${order.id}-memory-shot-${shotIndex}.mp4`);
   const segDurationSeconds = shot.duration;
   const frames = Math.max(1, Math.round(segDurationSeconds * MEMORY_VIDEO_FPS));
+  // PUNCT 7 (2026-09-06): cache de ffprobe, STRICT pentru durata acestei randari (creat lazy,
+  // atasat comenzii curente — NICIODATA global/persistent intre comenzi diferite) — vezi
+  // comentariul de la detectHdrVideo() mai sus pentru motivul exact (acelasi material poate
+  // aparea in mai multe cadre, fisierul ramane NESCHIMBAT pe disc intre aparitii, vezi
+  // refcounting-ul din buildMemoryBackground).
+  const probeCache = order.__mediaProbeCache || (order.__mediaProbeCache = { dims: new Map(), duration: new Map(), hdr: new Map() });
 
   if (item.type === 'photo') {
     // pre-scalare la 2x rezolutia finala (acelasi raport 9:16) — da zoompan-ului suficient
@@ -6248,7 +6275,7 @@ async function renderShot(item, shot, shotIndex, order) {
     // ACEEASI poza (scalat sa umple cadrul, blurat si usor intunecat) — niciodata o imagine
     // inventata/stock/AI. Esec la ffprobe (dimensiuni necunoscute) => decuparea standard,
     // niciodata blocata.
-    const dims = await getPhotoDimensions(item.localPath);
+    const dims = await getPhotoDimensions(item.localPath, probeCache.dims);
     const isWidePhoto = !!(dims && (dims.width / dims.height) > WIDE_PHOTO_ASPECT_RATIO_THRESHOLD);
     try {
       if (isWidePhoto) {
@@ -6280,7 +6307,7 @@ async function renderShot(item, shot, shotIndex, order) {
       throw wrapVideoRenderStageError(order.id, 'shot_render_photo', err, `cadru=${shotIndex}, material=${shot.itemIndex}`);
     }
   } else {
-    const sourceDuration = await getVideoSourceDurationSeconds(item.localPath);
+    const sourceDuration = await getVideoSourceDurationSeconds(item.localPath, probeCache.duration);
     const { useLoop, startOffset } = computeVideoSegmentStartOffset(shot.itemIndex, shot.occurrence, sourceDuration, segDurationSeconds);
     const inputArgs = useLoop
       ? ['-stream_loop', '-1', '-i', item.localPath]
@@ -6288,7 +6315,7 @@ async function renderShot(item, shot, shotIndex, order) {
     // CORECȚIE (2026-08-29, "verifica prin ffprobe daca materialele iPhone sunt SDR sau HDR"):
     // tonemapping CONDITIONAT — aplicat STRICT daca sursa e cu adevarat HDR (BT.2020/PQ/HLG),
     // niciodata pentru materiale SDR (marea majoritate). Vezi buildHdrToneMapFilter() mai jos.
-    const hdrFilter = await buildHdrToneMapFilterIfNeeded(item.localPath, order.id, shotIndex);
+    const hdrFilter = await buildHdrToneMapFilterIfNeeded(item.localPath, order.id, shotIndex, probeCache.hdr);
     const scaleFilter = `scale=${MEMORY_VIDEO_WIDTH}:${MEMORY_VIDEO_HEIGHT}:force_original_aspect_ratio=increase:flags=lanczos,crop=${MEMORY_VIDEO_WIDTH}:${MEMORY_VIDEO_HEIGHT},fps=${MEMORY_VIDEO_FPS}`;
     const vf = hdrFilter ? `${hdrFilter},${scaleFilter},format=yuv420p` : `${scaleFilter},format=yuv420p`;
     // etichetare EXPLICITA BT.709 pe iesire — obligatorie dupa tonemapping (fara ea, cadrul
@@ -6329,7 +6356,27 @@ async function renderShot(item, shot, shotIndex, order) {
 // ierarhica, foloseste intotdeauna EXACT N-1 tranzitii xfade in total (proprietate standard de
 // reducere in arbore) — exact numarul deja compensat global in buildShotPlan() — deci NU e
 // nevoie sa schimbam compensatia de acolo, doar modul in care ffmpeg e apelat aici.
-const CONCAT_BATCH_SIZE = 5;
+// PUNCT 7 (2026-09-06, "performanta ≤120s" — profilare REALA, nu presupusa): masurat direct,
+// per etapa, pe o randare completa de 50 de cadre (5 materiale, plafonul SHOT_PLAN_MAX_SHOTS):
+// concatenarea (toate nivelurile) domina covarsitor timpul total — 98.8s dintr-un total de
+// 128.1s (~77%), fata de doar ~29s pentru randarea celor 50 de cadre individuale (deja paralela,
+// SHOT_RENDER_CONCURRENCY). Cauza EXACTA: cu CONCAT_BATCH_SIZE=5, un plan de 50 de cadre are
+// NEVOIE de 3 niveluri de reducere (50->10->2->1) — fiecare nivel re-encodeaza INTEGRAL
+// segmentele lui, deci fiecare cadru trece prin pana la 3 randari succesive suplimentare, pe
+// langa randarea lui initiala. Marind STRICT CONCAT_BATCH_SIZE (fan-in per proces ffmpeg), NU
+// numarul de procese simultane (CONCAT_BATCH_CONCURRENCY ramane NESCHIMBAT la 2 — plafonul de
+// CPU/memorie deja stabilit si NEATINS aici), planul de 50 de cadre are nevoie de STRICT 2
+// niveluri (50->7->1) incepand de la marimea 8 — un nivel intreg de re-encodare eliminat.
+// Masurat direct, ACEEASI comanda (50 cadre, 5 materiale): CONCAT_BATCH_SIZE=7 (tot 3 niveluri)
+// = 118.1s; CONCAT_BATCH_SIZE=8 (2 niveluri) = 92.6s; CONCAT_BATCH_SIZE=10/12 (tot 2 niveluri) =
+// fara imbunatatire suplimentara masurabila fata de 8 — deci 8 e pragul MINIM care obtine
+// castigul, fara sa creasca inutil numarul de fluxuri decodate simultan intr-un singur proces
+// (7 intrari/8 fluxuri simultane la marimea 8, fata de plafonul de 49 care a cauzat prabusirea
+// originala — vezi comentariul de mai sus). Corectitudinea sincronizarii audio-video RAMANE
+// garantata: computeRealBoundaryPositions() (lib/media-analysis.js) primeste ACEEASI constanta
+// CONCAT_BATCH_SIZE ca parametru explicit (vezi buildShotPlan(), server.js) — o singura sursa
+// de adevar, niciodata desincronizata.
+const CONCAT_BATCH_SIZE = 8;
 
 // Rezuma SIGUR o eroare ffmpeg esuata (exit code, signal, stderr trunchiat) — logata COMPLET
 // STRICT server-side; eroarea CURATA (fara comanda completa, fara cai de pe disc, fara stderr

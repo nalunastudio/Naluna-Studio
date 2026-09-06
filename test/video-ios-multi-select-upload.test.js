@@ -213,13 +213,13 @@ test('computeVideoSegmentStartOffset: materiale diferite (itemIndex diferit) NU 
   assert.ok(distinct.size > 1, `prima aparitie a fiecarui material trebuie sa varieze intre materiale, a produs: ${firstOffsets.join(', ')}`);
 });
 
-test('server.js: getVideoSourceDurationSeconds() foloseste ffprobe cu timeout si NU arunca eroare la esec (revine la comportamentul vechi, sigur)', () => {
-  const idx = server.indexOf('async function getVideoSourceDurationSeconds(localPath) {');
+test('server.js: getVideoSourceDurationSeconds() foloseste ffprobe cu timeout si NU arunca eroare la esec (revine la comportamentul vechi, sigur) — semnatura primeste acum si un parametru optional de cache (PUNCT 7, 2026-09-06), comportamentul de baza ramane neschimbat', () => {
+  const idx = server.indexOf('async function getVideoSourceDurationSeconds(localPath, cache) {');
   assert.notEqual(idx, -1);
   const snippet = server.slice(idx, idx + 500);
   assert.ok(snippet.includes("timeout: 15000"));
   assert.ok(snippet.includes('catch (err) {'));
-  assert.ok(snippet.includes('return null;'));
+  assert.ok(snippet.includes('result = null;'));
 });
 
 // CORECȚIE (2026-08-24, "montajul video e monoton"): renderMemorySegment() (UN segment lung
