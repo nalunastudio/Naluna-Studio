@@ -47,6 +47,16 @@ test('terms.html: dezvaluirea numelui proprietarului (Natalia Andoni, cerinta CA
   assert.ok(!/<(h1|h2|h3|h4|h5|h6|strong|b)[ >]/i.test(boxContent), 'entity-box nu trebuie sa contina niciun heading/bold — text simplu, ca restul continutului legal');
 });
 
+test('terms.html: identitatea foloseste acum "Operated by Natalia Andoni" (reformulare eleganta 2026-09-06, runda 3) — "trading name of" a disparut COMPLET din tot codul; baza legala (E-Commerce Regs 2002 reg.6 + CA2006 s.1201) nu impune acea fraza exacta, doar prezenta numelui/adresei/contactului', () => {
+  const html = read('public/terms.html');
+  assert.match(html, /Operated by Natalia Andoni/);
+  for (const page of ['terms.html', 'privacy.html', 'refund.html']) {
+    const pageHtml = read(`public/${page}`);
+    assert.ok(!pageHtml.includes('trading name of'), `${page} nu trebuie sa mai contina "trading name of"`);
+  }
+  assert.ok(!server.includes('trading name of') && !db.includes('trading name of'));
+});
+
 test('numele personal (Natalia Andoni) NU apare NICAIERI altundeva in site (alte pagini publice, server.js/db.js, emailuri, footere, metadate) — vizibilitate STRICT minima, doar in terms.html', () => {
   const publicDir = path.join(__dirname, '..', 'public');
   const htmlFiles = fs.readdirSync(publicDir).filter(f => f.endsWith('.html') && f !== 'terms.html');
@@ -133,15 +143,19 @@ test('Privacy Policy: eticheta "(data controller)" nu mai apare ca element de br
   assert.ok(html.slice(boxStart, boxEnd).includes('5 Brayford Square'), 'identitatea/adresa operatorului trebuie sa ramana in entity-box');
 });
 
-test('Terms.html: "Last updated" nu mai e afisat proeminent sub H1 — mutat discret in footer, fara sa rupa nimic altceva', () => {
+test('Cele 3 pagini legale NU mai afiseaza deloc "Last updated"/o data de revizuire, nicaieri (decizie de business 2026-09-06, runda 3 — verificat ca nu exista obligatie legala UK GDPR Art.13/14 care sa ceara asta) — dar clasele CSS orfane (.updated/.footer-updated) au fost curatate, nu doar continutul textual', () => {
   for (const page of ['terms.html', 'privacy.html', 'refund.html']) {
     const html = read(`public/${page}`);
-    const h1End = html.indexOf('</h1>');
-    const entityBoxStart = html.indexOf('class="entity-box"');
-    assert.ok(!html.slice(h1End, entityBoxStart).includes('Last updated'), `${page}: "Last updated" nu trebuie sa mai fie intre <h1> si entity-box`);
-    const footerStart = html.indexOf('<footer>');
-    assert.ok(html.slice(footerStart).includes('Last updated'), `${page}: "Last updated" trebuie sa existe discret in footer`);
+    assert.ok(!html.includes('Last updated'), `${page} nu trebuie sa mai contina "Last updated" nicaieri`);
+    assert.ok(!html.includes('class="updated"'), `${page} nu trebuie sa mai foloseasca clasa CSS "updated"`);
+    assert.ok(!html.includes('footer-updated'), `${page} nu trebuie sa mai contina clasa orfana footer-updated`);
   }
+});
+
+test('CONSENT_POLICY_VERSION (versionarea interna, dovada consimtamantului) ramane intacta — eliminarea afisarii publice a "Last updated" NU atinge evidenta interna asociata fiecarei comenzi platite', () => {
+  assert.match(server, /const CONSENT_POLICY_VERSION = '2026-09-06-v3';/);
+  assert.match(server, /consentPolicyVersion:\s*CONSENT_POLICY_VERSION/);
+  assert.match(db, /ALTER TABLE orders ADD COLUMN IF NOT EXISTS consent_policy_version TEXT;/);
 });
 
 test('Numele "Maria" nu apare niciodata ca identitate a proprietarului/afacerii in paginile legale (poate exista doar ca exemplu generic de nume in alte pagini, ex. placeholder de formular)', () => {
@@ -319,12 +333,11 @@ test('db.js: source_media_purged_at exista in schema, findOrdersEligibleForSourc
   assert.ok(!purgeFn.includes('videoKey') && !purgeFn.includes('video_key'), 'purgeOrderSourceMedia nu trebuie sa atinga videoKey (produsul final)');
 });
 
-test('server.js: SOURCE_MEDIA_RETENTION_DAYS=90 e o alegere operationala declarata ca atare in cod, purgeStaleSourceMedia NU sterge o comanda cu randare video activa sau incompleta (videoKey/videoPreviewKey lipsa)', () => {
-  assert.match(server, /const SOURCE_MEDIA_RETENTION_DAYS = 90;/);
+test('server.js: purgeStaleSourceMedia() foloseste ACEEASI CONTENT_RETENTION_DAYS (30) ca produsul final si povestea (regula unica, simplificata runda 3) — sare STRICT o comanda cu randare video activa, fara sa mai verifice separat existenta videoKey (status=\'ready\' o garanteaza deja)', () => {
+  assert.match(server, /const CONTENT_RETENTION_DAYS = 30;/);
   const fn = extractFn(server, 'async function purgeStaleSourceMedia() {');
+  assert.match(fn, /CONTENT_RETENTION_DAYS/);
   assert.match(fn, /isVideoLockActive\(order\)/);
-  assert.match(fn, /currentVariant\.videoKey/);
-  assert.match(fn, /currentVariant\.videoPreviewKey/);
   assert.match(fn, /db\.purgeOrderSourceMedia\(order\.id\)/);
 });
 
@@ -360,8 +373,8 @@ test('Terms/Refund/Privacy: expirarea accesului gazduit e declarata explicit ca 
   assert.match(privacy, /order record.*is kept separately and is not deleted at the same time/s);
 });
 
-test('server.js: HOSTED_ACCESS_DAYS=30, hostedAccessExpiresAt calculeaza STRICT din paidAt (nu createdAt), isHostedAccessExpired e time-based', () => {
-  assert.match(server, /const HOSTED_ACCESS_DAYS = 30;/);
+test('server.js: CONTENT_RETENTION_DAYS=30, hostedAccessExpiresAt calculeaza STRICT din paidAt (nu createdAt), isHostedAccessExpired e time-based', () => {
+  assert.match(server, /const CONTENT_RETENTION_DAYS = 30;/);
   const fn = extractFn(server, 'function hostedAccessExpiresAt(order) {');
   assert.match(fn, /order\.paidAt/);
   assert.ok(!fn.includes('createdAt'), 'reperul trebuie sa fie livrarea (paidAt), niciodata crearea comenzii');
@@ -501,8 +514,10 @@ test('db.js: story_anonymized_at exista, findOrdersEligibleForStoryAnonymization
   assert.ok(!anonFn.includes('recipient') && !anonFn.includes('sender_name') && !anonFn.includes('relationship') && !anonFn.includes('price') && !anonFn.includes('status ='));
 });
 
-test('server.js: STORY_RETENTION_DAYS=60 (30 de acces + 30 de rezerva pentru corectii/suport), anonymizeStaleStories() ruleaza zilnic SI e declansabila manual (admin)', () => {
-  assert.match(server, /const STORY_RETENTION_DAYS = 60;/);
+test('server.js: anonymizeStaleStories() foloseste ACEEASI CONTENT_RETENTION_DAYS (30, simplificare runda 3 — nu mai exista o cifra separata pentru poveste) si ruleaza zilnic SI e declansabila manual (admin)', () => {
+  assert.match(server, /const CONTENT_RETENTION_DAYS = 30;/);
+  const fn = extractFn(server, 'async function anonymizeStaleStories() {');
+  assert.match(fn, /CONTENT_RETENTION_DAYS/);
   assert.match(server, /setInterval\(\(\) => \{ anonymizeStaleStories\(\)\.catch/);
   const routeIdx = server.indexOf("app.post('/api/admin/retention/anonymize-stale-stories'");
   const adminMwIdx = server.indexOf("app.use('/api/admin', adminAuthLimiter, requireAdminAuth);");
@@ -530,12 +545,15 @@ test('server.js: maskEmailForLog()/redactEmailsInText() exista si sunt folosite 
   assert.match(server, /redactEmailsInText\(err\.message\)/);
 });
 
-test('Privacy Policy: sectiunea de retentie contine acum reguli CONCRETE pentru poveste (60 zile) si loguri de securitate (criteriu obiectiv: retentia platformei de hosting, fara extindere manuala) — nu mai raman formulari vagi ("tied to order lifecycle", "short"/"weeks")', () => {
+test('Privacy Policy: o SINGURA regula de retentie (30 de zile) pentru TOT continutul comenzii — produs final, poveste, foto/video originale — si o regula CONCRETA/obiectiva pentru loguri de securitate, fara formulari vagi ("tied to order lifecycle", "short"/"weeks")', () => {
   const html = read('public/privacy.html');
-  assert.match(html, /personal story or details you write for your song.*60 days from delivery/s);
+  assert.match(html, /Your order content.*30 days from delivery/s);
+  assert.match(html, /personal story or details you wrote for your song/);
+  assert.match(html, /photos or videos you uploaded for the Gift Video package/);
   assert.match(html, /Security and error logs/);
   assert.ok(!/\bshort\b.*\bweeks?\b|\bweeks?\b.*\bretained\b/i.test(html), 'nu trebuie sa ramana o formulare vaga tip "short"/"weeks" pentru loguri');
   assert.match(html, /hosting provider's platform retains them by default/);
+  assert.ok(!/\b60\s*days\b/i.test(html) && !/\b90\s*days\b/i.test(html), 'nu mai trebuie sa ramana 60 sau 90 de zile — o singura cifra (30) pentru tot continutul comenzii');
 });
 
 test('paidAt: scris o singura data, in tranzactie, cu protectie impotriva evenimentelor Stripe duplicate — niciun alt loc din server.js/db.js nu il suprascrie', () => {
@@ -552,12 +570,12 @@ test('Checkout: pentru pachetul video, atat crearea sesiunii Stripe CAT SI webho
   assert.match(checkoutFn, /status\(400\)\.json\(\{ error: 'Videoclipul tău nu este încă gata/);
 });
 
-test('Privacy Policy: retentia materialelor SURSA (foto/video incarcate) e diferentiata de produsul final si REAL implementata (90 zile = SOURCE_MEDIA_RETENTION_DAYS din server.js, nu un numar inventat)', () => {
+test('Privacy Policy: perioada declarata public (30 de zile, TOT continutul comenzii) corespunde EXACT constantei reale unice din server.js (CONTENT_RETENTION_DAYS) — nu un numar inventat, si e declarata explicit ca alegere operationala', () => {
   const html = read('public/privacy.html');
   const server = read('server.js');
-  assert.match(html, /original photos\/videos you uploaded within 90 days/);
-  assert.match(server, /const SOURCE_MEDIA_RETENTION_DAYS = 90;/, 'perioada declarata public trebuie sa corespunda EXACT constantei reale din server.js');
-  assert.ok(html.includes('operational choice'), 'trebuie sa clarifice ca perioada de 90 de zile e o alegere operationala, nu o obligatie legala');
+  assert.match(html, /30 days from delivery/);
+  assert.match(server, /const CONTENT_RETENTION_DAYS = 30;/, 'perioada declarata public trebuie sa corespunda EXACT constantei reale din server.js');
+  assert.ok(html.includes('not a legal requirement'), 'trebuie sa clarifice ca perioada de 30 de zile e o alegere operationala, nu o obligatie legala');
 });
 
 test('Privacy Policy: retentia inregistrarilor de consimtamant (6 ani) si a celor contabile/fiscale (5 ani de la 31 ianuarie) sunt distincte, cu sursa legala/justificare pentru fiecare', () => {

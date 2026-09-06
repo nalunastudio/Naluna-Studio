@@ -542,20 +542,26 @@ function isVideoLockActive(order) {
 }
 
 // ==========================================================================================
-// Acces gazduit la produsul FINAL cumparat (decizie de business 2026-09-06): EXACT 30 de zile
-// depline de la LIVRAREA FINALA, nu de la plata sau crearea comenzii — desi in arhitectura
-// noastra cele doua coincid practic pentru toate cele 3 pachete: webhook-ul de plata REFUZA
-// sa marcheze comanda 'ready' pentru pachetul video daca videoclipul nu exista deja
-// (vezi 'video_not_valid' mai sus), iar Standard/Premium sunt mereu previzualizate GRATUIT
-// inainte de plata — deci continutul de baza exista deja in momentul paid_at. Extra-ul WAV
-// (premium/video) e generat asincron la CATEVA SECUNDE/MINUTE dupa plata (generatePremiumExtras)
-// — tratat aici ca un format suplimentar al ACELUIASI cantec deja livrat, nu ca o livrare
-// separata care ar amana ceasul de 30 de zile (altfel termenul contractual ar deveni ostatic
-// unui proces tehnic de fundal). paid_at ramane deci reperul unic si simplu de "livrare finala".
-const HOSTED_ACCESS_DAYS = 30;
+// REGULA UNICA DE RETENTIE A CONTINUTULUI COMENZII (decizie de business 2026-09-06, runda 3 —
+// simplificare): EXACT 30 de zile depline de la LIVRAREA FINALA (paid_at), aceeasi cifra pentru
+// TOT continutul creativ/personal al comenzii — produsul final gazduit (melodie/WAV/video),
+// povestea/textul de personalizare, SI materialele sursa incarcate (foto/video originale
+// pentru "Cadou video"). Inainte existau 3 cifre diferite (30/60/90) fara un motiv legal sau
+// tehnic suficient de serios ca sa justifice complexitatea — o SINGURA constanta garanteaza ca
+// regula publica din Privacy Policy si comportamentul REAL al backend-ului nu pot diverge
+// niciodata accidental. Ce ramane pastrat mai mult (evidente de plata/contabile/consimtamant)
+// are propria baza legala separata — vezi findOrdersEligibleFor*/functiile de mai jos.
+//
+// De ce paid_at = livrarea finala, pentru toate cele 3 pachete: webhook-ul de plata REFUZA sa
+// marcheze comanda 'ready' pentru pachetul video daca videoclipul nu exista deja (vezi
+// 'video_not_valid' mai sus), iar Standard/Premium sunt mereu previzualizate GRATUIT inainte de
+// plata — deci continutul de baza exista deja in momentul paid_at. Extra-ul WAV (premium/video)
+// e generat asincron la cateva secunde/minute dupa plata (generatePremiumExtras) — tratat aici
+// ca un format suplimentar al ACELUIASI cantec deja livrat, nu o livrare separata.
+const CONTENT_RETENTION_DAYS = 30;
 function hostedAccessExpiresAt(order) {
   if (!order.paidAt) return null;
-  return new Date(new Date(order.paidAt).getTime() + HOSTED_ACCESS_DAYS * 24 * 60 * 60 * 1000);
+  return new Date(new Date(order.paidAt).getTime() + CONTENT_RETENTION_DAYS * 24 * 60 * 60 * 1000);
 }
 function isHostedAccessExpired(order) {
   const exp = hostedAccessExpiresAt(order);
@@ -1266,20 +1272,19 @@ app.post('/api/admin/orders/:orderId/anonymize', async (req, res, next) => {
 });
 
 // ==========================================================================================
-// Retentie date (rescriere legala 2026-09-05) — curatare REALA a materialelor SURSA (foto/video
-// incarcate de client pentru pachetul "Cadou video"), o categorie STRICT separata de melodia/
-// videoclipul FINAL cumparat (variants/videoKey), a carui perioada de acces clientului NU este
-// atinsa aici si ramane neschimbata pana la o decizie de business separata.
+// Retentie date — curatare REALA a materialelor SURSA (foto/video incarcate de client pentru
+// pachetul "Cadou video"). Foloseste ACEEASI regula unica CONTENT_RETENTION_DAYS (30 zile de
+// la paid_at) ca produsul final si povestea — vezi comentariul de la acea constanta pentru
+// motivul simplificarii (o singura cifra, fara sa poata diverge intre Privacy Policy si cod).
 //
-// De ce 90 de zile: materialele sursa nu mai au niciun scop dupa ce videoclipul final a fost
-// randat cu succes si livrat — sunt pastrate doar atat cat e rezonabil ca un client sa observe
-// o problema si sa ceara o corectie/re-editare (simetric cu "termen rezonabil" folosit deja in
-// Sectiunea 8 din terms.html pentru reclamarea unui defect). E o alegere OPERATIONALA declarata
-// public in Privacy Policy, nu o obligatie legala — vezi acolo distinctia explicita.
-const SOURCE_MEDIA_RETENTION_DAYS = 90;
-
+// De ce e sigur sa NU se mai verifice aici ca videoKey exista deja (spre deosebire de versiunea
+// initiala a acestei functii): status='ready' GARANTEAZA deja ca videoclipul exista, pentru
+// TOATE comenzile — verificat exhaustiv (vezi POST /checkout, care REFUZA sa creeze sesiunea
+// Stripe pentru pachetul video daca videoVariant.videoKey lipseste, INAINTE ca plata sa fie
+// macar posibila). Singura garda ramasa necesara e isVideoLockActive — o comanda nu trebuie
+// atinsa cat timp o randare (re-editare admin-mediata) e activa chiar acum.
 async function purgeStaleSourceMedia() {
-  const cutoff = new Date(Date.now() - SOURCE_MEDIA_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+  const cutoff = new Date(Date.now() - CONTENT_RETENTION_DAYS * 24 * 60 * 60 * 1000);
   let candidates = [];
   try {
     candidates = await db.findOrdersEligibleForSourceMediaPurge(cutoff);
@@ -1291,11 +1296,8 @@ async function purgeStaleSourceMedia() {
   let purged = 0, skipped = 0;
   for (const order of candidates) {
     // Re-verificare defensiva in JS (dincolo de filtrul SQL): nu atingem o comanda cu o
-    // randare video inca activa, si randam sursa doar daca videoclipul curent chiar exista
-    // (fullKey/videoKey) — o comanda fara randare reusita inca poate avea nevoie de sursa.
+    // randare video inca activa (re-editare admin-mediata in curs).
     if (isVideoLockActive(order)) { skipped++; continue; }
-    const currentVariant = (order.variants || []).find(v => v.id === order.selectedVariantId);
-    if (!currentVariant || !currentVariant.videoKey || !currentVariant.videoPreviewKey) { skipped++; continue; }
 
     const keysToDelete = (order.uploadedMedia || []).map(m => m.key).filter(Boolean);
     for (const key of keysToDelete) {
@@ -1336,15 +1338,16 @@ app.post('/api/admin/retention/purge-source-media', async (req, res, next) => {
 
 // ==========================================================================================
 // Expirare acces gazduit la produsul FINAL (decizie de business 2026-09-06) — dupa
-// HOSTED_ACCESS_DAYS (30) zile de la paid_at, fisierele REALE (melodie/WAV/video) sunt sterse
-// din storage si cheile golite din variants. NU atinge NICIODATA: id, pret, status, plan,
-// paid_at, consimtamant, referinte Stripe, recipient/story (categorie separata) — doar
-// fisierele media ale produsului FINAL. Accesul clientului e deja blocat time-based (vezi
-// isHostedAccessExpired, verificat live in cele 4 rute /media/*) INDIFERENT daca aceasta
-// maturare a rulat deja — asta e doar curatarea REALA a storage-ului, nu poarta de acces.
+// CONTENT_RETENTION_DAYS (30) zile de la paid_at, fisierele REALE (melodie/WAV/video) sunt
+// sterse din storage si cheile golite din variants. NU atinge NICIODATA: id, pret, status,
+// plan, paid_at, consimtamant, referinte Stripe — doar fisierele media ale produsului FINAL
+// (povestea are propriul job, anonymizeStaleStories, aceeasi cifra). Accesul clientului e deja
+// blocat time-based (vezi isHostedAccessExpired, verificat live in cele 4 rute /media/*)
+// INDIFERENT daca aceasta maturare a rulat deja — asta e doar curatarea REALA a storage-ului,
+// nu poarta de acces.
 // ==========================================================================================
 async function expireStaleFinalMedia() {
-  const cutoff = new Date(Date.now() - HOSTED_ACCESS_DAYS * 24 * 60 * 60 * 1000);
+  const cutoff = new Date(Date.now() - CONTENT_RETENTION_DAYS * 24 * 60 * 60 * 1000);
   let candidates = [];
   try {
     candidates = await db.findOrdersEligibleForFinalMediaExpiry(cutoff);
@@ -1401,30 +1404,27 @@ app.post('/api/admin/retention/expire-final-media', async (req, res, next) => {
 });
 
 // ==========================================================================================
-// Retentie poveste/text de personalizare (decizie de business 2026-09-06, runda 2) — categorie
-// SEPARATA de produsul final (HOSTED_ACCESS_DAYS, de mai sus): povestea nu are niciun scop
-// continuu dupa ce melodia a fost creata, in afara de a permite o corectie/regenerare/cerere
-// de suport intr-o fereastra rezonabila dupa livrare.
+// Retentie poveste/text de personalizare (decizie de business 2026-09-06, runda 3 —
+// simplificare la o singura regula) — foloseste ACEEASI CONTENT_RETENTION_DAYS (30 zile) ca
+// produsul final si materialele sursa. Runda anterioara folosea 60 de zile (30 acces + 30
+// rezerva pentru corectii/suport) — retrasa explicit in favoarea unei singure cifre simple,
+// publice, identice cu comportamentul real. Riscul acceptat constient: un client care observa
+// o problema foarte aproape de ziua 30 ar putea gasi povestea deja anonimizata — atenuat prin
+// fluxul de suport de mai jos, nu prin pastrare suplimentara "de siguranta".
 //
-// De ce 60 de zile (nu 30, nu 90): fereastra trebuie sa acopere scenariul realist "clientul
-// observa o problema aproape de finalul celor 30 de zile de acces si contacteaza suportul" —
-// 30 de zile de acces + 30 de zile suplimentare ca suportul sa poata actiona, fara sa expire
-// povestea la mijlocul unei cereri in curs. E cea mai scurta perioada care nu risca sa stearga
-// povestea INAINTE ca un client sa fi avut sansa reala sa raporteze o problema si sa fie
-// rezolvata — nu 90 (ar pastra inutil de mult text personal fata de necesitatea reala).
-//
-// IMPORTANT (verificat explicit): NICIUN cod de regenerare/corectie post-plata din acest fisier
-// nu citeste order.story pentru o comanda deja 'ready' — validateLyricsCoherence()/buildPrompt-
-// urile care folosesc story ruleaza STRICT in fluxul de generare/regenerare PRE-plata (blocat
-// dupa 'ready', vezi cele 5 verificari "status === 'ready'" de pe rutele de editare/regenerare);
-// singurul job post-plata (retry-extras, WAV/video) NU foloseste story deloc. Stergerea
-// povestii NU poate deci sa strice vreun flux automat existent. O corectie genuina de continut
-// dupa aceasta fereastra ramane posibila prin contact direct (Sectiunea 8, terms.html) — ca si
-// cum clientul si-ar fi pierdut singur notitele originale, suportul ar cere din nou detaliile.
-const STORY_RETENTION_DAYS = 60;
+// IMPORTANT (verificat explicit, neschimbat fata de runda anterioara): NICIUN cod de
+// regenerare/corectie post-plata din acest fisier nu citeste order.story pentru o comanda deja
+// 'ready' — validateLyricsCoherence()/buildPrompt-urile care folosesc story ruleaza STRICT in
+// fluxul de generare/regenerare PRE-plata (blocat dupa 'ready', vezi cele 3 verificari
+// "status === 'ready'" de pe rutele de editare/regenerare); singurul job post-plata
+// (retry-extras, WAV/video) NU foloseste story deloc. Stergerea povestii NU poate deci sa
+// strice vreun flux automat existent. O corectie genuina de continut dupa aceasta fereastra
+// (drept statutar CRA 2015, niciodata anulat de aceasta politica de retentie) ramane posibila
+// prin contact direct (Sectiunea 8, terms.html) — suportul cere din nou detaliile necesare,
+// exact cum ar proceda si daca clientul insusi si-ar fi pierdut notitele originale.
 
 async function anonymizeStaleStories() {
-  const cutoff = new Date(Date.now() - STORY_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+  const cutoff = new Date(Date.now() - CONTENT_RETENTION_DAYS * 24 * 60 * 60 * 1000);
   let candidates = [];
   try {
     candidates = await db.findOrdersEligibleForStoryAnonymization(cutoff);
@@ -2918,7 +2918,7 @@ app.get('/api/orders/:orderId', async (req, res, next) => {
       mediaMaxItems: ORDER_MEDIA_MAX_ITEMS,
       videoStatus,
       createdAt: order.createdAt,
-      // Acces gazduit 30 de zile de la livrare (vezi HOSTED_ACCESS_DAYS) — expus si aici (nu
+      // Acces gazduit 30 de zile de la livrare (vezi CONTENT_RETENTION_DAYS) — expus si aici (nu
       // doar in /api/orders/access/:token) pentru ca succes.html foloseste ACEST endpoint
       // pentru propriul player/descarcare, imediat dupa plata (practic niciodata expirat in
       // acel moment, dar expus consecvent, defensiv, niciodata presupus).
@@ -4130,7 +4130,7 @@ app.get('/api/orders/access/:token', lookupLimiter, async (req, res, next) => {
       hasVideo: !!(selectedVariant && selectedVariant.videoKey),
       hasGiftAudio: !!(giftVariant && giftVariant.fullKey),
       uploadedMedia: (order.uploadedMedia || []).map(m => ({ type: m.type, section: m.section || null })),
-      // Acces gazduit 30 de zile de la livrare (vezi HOSTED_ACCESS_DAYS) — expus AICI ca reper
+      // Acces gazduit 30 de zile de la livrare (vezi CONTENT_RETENTION_DAYS) — expus AICI ca reper
       // de TIMP, independent de daca stergerea fizica (expireStaleFinalMedia) a rulat deja sau
       // nu, ca frontend-ul sa arate STRICT starea corecta de "acces expirat" chiar daca fisierul
       // ar mai exista tehnic inca o vreme in storage (cursa cu maturarea zilnica).
