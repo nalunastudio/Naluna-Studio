@@ -3539,15 +3539,21 @@ app.delete('/api/orders/:orderId/media/multipart/:sessionId', requireOrderToken,
 // folosit pentru diagnosticul de generare muzicala), citibil direct din railway logs, fara sa
 // fie nevoie de Safari Remote Web Inspector conectat la un Mac in timpul testului real.
 const CLIENT_TIMING_MAX_EVENTS = 40;
+// DIAGNOSTIC (2026-09-07, TASK 2): endpoint-ul generic e reutilizat acum si pentru traseul
+// "apas Generare video -> pagina finala afisata" (se-creeaza-video.html), pe langa traseul
+// original al selectorului de materiale — `flow` distinge intre ele in loguri, STRICT o
+// eticheta ('media_picker'/'video_create'), niciodata date personale.
 app.post('/api/orders/:orderId/media/client-timing', requireOrderToken, (req, res) => {
   const events = Array.isArray(req.body && req.body.events) ? req.body.events.slice(0, CLIENT_TIMING_MAX_EVENTS) : [];
   const summary = events
     .filter(e => e && typeof e.event === 'string' && Number.isFinite(e.t))
     .map(e => `${e.event}=${Math.round(e.t)}ms`)
     .join(', ');
+  const flow = (req.body && req.body.flow === 'video_create') ? 'video_create' : 'media_picker';
   const ios = req.body && req.body.ios ? 'ios' : 'non-ios';
   const fileCount = Number.isFinite(req.body && req.body.fileCount) ? req.body.fileCount : '?';
-  perfLog(req.order.id, 'client_media_picker_timing', `${ios}, fisiere=${fileCount}, ${summary}`);
+  const extra = flow === 'video_create' ? summary : `${ios}, fisiere=${fileCount}, ${summary}`;
+  perfLog(req.order.id, `client_${flow}_timing`, extra);
   res.json({ ok: true });
 });
 
@@ -3756,6 +3762,12 @@ app.post('/api/orders/:orderId/media/confirm', requireOrderToken, async (req, re
 // mecanism de reincercare explicita daca o randare anterioara a esuat.
 // ==========================================================================================
 app.post('/api/orders/:orderId/create-video', requireOrderToken, async (req, res, next) => {
+  // DIAGNOSTIC (2026-09-07, TASK 2, "9:57 pana la videoclipul final" — explicam cele ~90s
+  // neconturate intre ultimul upload si video_render_total_start): marcaj EXACT al momentului
+  // in care serverul primeste cererea de creare a videoclipului — inainte de acest fix nu
+  // exista niciun punct de reper masurabil intre apasarea butonului si video_render_total_start
+  // (deja existent, in runVideoRenderJob).
+  perfLog(req.params.orderId, 'create_video_request_received');
   try {
     const order = req.order;
     if (order.plan !== 'video') return res.status(400).json({ error: 'Doar pachetul video poate crea un videoclip.' });
@@ -3791,6 +3803,7 @@ app.post('/api/orders/:orderId/create-video', requireOrderToken, async (req, res
     if (!claim) {
       return res.status(409).json({ error: 'Videoclipul este deja în curs de creare.' });
     }
+    perfLog(order.id, 'create_video_job_claimed');
 
     res.json({ started: true });
     runVideoRenderJob(order.id, order.selectedVariantId, claim.mediaRevisionAtStart).catch(err => {

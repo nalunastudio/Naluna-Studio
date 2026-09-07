@@ -9,6 +9,7 @@ const path = require('node:path');
 
 const html = fs.readFileSync(path.join(__dirname, '..', 'public', 'amintiri-video.html'), 'utf8');
 const server = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+const processingPage = fs.readFileSync(path.join(__dirname, '..', 'public', 'se-creeaza-video.html'), 'utf8');
 
 test('amintiri-video.html: markTiming() foloseste STRICT timingNow() (cu fallback la Date.now() daca performance.now nu exista), niciodata performance.now() direct fara fallback', () => {
   assert.match(html, /function timingNow\(\) \{\s*return \(typeof performance !== 'undefined' && typeof performance\.now === 'function'\) \? performance\.now\(\) : Date\.now\(\);/);
@@ -91,11 +92,90 @@ test('server.js: endpoint-ul POST .../media/client-timing exista, cere requireOr
   const idx = server.indexOf("app.post('/api/orders/:orderId/media/client-timing'");
   const body = server.slice(idx, idx + 800);
   assert.match(body, /\.slice\(0, CLIENT_TIMING_MAX_EVENTS\)/, 'numarul de evenimente acceptate trebuie plafonat, ca sa nu poata fi folosit ca vector de abuz');
-  assert.match(body, /perfLog\(req\.order\.id, 'client_media_picker_timing'/);
+  assert.match(body, /perfLog\(req\.order\.id, `client_\$\{flow\}_timing`/);
+});
+
+test('server.js: endpoint-ul de client-timing distinge intre fluxul "media_picker" (implicit) si "video_create" (TASK 2), STRICT printr-o eticheta, niciodata date personale', () => {
+  const idx = server.indexOf("app.post('/api/orders/:orderId/media/client-timing'");
+  const body = server.slice(idx, idx + 800);
+  assert.match(body, /const flow = \(req\.body && req\.body\.flow === 'video_create'\) \? 'video_create' : 'media_picker';/);
 });
 
 test('server.js: endpoint-ul de timing NU persista/logheaza niciodata nume de fisier sau alt continut liber de la client — STRICT nume de eveniment (string) + numar (t)', () => {
   const idx = server.indexOf("app.post('/api/orders/:orderId/media/client-timing'");
   const body = server.slice(idx, idx + 800);
   assert.match(body, /typeof e\.event === 'string' && Number\.isFinite\(e\.t\)/, 'fiecare eveniment trebuie validat STRICT ca {event: string, t: number} inainte de a fi logat');
+});
+
+// ===============================================================================================
+// TASK 2 (2026-09-07, "9:57 pana la videoclipul final" — ~90s neexplicate intre ultimul upload
+// si video_render_total_start): instrumenteaza traseul apas buton -> request server -> job
+// pornit -> pagina de asteptare -> ready detectat -> redirect final.
+// ===============================================================================================
+
+test('server.js: POST .../create-video logheaza EXACT momentul primirii cererii (inainte de orice validare) si momentul confirmarii rezervarii jobului', () => {
+  const idx = server.indexOf("app.post('/api/orders/:orderId/create-video', requireOrderToken");
+  assert.notEqual(idx, -1);
+  const body = server.slice(idx, idx + 700);
+  assert.match(body, /perfLog\(req\.params\.orderId, 'create_video_request_received'\);/, 'marcajul de primire trebuie sa fie primul lucru facut, inainte de req\\.order');
+  const requestReceivedIdx = body.indexOf("'create_video_request_received'");
+  const tryIdx = body.indexOf('try {');
+  assert.ok(requestReceivedIdx < tryIdx, 'marcajul de primire trebuie sa fie INAINTE de blocul try (deci inainte de orice validare care ar putea respinge cererea)');
+
+  const claimIdx = server.indexOf('const claim = await claimVideoRenderForOrder(order.id, order.selectedVariantId);', idx);
+  const claimedBody = server.slice(claimIdx, claimIdx + 300);
+  assert.match(claimedBody, /perfLog\(order\.id, 'create_video_job_claimed'\);/);
+  const claimedMarkIdx = claimedBody.indexOf("'create_video_job_claimed'");
+  const resJsonIdx = claimedBody.indexOf('res.json({ started: true });');
+  assert.ok(claimedMarkIdx < resJsonIdx, 'marcajul de rezervare confirmata trebuie sa vina INAINTE de raspunsul catre client');
+});
+
+test('amintiri-video.html: apasarea butonului "Creează videoclipul" persista T0 (Date.now(), supravietuieste navigarii) INAINTE de cererea de retea', () => {
+  const idx = html.indexOf("document.getElementById('gift-video-create-btn').addEventListener('click'");
+  assert.notEqual(idx, -1);
+  const body = html.slice(idx, idx + 1200);
+  const t0Idx = body.indexOf('const videoCreateT0 = Date.now();');
+  const setItemIdx = body.indexOf("localStorage.setItem(`naluna_video_create_t0_${orderId}`");
+  const fetchIdx = body.indexOf('res = await fetch(`/api/orders/${orderId}/create-video`');
+  assert.ok(t0Idx !== -1 && setItemIdx !== -1 && fetchIdx !== -1);
+  assert.ok(t0Idx < setItemIdx && setItemIdx < fetchIdx, 'T0-ul trebuie capturat si persistat INAINTE de a porni cererea de retea');
+});
+
+test('amintiri-video.html: beacon-ul de timing pentru "video_create" e trimis STRICT dupa un raspuns de succes (2xx/409), niciodata inainte, si NU blocheaza navigarea (fara await)', () => {
+  const idx = html.indexOf("document.getElementById('gift-video-create-btn').addEventListener('click'");
+  const body = html.slice(idx, idx + 2200);
+  const okBranchIdx = body.indexOf('if (res && (res.ok || res.status === 409)) {');
+  assert.notEqual(okBranchIdx, -1);
+  const branchBody = body.slice(okBranchIdx, okBranchIdx + 700);
+  assert.match(branchBody, /flow: 'video_create'/);
+  assert.doesNotMatch(branchBody, /await fetch\(`\/api\/orders\/\$\{orderId\}\/media\/client-timing`/, 'beacon-ul nu trebuie asteptat — navigarea catre se-creeaza-video.html nu trebuie intarziata');
+  assert.match(branchBody, /keepalive: true/);
+});
+
+test('se-creeaza-video.html: T0-ul de timing citeste momentul REAL al apasarii butonului (persistat de amintiri-video.html), cu fallback STRICT la Date.now() daca lipseste', () => {
+  assert.match(processingPage, /const videoTimingT0 = Number\(localStorage\.getItem\(`naluna_video_create_t0_\$\{orderId\}`\)\) \|\| Date\.now\(\);/);
+});
+
+test('se-creeaza-video.html: fiecare verificare de status marcheaza timpul + statusul (dintr-o enumerare tehnica fixa, niciodata date personale)', () => {
+  const idx = processingPage.indexOf('async function pollStatus() {');
+  const body = processingPage.slice(idx, idx + 1300);
+  assert.match(body, /markVideoTiming\(`poll_check_\$\{order\.videoStatus \|\| 'unknown'\}`\);/);
+});
+
+test('se-creeaza-video.html: finishSuccess() marcheaza "ready_detected" IMEDIAT (inainte de orice curatare de stare) si "redirect" chiar inainte de navigarea finala, cu trimiterea beacon-ului intre ele', () => {
+  const idx = processingPage.indexOf('function finishSuccess() {');
+  assert.notEqual(idx, -1);
+  const body = processingPage.slice(idx, idx + 950);
+  const readyIdx = body.indexOf("markVideoTiming('ready_detected_by_browser');");
+  const finishedIdx = body.indexOf('finished = true;');
+  assert.ok(readyIdx !== -1 && readyIdx < finishedIdx, 'marcajul de detectare trebuie sa fie STRICT primul lucru din functie');
+  const redirectMarkIdx = body.indexOf("markVideoTiming('redirect_to_melodia_mea');");
+  const sendBeaconIdx = body.indexOf('sendVideoTimingBeacon();');
+  const navigateIdx = body.indexOf('window.location.href = `/melodia-mea.html');
+  assert.ok(redirectMarkIdx < sendBeaconIdx && sendBeaconIdx < navigateIdx, 'ordinea trebuie sa fie: marcaj final -> trimitere beacon -> navigare (niciodata dupa navigare, ar fi prea tarziu)');
+});
+
+test('se-creeaza-video.html: beacon-ul de timing NU e trimis mai devreme de o singura data (mediaTimingSent-echivalent), evitand duplicarea', () => {
+  assert.match(processingPage, /if \(videoTimingSent \|\| videoTimingEvents\.length === 0\) return;/);
+  assert.match(processingPage, /videoTimingSent = true;/);
 });

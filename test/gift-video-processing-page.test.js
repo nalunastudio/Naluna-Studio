@@ -167,7 +167,10 @@ test('se-creeaza-video.html: Retry trateaza 200\\/202 SI 409 (job deja activ) ca
 test('se-creeaza-video.html: pollingul foloseste backoff (nu un interval fix) si nu se opreste definitiv la o eroare tranzitorie', () => {
   assert.match(processingPage, /function nextPollDelay\(\) \{\s*return Math\.min\(5000 \* Math\.max\(1, consecutivePollFailures\), 20000\);\s*\}/);
   const idx = processingPage.indexOf('async function pollStatus() {');
-  const snippet = processingPage.slice(idx, idx + 2600);
+  // fereastra marita (2026-09-07, instrumentarea de timing TASK 2 "9:57 pana la videoclipul
+  // final" — vezi markVideoTiming() — a impins finalul functiei dincolo de fereastra anterioara
+  // de 2600 caractere).
+  const snippet = processingPage.slice(idx, idx + 2900);
   const catchIdx = snippet.lastIndexOf('} catch (err) {');
   assert.ok(catchIdx !== -1);
   const catchBody = snippet.slice(catchIdx, catchIdx + 200);

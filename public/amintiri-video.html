@@ -1831,6 +1831,11 @@
     const btn = document.getElementById('gift-video-create-btn');
     btn.disabled = true;
     hideConfirmFailedMessage();
+    // DIAGNOSTIC (2026-09-07, TASK 2, "9:57 pana la videoclipul final"): T0 persistat in
+    // localStorage (Date.now(), supravietuieste navigarii catre se-creeaza-video.html, spre
+    // deosebire de performance.now() care s-ar reseta) — vezi acolo pentru restul traseului.
+    const videoCreateT0 = Date.now();
+    try { localStorage.setItem(`naluna_video_create_t0_${orderId}`, String(videoCreateT0)); } catch (e) { /* diagnosticul nu opreste fluxul real */ }
     let res = null;
     try {
       res = await fetch(`/api/orders/${orderId}/create-video`, {
@@ -1840,6 +1845,17 @@
     } catch (e) { /* res ramane null -> ramura de eroare de mai jos */ }
 
     if (res && (res.ok || res.status === 409)) {
+      try {
+        fetch(`/api/orders/${orderId}/media/client-timing`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Access-Token': accessToken },
+          body: JSON.stringify({ flow: 'video_create', events: [
+            { event: 'button_clicked', t: 0 },
+            { event: 'fetch_resolved', t: Date.now() - videoCreateT0 }
+          ] }),
+          keepalive: true
+        }).catch(() => {});
+      } catch (e) { /* diagnosticul nu opreste fluxul real */ }
       window.location.href = `/se-creeaza-video.html?id=${encodeURIComponent(orderId)}&token=${encodeURIComponent(accessToken)}`;
       return;
     }

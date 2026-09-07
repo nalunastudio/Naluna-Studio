@@ -406,6 +406,34 @@
     localStorage.setItem(startKey, String(startTime));
   }
 
+  // ==========================================================================================
+  // DIAGNOSTIC (2026-09-07, TASK 2, "9:57 pana la videoclipul final" — ~90s neexplicate intre
+  // ultimul upload si video_render_total_start): T0 e momentul REAL al apasarii butonului
+  // "Creează videoclipul" pe amintiri-video.html (Date.now(), persistat in localStorage —
+  // supravietuieste navigarii intre pagini). Daca lipseste (pagina reincarcata direct, fara
+  // click recent), folosim STRICT momentul incarcarii ACESTEI pagini — nu putem masura un
+  // interval care a inceput inainte sa avem un reper real, mai bine transparent decat inventat.
+  // ==========================================================================================
+  const videoTimingT0 = Number(localStorage.getItem(`naluna_video_create_t0_${orderId}`)) || Date.now();
+  const videoTimingEvents = [];
+  let videoTimingSent = false;
+  function markVideoTiming(event) {
+    videoTimingEvents.push({ event, t: Date.now() - videoTimingT0 });
+  }
+  function sendVideoTimingBeacon() {
+    if (videoTimingSent || videoTimingEvents.length === 0) return;
+    videoTimingSent = true;
+    try {
+      fetch(`/api/orders/${orderId}/media/client-timing`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Access-Token': accessToken },
+        body: JSON.stringify({ flow: 'video_create', events: videoTimingEvents }),
+        keepalive: true
+      }).catch(() => {});
+    } catch (e) { /* diagnosticul nu opreste fluxul real */ }
+  }
+  markVideoTiming('processing_page_loaded');
+
   // Timp de referinta STRICT pentru rotatia textului calitativ (t.stages) si pentru
   // declansarea mesajului linistitor "dureaza putin mai mult" — NU un procent, NU o
   // estimare afisata clientului ca fiind exacta. Un videoclip real dureaza de obicei 1-3
@@ -438,9 +466,11 @@
   const progressTimer = setInterval(updateProgress, 1000);
 
   function finishSuccess() {
+    markVideoTiming('ready_detected_by_browser');
     finished = true;
     clearInterval(progressTimer);
     localStorage.removeItem(startKey);
+    try { localStorage.removeItem(`naluna_video_create_t0_${orderId}`); } catch (e) { /* diagnosticul nu opreste fluxul real */ }
 
     progressFill.classList.add('done');
     hideLongNotice();
@@ -450,6 +480,10 @@
     pSubtitleEl.textContent = t.readySub;
 
     setTimeout(() => {
+      // marcaj + trimitere STRICT aici, chiar inainte de navigare — ultimul moment sigur in
+      // care mai avem control asupra acestei pagini (dupa acest punct, pagina se schimba).
+      markVideoTiming('redirect_to_melodia_mea');
+      sendVideoTimingBeacon();
       window.location.href = `/melodia-mea.html?id=${encodeURIComponent(orderId)}&token=${encodeURIComponent(accessToken)}`;
     }, 1400);
   }
@@ -514,6 +548,9 @@
       consecutivePollFailures = 0;
       hideSoftNotice();
       const order = await res.json();
+      // DIAGNOSTIC (2026-09-07, TASK 2): statusul e un identificator tehnic scurt dintr-o
+      // enumerare fixa ('generating'/'stale'/'ready'/'failed'/'none') — niciodata date personale.
+      markVideoTiming(`poll_check_${order.videoStatus || 'unknown'}`);
 
       if (order.plan !== 'video') {
         window.location.href = `/melodia-mea.html?id=${encodeURIComponent(orderId)}&token=${encodeURIComponent(accessToken)}`;
