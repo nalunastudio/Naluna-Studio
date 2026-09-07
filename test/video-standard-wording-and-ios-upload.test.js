@@ -135,7 +135,9 @@ test('amintiri-video.html: fiecare fisier din selectie e adaugat in coada intr-u
 
 test('amintiri-video.html: renderQueueList() se apeleaza necondiționat dupa forEach, indiferent daca vreun fisier a esuat la construire', () => {
   const idx = amintiriVideo.indexOf('function handleFilesReceived(files) {');
-  const forEachStart = amintiriVideo.indexOf('files.forEach(file => {', idx);
+  // 2026-09-07 (TASK 1, amprenta anti-duplicat): forEach-ul de CONSTRUCTIE a intrarilor ruleaza
+  // acum pe `acceptedFiles` (dupa filtrarea duplicatelor deja adaugate), nu direct pe `files`.
+  const forEachStart = amintiriVideo.indexOf('acceptedFiles.forEach(file => {', idx);
   assert.notEqual(forEachStart, -1);
   const forEachEnd = amintiriVideo.indexOf('});', forEachStart) + 3;
   const snippet = amintiriVideo.slice(forEachEnd, forEachEnd + 600);

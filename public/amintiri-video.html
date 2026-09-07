@@ -302,6 +302,11 @@
              programatic. -->
         <input type="file" id="mem-file-input" multiple accept="image/*,video/*" aria-label="Selectează poze și videoclipuri">
         <label class="btn-pick-files" for="mem-file-input" id="mem-pick-label"><span id="mem-pick-label-text"></span></label>
+        <!-- TASK 1 (2026-09-07, "revenire mai rapida in Naluna intre loturi"): vizibil STRICT
+             cand eticheta de mai sus e vizibila SI un lot anterior e inca activ — singurul moment
+             in care informatia "poti adauga acum, cele deja trimise continua" e adevarata si
+             relevanta (vezi syncPickerLabelState()). -->
+        <p class="mem-batch-loader-note" id="mem-add-more-hint" style="margin-top:6px; display:none;"></p>
         <p class="mem-status" id="mem-status" role="status" aria-live="assertive" aria-busy="false"></p>
 
         <!-- CERINTA 4 (2026-08-31): panou de recuperare, afisat STRICT dupa un cancel/revenire
@@ -357,6 +362,8 @@
       memories_auto_upload_hint: 'Materialele se încarcă automat. Nu mai trebuie să apeși.',
       memories_upload_timeout: 'Încărcarea durează prea mult — verifică conexiunea și încearcă din nou.',
       memories_no_files_selected: 'Nu am primit niciun fișier de la selector — încearcă din nou (verifică și dacă fotografiile sunt descărcate complet din iCloud).',
+      memories_add_more_hint: 'Poți selecta acum alte materiale — cele deja trimise continuă să se încarce neîntrerupt.',
+      memories_all_already_added: 'Materialele alese erau deja adăugate — nu am dublat nimic.',
       memories_picker_waiting: 'Așteptăm ca telefonul să pregătească materialul selectat...',
       memories_picker_retry: 'Renunță și încearcă din nou',
       memories_move_up: 'Mută mai sus', memories_move_down: 'Mută mai jos',
@@ -397,6 +404,8 @@
       memories_auto_upload_hint: 'Materials are uploading automatically. No need to tap again.',
       memories_upload_timeout: 'This is taking too long — check your connection and try again.',
       memories_no_files_selected: "We didn't receive any file from the picker — please try again (also check the photos are fully downloaded from iCloud).",
+      memories_add_more_hint: "You can pick more materials now — the ones already sent keep uploading without interruption.",
+      memories_all_already_added: "The files you picked were already added — nothing was duplicated.",
       memories_picker_waiting: "We're waiting for your phone to prepare the selected file...",
       memories_picker_retry: 'Cancel and try again',
       memories_move_up: 'Move up', memories_move_down: 'Move down',
@@ -437,6 +446,8 @@
       memories_auto_upload_hint: 'Die Materialien werden automatisch hochgeladen. Du musst nicht erneut tippen.',
       memories_upload_timeout: 'Das dauert zu lange — überprüfe deine Verbindung und versuche es erneut.',
       memories_no_files_selected: 'Wir haben keine Datei von der Auswahl erhalten — bitte versuche es erneut (prüfe auch, ob die Fotos vollständig aus iCloud heruntergeladen sind).',
+      memories_add_more_hint: 'Du kannst jetzt weitere Materialien auswählen — die bereits gesendeten werden ununterbrochen weiter hochgeladen.',
+      memories_all_already_added: 'Die ausgewählten Dateien waren bereits hinzugefügt — es wurde nichts dupliziert.',
       memories_picker_waiting: 'Wir warten, bis dein Telefon die ausgewählte Datei vorbereitet...',
       memories_picker_retry: 'Abbrechen und erneut versuchen',
       memories_move_up: 'Nach oben', memories_move_down: 'Nach unten',
@@ -477,6 +488,8 @@
       memories_auto_upload_hint: 'Los materiales se suben automáticamente. No hace falta que vuelvas a tocar.',
       memories_upload_timeout: 'Esto está tardando demasiado — comprueba tu conexión e inténtalo de nuevo.',
       memories_no_files_selected: 'No recibimos ningún archivo del selector — inténtalo de nuevo (comprueba también que las fotos estén completamente descargadas de iCloud).',
+      memories_add_more_hint: 'Ya puedes elegir más materiales — los que ya se enviaron siguen subiéndose sin interrupción.',
+      memories_all_already_added: 'Los archivos elegidos ya estaban añadidos — no se duplicó nada.',
       memories_picker_waiting: 'Estamos esperando a que tu teléfono prepare el archivo seleccionado...',
       memories_picker_retry: 'Cancelar e intentar de nuevo',
       memories_move_up: 'Subir', memories_move_down: 'Bajar',
@@ -517,6 +530,8 @@
       memories_auto_upload_hint: 'I materiali si caricano automaticamente. Non serve toccare di nuovo.',
       memories_upload_timeout: 'Sta impiegando troppo tempo — controlla la connessione e riprova.',
       memories_no_files_selected: 'Non abbiamo ricevuto alcun file dal selettore — riprova (controlla anche che le foto siano scaricate completamente da iCloud).',
+      memories_add_more_hint: 'Ora puoi scegliere altri materiali — quelli già inviati continuano a caricarsi senza interruzioni.',
+      memories_all_already_added: 'I file scelti erano già stati aggiunti — non è stato duplicato nulla.',
       memories_picker_waiting: 'Stiamo aspettando che il telefono prepari il file selezionato...',
       memories_picker_retry: 'Annulla e riprova',
       memories_move_up: 'Sposta su', memories_move_down: 'Sposta giù',
@@ -557,6 +572,8 @@
       memories_auto_upload_hint: "Les éléments s'envoient automatiquement. Inutile de retoucher l'écran.",
       memories_upload_timeout: 'Cela prend trop de temps — vérifiez votre connexion et réessayez.',
       memories_no_files_selected: "Nous n'avons reçu aucun fichier du sélecteur — réessayez (vérifiez aussi que les photos sont bien téléchargées depuis iCloud).",
+      memories_add_more_hint: "Vous pouvez choisir d'autres fichiers maintenant — ceux déjà envoyés continuent de se téléverser sans interruption.",
+      memories_all_already_added: "Les fichiers choisis étaient déjà ajoutés — rien n'a été dupliqué.",
       memories_picker_waiting: 'Nous attendons que ton téléphone prépare le fichier sélectionné...',
       memories_picker_retry: 'Annuler et réessayer',
       memories_move_up: 'Monter', memories_move_down: 'Descendre',
@@ -597,6 +614,8 @@
       memories_auto_upload_hint: 'Материалите се качват автоматично. Не е нужно да докосваш отново.',
       memories_upload_timeout: 'Това отнема твърде много време — провери връзката си и опитай отново.',
       memories_no_files_selected: 'Не получихме нито един файл от избора — опитай отново (провери също дали снимките са изтеглени напълно от iCloud).',
+      memories_add_more_hint: 'Вече можеш да избереш още материали — вече изпратените продължават да се качват без прекъсване.',
+      memories_all_already_added: 'Избраните файлове вече бяха добавени — нищо не се дублира.',
       memories_picker_waiting: 'Изчакваме телефонът ти да подготви избрания файл...',
       memories_picker_retry: 'Откажи и опитай отново',
       memories_move_up: 'Премести нагоре', memories_move_down: 'Премести надолу',
@@ -637,6 +656,8 @@
       memories_auto_upload_hint: 'Materyaller otomatik olarak yükleniyor. Tekrar dokunmana gerek yok.',
       memories_upload_timeout: 'Bu çok uzun sürüyor — bağlantınızı kontrol edip tekrar deneyin.',
       memories_no_files_selected: "Seçiciden hiçbir dosya alamadık — lütfen tekrar deneyin (fotoğrafların iCloud'dan tamamen indirildiğinden de emin olun).",
+      memories_add_more_hint: "Şimdi başka materyaller seçebilirsin — zaten gönderilenler kesintisiz yüklenmeye devam ediyor.",
+      memories_all_already_added: "Seçtiğin dosyalar zaten eklenmişti — hiçbir şey çoğaltılmadı.",
       memories_picker_waiting: 'Telefonunuzun seçilen dosyayı hazırlamasını bekliyoruz...',
       memories_picker_retry: 'İptal et ve tekrar dene',
       memories_move_up: 'Yukarı taşı', memories_move_down: 'Aşağı taşı',
@@ -703,6 +724,7 @@
     document.getElementById('mem-pick-fallback-label-text').textContent = t.memories_pick_files_fallback_btn;
     document.getElementById('mem-file-input-fallback').setAttribute('aria-label', t.memories_pick_files_fallback_btn);
     document.getElementById('mem-batch-loader-note').textContent = t.memories_dont_close;
+    document.getElementById('mem-add-more-hint').textContent = t.memories_add_more_hint;
     document.getElementById('upload-overall-track').setAttribute('aria-label', t.upload_stage_title);
   }
 
@@ -717,6 +739,18 @@
   let uploadQueue = [];
   let memOrderRef = null;
   const thumbCache = new Map();
+
+  // TASK 1 (2026-09-07, "revenire mai rapida in Naluna intre loturi"): amprenta STRICT locala
+  // (nume+dimensiune+data modificare — singurele proprietati stabile ale unui File pe care le
+  // putem citi FARA sa-i decodam continutul) a fiecarui fisier deja ACCEPTAT in coada, indiferent
+  // daca uploadul lui a reusit, esuat sau e inca in curs — persista pe toata durata paginii, nu
+  // doar cat timp fisierul e in uploadQueue. Photos/Fisiere poate redeschide cu selectiile
+  // anterioare inca bifate; fara aceasta amprenta, reconfirmarea lor ar duplica intrari si ar
+  // consuma degeaba din capacitatea MEM_MAX.
+  const memSeenFileFingerprints = new Set();
+  function fileFingerprint(file) {
+    return `${file.name}|${file.size}|${file.lastModified}`;
+  }
 
   const VIDEO_EXTENSIONS = ['.mp4', '.m4v', '.mov', '.webm'];
   function isVideoFile(file) {
@@ -1208,29 +1242,39 @@
 
   // Vizibilitatea/starea vizuala a butonului mare (etapa 1) / compact (etapa 2) de alegere a
   // fisierelor — SINGURUL <label> asociat inputului nativ unic, in ambele etape. In etapa 1,
-  // ramane mereu vizibil (doar cu aspect dezactivat cat timp memFileInput.disabled). In etapa 2,
-  // ramane ascuns cat timp un lot e activ (clientul trebuie sa vada STRICT progresul incarcarii —
-  // cerinta explicita), reaparand compact, STRICT cand coada s-a golit SI mai e loc pentru
-  // materiale (sub MEM_MAX) — ca upload-ul unui numar insuficient de materiale sa nu blocheze
-  // definitiv clientul fara nicio cale de a mai adauga altele.
+  // ramane mereu vizibil (doar cu aspect dezactivat cat timp memFileInput.disabled). In etapa 2
+  // (2026-09-07, TASK 1): ramane VIZIBIL si in timp ce un lot e activ, atata timp cat mai e loc
+  // (sub MEM_MAX) — clientul poate reveni sa mai adauge materiale fara sa astepte finalizarea
+  // lotului anterior; se ascunde STRICT cand capacitatea s-a epuizat (memFileInput.disabled).
   function syncPickerLabelState() {
     const label = document.getElementById('mem-pick-label');
+    const addMoreHint = document.getElementById('mem-add-more-hint');
     if (!label) return;
     const disabled = memFileInput.disabled;
     label.classList.toggle('is-disabled-look', disabled);
     if (!uploadStageEntered) { label.style.display = 'flex'; return; }
+    if (addMoreHint) addMoreHint.style.display = (!disabled && uploadQueue.length > 0) ? 'block' : 'none';
     const total = memOrderRef ? (memOrderRef.uploadedMedia || []).length : 0;
     label.style.display = (!disabled && total < MEM_MAX) ? 'flex' : 'none';
   }
 
-  // CORECȚIE (2026-08-29, "blocheaza selectiile duplicate cat timp lotul este activ"): selectorul
-  // ramane dezactivat (nu doar "lock" pe click) cat timp exista materiale in coada (incarcare/
-  // procesare/eroare nerezolvata) — reactivat automat cand coada se goleste (toate reusite sau
-  // eliminate). aria-busy urmeaza aceeasi stare, pentru cititoarele de ecran.
+  // CORECȚIE (2026-09-07, TASK 1 "revenire mai rapida in Naluna intre loturi" — vezi raportul
+  // discutat cu clientul inainte de aceasta schimbare): pana acum, selectorul ramanea dezactivat
+  // cat timp EXISTA orice material in coada (incarcare/procesare/eroare), indiferent de cate mai
+  // incapeau pana la MEM_MAX — clientul nu putea reveni sa mai adauge materiale cat timp lotul
+  // anterior inca se incarca. Blocarea e acum STRICT legata de CAPACITATE (confirmate + puse in
+  // coada >= MEM_MAX), niciodata de simplul fapt ca un lot e activ — duplicatele reale sunt
+  // prevenite separat, prin amprenta fisierului (vezi memSeenFileFingerprints, handleFilesReceived
+  // mai jos), nu prin blocarea intregului selector.
+  function remainingCapacity() {
+    const confirmed = memOrderRef ? (memOrderRef.uploadedMedia || []).length : 0;
+    return MEM_MAX - confirmed - uploadQueue.length;
+  }
   function updateBatchActiveState() {
     const active = uploadQueue.length > 0;
-    memFileInput.disabled = active;
-    if (memFileInputFallback) memFileInputFallback.disabled = active;
+    const capacityFull = remainingCapacity() <= 0;
+    memFileInput.disabled = capacityFull;
+    if (memFileInputFallback) memFileInputFallback.disabled = capacityFull;
     document.getElementById('mem-staged-list').setAttribute('aria-busy', active ? 'true' : 'false');
     document.getElementById('mem-status').setAttribute('aria-busy', active ? 'true' : 'false');
     const loaderWrap = document.getElementById('mem-batch-loader');
@@ -1677,16 +1721,34 @@
     // inainte. Fisierele raman in memorie (obiecte File reale, deja copiate) — comutarea e STRICT
     // vizuala.
     enterUploadStage();
+
+    // TASK 1 (2026-09-07): filtram ACUM fisierele deja adaugate anterior — vezi comentariul de la
+    // memSeenFileFingerprints mai sus. Fisierele noi (neduplicate) sunt singurele care intra mai
+    // departe in coada; daca TOATE cele primite erau deja adaugate, informam clientul si iesim,
+    // fara sa modificam nimic din starea existenta.
+    const acceptedFiles = [];
+    files.forEach(file => {
+      const fp = fileFingerprint(file);
+      if (memSeenFileFingerprints.has(fp)) return;
+      memSeenFileFingerprints.add(fp);
+      acceptedFiles.push(file);
+    });
+    if (acceptedFiles.length === 0) {
+      memStatusEl.textContent = t.memories_all_already_added;
+      memStatusEl.className = 'mem-status';
+      return;
+    }
+
     // Mesaj SINCRON, cu numarul REAL de materiale primite — cerinta explicita (2026-08-29):
     // "Am primit N materiale. Se pregătesc și se încarcă automat. Nu închide pagina."
-    memStatusEl.textContent = t.memories_received_count(files.length);
+    memStatusEl.textContent = t.memories_received_count(acceptedFiles.length);
     memStatusEl.className = 'mem-status';
 
-    memBatchTotal += files.length;
-    memBatchTotalBytes += files.reduce((s, f) => s + (f.size || 0), 0);
+    memBatchTotal += acceptedFiles.length;
+    memBatchTotalBytes += acceptedFiles.reduce((s, f) => s + (f.size || 0), 0);
 
     const newEntries = [];
-    files.forEach(file => {
+    acceptedFiles.forEach(file => {
       try {
         const entry = {
           localId: 'q' + Math.random().toString(36).slice(2),

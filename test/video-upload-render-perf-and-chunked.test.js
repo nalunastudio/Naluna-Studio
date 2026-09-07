@@ -177,7 +177,15 @@ for (const [name, html] of Object.entries(PAGES)) {
   test(`${name}: memBatchDoneCount creste STRICT la succesul confirmat de server (in xhr.onload / completeRes), niciodata la selectia locala (handleFilesReceived)`, () => {
     const handleSrc = extractFunction(html, 'function handleFilesReceived(files) {');
     assert.ok(!handleSrc.includes('memBatchDoneCount++'), 'selectia locala nu trebuie sa creasca numarul de materiale confirmate');
-    assert.ok(handleSrc.includes('memBatchTotal += files.length;'));
+    // TASK 1 (2026-09-07, "revenire mai rapida in Naluna intre loturi"): STRICT amintiri-video.html
+    // (pagina dedicata de materiale pentru Cadou video) a primit filtrul anti-duplicat — coada
+    // numara acum `acceptedFiles` (dupa deduplicare), nu `files` brute. comanda-mea.html/succes.html
+    // (widgeturi secundare, post-cumparare) raman NESCHIMBATE la aceasta runda.
+    if (name === 'amintiri-video.html') {
+      assert.ok(handleSrc.includes('memBatchTotal += acceptedFiles.length;'));
+    } else {
+      assert.ok(handleSrc.includes('memBatchTotal += files.length;'));
+    }
     const startUploadSrc = extractFunction(html, 'function startSingleUpload(entry) {');
     assert.ok(startUploadSrc.includes('memBatchDoneCount++'));
   });

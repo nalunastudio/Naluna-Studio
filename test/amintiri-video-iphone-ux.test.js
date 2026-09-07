@@ -411,12 +411,41 @@ test('executie reala (6 fisiere MOV): cand un upload activ se termina (eliminat 
 });
 
 // ===============================================================================================
-// 6) Selectii duplicate blocate cat timp lotul e activ (aria-busy urmeaza aceeasi stare).
+// 6) TASK 1 (2026-09-07, "revenire mai rapida in Naluna intre loturi"): selectorul ramane
+// dezactivat STRICT cand capacitatea (MEM_MAX) s-a epuizat — NU doar pentru ca un lot e activ,
+// spre deosebire de comportamentul anterior (2026-08-29). aria-busy ramane legat de existenta
+// oricarui material in coada (indicator vizual/a11y, independent de blocarea selectorului).
 // ===============================================================================================
-test('amintiri-video.html: updateBatchActiveState() dezactiveaza selectorul si seteaza aria-busy STRICT cat timp exista materiale in coada — reactivat automat cand coada se goleste', () => {
+test('amintiri-video.html: updateBatchActiveState() dezactiveaza selectorul STRICT cand capacitatea (MEM_MAX) e epuizata, niciodata doar pentru ca exista un lot activ — aria-busy ramane legat de existenta materialelor in coada', () => {
   const body = extractFn('updateBatchActiveState');
-  assert.match(body, /memFileInput\.disabled = active;/);
+  assert.match(body, /const capacityFull = remainingCapacity\(\) <= 0;/);
+  assert.match(body, /memFileInput\.disabled = capacityFull;/);
+  assert.doesNotMatch(body, /memFileInput\.disabled = active;/, 'selectorul nu mai trebuie dezactivat doar pentru ca uploadQueue.length > 0');
   assert.match(body, /setAttribute\('aria-busy', active \? 'true' : 'false'\)/);
+});
+
+test('amintiri-video.html: remainingCapacity() scade capacitatea ramasa dupa MATERIALELE CONFIRMATE + cele DEJA IN COADA (indiferent de stare) — previne selectii care ar depasi MEM_MAX chiar cat timp lotul anterior inca se incarca', () => {
+  const body = extractFn('remainingCapacity');
+  assert.match(body, /const confirmed = memOrderRef \? \(memOrderRef\.uploadedMedia \|\| \[\]\)\.length : 0;/);
+  assert.match(body, /return MEM_MAX - confirmed - uploadQueue\.length;/);
+});
+
+test('amintiri-video.html: handleFilesReceived() foloseste o amprenta (nume+dimensiune+data modificare) ca sa NU adauge de doua ori acelasi fisier, chiar daca Photos/Fisiere il redeschide cu selectiile anterioare inca bifate', () => {
+  const idx = page.indexOf('function handleFilesReceived(files) {');
+  assert.notEqual(idx, -1);
+  const body = page.slice(idx, idx + 1200);
+  assert.match(body, /const fp = fileFingerprint\(file\);/);
+  assert.match(body, /if \(memSeenFileFingerprints\.has\(fp\)\) return;/);
+  assert.match(body, /memSeenFileFingerprints\.add\(fp\);/);
+  assert.match(body, /if \(acceptedFiles\.length === 0\) \{/);
+});
+
+test('amintiri-video.html: syncPickerLabelState() arata eticheta de selectie SI cat timp un lot e activ (nu doar dupa ce coada s-a golit), atata timp cat mai e capacitate — flux nou, cerut explicit (TASK 1)', () => {
+  const body = extractFn('syncPickerLabelState');
+  assert.match(body, /label\.style\.display = \(!disabled && total < MEM_MAX\) \? 'flex' : 'none';/);
+  // NU mai exista nicio conditie care sa ascunda eticheta STRICT pentru ca uploadQueue nu e gol —
+  // singura conditie de ascundere ramasa e `disabled` (derivat acum din capacitate, nu din "lot activ").
+  assert.doesNotMatch(body, /uploadQueue\.length === 0/);
 });
 
 // CORECȚIE (2026-08-31, cerinta 5 "o singura regiune aria-live=polite" pentru loaderul agregat):
@@ -580,4 +609,144 @@ test('amintiri-video.html: la "change", FileList e copiat COMPLET (Array.from) S
   assert.notEqual(valueResetIdx, -1);
   assert.ok(valueResetIdx > arrayFromIdx, 'memFileInput.value trebuie resetat STRICT dupa ce Array.from a copiat deja FileList-ul complet');
   assert.ok(valueResetIdx - arrayFromIdx < 100, 'resetarea trebuie sa vina la scurt timp dupa copiere, fara nicio alta logica intre ele care ar putea intarzia/pierde FileList-ul');
+});
+
+// ===============================================================================================
+// 8) TASK 1 (2026-09-07, "revenire mai rapida in Naluna intre loturi"): executie REALA a
+//    handleFilesReceived() + updateBatchActiveState() + remainingCapacity() + syncPickerLabelState()
+//    impreuna, cu stub-uri minimale de DOM — verifica FUNCTIONAL (nu doar text) ca:
+//    - un al doilea lot, primit cat timp primul inca e in coada (uploading), se ADAUGA la coada
+//      existenta, fara sa piarda/dubleze intrarile deja prezente;
+//    - fisierele DEJA adaugate anterior (aceeasi amprenta) NU sunt readaugate daca sunt selectate
+//      din nou;
+//    - selectorul se blocheaza STRICT cand capacitatea (MEM_MAX) e epuizata, niciodata inainte.
+// ===============================================================================================
+function makeFakeElement() {
+  return {
+    style: {},
+    classList: { toggle() {}, add() {}, remove() {} },
+    setAttribute() {},
+    textContent: '',
+    className: '',
+    innerHTML: '',
+    disabled: false
+  };
+}
+function loadAddMoreWhileUploadingSandbox() {
+  const fileFingerprintSrc = extractFn('fileFingerprint');
+  const remainingCapacitySrc = extractFn('remainingCapacity');
+  const updateBatchActiveStateSrc = extractFn('updateBatchActiveState');
+  const syncPickerLabelStateSrc = extractFn('syncPickerLabelState');
+  const handleFilesReceivedSrc = extractFn('handleFilesReceived');
+  const memMaxConst = extractConst('MEM_MAX');
+
+  const elements = new Map();
+  function elementFor(id) {
+    if (!elements.has(id)) elements.set(id, makeFakeElement());
+    return elements.get(id);
+  }
+  const memFileInput = makeFakeElement();
+  const memFileInputFallback = makeFakeElement();
+  const memStatusEl = makeFakeElement();
+
+  const sandbox = {
+    uploadQueue: [],
+    memOrderRef: { uploadedMedia: [] },
+    memSeenFileFingerprints: new Set(),
+    memBatchTotal: 0,
+    memBatchTotalBytes: 0,
+    uploadStageEntered: true,
+    memFileInput,
+    memFileInputFallback,
+    memStatusEl,
+    t: T.ro,
+    document: {
+      getElementById(id) {
+        if (id === 'mem-pick-label' || id === 'mem-add-more-hint') return elementFor(id);
+        return elementFor(id);
+      }
+    },
+    isVideoFile: (file) => (file.type || '').startsWith('video'),
+    markTiming() {},
+    hideRecoveryUI() {},
+    enterUploadStage() {},
+    scheduleLocalThumbnail() {},
+    processUploadQueueCalls: 0,
+    renderQueueListCalls: 0,
+    requestAnimationFrame(cb) { cb(); } // sincron, ca sa putem verifica efectele imediat in test
+  };
+  sandbox.renderQueueList = () => { sandbox.renderQueueListCalls++; };
+  sandbox.processUploadQueue = () => { sandbox.processUploadQueueCalls++; };
+
+  const context = vm.createContext(sandbox);
+  vm.runInContext(`
+    ${memMaxConst}
+    ${fileFingerprintSrc}
+    ${remainingCapacitySrc}
+    ${updateBatchActiveStateSrc}
+    ${syncPickerLabelStateSrc}
+    ${handleFilesReceivedSrc}
+  `, context);
+  return context;
+}
+
+function fakeFile(name, size) {
+  return { name, size, lastModified: 1000, type: '' };
+}
+
+test('executie reala: al doilea lot, primit CAT TIMP primul e inca in coada (uploading), se adauga la coada existenta — niciun material deja prezent nu e pierdut', () => {
+  const ctx = loadAddMoreWhileUploadingSandbox();
+  ctx.handleFilesReceived([fakeFile('a.jpg', 100), fakeFile('b.jpg', 200), fakeFile('c.jpg', 300)]);
+  assert.equal(ctx.uploadQueue.length, 3);
+  // simuleaza starea reala: primele doua deja in curs de incarcare, al treilea inca in asteptare.
+  ctx.uploadQueue[0].status = 'uploading';
+  ctx.uploadQueue[1].status = 'uploading';
+
+  ctx.handleFilesReceived([fakeFile('d.jpg', 400), fakeFile('e.jpg', 500)]);
+
+  assert.equal(ctx.uploadQueue.length, 5, 'cele 3 materiale initiale (2 in curs de incarcare) trebuie sa ramana INTACTE, iar cele 2 noi trebuie ADAUGATE, nu sa le inlocuiasca');
+  assert.equal(ctx.uploadQueue[0].status, 'uploading', 'primul material, deja in curs de incarcare, nu trebuie atins');
+  assert.equal(ctx.uploadQueue[1].status, 'uploading', 'al doilea material, deja in curs de incarcare, nu trebuie atins');
+  const names = ctx.uploadQueue.map(q => q.file.name);
+  assert.deepEqual(names, ['a.jpg', 'b.jpg', 'c.jpg', 'd.jpg', 'e.jpg']);
+});
+
+test('executie reala: acelasi fisier (nume+dimensiune+data modificare identice) selectat DIN NOU nu e readaugat — previne duplicatele cand Photos redeschide cu selectiile anterioare inca bifate', () => {
+  const ctx = loadAddMoreWhileUploadingSandbox();
+  ctx.handleFilesReceived([fakeFile('a.jpg', 100), fakeFile('b.jpg', 200)]);
+  assert.equal(ctx.uploadQueue.length, 2);
+
+  // clientul reselecteaza b.jpg (deja adaugat) IMPREUNA cu un fisier chiar nou, c.jpg.
+  ctx.handleFilesReceived([fakeFile('b.jpg', 200), fakeFile('c.jpg', 300)]);
+
+  assert.equal(ctx.uploadQueue.length, 3, 'b.jpg nu trebuie duplicat — STRICT c.jpg (nou) trebuie adaugat');
+  const names = ctx.uploadQueue.map(q => q.file.name);
+  assert.deepEqual(names, ['a.jpg', 'b.jpg', 'c.jpg']);
+});
+
+test('executie reala: daca TOATE fisierele primite sunt deja adaugate, coada ramane neschimbata si clientul e informat (fara nicio eroare)', () => {
+  const ctx = loadAddMoreWhileUploadingSandbox();
+  ctx.handleFilesReceived([fakeFile('a.jpg', 100)]);
+  assert.equal(ctx.uploadQueue.length, 1);
+
+  ctx.handleFilesReceived([fakeFile('a.jpg', 100)]);
+
+  assert.equal(ctx.uploadQueue.length, 1, 'nicio intrare noua nu trebuie adaugata');
+  assert.equal(ctx.memStatusEl.textContent, ctx.t.memories_all_already_added);
+});
+
+test('executie reala: selectorul (memFileInput.disabled) ramane FALSE cat timp un lot e activ dar capacitatea (MEM_MAX) nu e epuizata — clientul poate reveni sa mai adauge materiale', () => {
+  const ctx = loadAddMoreWhileUploadingSandbox();
+  ctx.handleFilesReceived([fakeFile('a.jpg', 100), fakeFile('b.jpg', 200)]);
+  ctx.uploadQueue[0].status = 'uploading';
+  ctx.updateBatchActiveState();
+  assert.equal(ctx.memFileInput.disabled, false, 'cu doar 2 materiale din 30 posibile, selectorul nu trebuie blocat doar pentru ca lotul e activ');
+});
+
+test('executie reala: selectorul (memFileInput.disabled) devine TRUE STRICT cand materialele confirmate + cele din coada ating MEM_MAX — niciodata inainte', () => {
+  const ctx = loadAddMoreWhileUploadingSandbox();
+  ctx.memOrderRef.uploadedMedia = new Array(28).fill({ type: 'photo', key: 'k' });
+  ctx.handleFilesReceived([fakeFile('a.jpg', 100), fakeFile('b.jpg', 200)]); // 28 confirmate + 2 in coada = 30 = MEM_MAX
+  ctx.updateBatchActiveState();
+  assert.equal(ctx.memFileInput.disabled, true, 'capacitatea e epuizata (28 confirmate + 2 in coada = MEM_MAX) — selectorul trebuie blocat');
 });

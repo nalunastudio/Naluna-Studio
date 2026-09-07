@@ -116,14 +116,15 @@ function loadStageSandbox() {
     let uploadStageEntered = false;
     ${memMaxDecl}
     let memOrderRef = { uploadedMedia: [] };
+    let uploadQueue = []; // TASK 1 (2026-09-07): syncPickerLabelState() foloseste acum lungimea cozii pentru chenarul "poti adauga acum"
     const els = {};
     function makeEl(id) { const e = { id, style: {}, classList: { set: new Set(), add(c){this.set.add(c);}, remove(c){this.set.delete(c);}, toggle(c,v){ if (v) this.set.add(c); else this.set.delete(c); }, contains(c){ return this.set.has(c); } } }; els[id] = e; return e; }
-    ['memories-title','memories-sub','iphone-hint','memories-meta','back-link-row','upload-stage-header','mem-pick-label'].forEach(makeEl);
+    ['memories-title','memories-sub','iphone-hint','memories-meta','back-link-row','upload-stage-header','mem-pick-label','mem-add-more-hint'].forEach(makeEl);
     const document = { getElementById: (id) => els[id] || makeEl(id) };
     const memFileInput = { disabled: false };
     ${syncSrc}
     ${enterSrc}
-    return { syncPickerLabelState, enterUploadStage, els, setDisabled: (v) => { memFileInput.disabled = v; }, setUploadedCount: (n) => { memOrderRef.uploadedMedia = new Array(n).fill(0); }, isEntered: () => uploadStageEntered };
+    return { syncPickerLabelState, enterUploadStage, els, setDisabled: (v) => { memFileInput.disabled = v; }, setUploadedCount: (n) => { memOrderRef.uploadedMedia = new Array(n).fill(0); }, setQueueLength: (n) => { uploadQueue = new Array(n).fill(0); }, isEntered: () => uploadStageEntered };
   `;
   return new Function(sandboxSrc)();
 }
