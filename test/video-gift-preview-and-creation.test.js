@@ -232,9 +232,15 @@ test('server.js: triggerVideoGeneration primeste STRICT variantId (id stabil) �
 test('server.js: generateLyricVideo foloseste STRICT audio-ul si versurile ACELEIASI variante primite ca parametru — niciodata combinate intre versiuni', () => {
   const idx = server.indexOf('async function generateLyricVideo(order, variant, tempFullMp3Path) {');
   assert.notEqual(idx, -1);
-  const body = server.slice(idx, idx + 1200);
+  const body = server.slice(idx, idx + 2000);
   assert.ok(body.includes('variant.sunoTrackId'));
-  assert.ok(body.includes('order.musicTaskId'));
+  // CORECȚIE CRITICĂ (2026-09-07): taskId-ul folosit pentru get-timestamped-lyrics trebuie sa fie
+  // STRICT cel al GENERATIEI din care provine varianta (variant.musicTaskId) — order.musicTaskId
+  // (un singur camp, la nivel de comanda, suprascris de fiecare regenerare) ramane STRICT fallback
+  // pentru variante VECHI, create inainte de aceasta corectie. Vezi test/video-music-task-id-per-
+  // variant.test.js pentru verificarea FUNCTIONALA completa a acestei corectii.
+  assert.ok(body.includes('const effectiveMusicTaskId = variant.musicTaskId || order.musicTaskId;'));
+  assert.ok(body.includes('fetchTimestampedLyricsOnce(effectiveMusicTaskId, variant.sunoTrackId)'));
 });
 
 test('server.js: schimbarea variantei (POST /select) marcheaza videoclipul VECHI ca depasit — niciodata nu ramane asociat gresit cu noua varianta', () => {

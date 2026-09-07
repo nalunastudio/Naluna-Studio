@@ -5594,6 +5594,20 @@ async function buildVariantFromTrack(orderId, variantId, track, taskId) {
     // "video"). Fara el, nu am avea cum sa asociem inapoi varianta aleasa cu piesa reala
     // Suno o data ce am trecut de acest moment.
     sunoTrackId: track.id || null,
+    // CORECȚIE CRITICĂ (2026-09-07, "randarea video eșuează permanent — Raspunsul cu versuri
+    // sincronizate e gol"): taskId-ul GENERAȚIEI din care provine ACEASTĂ variantă — salvat aici,
+    // pe variantă, exact cum era deja disponibil ca parametru al acestei funcții. ÎNAINTE de
+    // această corecție, taskId-ul nu era pastrat pe variantă — generateLyricVideo() era forțat sa
+    // foloseasca order.musicTaskId (un singur camp, LA NIVEL DE COMANDA, suprascris de fiecare
+    // regenerare/editare). Cauza REALA, confirmata direct in productie (comanda reala 61cb645f,
+    // Cadou Video): clientul a regenerat melodia (order.musicTaskId suprascris cu taskId-ul NOU),
+    // dar a ales pentru video varianta INITIALA (sunoTrackId apartinand taskId-ului VECHI) —
+    // get-timestamped-lyrics primea taskId NOU + audioId VECHI, o pereche care nu exista niciodata
+    // la Suno, care raspundea corect cu date goale. Retrimiterea cererii (retry) nu putea repara
+    // niciodata asta — perechea gresita ramanea gresita la infinit. Cu taskId-ul salvat AICI, pe
+    // fiecare varianta, la crearea ei, generateLyricVideo poate folosi mereu perechea CORECTA,
+    // indiferent de cate regenerari au avut loc dupa aceea si indiferent ce varianta alege clientul.
+    musicTaskId: taskId || null,
     // Versurile ORIGINALE, asa cum au fost extrase din raspunsul Suno (vezi caveatul din
     // extractSunoTracks — poate fi null daca providerul nu a inclus acest camp). editedLyrics
     // ramane null pana cand clientul salveaza o editare explicita (vezi endpoint-ul dedicat
@@ -6869,11 +6883,25 @@ async function buildMemoryBackground(order, mediaItems, durationSeconds, section
 }
 
 async function generateLyricVideo(order, variant, tempFullMp3Path) {
-  if (!variant.sunoTrackId || !order.musicTaskId) {
+  // CORECȚIE CRITICĂ (2026-09-07, cauza confirmata a esecului real de productie, comanda
+  // 61cb645f, Cadou Video — "Raspunsul cu versuri sincronizate e gol"): folosim STRICT taskId-ul
+  // GENERATIEI din care provine ACEASTA varianta (variant.musicTaskId, salvat la crearea ei — vezi
+  // buildVariantFromTrack), NICIODATA order.musicTaskId (un singur camp, la nivel de comanda,
+  // suprascris de fiecare regenerare/editare ulterioara). Inainte de aceasta corectie, un client
+  // care regenera melodia SI apoi alegea pentru video o varianta MAI VECHE (initiala, sau dintr-o
+  // regenerare anterioara) trimitea la Suno o pereche taskId+audioId care nu exista niciodata
+  // impreuna — esec PERMANENT, nereparabil prin reincercare, indiferent de cate ori se repeta.
+  // Fallback pe order.musicTaskId STRICT pentru compatibilitate cu variantele VECHI, create
+  // inainte de aceasta corectie (unde variant.musicTaskId nu exista inca) — comportamentul
+  // pentru acele comenzi ramane exact cel de dinainte (posibil gresit doar daca acea comanda
+  // veche a suferit deja o regenerare intre timp, caz identic cu bug-ul original, neschimbat de
+  // aceasta corectie pentru date deja existente).
+  const effectiveMusicTaskId = variant.musicTaskId || order.musicTaskId;
+  if (!variant.sunoTrackId || !effectiveMusicTaskId) {
     throw new Error('Lipseste sunoTrackId sau musicTaskId — nu pot cere versurile cu marcaj de timp.');
   }
 
-  const outcome = await fetchTimestampedLyricsOnce(order.musicTaskId, variant.sunoTrackId);
+  const outcome = await fetchTimestampedLyricsOnce(effectiveMusicTaskId, variant.sunoTrackId);
   if (!outcome.ok) {
     throw new Error(`Nu am putut obtine versurile cu marcaj de timp: ${outcome.reason}`);
   }
