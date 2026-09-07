@@ -7173,6 +7173,10 @@ async function callMusicProvider(orderId, requestInput) {
         callBackUrl: `${DOMAIN}/api/music/callback`
       };
 
+  // DIAGNOSTIC (2026-09-07, prioritate absoluta "3-4 minute vs 20-30s"): timpul EXACT la
+  // care request-ul pleaca efectiv catre SunoAPI — inainte de acest punct, timpul consumat
+  // e strict cod/DB propriu (buildPrompt, validari, jurnalizare), nu al furnizorului.
+  perfLog(orderId, 'suno_request_sent', `model=${musicModel}, customMode=${isCustomLyrics}`);
   const createRes = await fetchWithTimeout(`${process.env.MUSIC_API_BASE_URL}/api/v1/generate`, {
     method: 'POST',
     headers: {
@@ -7286,9 +7290,14 @@ async function pollForResult(taskId, orderId, maxAttempts = 150, intervalMs = 60
     }
 
     const statusName = body.data && body.data.status;
+    // DIAGNOSTIC (2026-09-07): momentul EXACT al fiecarei verificari de status prin polling,
+    // cu numarul incercarii — permite reconstituirea exacta a cat a durat fiecare etapa
+    // raportata de Suno (PENDING/TEXT_SUCCESS/FIRST_SUCCESS/SUCCESS), separat de callback.
+    perfLog(orderId, 'suno_poll_check', `incercare=${i + 1}, status=${statusName || 'necunoscut'}, taskId=${taskId.slice(0, 8)}`);
 
     if (statusName === SUNO_SUCCESS_STATUS) {
       const tracks = extractSunoTracks(body);
+      perfLog(orderId, 'suno_poll_result_received', `incercare=${i + 1}, taskId=${taskId.slice(0, 8)}, piese=${tracks.length}`);
       return { status: statusName, tracks };
     }
     if (SUNO_ERROR_STATUSES.includes(statusName)) {
@@ -8318,7 +8327,19 @@ function buildPrompt(order, feedback, genreOverride) {
     // acelasi principiu de degradare gratioasa deja folosit pentru eticheta povestii si dictie.
     if (!isVideoPlan && feedbackBudget < 15) {
       const absoluteStoryFloor = storyLabelPlain.length + MIN_USEFUL_STORY_CHARS;
-      const safeGuaranteedReserve = Math.max(0, Math.min(50, remaining - absoluteStoryFloor));
+      // CORECTIE (2026-09-07, "vreau un alt inceput" nerespectata — masurata direct, nu
+      // presupusa): plafonul anterior (50) fusese ales sa garanteze DOAR ca ceva de feedback
+      // supravietuieste, nu ca instructiunea intreaga incapa. Masurat direct: o comanda REALISTA
+      // (poveste/ocazie tipice, gen "romantic") + o instructiune structurala tipica de client
+      // ("Vreau un cu totul alt inceput, nu cu ce ati facut data trecuta - porniti melodia
+      // altfel." — 89 caractere) era trunchiata la doar 42 caractere ("Adjust: Vreau un cu totul
+      // alt inceput, nu cu ce a"), taind EXACT partea care spune CE anume sa faca modelul diferit
+      // ("porniti melodia altfel") — cauza reala a "instructiunea nu s-a respectat" pentru cereri
+      // STRUCTURALE (nu doar de mood, deja acoperite de BRIGHTEN_MOOD_CLAUSE). Plafonul de 150
+      // acopera instructiuni realiste de pana la ~140 caractere util (dupa eticheta scurta) —
+      // ramane STRICT marginit de `remaining - absoluteStoryFloor`, deci NU poate niciodata sa
+      // coboare povestea sub propriul ei prag absolut de utilitate, aceeasi garantie ca inainte.
+      const safeGuaranteedReserve = Math.max(0, Math.min(150, remaining - absoluteStoryFloor));
       if (safeGuaranteedReserve > feedbackLabelShort.length) {
         labelToUse = feedbackLabelShort;
         feedbackBudget = safeGuaranteedReserve - labelToUse.length;
@@ -8332,7 +8353,10 @@ function buildPrompt(order, feedback, genreOverride) {
     if (isVideoPlan && feedbackBudget < Array.from(feedbackText).length) {
       throw new Error('Instrucțiunea ta de stil e prea lungă ca să încapă alături de restul detaliilor melodiei — scurteaz-o și încearcă din nou.');
     }
-    const feedbackTrimmed = truncateSafely(feedbackText, feedbackBudget);
+    // CORECTIE (2026-09-07): trunchiere la limita de cuvant (nu la mijlocul unui cuvant) — daca
+    // bugetul chiar nu ajunge pentru instructiunea intreaga, clientul primeste macar o propozitie
+    // coerenta, nu un fragment confuz ("...nu cu ce a").
+    const feedbackTrimmed = truncateAtWordBoundary(feedbackText, feedbackBudget);
     if (feedbackTrimmed) {
       feedbackFull = `${labelToUse}${feedbackTrimmed}`;
       remaining -= feedbackFull.length;
@@ -8512,7 +8536,13 @@ function buildExactLyricsRequest(order, exactLyrics, genreOverride, voicePrefere
   let style = `${styleTags}. Sing entirely in ${lyricsLanguage}. Short natural intro, vocals starting around 8-10 seconds. Fully sung vocal performance throughout.${VOICE_STYLE_NOTE[effectiveVoice]}${dictionInstruction} Sing these exact lyrics precisely as written, word for word — never paraphrase, alter, skip, or add words.`;
   if (feedbackText) {
     const isVideoPlan = order.plan === 'video';
-    const label = isVideoPlan ? VIDEO_FEEDBACK_PRIORITY_LABEL : ' ';
+    // CORECTIE (2026-09-07, gasita prin executie reala — nu presupunere): eticheta pentru
+    // Standard/Premium era STRICT un spatiu gol (' '), spre deosebire de buildPrompt(), care
+    // foloseste deja ' Client-requested adjustment: ' pentru aceleasi planuri — instructiunea
+    // clientului ajungea intreaga la Suno (nu era trunchiata), dar fara niciun semnal ca e o
+    // cerere distincta de restul descrierii de stil, in loc sa se piarda in coada unei propozitii
+    // tehnice lungi despre dictie/voce. Aliniat acum la exact acelasi tratament ca buildPrompt().
+    const label = isVideoPlan ? VIDEO_FEEDBACK_PRIORITY_LABEL : ' Client-requested adjustment: ';
     // CORECTIE (2026-09-06): la fel ca in buildPrompt(), intarirea directiei muzicale nu mai
     // e limitata la Video — bugetul de 1000 caractere (truncateSafely mai jos) ramane plasa de
     // siguranta pentru toate planurile, neschimbata.

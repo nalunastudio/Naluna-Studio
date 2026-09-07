@@ -97,6 +97,17 @@ test('FUNCTIONAL (video): buildPrompt() cu o comanda REALISTA si feedback pastre
   );
 });
 
+// REGRESIE (2026-09-07): buildExactLyricsRequest() (versuri deja blocate — customMode:true)
+// folosea o eticheta STRICT GOALA (' ') pentru Standard/Premium — instructiunea clientului ajungea
+// intreaga (verificat: nu era trunchiata pentru un buget de 1000 caractere), dar fara niciun
+// semnal ca e o cerere distincta, spre deosebire de buildPrompt() (aceleasi planuri), care are deja
+// ' Client-requested adjustment: '. Aliniat acum.
+test('FUNCTIONAL: buildExactLyricsRequest() foloseste aceeasi eticheta reala ca buildPrompt() pentru Standard/Premium (nu mai e un spatiu gol)', () => {
+  const order = { plan: 'standard', lang: 'ro', voicePreference: 'auto' };
+  const result = buildExactLyricsRequest(order, 'Versuri complete deja scrise de client.', undefined, 'auto', 'Un inceput diferit');
+  assert.match(result.style, /Client-requested adjustment: Un inceput diferit/, 'eticheta reala trebuie sa preceada feedback-ul, nu doar un spatiu gol');
+});
+
 test('FUNCTIONAL: clauza de intarire a directiei (BRIGHTEN_MOOD_CLAUSE, 240+ caractere) nu incape niciodata in bugetul de 600 caractere al buildPrompt() alaturi de o poveste completa — de aceea a fost proiectata sa functioneze in principal prin buildExactLyricsRequest() (buget 1000). Testam acolo ca extinderea la toate planurile chiar functioneaza', () => {
   const order = { plan: 'standard', lang: 'ro', voicePreference: 'auto' };
   const initial = buildExactLyricsRequest(order, 'Versuri complete deja scrise de client.', undefined, 'auto', '');
@@ -122,5 +133,39 @@ test('STRUCTURAL: buildPrompt() garanteaza o rezerva minima pentru feedback (eti
   const promptFn = extractFn(server, 'function buildPrompt(order, feedback, genreOverride) {');
   assert.match(promptFn, /const feedbackLabelShort = ' Adjust: ';/);
   assert.match(promptFn, /const absoluteStoryFloor = storyLabelPlain\.length \+ MIN_USEFUL_STORY_CHARS;/);
-  assert.match(promptFn, /const safeGuaranteedReserve = Math\.max\(0, Math\.min\(50, remaining - absoluteStoryFloor\)\);/);
+  // CORECTIE (2026-09-07): plafonul 50->150 — vezi testul FUNCTIONAL de mai jos, care demonstreaza
+  // cu date reale ca 50 trunchia mijlocul unei instructiuni structurale tipice de client.
+  assert.match(promptFn, /const safeGuaranteedReserve = Math\.max\(0, Math\.min\(150, remaining - absoluteStoryFloor\)\);/);
+});
+
+// REGRESIE URGENTA (2026-09-07, semnalata explicit): "schimbarea genului s-a respectat;
+// instructiunea libera 'vreau un alt inceput' NU s-a respectat". CAUZA REALA gasita prin
+// EXECUTIE REALA (nu presupunere) a buildPrompt() cu o comanda REALISTA (poveste/ocazie tipice,
+// gen obisnuit — NU un caz extrem): plafonul anterior de 50 caractere pentru rezerva garantata de
+// feedback trunchia o instructiune structurala tipica ("Vreau un cu totul alt inceput, nu cu ce
+// ati facut data trecuta - porniti melodia altfel." — 89 caractere) la doar 42 caractere ("Adjust:
+// Vreau un cu totul alt inceput, nu cu ce a"), taind EXACT partea care spune CE sa faca modelul
+// diferit — instructiunea ajungea la Suno, dar mutilata, nu doar "cu prioritate slaba". Acesta e
+// un bug de MAPPING Naluna (truncheaza propriul continut inainte sa-l trimita), nu o limitare a
+// modelului — corectat prin marirea plafonului garantat (50->150) si trunchiere la limita de
+// cuvant (truncateAtWordBoundary in loc de truncateSafely).
+for (const plan of ['standard', 'premium']) {
+  test(`FUNCTIONAL (${plan}), REGRESIE "vreau un alt inceput": o instructiune STRUCTURALA realista (89 caractere, nu doar de mood) supravietuieste INTREAGA intr-o comanda realista (poveste/ocazie tipice) — inainte de fix, era trunchiata la 42 caractere, chiar in mijlocul cuvantului`, () => {
+    const order = realisticOrder(plan, 'romantic');
+    const feedback = 'Vreau un cu totul alt inceput, nu cu ce ati facut data trecuta - porniti melodia altfel.';
+    const prompt = buildPrompt(order, feedback);
+    assert.ok(prompt.includes(feedback), `${plan}: instructiunea structurala completa trebuie sa apara verbatim, nu trunchiata — prompt: ${JSON.stringify(prompt)}`);
+    assert.ok(prompt.includes('porniti melodia altfel'), `${plan}: partea care spune CE sa faca diferit nu trebuie sa lipseasca`);
+  });
+}
+
+test('FUNCTIONAL: daca instructiunea chiar nu incape (buget extrem de strans), trunchierea se opreste la limita de cuvant, niciodata in mijlocul unui cuvant', () => {
+  const order = realisticOrder('standard', 'hiphop'); // tag lung, cel mai stramt caz real
+  const longFeedback = 'Vreau o schimbare completa de directie muzicala, un inceput cu totul diferit, mai lent la primele secunde si apoi o crestere treptata pana la refren, exact opusul a ceea ce am primit data trecuta.';
+  const prompt = buildPrompt(order, longFeedback);
+  const adjustIdx = prompt.indexOf('Adjust: ');
+  assert.notEqual(adjustIdx, -1, 'eticheta scurta de feedback trebuie sa apara');
+  const feedbackPortion = prompt.slice(adjustIdx + 'Adjust: '.length);
+  assert.ok(!/\s[a-zA-Zșțăîâ]$/.test(feedbackPortion) || longFeedback.startsWith(feedbackPortion), 'nu trebuie sa se termine cu o litera unica ramasa dintr-un cuvant taiat la mijloc');
+  assert.ok(longFeedback.startsWith(feedbackPortion.trim()), 'portiunea pastrata trebuie sa fie un prefix REAL, la limita de cuvant, al instructiunii originale');
 });

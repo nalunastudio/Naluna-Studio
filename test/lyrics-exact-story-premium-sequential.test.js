@@ -199,10 +199,10 @@ test('buildPrompt: separarea poveste 1/poveste 2 Premium ramane corecta cu noua 
 test('server.js: buildExactLyricsRequest trimite versurile editate VERBATIM (customMode:true, campul "prompt" = versurile), niciodata ca instructiune catre un model care le rescrie', () => {
   assert.match(server, /function buildExactLyricsRequest\(order, exactLyrics, genreOverride, voicePreference, feedback\) \{/);
   const idx = server.indexOf('function buildExactLyricsRequest');
-  // fereastra marita (2026-08-31, cerinta 3 "pronuntie naturala" — instructiunea de dictie +
-  // normalizeSingingText() au impins din nou "return { style, title, lyrics };" dincolo de
-  // fereastra anterioara de 4600 caractere).
-  const body = server.slice(idx, idx + 5200);
+  // fereastra marita (2026-09-07, corectia etichetei de feedback pentru Standard/Premium — vezi
+  // edit-regenerate-direction-change.test.js — a impins din nou "return { style, title, lyrics };"
+  // dincolo de fereastra anterioara de 5200 caractere).
+  const body = server.slice(idx, idx + 5600);
   assert.ok(body.includes('return { style, title, lyrics };'), 'trebuie sa returneze versurile ca un camp separat, netrunchiat de bugetul de stil');
 });
 
