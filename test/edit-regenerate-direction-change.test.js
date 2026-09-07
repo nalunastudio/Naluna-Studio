@@ -159,6 +159,51 @@ for (const plan of ['standard', 'premium']) {
   });
 }
 
+// VERIFICARE EDIT-A (2026-09-07, ceruta explicit dupa deploy-ul fix-ului), fara generatie
+// platita — traseul complet demonstrat determinist, cu o instructiune REALISTA de 147 caractere
+// ("Vreau un inceput complet diferit fata de prima versiune, apoi melodia sa devina mai vesela
+// si mai energica, pastrand povestea si mesajul principal.").
+test('EDIT-A: campul liber #feedback din melodia-mea.html NU are niciun maxlength artificial (spre deosebire de textarea-urile de versuri, limitate la 4000) — clientul poate scrie intreaga instructiune, limitarea reala e STRICT server-side (500 caractere, handleLegacyRegenerate)', () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'public', 'melodia-mea.html'), 'utf8');
+  const feedbackTextareaMatch = html.match(/<textarea id="feedback"[^>]*>/);
+  assert.ok(feedbackTextareaMatch, 'textarea-ul de feedback trebuie sa existe');
+  assert.ok(!feedbackTextareaMatch[0].includes('maxlength'), 'feedback NU trebuie sa aiba maxlength — limitarea reala e server-side');
+  assert.match(html, /const feedback = feedbackEl\.value \|\| null;/, 'valoarea completa a textarea-ului trebuie citita integral, fara trunchiere client-side');
+});
+
+test('EDIT-A: instructiunea realista de 147 caractere data ca exemplu ajunge INTREAGA in buildExactLyricsRequest() (versuri deja blocate) — traseul complet, verificat determinist', () => {
+  const order = { plan: 'standard', lang: 'ro', voicePreference: 'auto' };
+  const feedback = 'Vreau un inceput complet diferit fata de prima versiune, apoi melodia sa devina mai vesela si mai energica, pastrand povestea si mesajul principal.';
+  assert.equal(Array.from(feedback).length, 147);
+  const result = buildExactLyricsRequest(order, 'Versuri complete deja scrise de client.', undefined, 'auto', feedback);
+  assert.ok(result.style.includes(feedback), 'instructiunea de 147 caractere trebuie sa apara INTREAGA, verbatim, in campul style (buget 1000 caractere)');
+});
+
+// LIMITARE REZIDUALA, documentata explicit (nu ascunsa): buildPrompt() (buget 600 caractere,
+// folosit pentru regenerare Standard/Premium FARA versuri blocate manual) NU poate garanta
+// supravietuirea INTEGRALA a oricarei instructiuni realiste — bugetul total de 600 e MULT mai mic
+// decat limita reala a furnizorului (3000 caractere pentru acest camp), dar a fost REDUS SI
+// PASTRAT MIC intentionat, in urma unei regresii REALE documentate (vezi comentariul de la
+// SUNO_PROMPT_MAX_LEN / STORY_MIN_RESERVE in server.js, 2026-08-13, "melodii instrumentale" —
+// prompturi mai lungi au produs melodii FARA voce): marirea generala a bugetului NU e o
+// modificare sigura fara verificare reala, platita, ca vocea nu dispare din nou — in afara
+// scopului acestui task (interzis explicit sa mai consumam credite pentru teste de model/pipeline).
+// Fix-ul deja livrat (50->150, trunchiere la limita de cuvant) REZOLVA majoritatea cazurilor reale
+// (orice instructiune de pana la ~100-140 caractere, in functie de lungimea povestii/genului) si,
+// cand chiar nu incape, pastreaza intotdeauna CLAUZA PRINCIPALA (inceputul instructiunii, unde
+// clientul isi exprima de obicei cererea centrala), taind DOAR clauzele secundare de la finalul
+// instructiunii, niciodata in mijlocul unui cuvant.
+test('EDIT-A, LIMITARE REZIDUALA documentata: pentru buildPrompt() (fara versuri blocate), o instructiune de 147 caractere poate fi inca partial trunchiata intr-o comanda cu poveste tipica — dar clauza PRINCIPALA (inceputul cererii clientului) supravietuieste intotdeauna, iar taierea ramane la limita de cuvant, niciodata in mijlocul unuia. NU marim SUNO_PROMPT_MAX_LEN fara o verificare reala, platita, ca vocea nu dispare (regresie istorica documentata) — in afara scopului acestui task.', () => {
+  const order = realisticOrder('standard', 'romantic');
+  const feedback = 'Vreau un inceput complet diferit fata de prima versiune, apoi melodia sa devina mai vesela si mai energica, pastrand povestea si mesajul principal.';
+  const prompt = buildPrompt(order, feedback);
+  assert.ok(prompt.includes('Adjust: Vreau un inceput complet diferit'), 'clauza PRINCIPALA a clientului trebuie sa supravietuiasca intotdeauna');
+  const adjustIdx = prompt.indexOf('Adjust: ');
+  const survivingFeedback = prompt.slice(adjustIdx + 'Adjust: '.length);
+  assert.ok(feedback.startsWith(survivingFeedback), 'portiunea pastrata trebuie sa fie STRICT un prefix real al instructiunii originale, niciodata text alterat');
+  assert.ok(!/[a-zA-Zșțăîâ]{1,2}$/.test(survivingFeedback) || feedback.startsWith(survivingFeedback.trimEnd()), 'daca e trunchiata, taierea trebuie sa cada la limita de cuvant, niciodata in mijlocul unuia');
+});
+
 test('FUNCTIONAL: daca instructiunea chiar nu incape (buget extrem de strans), trunchierea se opreste la limita de cuvant, niciodata in mijlocul unui cuvant', () => {
   const order = realisticOrder('standard', 'hiphop'); // tag lung, cel mai stramt caz real
   const longFeedback = 'Vreau o schimbare completa de directie muzicala, un inceput cu totul diferit, mai lent la primele secunde si apoi o crestere treptata pana la refren, exact opusul a ceea ce am primit data trecuta.';
