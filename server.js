@@ -6705,6 +6705,29 @@ async function concatWithCrossfadesAndMux(segmentPaths, shots, order, audioFileP
       }
     }
 
+    // PUNCT 8 (2026-09-07, "arbore vs single-pass"): incearca INTAI o SINGURA trecere fuzionata —
+    // TOATE segmentele + TOATE tranzitiile intr-un SINGUR proces ffmpeg, cu audio+subtitrari deja
+    // incluse (concatFinalBatchWithMux, generica pentru N intrari, folosita pana acum STRICT pentru
+    // ultimul lot al arborelui). Masurat REAL inainte de aceasta schimbare, pe un benchmark
+    // productie-like (20 materiale mixte, INCLUSIV 3 surse video la 4K real, 50 de cadre, 49 de
+    // tranzitii, aceeasi rezolutie/fps/preset/CRF ca productia — cazul cel mai incarcat posibil,
+    // SHOT_PLAN_MAX_SHOTS): single-pass 40.7-40.9s vs arborele pe loturi 66.3s (38-39% mai rapid),
+    // RAM de varf ~2.3GB (sub 30% din cele 8GB Railway), iesire valida (durata/rezolutie/fps
+    // identice), sincronizare verificata prin SSIM intre cele doua strategii la 5 timpi diferiti
+    // (4 din 5 perfect 1.000000, al cincilea 0.996959) — tranzitiile cad la fel, fara deriva.
+    // Daca single-pass esueaza din orice motiv (input neobisnuit, o comanda reala mai extrema decat
+    // cazul testat), REVINE STRICT la arborele pe loturi de mai jos, NESCHIMBAT — nicio comanda nu
+    // poate ramane blocata din cauza acestei optimizari.
+    try {
+      const fused = await concatFinalBatchWithMux(currentSegments, currentShots, order, audioFilePath, assForFilter);
+      finalPath = fused;
+      perfLog(order.id, 'memory_concat_strategy', `strategie=single_pass, intrari=${currentSegments.length}`);
+      return { path: fused, muxed: true };
+    } catch (err) {
+      console.error(`Comanda ${order.id}: single-pass (${currentSegments.length} intrari) a esuat, revin la arborele pe loturi: ${err.message}`);
+      perfLog(order.id, 'memory_concat_strategy', `strategie=arbore_fallback, intrari=${currentSegments.length}, motiv=${(err && err.message) || 'necunoscut'}`);
+    }
+
     while (currentSegments.length > 1) {
       const batchStarts = [];
       for (let i = 0; i < currentSegments.length; i += CONCAT_BATCH_SIZE) batchStarts.push(i);

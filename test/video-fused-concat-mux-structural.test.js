@@ -58,14 +58,37 @@ test('STRUCTURAL: concatFinalBatchWithMux() foloseste ACELEASI tranzitii xfade (
   assert.equal(extractXfadeLine(fused), extractXfadeLine(old));
 });
 
-test('STRUCTURAL: concatWithCrossfadesAndMux() incearca fuziunea DOAR pentru ultimul nivel (batchStarts.length === 1) — la esec, revine la concatBatchWithCrossfades (fundal mut), niciodata o eroare propagata direct', () => {
+test('STRUCTURAL: concatWithCrossfadesAndMux() incearca ÎNTÂI single-pass (TOATE segmentele, un singur concatFinalBatchWithMux) ÎNAINTE de arborele pe loturi — PUNCT 8, 2026-09-07', () => {
+  const fn = extractFn('concatWithCrossfadesAndMux');
+  // a doua aparitie — prima e ramura "un singur cadru total" (currentSegments.length === 1), care nu
+  // e legata de comparatia single-pass-vs-arbore.
+  const firstOccurrenceIdx = fn.indexOf('const fused = await concatFinalBatchWithMux(currentSegments, currentShots, order, audioFilePath, assForFilter);');
+  const singlePassIdx = fn.indexOf('const fused = await concatFinalBatchWithMux(currentSegments, currentShots, order, audioFilePath, assForFilter);', firstOccurrenceIdx + 1);
+  const whileIdx = fn.indexOf('while (currentSegments.length > 1) {');
+  assert.notEqual(singlePassIdx, -1, 'apelul single-pass catre concatFinalBatchWithMux trebuie sa existe');
+  assert.notEqual(whileIdx, -1);
+  assert.ok(singlePassIdx < whileIdx, 'single-pass trebuie incercat INAINTE de arborele pe loturi (while), nu doar la ultimul nivel al arborelui');
+  assert.match(fn, /perfLog\(order\.id, 'memory_concat_strategy', `strategie=single_pass, intrari=\$\{currentSegments\.length\}`\);/);
+});
+
+test('STRUCTURAL: daca single-pass esueaza, arborele pe loturi (NESCHIMBAT) preia — inclusiv fuziunea DOAR pentru ultimul nivel al arborelui (batchStarts.length === 1), fallback la concatBatchWithCrossfades (fundal mut) daca si ACEEA esueaza', () => {
   const fn = extractFn('concatWithCrossfadesAndMux');
   assert.match(fn, /const isLastLevel = batchStarts\.length === 1;/);
   assert.match(fn, /if \(isLastLevel\) \{/);
-  assert.match(fn, /const fused = await concatFinalBatchWithMux\(currentSegments, currentShots, order, audioFilePath, assForFilter\);/);
   assert.match(fn, /catch \(err\) \{\s*\n\s*console\.error\(`Comanda \$\{order\.id\}: fuziunea concat\+mux a esuat, revin la pipeline-ul vechi/);
   assert.match(fn, /const silentPath = await concatBatchWithCrossfades\(currentSegments, currentShots, order, `L\$\{level\}-0`\);/);
   assert.match(fn, /return \{ path: silentPath, muxed: false \};/);
+});
+
+test('STRUCTURAL: single-pass NU propaga niciodata eroarea direct — orice esec e prins, logat cu motiv (fara date personale, STRICT err.message tehnic) si urmat de arborele NESCHIMBAT', () => {
+  const fn = extractFn('concatWithCrossfadesAndMux');
+  const firstOccurrenceIdx = fn.indexOf('const fused = await concatFinalBatchWithMux(currentSegments, currentShots, order, audioFilePath, assForFilter);');
+  const singlePassIdx = fn.indexOf('const fused = await concatFinalBatchWithMux(currentSegments, currentShots, order, audioFilePath, assForFilter);', firstOccurrenceIdx + 1);
+  const body = fn.slice(Math.max(0, singlePassIdx - 200), singlePassIdx + 700);
+  assert.match(body, /try \{/);
+  assert.match(body, /catch \(err\) \{/);
+  assert.match(body, /console\.error\(`Comanda \$\{order\.id\}: single-pass \(\$\{currentSegments\.length\} intrari\) a esuat, revin la arborele pe loturi: \$\{err\.message\}`\);/);
+  assert.match(body, /perfLog\(order\.id, 'memory_concat_strategy', `strategie=arbore_fallback, intrari=\$\{currentSegments\.length\}, motiv=\$\{\(err && err\.message\) \|\| 'necunoscut'\}`\);/);
 });
 
 test('STRUCTURAL: cazul cu UN SINGUR cadru total (nicio reducere necesara) e tot fuzionat — spre deosebire de concatWithCrossfades() (care returneaza brut segmentul), aici tot se aplica subtitrari+audio+codare finala, cu acelasi fallback la esec', () => {
