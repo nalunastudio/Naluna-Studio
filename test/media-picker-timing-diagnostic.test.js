@@ -90,20 +90,28 @@ test('server.js: endpoint-ul POST .../media/client-timing exista, cere requireOr
   assert.match(server, /app\.post\('\/api\/orders\/:orderId\/media\/client-timing', requireOrderToken, \(req, res\) => \{/);
   assert.match(server, /const CLIENT_TIMING_MAX_EVENTS = 40;/);
   const idx = server.indexOf("app.post('/api/orders/:orderId/media/client-timing'");
-  const body = server.slice(idx, idx + 800);
+  // fereastra marita (2026-09-07, ramura noua 'media_compress' — vezi mai jos).
+  const body = server.slice(idx, idx + 1200);
   assert.match(body, /\.slice\(0, CLIENT_TIMING_MAX_EVENTS\)/, 'numarul de evenimente acceptate trebuie plafonat, ca sa nu poata fi folosit ca vector de abuz');
   assert.match(body, /perfLog\(req\.order\.id, `client_\$\{flow\}_timing`/);
 });
 
-test('server.js: endpoint-ul de client-timing distinge intre fluxul "media_picker" (implicit) si "video_create" (TASK 2), STRICT printr-o eticheta, niciodata date personale', () => {
+test('server.js: endpoint-ul de client-timing distinge intre fluxurile "media_picker" (implicit), "video_create" (TASK 2) si "media_compress" (TASK 3), STRICT printr-o eticheta, niciodata date personale', () => {
   const idx = server.indexOf("app.post('/api/orders/:orderId/media/client-timing'");
-  const body = server.slice(idx, idx + 800);
-  assert.match(body, /const flow = \(req\.body && req\.body\.flow === 'video_create'\) \? 'video_create' : 'media_picker';/);
+  const body = server.slice(idx, idx + 1200);
+  assert.match(body, /const rawFlow = req\.body && req\.body\.flow;/);
+  assert.match(body, /const flow = \(rawFlow === 'video_create' \|\| rawFlow === 'media_compress'\) \? rawFlow : 'media_picker';/);
+});
+
+test('server.js: ramura "media_compress" a endpoint-ului de client-timing foloseste formatarea STRICTA de eveniment+timp (fara ios/fileCount, irelevante pentru diagnosticul de compresie video)', () => {
+  const idx = server.indexOf("app.post('/api/orders/:orderId/media/client-timing'");
+  const body = server.slice(idx, idx + 1200);
+  assert.match(body, /const extra = \(flow === 'video_create' \|\| flow === 'media_compress'\) \? summary : `\$\{ios\}, fisiere=\$\{fileCount\}, \$\{summary\}`;/);
 });
 
 test('server.js: endpoint-ul de timing NU persista/logheaza niciodata nume de fisier sau alt continut liber de la client — STRICT nume de eveniment (string) + numar (t)', () => {
   const idx = server.indexOf("app.post('/api/orders/:orderId/media/client-timing'");
-  const body = server.slice(idx, idx + 800);
+  const body = server.slice(idx, idx + 1200);
   assert.match(body, /typeof e\.event === 'string' && Number\.isFinite\(e\.t\)/, 'fiecare eveniment trebuie validat STRICT ca {event: string, t: number} inainte de a fi logat');
 });
 

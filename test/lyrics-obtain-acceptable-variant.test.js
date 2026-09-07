@@ -60,6 +60,10 @@ function loadModule() {
       pollForResult: null,         // (taskId, orderId) => Promise<{status, tracks}>
       buildPrompt: null            // (order, feedback, genre) => string
     };
+    // perfLog e apelat de attempt() STRICT pentru diagnosticul lyrics_coherence_check
+    // (2026-09-07) — stub no-op aici, comportamentul lui real e verificat separat in
+    // test/lyrics-coherence-check-logging.test.js.
+    function perfLog() {}
     async function buildVariantFromTrack(orderId, variantId, track, taskId) {
       return __mock.buildVariantFromTrack(orderId, variantId, track, taskId);
     }

@@ -373,33 +373,49 @@
   // fie fișierul comprimat, fie fișierul original — apelantul (coada de upload) nu trebuie să
   // gestioneze separat cazul de eroare, doar să folosească rezultatul întors.
   // ============================================================================================
+  // CORECTIE (2026-09-07, "un video real de ~841MB a fost incarcat necomprimat"): verificarea
+  // de tip folosea STRICT file.type ('video/...'). iOS Safari livreaza uneori fisiere .mov cu
+  // file.type GOL (comportament documentat/cunoscut, nu o presupunere) — un astfel de fisier
+  // cadea imediat pe 'nu_e_video', fara sa ajunga NICIODATA la verificarea WebCodecs, indiferent
+  // cat de mare/eficient de comprimat ar fi fost. Aliniat acum la EXACT aceeasi logica deja
+  // folosita de isVideoFile() (amintiri-video.html/comanda-mea.html/succes.html) — extensie ca
+  // rezerva STRICT cand file.type e gol, niciodata cand type e prezent dar nu incepe cu 'video'.
+  const VIDEO_EXTENSIONS = ['.mp4', '.m4v', '.mov', '.webm'];
+  function looksLikeVideoFile(file) {
+    if (typeof file.type === 'string' && file.type.length > 0) return file.type.indexOf('video') === 0;
+    const match = String(file.name || '').match(/\.[^./\\]+$/);
+    return !!match && VIDEO_EXTENSIONS.includes(match[0].toLowerCase());
+  }
+
   async function maybeCompressVideo(file, options) {
     const onPhase = options && options.onPhase;
-    const isVideo = typeof file.type === 'string' && file.type.indexOf('video') === 0;
-    if (!isVideo) return { file, compressed: false, reason: 'nu_e_video' };
-    if (!isWebCodecsSupported()) return { file, compressed: false, reason: 'webcodecs_indisponibil' };
+    const startedAt = Date.now();
+    const isVideo = looksLikeVideoFile(file);
+    if (!isVideo) return { file, compressed: false, reason: 'nu_e_video', durationMs: Date.now() - startedAt };
+    const webCodecsAvailable = isWebCodecsSupported();
+    if (!webCodecsAvailable) return { file, compressed: false, reason: 'webcodecs_indisponibil', durationMs: Date.now() - startedAt };
 
     let meta;
     try {
       meta = await probeVideoMeta(file, 8000);
     } catch (e) {
-      return { file, compressed: false, reason: 'metadata_eroare' };
+      return { file, compressed: false, reason: 'metadata_eroare', durationMs: Date.now() - startedAt };
     }
-    if (!meta) return { file, compressed: false, reason: 'metadata_timeout' };
+    if (!meta) return { file, compressed: false, reason: 'metadata_timeout', durationMs: Date.now() - startedAt };
 
     const decision = shouldAttemptCompression(file, meta);
-    if (!decision.attempt) return { file, compressed: false, reason: decision.reason };
+    if (!decision.attempt) return { file, compressed: false, reason: decision.reason, durationMs: Date.now() - startedAt };
 
     try {
       const blob = await compressVideoInternal(file, meta, onPhase);
-      if (!blob || blob.size === 0) return { file, compressed: false, reason: 'rezultat_gol' };
+      if (!blob || blob.size === 0) return { file, compressed: false, reason: 'rezultat_gol', durationMs: Date.now() - startedAt };
       if (blob.size > file.size * COMPRESS_MIN_SAVINGS_RATIO) {
-        return { file, compressed: false, reason: 'beneficiu_insuficient' };
+        return { file, compressed: false, reason: 'beneficiu_insuficient', durationMs: Date.now() - startedAt, originalSize: file.size, compressedSize: blob.size };
       }
       const compressedFile = new File([blob], file.name.replace(/\.[^.]+$/, '') + '-optimizat.mp4', { type: 'video/mp4' });
-      return { file: compressedFile, compressed: true, reason: 'ok', originalSize: file.size, compressedSize: compressedFile.size };
+      return { file: compressedFile, compressed: true, reason: 'ok', originalSize: file.size, compressedSize: compressedFile.size, durationMs: Date.now() - startedAt };
     } catch (e) {
-      return { file, compressed: false, reason: 'eroare_compresie: ' + (e && e.message || String(e)) };
+      return { file, compressed: false, reason: 'eroare_compresie: ' + (e && e.message || String(e)), durationMs: Date.now() - startedAt };
     }
   }
 
@@ -407,6 +423,7 @@
     muxVideoOnlyMp4,
     shouldAttemptCompression,
     isWebCodecsSupported,
+    looksLikeVideoFile,
     probeVideoMeta,
     maybeCompressVideo,
     // constante expuse STRICT pentru teste — niciodata pentru a fi modificate din afara acestui fisier

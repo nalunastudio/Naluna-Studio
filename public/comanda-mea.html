@@ -888,6 +888,15 @@
         }
       });
       if (!uploadQueue.includes(entry)) return;
+      // DIAGNOSTIC (2026-09-07): STRICT cod de motiv + octeti + durata — fara nume/continut.
+      entry.compressInfo = {
+        webCodecsAvailable: true, // startOptimize() ruleaza STRICT cand isWebCodecsSupported() era deja true
+        reason: result && result.reason,
+        compressed: !!(result && result.compressed),
+        originalBytes: entry.file.size,
+        resultingBytes: (result && result.compressedSize) || null,
+        durationMs: result && result.durationMs
+      };
       if (result && result.compressed) entry.file = result.file;
     } catch (e) {
       // maybeCompressVideo() nu arunca niciodata — plasa de siguranta suplimentara oricum.
@@ -918,11 +927,38 @@
   function startUpload(entry) {
     if (!memOrderRef) return;
     entry.abortRequested = false;
+    entry.uploadStartedAt = Date.now();
     if (isVideoFile(entry.file) && entry.file.size > MEM_MULTIPART_THRESHOLD_BYTES) {
       startMultipartUpload(entry);
     } else {
       startSingleUpload(entry);
     }
+  }
+
+  // DIAGNOSTIC (2026-09-07): STRICT coduri de motiv + octeti + durate — fara nume de fisier,
+  // fara continut. Vezi POST /media/client-timing (server.js) pentru inregistrare.
+  function sendCompressUploadBeacon(entry) {
+    if (!entry.compressInfo || !memOrderRef) return;
+    const uploadDurationMs = entry.uploadStartedAt ? (Date.now() - entry.uploadStartedAt) : null;
+    try {
+      fetch(`/api/orders/${memOrderRef.id}/media/client-timing`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Access-Token': currentToken || '' },
+        body: JSON.stringify({
+          flow: 'media_compress',
+          events: [
+            { event: 'webcodecs_available', t: entry.compressInfo.webCodecsAvailable ? 1 : 0 },
+            { event: `reason_${entry.compressInfo.reason}`, t: 0 },
+            { event: 'compressed', t: entry.compressInfo.compressed ? 1 : 0 },
+            { event: 'original_bytes', t: entry.compressInfo.originalBytes || 0 },
+            { event: 'resulting_bytes', t: entry.compressInfo.resultingBytes || 0 },
+            { event: 'compress_duration_ms', t: entry.compressInfo.durationMs || 0 },
+            { event: 'upload_duration_ms', t: uploadDurationMs || 0 }
+          ]
+        }),
+        keepalive: true
+      }).catch(() => {});
+    } catch (e) { /* diagnosticul nu opreste fluxul real */ }
   }
 
   function startSingleUpload(entry) {
@@ -944,7 +980,8 @@
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable) {
         const pct = Math.round((e.loaded / e.total) * 100);
-        entry.progress = pct;
+        // CORECTIE (2026-09-07, "100% desi materialul e inca in procesare"): plafonat la 99.
+        entry.progress = Math.min(99, pct);
         if (pct >= 100 && entry.status === 'uploading') entry.status = 'processing';
         scheduleProgressUpdate(entry);
       }
@@ -956,6 +993,7 @@
       const succeeded = data && Array.isArray(data.uploaded) && data.uploaded.length > 0;
       memLog(orderId, 'upload_response', { status: xhr.status, receivedOk: !!succeeded });
       if (xhr.status >= 200 && xhr.status < 300 && succeeded) {
+        sendCompressUploadBeacon(entry);
         uploadQueue = uploadQueue.filter(q => q.localId !== entry.localId);
         memBatchDoneCount++;
         memBatchBytesDone += entry.file.size;
@@ -1112,6 +1150,7 @@
       const data = await completeRes.json().catch(() => ({}));
       const succeeded = data && Array.isArray(data.uploaded) && data.uploaded.length > 0;
       if (completeRes.ok && succeeded) {
+        sendCompressUploadBeacon(entry);
         uploadQueue = uploadQueue.filter(q => q.localId !== entry.localId);
         memBatchDoneCount++;
         memBatchBytesDone += entry.file.size;

@@ -41,7 +41,9 @@ for (const page of PAGES) {
     const html = read(page);
     const idx = html.indexOf('async function startOptimize(entry) {');
     assert.notEqual(idx, -1);
-    const body = html.slice(idx, idx + 1400);
+    // fereastra marita (2026-09-07, instrumentarea compressInfo pentru diagnosticul de
+    // compresie video — vezi media-picker-timing-diagnostic.test.js).
+    const body = html.slice(idx, idx + 2000);
     assert.match(body, /catch \(e\) \{/);
     assert.match(body, /entry\.status = 'pending';/);
     assert.match(body, /processUploadQueue\(\);/);

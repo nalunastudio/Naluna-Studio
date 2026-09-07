@@ -3549,10 +3549,14 @@ app.post('/api/orders/:orderId/media/client-timing', requireOrderToken, (req, re
     .filter(e => e && typeof e.event === 'string' && Number.isFinite(e.t))
     .map(e => `${e.event}=${Math.round(e.t)}ms`)
     .join(', ');
-  const flow = (req.body && req.body.flow === 'video_create') ? 'video_create' : 'media_picker';
+  // CORECTIE (2026-09-07): 'media_compress' cadea implicit pe formatarea de 'media_picker'
+  // (ios/fileCount, irelevante pentru diagnosticul de compresie video) — vezi
+  // sendCompressUploadBeacon() in amintiri-video.html/comanda-mea.html/succes.html.
+  const rawFlow = req.body && req.body.flow;
+  const flow = (rawFlow === 'video_create' || rawFlow === 'media_compress') ? rawFlow : 'media_picker';
   const ios = req.body && req.body.ios ? 'ios' : 'non-ios';
   const fileCount = Number.isFinite(req.body && req.body.fileCount) ? req.body.fileCount : '?';
-  const extra = flow === 'video_create' ? summary : `${ios}, fisiere=${fileCount}, ${summary}`;
+  const extra = (flow === 'video_create' || flow === 'media_compress') ? summary : `${ios}, fisiere=${fileCount}, ${summary}`;
   perfLog(req.order.id, `client_${flow}_timing`, extra);
   res.json({ ok: true });
 });
@@ -5029,29 +5033,35 @@ function orderTracksByCoherence(tracks, order, recipientSnapshot) {
 // versuri incoerente sau goale. canonicalLyrics (versuri editate manual de client) ocolesc COMPLET
 // verificarea de coerenta — doar succesul TEHNIC al procesarii audio conteaza pentru ele.
 async function obtainAcceptableVariant(orderId, tracks, taskId, genre, order, recipientSnapshot, canonicalLyrics) {
-  async function attempt(candidateTracks, candidateTaskId) {
+  async function attempt(candidateTracks, candidateTaskId, phase) {
     const ordered = canonicalLyrics ? (candidateTracks || []).slice(0, 2) : orderTracksByCoherence(candidateTracks, order, recipientSnapshot);
     let lastErr = null;
+    let trackIndex = 0;
     for (const track of ordered) {
       let candidate;
       try {
         candidate = await buildVariantFromTrack(orderId, randomUUID().slice(0, 8), track, candidateTaskId);
       } catch (err) {
         lastErr = err;
+        trackIndex++;
         continue; // esec TEHNIC pe aceasta piesa — incearca urmatoarea, daca mai exista una
       }
       if (canonicalLyrics) return { built: candidate, lastErr: null };
       const coherence = (candidate.originalLyrics && candidate.originalLyrics.trim())
         ? validateLyricsCoherence(order, recipientSnapshot || order, candidate.originalLyrics)
         : { ok: false, reasons: ['empty_lyrics'] };
+      // DIAGNOSTIC (2026-09-07, audit retry muzica): STRICT cod de motiv (enumerare fixa) +
+      // indexul piesei + faza (initial/retry) — niciodata versuri, poveste sau nume.
+      perfLog(orderId, 'lyrics_coherence_check', `faza=${phase}, piesa=${trackIndex}, ok=${coherence.ok}, motive=${coherence.reasons.length ? coherence.reasons.join('|') : 'niciunul'}`);
       if (coherence.ok) return { built: candidate, lastErr: null };
       // piesa procesata TEHNIC cu succes, dar incoerenta/goala — NU o acceptam, continuam
       // cautarea (nu exista niciun `break` aici — exact bug-ul de fixat).
+      trackIndex++;
     }
     return { built: null, lastErr };
   }
 
-  const first = await attempt(tracks, taskId);
+  const first = await attempt(tracks, taskId, 'initial');
   if (first.built || canonicalLyrics) return first; // canonicalLyrics: fara reincercare de coerenta — un esec tehnic ramane final
 
   console.warn(`Comanda ${orderId}: nicio piesa acceptabila (versuri goale sau incoerente gramatical/narativ) pentru genul "${genre}" — reincerc o singura data.`);
@@ -5061,7 +5071,7 @@ async function obtainAcceptableVariant(orderId, tracks, taskId, genre, order, re
     const retryTaskId = await callMusicProvider(orderId, retryPrompt);
     const retryResult = await pollForResult(retryTaskId, orderId);
     if (retryResult.status === SUNO_SUCCESS_STATUS && retryResult.tracks && retryResult.tracks.length) {
-      const second = await attempt(retryResult.tracks, retryTaskId);
+      const second = await attempt(retryResult.tracks, retryTaskId, 'retry');
       if (second.built) return second;
     }
   } catch (retryErr) {
