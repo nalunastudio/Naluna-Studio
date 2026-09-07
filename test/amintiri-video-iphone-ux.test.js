@@ -345,6 +345,7 @@ function loadQueueConcurrencySandbox() {
     ${isVideoFileSrc}
     ${maxConcurrentConst}
     function startUpload(entry) { entry.status = 'uploading'; }
+    function maybeStartOptimizing() {} // compresia video ruleaza pe un buget SEPARAT de concurenta de upload testata aici
     ${processQueueSrc}
     ${renderRowSrc}
   `, context);

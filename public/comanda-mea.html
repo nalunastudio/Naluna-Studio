@@ -160,6 +160,7 @@
   <div id="results"></div>
 </div>
 
+<script src="/js/media-compress.js"></script>
 <script>
   // Acces prin cod unic (accessToken), NU prin cautare dupa email — cautarea dupa email
   // ar fi permis oricui stie adresa de email a cuiva sa-i vada toate comenzile si
@@ -186,6 +187,7 @@
       memories_queued: 'În așteptare...', memories_uploaded: 'Încărcat', memories_retry: 'Reîncearcă',
       memories_processing: 'Se procesează',
       memories_uploading_pct: (pct) => `Se încarcă — ${pct}%`,
+      memories_optimizing_pct: (pct) => `Se optimizează — ${pct}%`,
       memories_batch_progress: (done, total, pct) => `Se încarcă ${done} din ${total} materiale — ${pct}%`,
       memories_batch_done: (n) => `${n} materiale încărcate — poți continua`,
       memories_auto_upload_hint: 'Materialele se încarcă automat. Nu mai trebuie să apeși.',
@@ -225,6 +227,7 @@
       memories_queued: 'Queued...', memories_uploaded: 'Uploaded', memories_retry: 'Retry',
       memories_processing: 'Processing',
       memories_uploading_pct: (pct) => `Uploading — ${pct}%`,
+      memories_optimizing_pct: (pct) => `Optimizing — ${pct}%`,
       memories_batch_progress: (done, total, pct) => `Uploading ${done} of ${total} materials — ${pct}%`,
       memories_batch_done: (n) => `${n} materials uploaded — you can continue`,
       memories_auto_upload_hint: 'Materials are uploading automatically. No need to tap again.',
@@ -264,6 +267,7 @@
       memories_queued: 'In Warteschlange...', memories_uploaded: 'Hochgeladen', memories_retry: 'Erneut versuchen',
       memories_processing: 'Wird verarbeitet',
       memories_uploading_pct: (pct) => `Wird hochgeladen — ${pct}%`,
+      memories_optimizing_pct: (pct) => `Wird optimiert — ${pct}%`,
       memories_batch_progress: (done, total, pct) => `${done} von ${total} Materialien werden hochgeladen — ${pct}%`,
       memories_batch_done: (n) => `${n} Materialien hochgeladen — du kannst fortfahren`,
       memories_auto_upload_hint: 'Die Materialien werden automatisch hochgeladen. Du musst nicht erneut tippen.',
@@ -303,6 +307,7 @@
       memories_queued: 'En espera...', memories_uploaded: 'Subido', memories_retry: 'Reintentar',
       memories_processing: 'Procesando',
       memories_uploading_pct: (pct) => `Subiendo — ${pct}%`,
+      memories_optimizing_pct: (pct) => `Optimizando — ${pct}%`,
       memories_batch_progress: (done, total, pct) => `Subiendo ${done} de ${total} materiales — ${pct}%`,
       memories_batch_done: (n) => `${n} materiales subidos — puedes continuar`,
       memories_auto_upload_hint: 'Los materiales se suben automáticamente. No hace falta que vuelvas a tocar.',
@@ -342,6 +347,7 @@
       memories_queued: 'In attesa...', memories_uploaded: 'Caricato', memories_retry: 'Riprova',
       memories_processing: 'Elaborazione',
       memories_uploading_pct: (pct) => `Caricamento — ${pct}%`,
+      memories_optimizing_pct: (pct) => `Ottimizzazione — ${pct}%`,
       memories_batch_progress: (done, total, pct) => `Caricamento di ${done} su ${total} materiali — ${pct}%`,
       memories_batch_done: (n) => `${n} materiali caricati — puoi continuare`,
       memories_auto_upload_hint: 'I materiali si caricano automaticamente. Non serve toccare di nuovo.',
@@ -381,6 +387,7 @@
       memories_queued: 'En attente...', memories_uploaded: 'Envoyé', memories_retry: 'Réessayer',
       memories_processing: 'Traitement en cours',
       memories_uploading_pct: (pct) => `Envoi — ${pct}%`,
+      memories_optimizing_pct: (pct) => `Optimisation — ${pct}%`,
       memories_batch_progress: (done, total, pct) => `Envoi de ${done} sur ${total} éléments — ${pct}%`,
       memories_batch_done: (n) => `${n} éléments envoyés — vous pouvez continuer`,
       memories_auto_upload_hint: "Les éléments s'envoient automatiquement. Inutile de retoucher l'écran.",
@@ -420,6 +427,7 @@
       memories_queued: 'На изчакване...', memories_uploaded: 'Качено', memories_retry: 'Опитай отново',
       memories_processing: 'Обработва се',
       memories_uploading_pct: (pct) => `Качване — ${pct}%`,
+      memories_optimizing_pct: (pct) => `Оптимизиране — ${pct}%`,
       memories_batch_progress: (done, total, pct) => `Качване на ${done} от ${total} материала — ${pct}%`,
       memories_batch_done: (n) => `${n} материала качени — можеш да продължиш`,
       memories_auto_upload_hint: 'Материалите се качват автоматично. Не е нужно да докосваш отново.',
@@ -459,6 +467,7 @@
       memories_queued: 'Sırada...', memories_uploaded: 'Yüklendi', memories_retry: 'Tekrar dene',
       memories_processing: 'İşleniyor',
       memories_uploading_pct: (pct) => `Yükleniyor — ${pct}%`,
+      memories_optimizing_pct: (pct) => `Optimize ediliyor — ${pct}%`,
       memories_batch_progress: (done, total, pct) => `${total} dosyadan ${done} tanesi yükleniyor — ${pct}%`,
       memories_batch_done: (n) => `${n} materyal yüklendi — devam edebilirsin`,
       memories_auto_upload_hint: 'Materyaller otomatik olarak yükleniyor. Tekrar dokunmana gerek yok.',
@@ -662,7 +671,8 @@
       <div class="mem-info">
         <span class="mem-name">${isVideoFile(q.file) ? '🎬' : '🖼️'} ${escapeHtml(q.file.name)}</span>
         <span class="mem-meta ${q.status === 'error' ? 'err' : ''}">${
-          q.status === 'uploading' ? t.memories_uploading_pct(q.progress)
+          q.status === 'optimizing' ? t.memories_optimizing_pct(q.progress)
+          : q.status === 'uploading' ? t.memories_uploading_pct(q.progress)
           : q.status === 'processing' ? t.memories_processing
           : q.status === 'pending' ? t.memories_queued
           : q.status === 'error' ? (q.errorMsg || t.memories_upload_error)
@@ -671,7 +681,7 @@
       </div>
       <div class="mem-actions">
         ${q.status === 'error' ? `<button type="button" class="mem-retry" data-retry-id="${q.localId}">${t.memories_retry}</button>` : ''}
-        <button type="button" class="mem-remove" data-queue-remove="${q.localId}" title="${t.memories_remove}" ${(q.status === 'uploading' || q.status === 'processing') ? 'disabled' : ''}>${t.memories_remove}</button>
+        <button type="button" class="mem-remove" data-queue-remove="${q.localId}" title="${t.memories_remove}" ${(q.status === 'uploading' || q.status === 'processing' || q.status === 'optimizing') ? 'disabled' : ''}>${t.memories_remove}</button>
       </div>
     `;
   }
@@ -845,7 +855,54 @@
   const MEM_PART_RETRY_LIMIT = 5;
   const MEM_MAX_PARALLEL_PARTS = 2;
 
+  // PUNCT (2026-09-07, "timp mare de pregatire/upload materiale"): compresie client-side a
+  // materialelor VIDEO mari, STRICT cand exista beneficiu real (vezi public/js/media-compress.js
+  // pentru arhitectura completa/justificare). Ruleaza INDEPENDENT de bugetul de upload (nu
+  // consuma un slot din MEM_MAX_CONCURRENT_UPLOADS) — asa uploadul altor fisiere deja pregatite
+  // NU asteapta dupa compresie; niciodata mai mult de o compresie simultana. La orice esec/API
+  // lipsa, maybeCompressVideo() NU arunca niciodata — intoarce STRICT fisierul original.
+  const MAX_CONCURRENT_OPTIMIZATIONS = 1;
+  function maybeStartOptimizing() {
+    const activeOptimizing = uploadQueue.filter(q => q.status === 'optimizing').length;
+    if (activeOptimizing >= MAX_CONCURRENT_OPTIMIZATIONS) return;
+    const candidate = uploadQueue.find(q =>
+      q.status === 'pending' && !q.optimizeAttempted &&
+      window.NalunaMediaCompress && window.NalunaMediaCompress.isWebCodecsSupported() &&
+      isVideoFile(q.file)
+    );
+    if (!candidate) return;
+    startOptimize(candidate);
+  }
+  async function startOptimize(entry) {
+    entry.optimizeAttempted = true;
+    entry.status = 'optimizing';
+    entry.progress = 0;
+    renderQueueRow(entry);
+    try {
+      const result = await window.NalunaMediaCompress.maybeCompressVideo(entry.file, {
+        onPhase: (info) => {
+          if (info && info.estimatedTotalFrames > 0 && uploadQueue.includes(entry)) {
+            entry.progress = Math.min(99, Math.round((info.framesEncoded / info.estimatedTotalFrames) * 100));
+            scheduleProgressUpdate(entry);
+          }
+        }
+      });
+      if (!uploadQueue.includes(entry)) return;
+      if (result && result.compressed) entry.file = result.file;
+    } catch (e) {
+      // maybeCompressVideo() nu arunca niciodata — plasa de siguranta suplimentara oricum.
+    } finally {
+      if (uploadQueue.includes(entry)) {
+        entry.status = 'pending';
+        entry.progress = 0;
+        renderQueueRow(entry);
+      }
+      processUploadQueue();
+    }
+  }
+
   function processUploadQueue() {
+    maybeStartOptimizing();
     const active = uploadQueue.filter(q => q.status === 'uploading' || q.status === 'processing').length;
     let slots = MEM_MAX_CONCURRENT_UPLOADS - active;
     if (slots <= 0) return;
