@@ -180,7 +180,10 @@ test('amintiri-video.html: handleFilesReceived() NU filtreaza dupa tip (photo/vi
 test('amintiri-video.html: handler-ul de change deleaga la handleFilesReceived() dupa copierea sincrona a FileList-ului', () => {
   const idx = melodiaMea.indexOf("memFileInput.addEventListener('change'");
   assert.notEqual(idx, -1);
-  const snippet = melodiaMea.slice(idx, idx + 700);
+  // fereastra marita (2026-09-07, instrumentarea de timing TASK 1 "selector iOS -> Naluna" —
+  // vezi markTiming()/media-picker-timing-diagnostic.test.js — a impins handleFilesReceived()
+  // dincolo de fereastra anterioara de 700 caractere).
+  const snippet = melodiaMea.slice(idx, idx + 1000);
   assert.ok(snippet.includes('const files = Array.from(memFileInput.files);'));
   assert.ok(snippet.includes('handleFilesReceived(files);'), 'handler-ul de change trebuie sa delege la functia comuna');
 });

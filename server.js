@@ -3532,6 +3532,25 @@ app.delete('/api/orders/:orderId/media/multipart/:sessionId', requireOrderToken,
   res.json({ ok: true });
 });
 
+// DIAGNOSTIC (2026-09-07, Task 1 "selector iOS -> Naluna", timp mare de revenire dupa selectie
+// pe iPhone, ~2:17 masurat real): beacon minimal, fire-and-forget, trimis de amintiri-video.html
+// dupa selectia de materiale — STRICT nume de evenimente + timp relativ in ms (de la deschiderea
+// selectorului), NICIODATA nume de fisier/continut. Logat prin perfLog (acelasi mecanism deja
+// folosit pentru diagnosticul de generare muzicala), citibil direct din railway logs, fara sa
+// fie nevoie de Safari Remote Web Inspector conectat la un Mac in timpul testului real.
+const CLIENT_TIMING_MAX_EVENTS = 40;
+app.post('/api/orders/:orderId/media/client-timing', requireOrderToken, (req, res) => {
+  const events = Array.isArray(req.body && req.body.events) ? req.body.events.slice(0, CLIENT_TIMING_MAX_EVENTS) : [];
+  const summary = events
+    .filter(e => e && typeof e.event === 'string' && Number.isFinite(e.t))
+    .map(e => `${e.event}=${Math.round(e.t)}ms`)
+    .join(', ');
+  const ios = req.body && req.body.ios ? 'ios' : 'non-ios';
+  const fileCount = Number.isFinite(req.body && req.body.fileCount) ? req.body.fileCount : '?';
+  perfLog(req.order.id, 'client_media_picker_timing', `${ios}, fisiere=${fileCount}, ${summary}`);
+  res.json({ ok: true });
+});
+
 // CORECȚIE (2026-08-24, "iPhone: pagina de materiale se blochează/răspunde greu"): cauza reala
 // gasita aici — acest endpoint semna URL-ul FISIERULUI ORIGINAL pentru orice previzualizare
 // (poza sau video), inclusiv fotografii de 12+ MP direct de pe iPhone. Fiecare card din lista

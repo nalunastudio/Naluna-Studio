@@ -1328,6 +1328,10 @@
   }
 
   function startUpload(entry) {
+    if (!mediaTimingSent) {
+      markTiming('first_upload_start');
+      sendMediaTimingBeacon(uploadQueue.length);
+    }
     entry.abortRequested = false;
     if (isVideoFile(entry.file) && entry.file.size > MEM_MULTIPART_THRESHOLD_BYTES) {
       startMultipartUpload(entry);
@@ -1558,6 +1562,49 @@
   const memIsIOS = /iP(hone|od|ad)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   const memIsInAppBrowser = /FBAN|FBAV|Instagram|Line\/|Twitter|WhatsApp|Telegram/i.test(navigator.userAgent);
 
+  // ==========================================================================================
+  // DIAGNOSTIC (2026-09-07, TASK 1 "selector iOS -> Naluna", ~2:17 masurat real pe iPhone intre
+  // confirmarea selectiei si revenirea efectiva pe pagina): masoara traseul COMPLET, din
+  // momentul in care clientul incearca sa deschida selectorul (pointerdown/click) pana cand
+  // primul upload chiar incepe — timp relativ in ms (performance.now()), NICIODATA nume de
+  // fisier/continut. Trimis o singura data per lot, fire-and-forget (keepalive), catre un
+  // endpoint minimal server-side care doar logheaza (vezi POST .../media/client-timing in
+  // server.js) — util sa citim rezultatul unui test real direct din railway logs, fara sa fie
+  // nevoie de Safari Remote Web Inspector conectat la un Mac in timpul testului.
+  // ==========================================================================================
+  let mediaTimingT0 = null;
+  let mediaTimingEvents = [];
+  let mediaTimingSent = false;
+  // performance.now() e disponibil in orice browser real (inclusiv Safari iOS) — fallback la
+  // Date.now() STRICT pentru medii minimale (sandbox-uri de test fara globalul `performance`).
+  function timingNow() {
+    return (typeof performance !== 'undefined' && typeof performance.now === 'function') ? performance.now() : Date.now();
+  }
+  function markTiming(event) {
+    if (mediaTimingT0 === null) return;
+    mediaTimingEvents.push({ event, t: Math.round(timingNow() - mediaTimingT0) });
+  }
+  function sendMediaTimingBeacon(fileCount) {
+    if (mediaTimingSent || mediaTimingEvents.length === 0) return;
+    mediaTimingSent = true;
+    try {
+      fetch(`/api/orders/${orderId}/media/client-timing`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Access-Token': accessToken },
+        body: JSON.stringify({ events: mediaTimingEvents, ios: memIsIOS, fileCount }),
+        keepalive: true
+      }).catch(() => {});
+    } catch (e) { /* diagnosticul nu opreste fluxul real */ }
+  }
+  // 'visibilitychange' e singurul semnal disponibil pentru "Safari a revenit in prim-plan" —
+  // distinct de 'change' (care inseamna STRICT ca FileList-ul e populat, nu ca fila e vizibila
+  // din nou). Pe iOS Safari, selectorul de fisiere e prezentat ca o foaie modala PESTE pagina —
+  // acest eveniment poate sau nu sa se declanseze separat, in functie de versiunea de iOS; il
+  // masuram oricum, ca dovada reala, nu presupunere.
+  document.addEventListener('visibilitychange', () => {
+    markTiming(document.visibilityState === 'visible' ? 'visibility_visible' : 'visibility_hidden');
+  });
+
   // Panou de recuperare — afisat STRICT dupa 'cancel' sau 'change' cu 0 fisiere de la ORICARE
   // dintre cele doua selectoare (niciodata preemptiv, niciodata redeschis programatic). Ascuns
   // automat imediat ce un lot real de fisiere e primit (handleFilesReceived mai jos).
@@ -1577,6 +1624,7 @@
   // fallback-ul "Alege din Fișiere"), ca loaderul agregat si coada sa se comporte identic
   // indiferent de care selector a livrat fisierele.
   function handleFilesReceived(files) {
+    markTiming('handle_files_received_start');
     hideRecoveryUI();
     // Cerinta 4: comutarea la etapa de incarcare (a doua "vedere", acelasi document) se face
     // STRICT AICI — imediat DUPA copierea sincrona a FileList-ului de catre apelant, niciodata
@@ -1627,11 +1675,13 @@
     // costisitoare (thumbnailuri/upload). updateBatchActiveState() (in renderQueueList) blocheaza
     // selectorul chiar in acest tick, sincron cu randarea.
     renderQueueList();
+    markTiming('render_queue_list_done');
     // CORECȚIE (2026-08-29, "lasa browserului cel putin un frame sa picteze feedbackul inainte
     // de procesarea mai grea"): thumbnailurile si pornirea uploadurilor asteapta explicit un
     // requestAnimationFrame dupa randarea sincrona de mai sus, ca browserul sa apuce sa
     // deseneze cele N randuri INAINTE sa inceapa munca grea (decodare imagini, XHR).
     requestAnimationFrame(() => {
+      markTiming('raf_fired'); // UI e vizibil/interactiv din acest moment — randurile au fost deja pictate
       processUploadQueue();
       newEntries.forEach(entry => { if (!isVideoFile(entry.file)) scheduleLocalThumbnail(entry); });
     });
@@ -1698,6 +1748,12 @@
   // cursul normal, indiferent de starea acestor mesaje.
   function handlePickerOpenAttempt() {
     if (memFileInput.disabled) return;
+    // T0 al diagnosticului de timing — reset la fiecare incercare reala de deschidere (un
+    // 'cancel' anterior nu trimite niciodata beacon-ul, pickerOpenAttempt urmator porneste curat).
+    mediaTimingT0 = timingNow();
+    mediaTimingEvents = [];
+    mediaTimingSent = false;
+    markTiming('picker_open_attempt');
     pickerPending = true;
     clearPickerMessages();
     showPickerPreparingMessage();
@@ -1715,10 +1771,15 @@
   });
 
   memFileInput.addEventListener('change', () => {
+    markTiming('change_event_start');
     pickerPending = false;
     clearPickerMessages();
     const files = Array.from(memFileInput.files);
     memFileInput.value = '';
+    // Toate obiectele File sunt deja disponibile aici, sincron (FileList e populat complet
+    // inainte ca 'change' sa se declanseze — garantie a platformei web); nu exista un gap
+    // masurabil separat intre "primul File" si "toate File-urile".
+    markTiming('files_copied');
     memLog('change', { filesLength: files.length, ios: memIsIOS });
     if (files.length === 0) {
       memStatusEl.textContent = t.memories_no_files_selected;

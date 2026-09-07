@@ -155,7 +155,16 @@ function loadPickerLockSandbox() {
     memLog: () => {},
     showRecoveryUI: () => {},
     memIsIOS: false,
-    memIsInAppBrowser: false
+    memIsInAppBrowser: false,
+    // DIAGNOSTIC (2026-09-07, Task 1 "selector iOS -> Naluna"): markTiming()/timingNow() sunt
+    // acum apelate din handlePickerOpenAttempt() — irelevante pentru testele de sincronizare a
+    // lock-ului de mai jos, dar trebuie sa existe, altfel sandboxul minimal ar arunca
+    // ReferenceError la extragerea acestei portiuni de cod real.
+    markTiming: () => {},
+    timingNow: () => 0,
+    mediaTimingT0: null,
+    mediaTimingEvents: [],
+    mediaTimingSent: false
   };
   const context = vm.createContext(sandbox);
   vm.runInContext(src, context);
