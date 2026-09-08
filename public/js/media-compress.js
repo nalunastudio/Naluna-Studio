@@ -183,6 +183,20 @@
                                    // pierdut la jumatate de serverul, la randare (vezi raportul)
   const COMPRESS_MIN_SAVINGS_RATIO = 0.7; // rezultatul trebuie sa fie sub 70% din original ca sa
                                            // merite inlocuirea — altfel pastram originalul
+  // CORECȚIE (2026-09-08, diagnosticat DIRECT dintr-o comanda reala, 30 materiale/iPhone): TOATE
+  // cele 5 videoclipuri mari (75MB-882MB) au esuat compresia cu EXACT acelasi motiv — "timeout la
+  // incarcarea sursei video" — la un plafon FIX de 10 secunde, indiferent de marimea fisierului
+  // (10.1-10.3s masurat pentru fiecare, de la 75MB pana la 882MB). Rezultat real: toate cele 5 au
+  // fost incarcate NECOMPRIMATE (~1.6GB total), consumand ~14 minute de upload doar pentru ele.
+  // 10s e insuficient pentru ca Safari sa decodeze suficient dintr-un blob local mare (HEVC de pe
+  // iPhone) ca sa declanseze 'loadeddata' — plafonul e acum PROPORTIONAL cu marimea fisierului
+  // (nu doar cu durata video, ca hardBudgetMs de mai jos, care se aplica STRICT etapei de ENCODARE,
+  // dupa ce sursa s-a incarcat deja). Nu schimba NIMIC din decizia de compresie in sine — daca
+  // incarcarea tot esueaza dupa acest plafon marit, comportamentul de rezerva ramane identic
+  // (fisierul original, necomprimat, se incarca oricum — clientul nu pierde niciodata materialul).
+  const COMPRESS_SOURCE_LOAD_TIMEOUT_MIN_MS = 20000; // 20s — dublu fata de vechiul plafon fix, chiar si pentru fisierul cel mai mic care a esuat (75MB)
+  const COMPRESS_SOURCE_LOAD_TIMEOUT_MAX_MS = 45000; // 45s — plafon dur, ca un fisier ilizibil sa nu blocheze coada nerezonabil de mult
+  const COMPRESS_SOURCE_LOAD_TIMEOUT_MS_PER_MB = 150; // scalare: fisierele mai mari primesc mai mult timp sa se incarce
   const COMPRESS_MAX_MS_PER_SECOND_OF_VIDEO = 3000; // buget dur: max 3s procesare per secunda de
                                                      // video sursa (o incodare hardware reala ar
                                                      // trebui sa fie MULT sub asta — daca il
@@ -282,8 +296,12 @@
     let encodeError = null;
 
     try {
+      const sourceLoadTimeoutMs = Math.min(
+        COMPRESS_SOURCE_LOAD_TIMEOUT_MAX_MS,
+        Math.max(COMPRESS_SOURCE_LOAD_TIMEOUT_MIN_MS, (file.size / (1024 * 1024)) * COMPRESS_SOURCE_LOAD_TIMEOUT_MS_PER_MB)
+      );
       await new Promise((resolve, reject) => {
-        const t = setTimeout(() => reject(new Error('timeout la incarcarea sursei video')), 10000);
+        const t = setTimeout(() => reject(new Error('timeout la incarcarea sursei video')), sourceLoadTimeoutMs);
         videoEl.addEventListener('loadeddata', () => { clearTimeout(t); resolve(); }, { once: true });
         videoEl.addEventListener('error', () => { clearTimeout(t); reject(new Error('eroare la decodarea sursei video')); }, { once: true });
       });
@@ -432,7 +450,10 @@
       COMPRESS_MIN_BITRATE_BPS,
       COMPRESS_TARGET_BITRATE_BPS,
       COMPRESS_TARGET_FPS,
-      COMPRESS_MIN_SAVINGS_RATIO
+      COMPRESS_MIN_SAVINGS_RATIO,
+      COMPRESS_SOURCE_LOAD_TIMEOUT_MIN_MS,
+      COMPRESS_SOURCE_LOAD_TIMEOUT_MAX_MS,
+      COMPRESS_SOURCE_LOAD_TIMEOUT_MS_PER_MB
     }
   };
 })(typeof window !== 'undefined' ? window : globalThis);

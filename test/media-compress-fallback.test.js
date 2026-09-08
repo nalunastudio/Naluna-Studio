@@ -181,3 +181,38 @@ test('mai multe fisiere simultan: apeluri PARALELE la maybeCompressVideo (fisier
   assert.equal(r2.reason, 'deja_mic');
   assert.equal(r2.file, smallVideo);
 });
+
+// CORECȚIE (2026-09-08, diagnosticat direct dintr-o comanda reala): plafonul FIX de 10s pentru
+// incarcarea sursei (compressVideoInternal) era insuficient — TOATE cele 5 videoclipuri mari
+// (75MB-882MB) ale acelei comenzi au esuat cu exact acest timeout, indiferent de marime. Plafonul
+// e acum proportional cu marimea fisierului (COMPRESS_SOURCE_LOAD_TIMEOUT_MIN_MS/MAX_MS/MS_PER_MB).
+test('compressVideoInternal: plafonul de asteptare a incarcarii sursei creste cu marimea fisierului (STRICT intre MIN si MAX), nu mai e fix la 10s', async () => {
+  const capturedDelays = [];
+  const realSetTimeout = setTimeout;
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'media-compress.js'), 'utf8');
+  function makeSandbox(videoBehavior) {
+    const fakeWindow = baseFakeWindow(videoBehavior, { VideoEncoder: function () {}, VideoDecoder: function () {}, VideoFrame: function () {} });
+    const wrappedSetTimeout = (fn, delay) => { capturedDelays.push(delay); return realSetTimeout(fn, delay); };
+    const fn = new Function('window', 'globalThis', 'document', 'URL', 'setTimeout', src + '\nreturn window.NalunaMediaCompress;');
+    return fn(fakeWindow, fakeWindow, fakeWindow.document, fakeWindow.URL, wrappedSetTimeout);
+  }
+
+  // fisier de 75MB (EXACT cazul real care a esuat la vechiul plafon fix de 10s) — trebuie sa
+  // primeasca acum cel putin COMPRESS_SOURCE_LOAD_TIMEOUT_MIN_MS (20s), niciodata doar 10s.
+  capturedDelays.length = 0;
+  const mod75 = makeSandbox({ durationSeconds: 60, width: 1920, height: 1080, requestVideoFrameCallback: () => {} });
+  await mod75.maybeCompressVideo({ type: 'video/quicktime', size: 75 * 1024 * 1024, name: 'video-75mb.mov' });
+  const { COMPRESS_SOURCE_LOAD_TIMEOUT_MIN_MS, COMPRESS_SOURCE_LOAD_TIMEOUT_MAX_MS, COMPRESS_SOURCE_LOAD_TIMEOUT_MS_PER_MB } = mod75._constants;
+  const loadTimeoutDelay75 = capturedDelays.find(d => d >= COMPRESS_SOURCE_LOAD_TIMEOUT_MIN_MS);
+  assert.ok(loadTimeoutDelay75 !== undefined, 'trebuie sa existe un setTimeout pentru incarcarea sursei, cu plafonul nou (>=20s)');
+  assert.equal(loadTimeoutDelay75, COMPRESS_SOURCE_LOAD_TIMEOUT_MIN_MS, '75MB e sub pragul la care scalarea per-MB ar depasi minimul — trebuie sa primeasca STRICT minimul (20s), nu vechiul 10s fix');
+
+  // fisier de 882MB (EXACT celalalt caz real care a esuat) — trebuie sa primeasca plafonul MAXIM
+  // (45s), nu o valoare nemarginita si nici doar minimul.
+  capturedDelays.length = 0;
+  const mod882 = makeSandbox({ durationSeconds: 60, width: 1920, height: 1080, requestVideoFrameCallback: () => {} });
+  await mod882.maybeCompressVideo({ type: 'video/quicktime', size: 882 * 1024 * 1024, name: 'video-882mb.mov' });
+  const loadTimeoutDelay882 = capturedDelays.find(d => d >= COMPRESS_SOURCE_LOAD_TIMEOUT_MIN_MS);
+  assert.equal(loadTimeoutDelay882, COMPRESS_SOURCE_LOAD_TIMEOUT_MAX_MS, '882MB trebuie plafonat STRICT la maximul de 45s, nu extins nemarginit');
+  assert.equal(Math.round(882 * COMPRESS_SOURCE_LOAD_TIMEOUT_MS_PER_MB), 132300, 'formula bruta (fara plafon) ar fi mult peste maximul de 45s — confirma ca plafonarea chiar intervine aici');
+});

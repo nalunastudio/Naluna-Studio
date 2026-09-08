@@ -818,11 +818,16 @@
         return;
       }
       if (loaderWrap) loaderWrap.classList.toggle('has-errors', errorEntries.length > 0);
+      // CORECȚIE (2026-09-08, "UI a aratat global 100% / 29 din 30, cu ultimul material inca activ"):
+      // Math.round() de mai sus poate rotunji ÎN SUS la 100 chiar daca inca exista materiale active
+      // (activeEntries.length > 0, adica NU s-a terminat cu adevarat). Plafonat STRICT la 99 cat timp
+      // mai e ceva activ; 100% real (ramura de mai sus, activeEntries.length === 0) ramane neschimbat.
+      const displayPct = Math.min(99, overallPct);
       el.textContent = errorEntries.length > 0
         ? t.memories_batch_errors(memBatchDoneCount, memBatchTotal, errorEntries.length)
-        : t.memories_batch_progress(memBatchDoneCount, memBatchTotal, overallPct);
-      if (overallFill) overallFill.style.width = overallPct + '%';
-      setLoaderProgressAttrs(overallPct);
+        : t.memories_batch_progress(memBatchDoneCount, memBatchTotal, displayPct);
+      if (overallFill) overallFill.style.width = displayPct + '%';
+      setLoaderProgressAttrs(displayPct);
     }
 
     let memSyncTimer = null;

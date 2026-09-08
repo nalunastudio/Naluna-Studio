@@ -6718,14 +6718,31 @@ async function concatWithCrossfadesAndMux(segmentPaths, shots, order, audioFileP
     // Daca single-pass esueaza din orice motiv (input neobisnuit, o comanda reala mai extrema decat
     // cazul testat), REVINE STRICT la arborele pe loturi de mai jos, NESCHIMBAT — nicio comanda nu
     // poate ramane blocata din cauza acestei optimizari.
+    //
+    // DIAGNOSTIC REAL (2026-09-08): pe 2/2 comenzi reale (30 materiale, 50 de cadre, incluzand
+    // videoclipuri de pana la 882MB), single-pass A ESUAT de fiecare data — "Command failed" fara
+    // niciun text suplimentar dupa el, semnatura tipica a unui proces omorat de kernel (SIGKILL,
+    // de regula lipsa de memorie) INAINTE sa apuce sa scrie la stderr. Cod+semnal se capteaza acum
+    // explicit mai jos ca sa confirme asta cu certitudine la urmatorul caz real. Am INCERCAT (si
+    // masurat REAL, pe acelasi benchmark productie-like) doua limitari de fire de executie menite
+    // sa reduca memoria (-filter_threads/-filter_complex_threads 1, apoi -threads 1 per intrare) —
+    // AMBELE au marit RAM-ul de varf in loc sa il scada (-filter_threads: 1737MB->2129MB si
+    // 2058MB->2272MB; -threads 1: memorie similara sau mai mare), deci NU au fost pastrate — dovada
+    // reala infirma ipoteza, nu o confirma. Arborele pe loturi (mai jos) ramane STRICT calea
+    // executata cu adevarat pentru comenzi de aceasta marime — vezi raportul pentru optimizarile
+    // implementate acolo.
     try {
       const fused = await concatFinalBatchWithMux(currentSegments, currentShots, order, audioFilePath, assForFilter);
       finalPath = fused;
       perfLog(order.id, 'memory_concat_strategy', `strategie=single_pass, intrari=${currentSegments.length}`);
       return { path: fused, muxed: true };
     } catch (err) {
+      // DIAGNOSTIC (2026-09-08): cod+semnal de iesire, pe langa mesaj — "Command failed" fara
+      // niciun text de eroare dupa el (mesajul original) e semnatura tipica a unui proces omorat
+      // de kernel (SIGKILL, de regula lipsa de memorie) INAINTE sa apuce sa scrie la stderr; cod+
+      // semnal confirma sau infirma asta la urmatorul caz real, fara sa mai fie nevoie de ghicit.
       console.error(`Comanda ${order.id}: single-pass (${currentSegments.length} intrari) a esuat, revin la arborele pe loturi: ${err.message}`);
-      perfLog(order.id, 'memory_concat_strategy', `strategie=arbore_fallback, intrari=${currentSegments.length}, motiv=${(err && err.message) || 'necunoscut'}`);
+      perfLog(order.id, 'memory_concat_strategy', `strategie=arbore_fallback, intrari=${currentSegments.length}, cod=${err && err.code}, semnal=${err && err.signal}, motiv=${(err && err.message) || 'necunoscut'}`);
     }
 
     while (currentSegments.length > 1) {
@@ -6875,6 +6892,17 @@ async function buildMemoryBackground(order, mediaItems, durationSeconds, section
     const shotPlan = buildShotPlan(ordered, durationSeconds, sectionTimings, MEMORY_XFADE_SECONDS, onsetTimes, CONCAT_BATCH_SIZE);
     if (shotPlan.length === 0) throw new Error('Planul de cadre a rezultat gol — nu pot construi fundalul cinematic.');
     perfLog(order.id, 'memory_shot_plan', `materiale=${ordered.length}, cadre=${shotPlan.length}, sectiuni=${(sectionTimings || []).length}, onset-uri=${onsetTimes.length}`);
+    // DIAGNOSTIC (2026-09-08, cerut explicit: "distributia tipurilor/duratelor de tranzitie"):
+    // STRICT tipuri de tranzitie (enumerare fixa) + durate rotunjite — niciodata continut media.
+    const transitionTypeCounts = {};
+    const transitionDurationCounts = {};
+    for (let i = 0; i < shotPlan.length - 1; i++) {
+      const t = shotPlan[i].transitionOut || 'fade';
+      const d = (typeof shotPlan[i].transitionDuration === 'number' ? shotPlan[i].transitionDuration : MEMORY_XFADE_SECONDS).toFixed(2);
+      transitionTypeCounts[t] = (transitionTypeCounts[t] || 0) + 1;
+      transitionDurationCounts[d] = (transitionDurationCounts[d] || 0) + 1;
+    }
+    perfLog(order.id, 'memory_transition_distribution', `tipuri=${JSON.stringify(transitionTypeCounts)}, durate=${JSON.stringify(transitionDurationCounts)}`);
 
     // Descarcare LENESA + memoizata + numarator de referinte (cerinta F, vezi comentariul
     // functiei) — `remainingUsesByItem` e cunoscut INTEGRAL inainte de a descarca ceva, pentru
@@ -6925,6 +6953,11 @@ async function buildMemoryBackground(order, mediaItems, durationSeconds, section
     }
     await Promise.all(new Array(Math.min(SHOT_RENDER_CONCURRENCY, shotPlan.length)).fill(0).map(renderNextShot));
     segments.forEach(p => cleanupPaths.push(p));
+    // DIAGNOSTIC (2026-09-08): marcaj distinct pentru finalul randarii cadrelor — separa STRICT
+    // timpul de randare (paralel, SHOT_RENDER_CONCURRENCY) de timpul de concatenare (single-pass +
+    // eventualul fallback pe arbore, mai jos) in logurile reale, fara sa mai fie nevoie de deductie
+    // manuala din alte marcaje.
+    perfLog(order.id, 'memory_shots_rendered', `cadre=${shotPlan.length}`);
 
     // PUNCT 7 (2026-09-06): fuziunea concat+mux (elimina o trecere intreaga de reencodare, vezi
     // concatWithCrossfadesAndMux) necesita audio+subtitrari deja pregatite — daca apelantul nu le

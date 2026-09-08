@@ -80,15 +80,20 @@ test('STRUCTURAL: daca single-pass esueaza, arborele pe loturi (NESCHIMBAT) prei
   assert.match(fn, /return \{ path: silentPath, muxed: false \};/);
 });
 
-test('STRUCTURAL: single-pass NU propaga niciodata eroarea direct — orice esec e prins, logat cu motiv (fara date personale, STRICT err.message tehnic) si urmat de arborele NESCHIMBAT', () => {
+test('STRUCTURAL: single-pass NU propaga niciodata eroarea direct — orice esec e prins, logat cu motiv+cod+semnal (fara date personale, STRICT tehnic) si urmat de arborele NESCHIMBAT', () => {
   const fn = extractFn('concatWithCrossfadesAndMux');
   const firstOccurrenceIdx = fn.indexOf('const fused = await concatFinalBatchWithMux(currentSegments, currentShots, order, audioFilePath, assForFilter);');
   const singlePassIdx = fn.indexOf('const fused = await concatFinalBatchWithMux(currentSegments, currentShots, order, audioFilePath, assForFilter);', firstOccurrenceIdx + 1);
-  const body = fn.slice(Math.max(0, singlePassIdx - 200), singlePassIdx + 700);
+  assert.notEqual(singlePassIdx, -1);
+  const body = fn.slice(Math.max(0, singlePassIdx - 200), singlePassIdx + 1900);
   assert.match(body, /try \{/);
   assert.match(body, /catch \(err\) \{/);
   assert.match(body, /console\.error\(`Comanda \$\{order\.id\}: single-pass \(\$\{currentSegments\.length\} intrari\) a esuat, revin la arborele pe loturi: \$\{err\.message\}`\);/);
-  assert.match(body, /perfLog\(order\.id, 'memory_concat_strategy', `strategie=arbore_fallback, intrari=\$\{currentSegments\.length\}, motiv=\$\{\(err && err\.message\) \|\| 'necunoscut'\}`\);/);
+  // DIAGNOSTIC (2026-09-08): cod + semnal de iesire capturate explicit — "Command failed" fara
+  // niciun text suplimentar dupa el (cazul real observat de 2/2 ori) e semnatura tipica a unui
+  // proces omorat de kernel (SIGKILL) inainte sa apuce sa scrie la stderr; codul/semnalul confirma
+  // sau infirma asta fara sa mai fie nevoie de ghicit la urmatorul caz real.
+  assert.match(body, /perfLog\(order\.id, 'memory_concat_strategy', `strategie=arbore_fallback, intrari=\$\{currentSegments\.length\}, cod=\$\{err && err\.code\}, semnal=\$\{err && err\.signal\}, motiv=\$\{\(err && err\.message\) \|\| 'necunoscut'\}`\);/);
 });
 
 test('STRUCTURAL: cazul cu UN SINGUR cadru total (nicio reducere necesara) e tot fuzionat — spre deosebire de concatWithCrossfades() (care returneaza brut segmentul), aici tot se aplica subtitrari+audio+codare finala, cu acelasi fallback la esec', () => {
