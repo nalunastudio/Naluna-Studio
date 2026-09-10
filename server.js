@@ -1333,7 +1333,14 @@ async function purgeStaleSourceMedia() {
 // Rulare zilnica automata, in proces — fara nicio configurare externa (cron Railway etc.).
 // unref() la fel ca celelalte curatari periodice din acest fisier: nu tine procesul viu doar
 // pentru acest timer.
-setInterval(() => { purgeStaleSourceMedia().catch(() => {}); }, 24 * 60 * 60 * 1000).unref();
+// Garda require.main: acest timer (si celelalte 3 similare de mai jos, plus secventa de
+// pornire de la finalul fisierului) trebuie sa ruleze STRICT cand server.js e procesul
+// principal (`node server.js`), niciodata cand alt modul (ex. worker.js) il cere doar ca sa
+// refoloseasca generateLyricVideo — altfel joburile de curatare/retentie ar rula DUBLU, in
+// ambele procese. Comportamentul pentru `node server.js` insusi ramane 100% neschimbat.
+if (require.main === module) {
+  setInterval(() => { purgeStaleSourceMedia().catch(() => {}); }, 24 * 60 * 60 * 1000).unref();
+}
 
 // Declansare manuala (verificare/testare admin) — aceeasi logica, fara sa astepti 24h.
 app.post('/api/admin/retention/purge-source-media', async (req, res, next) => {
@@ -1401,7 +1408,9 @@ async function expireStaleFinalMedia() {
   return { checked: candidates.length, expired, skipped };
 }
 
-setInterval(() => { expireStaleFinalMedia().catch(() => {}); }, 24 * 60 * 60 * 1000).unref();
+if (require.main === module) {
+  setInterval(() => { expireStaleFinalMedia().catch(() => {}); }, 24 * 60 * 60 * 1000).unref();
+}
 
 app.post('/api/admin/retention/expire-final-media', async (req, res, next) => {
   try {
@@ -1457,7 +1466,9 @@ async function anonymizeStaleStories() {
   return { checked: candidates.length, anonymized };
 }
 
-setInterval(() => { anonymizeStaleStories().catch(() => {}); }, 24 * 60 * 60 * 1000).unref();
+if (require.main === module) {
+  setInterval(() => { anonymizeStaleStories().catch(() => {}); }, 24 * 60 * 60 * 1000).unref();
+}
 
 app.post('/api/admin/retention/anonymize-stale-stories', async (req, res, next) => {
   try {
@@ -1561,6 +1572,27 @@ app.post('/api/admin/orders/:orderId/retry-extras', async (req, res, next) => {
     const fresh = await db.getOrderById(req.params.orderId);
     const variant = (fresh.variants || []).find(v => v.id === fresh.selectedVariantId);
     res.json({ retried: true, hasWav: !!(variant && variant.wavKey), hasVideo: !!(variant && variant.videoKey), videoFailedReason: variant ? variant.videoFailedReason || null : null });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ADITIV, STRICT PENTRU TESTAREA arhitecturii video-worker separate (vezi raportul de
+// scalabilitate) — protejat de ACELASI middleware admin ca toate rutele /api/admin (linia
+// app.use de mai sus), deci INACCESIBIL clientilor reali. NU e cablat la fluxul live de
+// declansare a comenzilor reale (acela ramane exclusiv triggerVideoGeneration, neschimbat) —
+// singurul mod de a ajunge un job in aceasta coada e acest apel admin explicit, folosit doar
+// pentru testele de concurenta/failure-recovery ale noii arhitecturi.
+app.post('/api/admin/orders/:orderId/enqueue-video-render-job-TEST-ONLY', async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.orderId)) return res.status(400).json({ error: 'ID comandă invalid.' });
+    const order = await db.getOrderById(req.params.orderId);
+    if (!order) return res.status(404).json({ error: 'Comanda nu există.' });
+    if (order.plan !== 'video' || !order.selectedVariantId) {
+      return res.status(400).json({ error: 'Comanda nu e de tip video sau nu are o varianta selectata.' });
+    }
+    const { job, alreadyQueued } = await db.enqueueVideoRenderJob(order.id, order.selectedVariantId, order.mediaRevision);
+    res.json({ job, alreadyQueued });
   } catch (err) {
     next(err);
   }
@@ -3338,15 +3370,17 @@ const ORDER_MEDIA_MULTIPART_PART_BYTES = ORDER_MEDIA_MULTIPART_PART_BYTES_LIMIT;
 const MULTIPART_SESSION_IDLE_MS = 30 * 60 * 1000; // sesiuni abandonate (tab inchis, pagina parasita) curatate dupa 30 min
 const multipartSessions = new Map(); // sessionId -> { orderId, key, uploadId, totalBytes, mimetype, originalname, section, completed, result, lastActivityAt }
 
-setInterval(() => {
-  const now = Date.now();
-  for (const [sessionId, session] of multipartSessions.entries()) {
-    if (now - session.lastActivityAt > MULTIPART_SESSION_IDLE_MS) {
-      storage.abortPrivateMultipartUpload(session.key, session.uploadId).catch(() => {});
-      multipartSessions.delete(sessionId);
+if (require.main === module) {
+  setInterval(() => {
+    const now = Date.now();
+    for (const [sessionId, session] of multipartSessions.entries()) {
+      if (now - session.lastActivityAt > MULTIPART_SESSION_IDLE_MS) {
+        storage.abortPrivateMultipartUpload(session.key, session.uploadId).catch(() => {});
+        multipartSessions.delete(sessionId);
+      }
     }
-  }
-}, 5 * 60 * 1000).unref();
+  }, 5 * 60 * 1000).unref();
+}
 
 app.post('/api/orders/:orderId/media/multipart/init', mediaUploadLimiter, requireOrderToken, async (req, res, next) => {
   try {
@@ -8984,18 +9018,32 @@ async function resumeStuckGenerationsOnBoot() {
 }
 
 // -------- pornire: verificam intai conexiunea la baza de date --------
-db.initDb()
-  .then(() => {
-    checkFfmpegAvailability(); // fire-and-forget — nu blocheaza si nu conditioneaza pornirea
-    checkExiftoolAvailability(); // fire-and-forget, acelasi motiv
-    checkHeifConvertAvailability(); // fire-and-forget, acelasi motiv
-    checkUploadCorsAtBoot(); // fire-and-forget, acelasi motiv
-    resumeStuckGenerationsOnBoot(); // fire-and-forget, acelasi motiv
-    app.listen(PORT, () => {
-      console.log(`NALUNA ruleaza pe ${DOMAIN}`);
+// Garda require.main (vezi comentariul de la primul setInterval de retentie, mai sus): la
+// `node server.js` (singurul mod in care rula pana acum) comportamentul e IDENTIC, byte cu
+// byte — require.main === module e mereu adevarat in acest caz. Garda exista STRICT pentru
+// ca worker.js (procesul video-worker separat) poate cere acest fisier ca sa refoloseasca
+// generateLyricVideo (vezi module.exports de mai jos) fara sa porneasca al doilea server HTTP
+// si fara sa dubleze recuperarea/curatarea de la pornire.
+if (require.main === module) {
+  db.initDb()
+    .then(() => {
+      checkFfmpegAvailability(); // fire-and-forget — nu blocheaza si nu conditioneaza pornirea
+      checkExiftoolAvailability(); // fire-and-forget, acelasi motiv
+      checkHeifConvertAvailability(); // fire-and-forget, acelasi motiv
+      checkUploadCorsAtBoot(); // fire-and-forget, acelasi motiv
+      resumeStuckGenerationsOnBoot(); // fire-and-forget, acelasi motiv
+      app.listen(PORT, () => {
+        console.log(`NALUNA ruleaza pe ${DOMAIN}`);
+      });
+    })
+    .catch(err => {
+      console.error('Nu m-am putut conecta la PostgreSQL la pornire:', err.message);
+      process.exit(1);
     });
-  })
-  .catch(err => {
-    console.error('Nu m-am putut conecta la PostgreSQL la pornire:', err.message);
-    process.exit(1);
-  });
+}
+
+// Export ADITIV, STRICT pentru worker.js (arhitectura video-worker separata, in testare —
+// vezi raportul de scalabilitate). Nu schimba nimic din comportamentul `node server.js`.
+// generateLyricVideo ramane EXACT functia folosita de fluxul live (generatePremiumExtras,
+// mai sus) — worker.js apeleaza acelasi cod, niciodata o copie.
+module.exports = { generateLyricVideo, TEMP_DIR, downloadFile };

@@ -479,6 +479,41 @@ async function initDb() {
   `);
   await pool.query(`INSERT INTO credit_alert_state (id) VALUES (1) ON CONFLICT (id) DO NOTHING;`);
 
+  // video_render_jobs: coada pentru arhitectura video-worker separata (TEST/DEZVOLTARE —
+  // vezi raportul de scalabilitate; NU e inca folosita de fluxul live de comenzi reale, care
+  // ramane pe generatePremiumExtras/triggerVideoGeneration, neschimbat). Preluare atomica
+  // multi-worker prin FOR UPDATE SKIP LOCKED (vezi claimNextVideoRenderJob). fencing_token
+  // creste la FIECARE preluare — un worker care scrie rezultatul cu un fencing_token vechi
+  // (pentru ca lease-ul i-a expirat si jobul a fost preluat de altcineva intre timp) e respins
+  // explicit (vezi completeVideoRenderJob), fara sa poata suprascrie randarea mai noua.
+  // Indexul unic PARTIAL (doar pe joburi active) garanteaza inserare idempotenta: un al doilea
+  // declansator pentru ACEEASI (comanda, varianta, revizie de materiale), cat timp un job activ
+  // deja exista, nu creeaza un job separat.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS video_render_jobs (
+      id UUID PRIMARY KEY,
+      order_id UUID NOT NULL REFERENCES orders(id),
+      variant_id TEXT NOT NULL,
+      media_revision INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'claimed', 'done', 'failed')),
+      worker_id TEXT,
+      fencing_token INTEGER NOT NULL DEFAULT 0,
+      claimed_at TIMESTAMPTZ,
+      heartbeat_at TIMESTAMPTZ,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      max_attempts INTEGER NOT NULL DEFAULT 3,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      completed_at TIMESTAMPTZ,
+      error TEXT,
+      result JSONB
+    );
+  `);
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS video_render_jobs_active_unique
+    ON video_render_jobs (order_id, variant_id, media_revision)
+    WHERE status IN ('pending', 'claimed');
+  `);
+
   console.log('Postgres: schema orders verificata/creata.');
 }
 
@@ -857,6 +892,152 @@ async function isVideoClaimStillCurrent(orderId, variantId, mediaRevision) {
   const order = await getOrderById(orderId);
   if (!order) return false;
   return order.selectedVariantId === variantId && order.mediaRevision === mediaRevision;
+}
+
+// ==================================================================================
+// COADA video_render_jobs — arhitectura video-worker separata (TEST/DEZVOLTARE, vezi
+// raportul de scalabilitate; NEFOLOSITA inca de fluxul live de comenzi reale). Suporta
+// N workeri concurenti (SELECT ... FOR UPDATE SKIP LOCKED — niciodata acelasi job preluat
+// de doi workeri), lease cu heartbeat (nu lock static de 20 minute), si fencing token
+// (un worker cu lease expirat, care totusi termina randarea mai tarziu, nu poate scrie
+// rezultatul peste o preluare mai noua).
+// ==================================================================================
+
+function rowToVideoRenderJob(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    orderId: row.order_id,
+    variantId: row.variant_id,
+    mediaRevision: row.media_revision,
+    status: row.status,
+    workerId: row.worker_id,
+    fencingToken: row.fencing_token,
+    claimedAt: row.claimed_at,
+    heartbeatAt: row.heartbeat_at,
+    attempts: row.attempts,
+    maxAttempts: row.max_attempts,
+    createdAt: row.created_at,
+    completedAt: row.completed_at,
+    error: row.error,
+    result: row.result
+  };
+}
+
+// Inserare IDEMPOTENTA: daca un job activ (pending/claimed) exista deja pentru exact
+// aceeasi (comanda, varianta, revizie), il returneaza pe acela — nu creeaza un al doilea.
+// Indexul unic partial (video_render_jobs_active_unique) e garantia REALA impotriva
+// curselor (doua inserari aproape simultane) — verificarea SELECT de mai jos e doar
+// optimizare, sa evitam un round-trip suplimentar in cazul comun.
+async function enqueueVideoRenderJob(orderId, variantId, mediaRevision) {
+  const existing = await pool.query(
+    `SELECT * FROM video_render_jobs WHERE order_id = $1 AND variant_id = $2 AND media_revision = $3 AND status IN ('pending', 'claimed')`,
+    [orderId, variantId, mediaRevision]
+  );
+  if (existing.rows.length > 0) return { job: rowToVideoRenderJob(existing.rows[0]), alreadyQueued: true };
+
+  try {
+    const result = await pool.query(
+      `INSERT INTO video_render_jobs (id, order_id, variant_id, media_revision) VALUES ($1, $2, $3, $4) RETURNING *`,
+      [randomUUID(), orderId, variantId, mediaRevision]
+    );
+    return { job: rowToVideoRenderJob(result.rows[0]), alreadyQueued: false };
+  } catch (err) {
+    // 23505 = unique_violation — o cursa reala castigata de o alta inserare intre SELECT-ul de
+    // mai sus si acest INSERT; jobul ei e cel valid, il preluam si il returnam ca "deja in coada".
+    if (err && err.code === '23505') {
+      const retry = await pool.query(
+        `SELECT * FROM video_render_jobs WHERE order_id = $1 AND variant_id = $2 AND media_revision = $3 AND status IN ('pending', 'claimed')`,
+        [orderId, variantId, mediaRevision]
+      );
+      return { job: rowToVideoRenderJob(retry.rows[0]), alreadyQueued: true };
+    }
+    throw err;
+  }
+}
+
+// Preluare atomica a URMATORULUI job disponibil — fie complet nou (`pending`), fie un job
+// `claimed` al carui lease a expirat (heartbeat mai vechi decat leaseSeconds — worker
+// probabil mort/replica disparuta). FOR UPDATE SKIP LOCKED: doi workeri care interogheaza
+// simultan NU pot primi niciodata acelasi rand — Postgres sare peste randurile deja
+// blocate de alta tranzactie in loc sa astepte, exact comportamentul necesar aici (fiecare
+// worker vrea "orice job liber", nu specific ACEST job).
+async function claimNextVideoRenderJob(workerId, leaseSeconds) {
+  const result = await pool.query(
+    `UPDATE video_render_jobs
+     SET status = 'claimed', worker_id = $1, claimed_at = now(), heartbeat_at = now(),
+         fencing_token = fencing_token + 1, attempts = attempts + 1
+     WHERE id = (
+       SELECT id FROM video_render_jobs
+       WHERE status = 'pending'
+          OR (status = 'claimed' AND heartbeat_at < now() - ($2 || ' seconds')::interval)
+       ORDER BY created_at
+       FOR UPDATE SKIP LOCKED
+       LIMIT 1
+     )
+     RETURNING *`,
+    [workerId, leaseSeconds]
+  );
+  return rowToVideoRenderJob(result.rows[0]); // null daca nu exista niciun job disponibil
+}
+
+// Reinnoieste lease-ul cat timp randarea e activ in desfasurare. Verifica workerId +
+// fencingToken — daca jobul a fost between-timp reclamat de altcineva (lease expirat,
+// randare presupusa moarta), heartbeat-ul acestui worker NU mai afecteaza niciun rand
+// (0 randuri actualizate) — semnalul explicit ca acest worker trebuie sa abandoneze
+// imediat randarea in curs, nu doar sa continue "in orb".
+async function heartbeatVideoRenderJob(jobId, workerId, fencingToken) {
+  const result = await pool.query(
+    `UPDATE video_render_jobs SET heartbeat_at = now()
+     WHERE id = $1 AND worker_id = $2 AND fencing_token = $3 AND status = 'claimed'
+     RETURNING id`,
+    [jobId, workerId, fencingToken]
+  );
+  return result.rows.length > 0; // false = fenced out, worker-ul trebuie sa abandoneze
+}
+
+// Scrie rezultatul FINAL — respinsa (0 randuri, returneaza false) daca fencingToken nu mai
+// e cel curent (worker fenced out intre timp). Apelantul (worker.js) NU are voie sa scrie
+// videoKey pe comanda decat daca aceasta functie returneaza true SI isVideoClaimStillCurrent
+// e tot adevarat — cele doua verificari sunt independente si AMBELE necesare.
+async function completeVideoRenderJob(jobId, workerId, fencingToken, result) {
+  const res = await pool.query(
+    `UPDATE video_render_jobs SET status = 'done', result = $4, completed_at = now()
+     WHERE id = $1 AND worker_id = $2 AND fencing_token = $3 AND status = 'claimed'
+     RETURNING id`,
+    [jobId, workerId, fencingToken, JSON.stringify(result)]
+  );
+  return res.rows.length > 0;
+}
+
+// Esec — reincercabil (revine la 'pending', un alt worker sau chiar acesta poate incerca
+// din nou) pana la max_attempts, apoi marcat definitiv 'failed'. Gatat de fencing_token la
+// fel ca completeVideoRenderJob — un worker fenced out nu poate nici macar marca jobul esuat.
+async function failVideoRenderJob(jobId, workerId, fencingToken, errorMessage) {
+  const res = await pool.query(
+    `UPDATE video_render_jobs
+     SET status = CASE WHEN attempts >= max_attempts THEN 'failed' ELSE 'pending' END,
+         error = $4, worker_id = NULL, claimed_at = NULL, heartbeat_at = NULL
+     WHERE id = $1 AND worker_id = $2 AND fencing_token = $3 AND status = 'claimed'
+     RETURNING id, status`,
+    [jobId, workerId, fencingToken, String(errorMessage).slice(0, 2000)]
+  );
+  return res.rows[0] || null;
+}
+
+async function getVideoRenderJobById(jobId) {
+  const result = await pool.query(`SELECT * FROM video_render_jobs WHERE id = $1`, [jobId]);
+  return rowToVideoRenderJob(result.rows[0]);
+}
+
+// Numarul de joburi care au INCA nevoie de acoperire (pending + active/claimed, indiferent
+// daca lease-ul lor a expirat sau nu) — semnalul de sarcina folosit de autoscaler pentru a
+// decide replicile necesare (vezi autoscaler.js).
+async function countPendingOrActiveVideoRenderJobs() {
+  const result = await pool.query(
+    `SELECT count(*)::int AS n FROM video_render_jobs WHERE status IN ('pending', 'claimed')`
+  );
+  return result.rows[0].n;
 }
 
 // ==================================================================================
@@ -1507,6 +1688,9 @@ module.exports = {
   claimVideoRender, releaseVideoRender, recordStripeEventIfNew, recordPaidOrderAtomically,
   recordResendEventIfNew, addEmailSuppression, isEmailSuppressed,
   isVideoClaimStillCurrent, mutateOrderMediaAtomically, confirmMediaSelection,
+  enqueueVideoRenderJob, claimNextVideoRenderJob, heartbeatVideoRenderJob,
+  completeVideoRenderJob, failVideoRenderJob, getVideoRenderJobById,
+  countPendingOrActiveVideoRenderJobs,
   updateOrder, listOrders, computeRevenue,
   logCreditEvent, getCreditEventsSince, getSetting, setSetting,
   claimCreditAlertTransition, getCreditAlertState, getCompletedOrdersSince, getAverageCreditsPerCompletedOrder,
