@@ -508,6 +508,12 @@ async function initDb() {
       result JSONB
     );
   `);
+  // Migrare aditiva (tabelul poate exista deja fara aceasta coloana, dintr-o versiune
+  // anterioara) — backoff exponential + jitter intre reincercarile aceluiasi job (vezi
+  // claimNextVideoRenderJob/failVideoRenderJob): un job esuat NU mai devine reclaimable
+  // instant, ci abia dupa acest moment — evita ca mai multi workeri sa reincerce in acelasi
+  // timp aceeasi dependenta externa cazuta (Suno).
+  await pool.query(`ALTER TABLE video_render_jobs ADD COLUMN IF NOT EXISTS next_attempt_at TIMESTAMPTZ;`);
   await pool.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS video_render_jobs_active_unique
     ON video_render_jobs (order_id, variant_id, media_revision)
@@ -969,8 +975,11 @@ async function claimNextVideoRenderJob(workerId, leaseSeconds) {
          fencing_token = fencing_token + 1, attempts = attempts + 1
      WHERE id = (
        SELECT id FROM video_render_jobs
-       WHERE status = 'pending'
-          OR (status = 'claimed' AND heartbeat_at < now() - ($2 || ' seconds')::interval)
+       WHERE (
+         status = 'pending'
+         OR (status = 'claimed' AND heartbeat_at < now() - ($2 || ' seconds')::interval)
+       )
+       AND (next_attempt_at IS NULL OR next_attempt_at <= now())
        ORDER BY created_at
        FOR UPDATE SKIP LOCKED
        LIMIT 1
@@ -978,7 +987,7 @@ async function claimNextVideoRenderJob(workerId, leaseSeconds) {
      RETURNING *`,
     [workerId, leaseSeconds]
   );
-  return rowToVideoRenderJob(result.rows[0]); // null daca nu exista niciun job disponibil
+  return rowToVideoRenderJob(result.rows[0]); // null daca nu exista niciun job disponibil (deloc, sau doar in backoff)
 }
 
 // Reinnoieste lease-ul cat timp randarea e activ in desfasurare. Verifica workerId +
@@ -1013,14 +1022,19 @@ async function completeVideoRenderJob(jobId, workerId, fencingToken, result) {
 // Esec — reincercabil (revine la 'pending', un alt worker sau chiar acesta poate incerca
 // din nou) pana la max_attempts, apoi marcat definitiv 'failed'. Gatat de fencing_token la
 // fel ca completeVideoRenderJob — un worker fenced out nu poate nici macar marca jobul esuat.
-async function failVideoRenderJob(jobId, workerId, fencingToken, errorMessage) {
+// `backoffSeconds` (calculat de apelant — vezi worker.js, backoff exponential + jitter,
+// respectand orice Retry-After al furnizorului) seteaza next_attempt_at, ca job-ul sa NU
+// devina reclaimable instant — o singura politica de retry, la nivel de job, nu doua
+// bucle de reincercare imbricate.
+async function failVideoRenderJob(jobId, workerId, fencingToken, errorMessage, backoffSeconds = 0) {
   const res = await pool.query(
     `UPDATE video_render_jobs
      SET status = CASE WHEN attempts >= max_attempts THEN 'failed' ELSE 'pending' END,
-         error = $4, worker_id = NULL, claimed_at = NULL, heartbeat_at = NULL
+         error = $4, worker_id = NULL, claimed_at = NULL, heartbeat_at = NULL,
+         next_attempt_at = CASE WHEN attempts >= max_attempts THEN NULL ELSE now() + ($5 || ' seconds')::interval END
      WHERE id = $1 AND worker_id = $2 AND fencing_token = $3 AND status = 'claimed'
      RETURNING id, status`,
-    [jobId, workerId, fencingToken, String(errorMessage).slice(0, 2000)]
+    [jobId, workerId, fencingToken, String(errorMessage).slice(0, 2000), Math.max(0, backoffSeconds)]
   );
   return res.rows[0] || null;
 }

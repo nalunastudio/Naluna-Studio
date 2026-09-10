@@ -33,6 +33,26 @@ const HEARTBEAT_INTERVAL_MS = 60 * 1000;
 const POLL_INTERVAL_MS = 5 * 1000;
 const IDLE_LOG_EVERY_N_POLLS = 12; // ~1 minut, ca sa nu inunde logul cat timp coada e goala
 
+// Backoff exponential + jitter intre reincercarile ACELUIASI job (max_attempts=3, deja
+// existent) — O SINGURA politica de retry, la nivel de job, nu doua bucle imbricate (nu
+// atinge deloc bucla interna de 2 incercari din fetchTimestampedLyricsOnce/server.js, care
+// ramane neschimbata si comuna cu drumul de muzica). Baza 10s, dublata per incercare
+// (10s, 20s, 40s...), plafonata la 120s, plus jitter aleator 0-5s ca mai multi workeri care
+// esueaza in acelasi moment sa NU se resincronizeze intr-o noua rafala simultana. Daca
+// furnizorul semnaleaza explicit un Retry-After (vezi err.retryAfterSeconds, camp aditiv
+// din server.js), se respecta acea valoare daca e mai mare decat backoff-ul calculat.
+const BACKOFF_BASE_SECONDS = 10;
+const BACKOFF_MAX_SECONDS = 120;
+const BACKOFF_JITTER_MAX_SECONDS = 5;
+
+function computeBackoffSeconds(attempts, err) {
+  const exponential = Math.min(BACKOFF_MAX_SECONDS, BACKOFF_BASE_SECONDS * Math.pow(2, Math.max(0, attempts - 1)));
+  const jitter = Math.random() * BACKOFF_JITTER_MAX_SECONDS;
+  const computed = exponential + jitter;
+  const providerHint = (err && typeof err.retryAfterSeconds === 'number') ? err.retryAfterSeconds : 0;
+  return Math.round(Math.max(computed, providerHint));
+}
+
 let idlePollCount = 0;
 
 function log(...args) {
@@ -110,8 +130,10 @@ async function claimAndRenderOnce() {
     clearInterval(heartbeat);
     log(`Job ${job.id}: randare esuata:`, err && err.stack ? err.stack : err);
     if (!fencedOut) {
-      const outcome = await db.failVideoRenderJob(job.id, WORKER_ID, job.fencingToken, (err && err.message) || String(err));
-      if (outcome) log(`Job ${job.id}: marcat '${outcome.status}' dupa esec.`);
+      const backoffSeconds = computeBackoffSeconds(job.attempts, err);
+      if (err && err.isRateLimit) log(`Job ${job.id}: furnizorul a semnalat rate-limit — backoff ${backoffSeconds}s.`);
+      const outcome = await db.failVideoRenderJob(job.id, WORKER_ID, job.fencingToken, (err && err.message) || String(err), backoffSeconds);
+      if (outcome) log(`Job ${job.id}: marcat '${outcome.status}' dupa esec${outcome.status === 'pending' ? ` (reincercabil dupa ${backoffSeconds}s)` : ''}.`);
     }
     return true;
   } finally {

@@ -5465,7 +5465,13 @@ async function fetchTimestampedLyricsOnce(taskId, audioId) {
       );
       if (res.ok) return { ok: true, res };
       if (res.status >= 500 && attempt === 0) continue; // eroare temporara -> o singura reincercare
-      return { ok: false, reason: `HTTP ${res.status}` };
+      // Camp ADITIV, ignorat de apelantul existent (getPreviewStartFromLyrics) care verifica
+      // strict outcome.ok/outcome.reason — nu schimba deloc comportamentul acelui apelant.
+      // Folosit STRICT de coada video-worker (generateLyricVideo/worker.js) pentru a respecta
+      // un semnal explicit de limitare de rata (429/430) sau Retry-After de la furnizor.
+      const retryAfterHeader = res.headers && typeof res.headers.get === 'function' ? res.headers.get('retry-after') : null;
+      const retryAfterSeconds = retryAfterHeader && !isNaN(Number(retryAfterHeader)) ? Number(retryAfterHeader) : null;
+      return { ok: false, reason: `HTTP ${res.status}`, httpStatus: res.status, retryAfterSeconds };
     } catch (err) {
       if (attempt === 0) continue; // timeout/eroare de retea -> o singura reincercare
       return { ok: false, reason: `timeout/retea: ${err.message}` };
@@ -7035,7 +7041,13 @@ async function generateLyricVideo(order, variant, tempFullMp3Path) {
 
   const outcome = await fetchTimestampedLyricsOnce(effectiveMusicTaskId, variant.sunoTrackId);
   if (!outcome.ok) {
-    throw new Error(`Nu am putut obtine versurile cu marcaj de timp: ${outcome.reason}`);
+    // retryAfterSeconds (camp aditiv, vezi fetchTimestampedLyricsOnce) atasat pe eroare —
+    // STRICT pentru ca worker.js sa poata respecta un semnal explicit de rate-limit al
+    // furnizorului la backoff-ul dintre reincercarile jobului. Nu schimba mesajul erorii.
+    const err = new Error(`Nu am putut obtine versurile cu marcaj de timp: ${outcome.reason}`);
+    if (outcome.retryAfterSeconds) err.retryAfterSeconds = outcome.retryAfterSeconds;
+    if (outcome.httpStatus === 429 || outcome.httpStatus === 430 || outcome.httpStatus === 405) err.isRateLimit = true;
+    throw err;
   }
   const body = await outcome.res.json();
   if (!body || body.code !== 200 || !body.data || !Array.isArray(body.data.alignedWords) || body.data.alignedWords.length === 0) {
