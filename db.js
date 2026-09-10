@@ -24,9 +24,13 @@ if (!process.env.DATABASE_URL) {
 // Railway (si majoritatea gazduirilor Postgres externe) cer SSL. Local, de obicei nu.
 const isLocal = process.env.DATABASE_URL.includes('localhost') || process.env.DATABASE_URL.includes('127.0.0.1');
 
+// max=20: 2x valoarea implicita a librariei (10) — dimensionat pe bugetul de conexiuni
+// calculat pentru arhitectura cu video-worker separat (web + video-worker + autoscaler +
+// marja), nu o valoare arbitrara. Vezi raportul de scalabilitate pentru calculul complet.
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: isLocal ? false : { rejectUnauthorized: false }
+  ssl: isLocal ? false : { rejectUnauthorized: false },
+  max: 20
 });
 
 // O conexiune idle care pica nu trebuie sa opreasca tot serverul.
