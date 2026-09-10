@@ -85,7 +85,10 @@ async function tick() {
     return;
   }
 
-  if (desired > 0) lastNonZeroDemandAt = Date.now();
+  // BUG CORECTAT: verifica `demand` (adancimea reala a cozii), NU `desired` — `desired` e
+  // mereu >= MIN_REPLICAS (podeaua de platforma), deci "desired > 0" era mereu adevarat,
+  // iar cronometrul de cooldown nu pornea niciodata cu adevarat de la 0 cerere reala.
+  if (demand > 0) lastNonZeroDemandAt = Date.now();
 
   if (desired > currentReplicas) {
     // Scale-up IMEDIAT, direct la numarul necesar — niciodata incremental. Raspunde exact
