@@ -149,7 +149,34 @@ const PLAN_PRICES = { standard: 15, premium: 25, video: 35 };
 // fie LIVRAT acum. Substanta drepturilor consimtite ramane identica (livrare imediata, pierderea
 // dreptului de anulare, fara rambursare pentru schimbarea parerii) — doar framing-ul factual s-a
 // schimbat. Niciodata retroactiv pentru comenzi deja platite sub v3.
-const CONSENT_POLICY_VERSION = '2026-09-06-v4';
+// CORECȚIE (2026-09-11, v4->v5): bara de consimțământ construită în melodia-mea.html apărea
+// ori de câte ori checkoutBtn devenea activ — adică pe toată durata ascultării/editării, nu
+// doar chiar înaintea plății (checkoutBtn.disabled devine false imediat ce o variantă e gata
+// de plată, mult înainte ca clientul să decidă efectiv să plătească). Mecanismul propriu a fost
+// eliminat complet — bifa de consimțământ e acum colectată NATIV de Stripe Checkout
+// (consent_collection.terms_of_service='required' + custom_text.terms_of_service_acceptance,
+// vezi POST /checkout), afișată STRICT pe pagina de plată Stripe, chiar lângă butonul de plată —
+// singurul loc unde poate apărea mai aproape de momentul plății. Substanța textului legal
+// rămâne identică (aceleași 8 traduceri, doar reformatate ca linkuri Markdown absolute pentru
+// pagina găzduită de Stripe) — versiunea crește pentru schimbarea de MECANISM/poziționare, nu
+// de conținut.
+const CONSENT_POLICY_VERSION = '2026-09-11-v5';
+// Text localizat pentru custom_text.terms_of_service_acceptance (Stripe Checkout) — identic ca
+// substanță cu vechiul consent_text din melodia-mea.html, cu linkurile convertite la Markdown
+// absolut (${DOMAIN}/terms.html, ${DOMAIN}/refund.html) — pagina Stripe e găzduită separat de
+// domeniul Naluna, deci linkurile relative nu ar funcționa acolo. Sub limita reală Stripe de
+// 1200 caractere pentru custom_text (verificat, maximum 614 caractere înainte de expandarea
+// ${DOMAIN}).
+const CONSENT_TOS_TEXT = {
+  ro: `Vreau ca melodia/videoclipul meu personalizat, deja creat, să îmi fie livrat complet acum. Înțeleg că pierd dreptul de anulare de 14 zile odată ce începe livrarea și că, după aceea, nu am dreptul la o rambursare doar pentru că m-am răzgândit sau nu-mi place rezultatul creativ. Acest lucru nu îmi afectează drepturile dacă produsul este defect, nu corespunde descrierii sau nu este livrat din vina Naluna. Vezi [Termenii](${DOMAIN}/terms.html) și [Politica de anulare și rambursare](${DOMAIN}/refund.html).`,
+  en: `I want my already-created personalised song/video to be delivered to me in full now. I understand that I lose my 14-day right to cancel once delivery begins, and that once delivered, I'm not entitled to a refund just because I change my mind or dislike the creative result. This doesn't affect my rights if the content is faulty, not as described, or undelivered due to a fault on Naluna's side. See [Terms](${DOMAIN}/terms.html) and [Cancellation & Refund Policy](${DOMAIN}/refund.html).`,
+  de: `Ich möchte, dass mein bereits fertiges, personalisiertes Lied/Video mir jetzt vollständig geliefert wird. Mir ist bewusst, dass ich mein 14-tägiges Widerrufsrecht verliere, sobald die Lieferung beginnt, und dass ich nach der Lieferung keinen Anspruch auf Rückerstattung habe, nur weil ich es mir anders überlegt habe oder mir das kreative Ergebnis nicht gefällt. Dies berührt nicht meine Rechte, falls der Inhalt mangelhaft, nicht wie beschrieben oder aufgrund eines Fehlers von Naluna nicht geliefert ist. Siehe [AGB](${DOMAIN}/terms.html) und [Stornierungs- und Rückerstattungsrichtlinie](${DOMAIN}/refund.html).`,
+  es: `Quiero que mi canción/vídeo personalizado, ya creado, se me entregue por completo ahora. Entiendo que pierdo mi derecho de desistimiento de 14 días en cuanto comienza la entrega, y que, una vez entregado, no tengo derecho a un reembolso solo porque cambie de opinión o no me guste el resultado creativo. Esto no afecta a mis derechos si el contenido es defectuoso, no se corresponde con la descripción o no se entrega por un fallo de Naluna. Consulta los [Términos](${DOMAIN}/terms.html) y la [Política de cancelación y reembolso](${DOMAIN}/refund.html).`,
+  it: `Voglio che la mia canzone/video personalizzato, già creato, mi venga consegnato per intero ora. Comprendo che perdo il diritto di recesso di 14 giorni non appena inizia la consegna, e che, una volta consegnato, non ho diritto a un rimborso solo perché cambio idea o non mi piace il risultato creativo. Questo non incide sui miei diritti se il contenuto è difettoso, non conforme alla descrizione o non consegnato per un errore di Naluna. Consulta i [Termini](${DOMAIN}/terms.html) e la [Politica di cancellazione e rimborso](${DOMAIN}/refund.html).`,
+  fr: `Je souhaite que ma chanson/vidéo personnalisée, déjà créée, me soit livrée intégralement maintenant. Je comprends que je perds mon droit de rétractation de 14 jours dès le début de la livraison, et qu'une fois livré, je n'ai pas droit à un remboursement simplement parce que j'ai changé d'avis ou que le résultat créatif ne me plaît pas. Cela n'affecte pas mes droits si le contenu est défectueux, non conforme à la description, ou non livré en raison d'une défaillance de Naluna. Voir les [Conditions](${DOMAIN}/terms.html) et la [Politique d'annulation et de remboursement](${DOMAIN}/refund.html).`,
+  bg: `Искам вече готовата ми персонализирана песен/видео да ми бъде доставена изцяло сега. Разбирам, че губя правото си на отказ от 14 дни веднага щом започне доставката, и че след доставката нямам право на възстановяване само защото съм размислил/а или не харесвам творческия резултат. Това не засяга правата ми, ако съдържанието е дефектно, не отговаря на описанието или не е доставено поради грешка на Naluna. Виж [Общите условия](${DOMAIN}/terms.html) и [Политиката за анулиране и възстановяване](${DOMAIN}/refund.html).`,
+  tr: `Zaten oluşturulmuş kişiselleştirilmiş şarkımın/videomun bana şimdi eksiksiz olarak teslim edilmesini istiyorum. Teslimat başladığında 14 günlük cayma hakkımı kaybettiğimi ve teslimattan sonra sadece fikrimi değiştirdiğim veya yaratıcı sonucu beğenmediğim için iade hakkım olmadığını anlıyorum. Bu, içerik kusurluysa, açıklamaya uygun değilse veya Naluna kaynaklı bir hata nedeniyle teslim edilmemişse haklarımı etkilemez. Bkz. [Şartlar](${DOMAIN}/terms.html) ve [İptal ve İade Politikası](${DOMAIN}/refund.html).`
+};
 // REGULA FINALA A PACHETELOR (2026-08-14, corectata — vezi si comentariul de la
 // getGiftVariant in lib/entitlements.js): sursa unica server-side pentru cate melodii
 // (variante) primeste fiecare plan — nu doar text in UI. Standard SI Video = o singura
@@ -1096,6 +1123,19 @@ async function processConfirmedPayment(event, session) {
     ? session.payment_intent
     : (session.payment_intent && session.payment_intent.id) || null;
 
+  // LAUNCH SAFETY (2026-09-11, Faza 2 v2): dovada de consimtamant vine acum DIRECT de la
+  // Stripe (consent.terms_of_service, populat pentru ca session-ul a fost creat cu
+  // consent_collection.terms_of_service='required' — vezi POST /checkout), niciodata doar
+  // presupusa. Scrisa aici, la confirmarea REALA a platii — garantat asociata comenzii/sesiunii
+  // exacte care s-a platit (toate verificarile de mai sus, inclusiv stale_checkout_session,
+  // au trecut deja pana la acest punct). 'required' inseamna ca Stripe insusi nu permite
+  // finalizarea platii fara bifa — daca totusi apare altceva decat 'accepted', logam explicit
+  // (nu ar trebui sa se intample niciodata) dar nu blocam livrarea unei plati deja confirmate.
+  const consentAccepted = session.consent && session.consent.terms_of_service === 'accepted';
+  if (!consentAccepted) {
+    console.error(`Comanda ${orderId}: plata confirmata dar session.consent.terms_of_service nu e 'accepted' (valoare: ${session.consent && session.consent.terms_of_service}) — neasteptat, Stripe ar fi trebuit sa blocheze asta.`);
+  }
+
   const result = await db.recordPaidOrderAtomically(event.id, orderId, {
     status: 'ready',
     paidAt: new Date().toISOString(),
@@ -1104,7 +1144,9 @@ async function processConfirmedPayment(event, session) {
     amountTotal,
     taxAmount,
     stripeSessionId: session.id,
-    stripePaymentIntentId
+    stripePaymentIntentId,
+    consentGivenAt: consentAccepted ? new Date() : null,
+    consentPolicyVersion: consentAccepted ? CONSENT_POLICY_VERSION : null
   });
 
   if (!result.isNewEvent) return { httpStatus: 200, body: { received: true, duplicate: true } };
@@ -3027,16 +3069,6 @@ app.post('/api/orders/:orderId/checkout', requireOrderToken, async (req, res, ne
       return res.status(400).json({ error: 'Alege exact două melodii înainte de plată.' });
     }
 
-    // LAUNCH SAFETY (2026-09-02, Faza 2 — checkout legal consent): validare SERVER-SIDE,
-    // niciodata doar client-side (butonul dezactivat in UI poate fi ocolit printr-un apel
-    // direct catre acest endpoint). Fara consimtamant explicit, plata nu poate incepe deloc —
-    // consecvent cu Consumer Contracts Regulations 2013 (UK) / Art. 16(m) Directiva 2011/83/UE:
-    // clientul trebuie sa ceara EXPRES inceperea imediata a continutului digital si sa
-    // recunoasca pierderea dreptului de retragere, INAINTE de a plati.
-    if (req.body?.consentGiven !== true) {
-      return res.status(400).json({ error: 'Trebuie să confirmi acordul privind începerea imediată a livrării înainte de a plăti.' });
-    }
-
     // ======================================================================================
     // Fluxul obligatoriu "Cadou video" — cerinta 11: plata e permisa NUMAI cand: varianta
     // audio finala e selectata (verificat mai sus, comun tuturor pachetelor); videoclipul
@@ -3133,6 +3165,17 @@ app.post('/api/orders/:orderId/checkout', requireOrderToken, async (req, res, ne
       // restrictionam o adresa de livrare. Asta elimina si blocajul tehnic care limita
       // anterior cumpararea doar la clienti din UK.
       automatic_tax: { enabled: automaticTaxEnabled },
+      // LAUNCH SAFETY (2026-09-11, Faza 2 v2 — mutare consimtamant pe pagina Stripe): bifa de
+      // consimtamant e acum ceruta NATIV de Stripe, pe pagina de plata gazduita — nu mai poate
+      // exista un checkout fara ea (validare server-side reala, facuta de Stripe insusi, nu doar
+      // de UI-ul nostru) — inlocuieste complet vechea bara/verificare proprie din melodia-mea.html.
+      consent_collection: { terms_of_service: 'required' },
+      custom_text: {
+        terms_of_service_acceptance: {
+          message: CONSENT_TOS_TEXT[order.lang] || CONSENT_TOS_TEXT.ro
+        }
+      },
+      locale: ALLOWED_LANGS.includes(order.lang) ? order.lang : 'auto',
       metadata: {
         orderId: order.id,
         selectedVariantId: order.selectedVariantId,
@@ -3157,14 +3200,15 @@ app.post('/api/orders/:orderId/checkout', requireOrderToken, async (req, res, ne
     });
 
     // Salvam amprenta EXACT a sesiunii create — folosita la webhook pentru a respinge sigur
-    // orice sesiune care nu mai corespunde versiunii curente a comenzii.
+    // orice sesiune care nu mai corespunde versiunii curente a comenzii. Consimtamantul NU se
+    // mai scrie aici — clientul inca nu a bifat nimic la acest moment (bifa traieste pe pagina
+    // Stripe, dupa redirect); se scrie STRICT la confirmarea reala a platii, in webhook (vezi
+    // processConfirmedPayment), pe baza session.consent.terms_of_service confirmat de Stripe.
     await db.updateOrder(order.id, {
       checkoutSessionId: session.id,
       checkoutVariantId: order.selectedVariantId,
       checkoutVariantId2: order.selectedVariantId2 || null,
-      checkoutMediaRevision: order.mediaRevision,
-      consentGivenAt: new Date(),
-      consentPolicyVersion: CONSENT_POLICY_VERSION
+      checkoutMediaRevision: order.mediaRevision
     });
 
     res.json({ url: session.url });

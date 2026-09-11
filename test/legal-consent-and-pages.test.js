@@ -191,20 +191,29 @@ test('refund.html si terms.html: drepturile STATUTARE (CRA 2015) pentru continut
   }
 });
 
-test('melodia-mea.html: toate cele 8 limbi ale consent_text includ clauza "nu exista rambursare pentru schimbarea parerii", pastrand neafectate drepturile pentru continut defect/nelivrat din vina Naluna', () => {
-  const html = read('public/melodia-mea.html');
-  const matches = html.match(/consent_text: '/g) || [];
-  assert.equal(matches.length, 8, 'trebuie sa existe exact 8 chei consent_text (una per limba)');
-  const faultMarkers = ["fault on Naluna\\'s side", 'din vina Naluna', 'eines Fehlers von Naluna', 'un fallo de Naluna', 'un errore di Naluna', 'défaillance de Naluna', 'грешка на Naluna', 'Naluna kaynaklı bir hata'];
+test('server.js: toate cele 8 limbi ale CONSENT_TOS_TEXT includ clauza "nu exista rambursare pentru schimbarea parerii", pastrand neafectate drepturile pentru continut defect/nelivrat din vina Naluna — CORECȚIE 2026-09-11: consimțământul nu mai trăiește ca text în melodia-mea.html, ci ca custom_text nativ Stripe (CONSENT_TOS_TEXT), pentru ca bara veche apărea pe toată durata ascultării/editării, nu doar chiar înaintea plății', () => {
+  const matches = server.match(/^  [a-z]{2}: `/gm) || [];
+  assert.ok(server.includes('const CONSENT_TOS_TEXT = {'), 'trebuie sa existe harta CONSENT_TOS_TEXT');
+  const tosBlock = extractFn(server, 'const CONSENT_TOS_TEXT = {');
+  const langCount = (tosBlock.match(/^  [a-z]{2}: `/gm) || []).length;
+  assert.equal(langCount, 8, 'trebuie sa existe exact 8 intrari CONSENT_TOS_TEXT (una per limba)');
+  const faultMarkers = ["fault on Naluna's side", 'din vina Naluna', 'eines Fehlers von Naluna', 'un fallo de Naluna', 'un errore di Naluna', 'défaillance de Naluna', 'грешка на Naluna', 'Naluna kaynaklı bir hata'];
   for (const marker of faultMarkers) {
-    assert.ok(html.includes(marker), `lipseste mentiunea drepturilor pastrate pentru esecul din vina Naluna: "${marker}"`);
+    assert.ok(tosBlock.includes(marker), `lipseste mentiunea drepturilor pastrate pentru esecul din vina Naluna: "${marker}"`);
+  }
+  // Fiecare intrare trebuie sa fie sub limita reala Stripe de 1200 caractere pentru custom_text
+  // (verificat direct din documentatia oficiala) — chiar si dupa expandarea ${DOMAIN}.
+  const fakeDomain = 'https://nalunastudio.com';
+  for (const m of tosBlock.matchAll(/^  [a-z]{2}: `([^`]*)`,?$/gm)) {
+    const expanded = m[1].replace(/\$\{DOMAIN\}/g, fakeDomain);
+    assert.ok(expanded.length <= 1200, `text CONSENT_TOS_TEXT prea lung (${expanded.length} caractere) pentru custom_text Stripe`);
   }
 });
 
-test('melodia-mea.html si server.js: consent_text si emailul de livrare NU mai afirma ca melodia/videoclipul "incepe sa fie creat(a)" la momentul consimtamantului — REGRESIE FACTUALA corectata explicit (produsul exista deja, generat/randat gratuit inainte de plata; ce incepe dupa plata e LIVRAREA, conform Reg. 37 Consumer Contracts Regulations 2013 UK)', () => {
-  const html = read('public/melodia-mea.html');
-  assert.ok(!/start(s)? being created|începe să fie creat|jetzt erstellt wird|empiece a crearse|inizi a essere creato|commence à être créée|да започне сега|oluşturulmaya başlamasını/i.test(html), 'consent_text nu mai trebuie sa afirme ca produsul incepe sa fie CREAT la momentul consimtamantului');
-  assert.ok(/already-created|deja creat|bereits fertiges|ya creado|già creato|déjà créée|вече готовата|Zaten oluşturulmuş/i.test(html), 'consent_text trebuie sa recunoasca explicit ca produsul EXISTA DEJA la momentul consimtamantului');
+test('server.js: CONSENT_TOS_TEXT si emailul de livrare NU mai afirma ca melodia/videoclipul "incepe sa fie creat(a)" la momentul consimtamantului — REGRESIE FACTUALA corectata explicit (produsul exista deja, generat/randat gratuit inainte de plata; ce incepe dupa plata e LIVRAREA, conform Reg. 37 Consumer Contracts Regulations 2013 UK)', () => {
+  const tosBlock = extractFn(server, 'const CONSENT_TOS_TEXT = {');
+  assert.ok(!/start(s)? being created|începe să fie creat|jetzt erstellt wird|empiece a crearse|inizi a essere creato|commence à être créée|да започне сега|oluşturulmaya başlamasını/i.test(tosBlock), 'CONSENT_TOS_TEXT nu mai trebuie sa afirme ca produsul incepe sa fie CREAT la momentul consimtamantului');
+  assert.ok(/already-created|deja creat|bereits fertiges|ya creado|già creato|déjà créée|вече готовата|Zaten oluşturulmuş/i.test(tosBlock), 'CONSENT_TOS_TEXT trebuie sa recunoasca explicit ca produsul EXISTA DEJA la momentul consimtamantului');
   const legalNoteFn = extractFn(server, "async function sendDeliveryEmail(order) {");
   assert.ok(!/work on your personalised order would begin|lucrul la comanda ta personalizată să înceapă/i.test(legalNoteFn), 'emailul de livrare nu mai trebuie sa afirme ca "lucrul" incepe la plata');
   assert.match(legalNoteFn, /delivery of your already-created personalised song\/video would begin/, 'emailul de livrare trebuie sa reflecte corect ca LIVRAREA incepe, nu crearea');
@@ -250,8 +259,8 @@ test('Cele 3 pagini legale NU mai afiseaza deloc "Last updated"/o data de revizu
 });
 
 test('CONSENT_POLICY_VERSION (versionarea interna, dovada consimtamantului) ramane intacta — eliminarea afisarii publice a "Last updated" NU atinge evidenta interna asociata fiecarei comenzi platite', () => {
-  assert.match(server, /const CONSENT_POLICY_VERSION = '2026-09-06-v4';/);
-  assert.match(server, /consentPolicyVersion:\s*CONSENT_POLICY_VERSION/);
+  assert.match(server, /const CONSENT_POLICY_VERSION = '2026-09-11-v5';/);
+  assert.match(server, /consentPolicyVersion:\s*consentAccepted\s*\?\s*CONSENT_POLICY_VERSION\s*:\s*null/);
   assert.match(db, /ALTER TABLE orders ADD COLUMN IF NOT EXISTS consent_policy_version TEXT;/);
 });
 
@@ -283,24 +292,37 @@ test('index.html si toate paginile client (comanda/melodia-mea/comanda-mea/succe
 });
 
 // ---------------------------------------------------------------------------------------------
-// Checkout consent — server-side
+// Checkout consent — Stripe Checkout nativ (CORECȚIE 2026-09-11, Faza 2 v2)
+//
+// Bara proprie (checkbox + text legal complet) apărea, în varianta veche, ori de câte ori
+// checkoutBtn.disabled devenea false — adică pe toată durata ascultării/editării, nu doar chiar
+// înaintea plății (checkoutBtn e activ imediat ce o variantă e gata de plată, cu mult înainte ca
+// clientul să decidă efectiv să plătească). Mecanismul propriu a fost eliminat complet — bifa e
+// acum colectată NATIV de Stripe Checkout, pe pagina de plată găzduită, chiar lângă butonul de
+// plată — singurul loc real mai aproape de momentul plății.
 // ---------------------------------------------------------------------------------------------
-test('server.js: POST /checkout respinge cu 400 fara consentGiven===true, INAINTE de a crea sesiunea Stripe', () => {
+test('server.js: POST /checkout cere consimțământ NATIV Stripe (consent_collection.terms_of_service=required + custom_text.terms_of_service_acceptance), setat pe sesiune INAINTE de a fi trimisă', () => {
   const fn = extractFn(server, "app.post('/api/orders/:orderId/checkout', requireOrderToken, async (req, res, next) => {");
-  const consentIdx = fn.indexOf("req.body?.consentGiven !== true");
-  const stripeIdx = fn.indexOf('stripe.checkout.sessions.create');
-  assert.notEqual(consentIdx, -1);
-  assert.notEqual(stripeIdx, -1);
-  assert.ok(consentIdx < stripeIdx, 'validarea consimtamantului trebuie sa fie INAINTE de crearea sesiunii Stripe');
+  assert.match(fn, /consent_collection:\s*\{\s*terms_of_service:\s*'required'\s*\}/);
+  assert.match(fn, /custom_text:\s*\{\s*terms_of_service_acceptance:\s*\{\s*message:\s*CONSENT_TOS_TEXT\[order\.lang\]/);
+  assert.ok(!fn.includes('consentGiven'), 'vechea validare client-side de consentGiven nu mai trebuie sa existe — Stripe o inlocuieste complet');
 });
 
-test('server.js: la succes, comanda salveaza consentGivenAt si consentPolicyVersion (dovada asociata comenzii)', () => {
+test('server.js: sesiunea Stripe foloseste locale-ul comenzii, pentru ca textul de consimtamant sa se potriveasca cu limba paginii Stripe', () => {
   const fn = extractFn(server, "app.post('/api/orders/:orderId/checkout', requireOrderToken, async (req, res, next) => {");
-  assert.match(fn, /consentGivenAt:\s*new Date\(\)/);
-  assert.match(fn, /consentPolicyVersion:\s*CONSENT_POLICY_VERSION/);
+  assert.match(fn, /locale:\s*ALLOWED_LANGS\.includes\(order\.lang\)\s*\?\s*order\.lang\s*:\s*'auto'/);
 });
 
-test('db.js: consent_given_at/consent_policy_version exista in schema, rowToOrder si COLUMN_MAP', () => {
+test('server.js: consimtamantul NU se mai scrie la crearea sesiunii (clientul inca nu a bifat nimic la acel moment) — se scrie STRICT la confirmarea reala a platii, in webhook, pe baza session.consent confirmat de Stripe', () => {
+  const checkoutFn = extractFn(server, "app.post('/api/orders/:orderId/checkout', requireOrderToken, async (req, res, next) => {");
+  assert.ok(!/consentGivenAt:\s*new Date\(\)/.test(checkoutFn), 'crearea sesiunii nu mai trebuie sa scrie consentGivenAt direct');
+  const paymentFn = extractFn(server, 'async function processConfirmedPayment(event, session) {');
+  assert.match(paymentFn, /session\.consent\s*&&\s*session\.consent\.terms_of_service\s*===\s*'accepted'/, 'confirmarea platii trebuie sa citeasca dovada REALA de la Stripe, nu doar sa presupuna');
+  assert.match(paymentFn, /consentGivenAt:\s*consentAccepted\s*\?\s*new Date\(\)\s*:\s*null/);
+  assert.match(paymentFn, /consentPolicyVersion:\s*consentAccepted\s*\?\s*CONSENT_POLICY_VERSION\s*:\s*null/);
+});
+
+test('db.js: consent_given_at/consent_policy_version exista in schema, rowToOrder si COLUMN_MAP (schema neschimbata — doar MOMENTUL scrierii s-a mutat)', () => {
   assert.match(db, /ALTER TABLE orders ADD COLUMN IF NOT EXISTS consent_given_at TIMESTAMPTZ;/);
   assert.match(db, /ALTER TABLE orders ADD COLUMN IF NOT EXISTS consent_policy_version TEXT;/);
   assert.match(db, /consentGivenAt: row\.consent_given_at \|\| null,/);
@@ -308,56 +330,33 @@ test('db.js: consent_given_at/consent_policy_version exista in schema, rowToOrde
 });
 
 // ---------------------------------------------------------------------------------------------
-// Checkout consent — client-side (melodia-mea.html)
+// Bara veche eliminată complet din melodia-mea.html (rămâne doar dezvăluirea informativă de
+// 30 de zile, care NU e o acțiune de bifat, deci poate rămâne vizibilă permanent)
 // ---------------------------------------------------------------------------------------------
-test('melodia-mea.html: bara de consimtamant (#checkout-consent-bar) apare INAINTE de <script> in HTML — REGRESIE REALA gasita live: applyStaticTexts() ruleaza sincron la parsare si arunca daca elementul nu exista inca in DOM, oprind silentios toata initializarea paginii', () => {
-  const barIdx = melodia.indexOf('id="checkout-consent-bar"');
+test('melodia-mea.html: bara/checkbox-ul propriu de consimtamant NU mai exista deloc — inlocuit de mecanismul nativ Stripe', () => {
+  assert.ok(!melodia.includes('checkout-consent-bar'), 'bara veche de consimtamant nu mai trebuie sa existe');
+  assert.ok(!melodia.includes('checkout-consent-checkbox'), 'checkbox-ul propriu nu mai trebuie sa existe');
+  assert.ok(!melodia.includes('checkoutConsentCheckbox'), 'referinta JS catre checkbox-ul propriu nu mai trebuie sa existe');
+  assert.ok(!melodia.includes('updateConsentBarVisibility'), 'logica de vizibilitate a barei vechi nu mai trebuie sa existe');
+  assert.ok(!melodia.includes('consent_text'), 'textul legal complet nu mai trebuie sa existe in melodia-mea.html (traiaste acum in CONSENT_TOS_TEXT, server.js)');
+  assert.ok(!melodia.includes('consent_required_error'), 'mesajul de eroare al vechiului checkbox nu mai trebuie sa existe');
+  assert.ok(!melodia.includes('consentGiven'), 'fetch-ul de checkout nu mai trebuie sa trimita consentGiven');
+});
+
+test('melodia-mea.html: dezvaluirea celor 30 de zile de acces ramane, intr-o bara STATICA (nu mai gatata de starea checkoutBtn) — informatie, nu actiune de bifat', () => {
+  const barIdx = melodia.indexOf('id="checkout-access-note-bar"');
   const scriptIdx = melodia.indexOf('<script>');
   assert.notEqual(barIdx, -1);
   assert.notEqual(scriptIdx, -1);
-  assert.ok(barIdx < scriptIdx, 'bara de consimtamant trebuie sa fie in DOM INAINTE ca <script> sa ruleze applyStaticTexts()');
+  assert.ok(barIdx < scriptIdx, 'bara trebuie sa fie in DOM INAINTE ca <script> sa ruleze applyStaticTexts()');
+  const noteCount = (melodia.match(/checkout_access_note:/g) || []).length;
+  assert.equal(noteCount, 8, `asteptat 8 aparitii checkout_access_note, gasit ${noteCount}`);
 });
 
-test('melodia-mea.html: exista checkbox-ul de consimtamant, NEBIFAT implicit (fara atributul checked)', () => {
-  const idx = melodia.indexOf('id="checkout-consent-checkbox"');
-  assert.notEqual(idx, -1);
-  const tag = melodia.slice(melodia.lastIndexOf('<input', idx), melodia.indexOf('>', idx) + 1);
-  assert.ok(!tag.includes('checked'), 'checkbox-ul NU trebuie sa fie pre-bifat');
-});
-
-test('melodia-mea.html: goToCheckout() verifica checkbox-ul INAINTE de checkoutInFlight/fetch, opreste cu eroare clara daca nu e bifat', () => {
+test('melodia-mea.html: goToCheckout() nu mai verifica niciun checkbox propriu si trimite cererea de checkout fara body — Stripe respinge singur plata fara bifa', () => {
   const fn = extractFn(melodia, 'async function goToCheckout() {');
-  const checkIdx = fn.indexOf('!checkoutConsentCheckbox.checked');
-  const inFlightIdx = fn.indexOf('checkoutInFlight = true;');
-  const fetchIdx = fn.indexOf("fetch(`/api/orders/${orderId}/checkout`");
-  assert.notEqual(checkIdx, -1);
-  assert.ok(checkIdx < inFlightIdx && checkIdx < fetchIdx, 'verificarea consimtamantului trebuie sa fie PRIMA, inainte de orice alta actiune');
-  assert.match(fn, /statusMsgEl\.textContent = t\.consent_required_error;/);
-});
-
-test('melodia-mea.html: fetch-ul de checkout trimite consentGiven:true in body, cu Content-Type corect', () => {
-  const fn = extractFn(melodia, 'async function goToCheckout() {');
-  assert.match(fn, /'Content-Type':\s*'application\/json'/);
-  assert.match(fn, /body:\s*JSON\.stringify\(\{\s*consentGiven:\s*true\s*\}\)/);
-});
-
-test('melodia-mea.html: bara de consimtamant e vizibila STRICT pe ultima etapa inainte de plata (checkoutBtn efectiv activ), NICIODATA cat timp clientul doar asculta/editeaza — regresie de UX corectata explicit 2026-09-06', () => {
-  const showStateFn = extractFn(melodia, 'function showState(name) {');
-  assert.match(showStateFn, /updateConsentBarVisibility\(\);/, 'showState trebuie sa delege centralizat catre updateConsentBarVisibility()');
-  const visibilityFn = extractFn(melodia, 'function updateConsentBarVisibility() {');
-  assert.match(visibilityFn, /checkout-consent-bar/);
-  assert.match(visibilityFn, /currentStateName === 'content-state'/);
-  assert.match(visibilityFn, /!checkoutBtn\.disabled/, 'bara trebuie sa apara STRICT cand butonul de plata e efectiv activ, nu doar cand pagina e in content-state');
-  assert.match(melodia, /new MutationObserver\(updateConsentBarVisibility\)\.observe\(checkoutBtn, \{ attributes: true, attributeFilter: \['disabled'\] \}\);/, 'vizibilitatea trebuie sa se actualizeze automat la ORICE schimbare a checkoutBtn.disabled, indiferent din care loc al codului vine');
-});
-
-test('melodia-mea.html: toate cele 8 limbi au consent_text (cu linkuri catre /terms.html si /refund.html) si consent_required_error', () => {
-  const consentTextCount = (melodia.match(/consent_text:/g) || []).length;
-  const consentErrCount = (melodia.match(/consent_required_error:/g) || []).length;
-  assert.equal(consentTextCount, 8, `asteptat 8 aparitii consent_text, gasit ${consentTextCount}`);
-  assert.equal(consentErrCount, 8, `asteptat 8 aparitii consent_required_error, gasit ${consentErrCount}`);
-  const linksCount = (melodia.match(/href="\/terms\.html"/g) || []).length;
-  assert.ok(linksCount >= 8, 'fiecare din cele 8 traduceri trebuie sa lege /terms.html');
+  assert.ok(!fn.includes('checkoutConsentCheckbox'));
+  assert.ok(!fn.includes("body: JSON.stringify"));
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -580,7 +579,7 @@ test('comanda-mea.html: getDeviceDownloadTip() arata STRICT sfatul relevant (iOS
   assert.match(fn, /return '';/, 'pe desktop (niciun UA de mobil detectat) nu trebuie afisat niciun sfat');
 });
 
-test('melodia-mea.html: checkout_access_note (dezvaluire pre-cumparare a celor 30 de zile) exista in toate cele 8 limbi si e afisat langa bara de consimtamant, INAINTE de plata', () => {
+test('melodia-mea.html: checkout_access_note (dezvaluire pre-cumparare a celor 30 de zile) exista in toate cele 8 limbi si e afisat in bara statica de jos, INAINTE de plata', () => {
   const html = read('public/melodia-mea.html');
   const count = (html.match(/checkout_access_note:/g) || []).length;
   assert.equal(count, 8, `asteptat 8 aparitii checkout_access_note, gasit ${count}`);
@@ -589,8 +588,8 @@ test('melodia-mea.html: checkout_access_note (dezvaluire pre-cumparare a celor 3
   assert.match(fn, /checkout-access-note'\)\.textContent = t\.checkout_access_note;/);
 });
 
-test('server.js: CONSENT_POLICY_VERSION e la v4 (v3 adaugase dezvaluirea celor 30 de zile; v4 corecteaza framing-ul factual creare->livrare) — niciodata retroactiva pentru comenzi deja platite', () => {
-  assert.match(server, /const CONSENT_POLICY_VERSION = '2026-09-06-v4';/);
+test('server.js: CONSENT_POLICY_VERSION e la v5 (v3 adaugase dezvaluirea celor 30 de zile; v4 corecteaza framing-ul factual creare->livrare; v5 muta consimtamantul pe Stripe nativ) — niciodata retroactiva pentru comenzi deja platite', () => {
+  assert.match(server, /const CONSENT_POLICY_VERSION = '2026-09-11-v5';/);
 });
 
 test('server.js: emailul de livrare mentioneaza EXPLICIT "30 days"/"30 de zile" (nu "1 month") si incurajarea de a descarca, in toate cele 8 sabloane', () => {
