@@ -24,13 +24,21 @@ if (!process.env.DATABASE_URL) {
 // Railway (si majoritatea gazduirilor Postgres externe) cer SSL. Local, de obicei nu.
 const isLocal = process.env.DATABASE_URL.includes('localhost') || process.env.DATABASE_URL.includes('127.0.0.1');
 
-// max=20: 2x valoarea implicita a librariei (10) — dimensionat pe bugetul de conexiuni
-// calculat pentru arhitectura cu video-worker separat (web + video-worker + autoscaler +
-// marja), nu o valoare arbitrara. Vezi raportul de scalabilitate pentru calculul complet.
+// max=20 implicit (web): 2x valoarea implicita a librariei (10) — dimensionat pe bugetul de
+// conexiuni calculat pentru arhitectura cu video-worker separat (web + video-worker +
+// autoscaler + marja), nu o valoare arbitrara. Vezi raportul de scalabilitate pentru calcul.
+//
+// CORECȚIE (2026-09-11, gasita la pregatirea testului de 7/10 workeri): worker.js facea
+// require('./db.js') si mostenea acest ACELASI max:20 per replica — desi bugetul original
+// presupunea explicit max:5 per worker (un worker are 1 randare activa, putine interogari
+// concurente). La 10 replici, asta ar fi insemnat 10x20=200 conexiuni posibile doar de la
+// workeri, fata de cele 50 bugetate — inca sub plafonul real de 500 al bazei de date, dar
+// nu mai reflecta calculul documentat. DB_POOL_MAX permite fiecarui proces sa-si declare
+// propriul plafon (worker.js seteaza DB_POOL_MAX=5 explicit); web ramane pe implicitul de 20.
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: isLocal ? false : { rejectUnauthorized: false },
-  max: 20
+  max: Number(process.env.DB_POOL_MAX) || 20
 });
 
 // O conexiune idle care pica nu trebuie sa opreasca tot serverul.
