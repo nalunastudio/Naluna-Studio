@@ -1593,10 +1593,11 @@ app.post('/api/admin/orders/:orderId/retry-extras', async (req, res, next) => {
 
 // ADITIV, STRICT PENTRU TESTAREA arhitecturii video-worker separate (vezi raportul de
 // scalabilitate) — protejat de ACELASI middleware admin ca toate rutele /api/admin (linia
-// app.use de mai sus), deci INACCESIBIL clientilor reali. NU e cablat la fluxul live de
-// declansare a comenzilor reale (acela ramane exclusiv triggerVideoGeneration, neschimbat) —
-// singurul mod de a ajunge un job in aceasta coada e acest apel admin explicit, folosit doar
-// pentru testele de concurenta/failure-recovery ale noii arhitecturi.
+// app.use de mai sus), deci INACCESIBIL clientilor reali. Dupa cutover-ul din 2026-09-11,
+// triggerVideoGeneration si POST /create-video enqueueaza deja pe acelasi drum (fac EXACT
+// acelasi apel db.enqueueVideoRenderJob) — aceasta ruta ramane utila STRICT ca lever direct
+// pentru testele de concurenta/failure-recovery (poate enqueua fara sa treaca prin restul
+// validarilor din /create-video), nu mai e singurul mod de a ajunge un job in coada.
 app.post('/api/admin/orders/:orderId/enqueue-video-render-job-TEST-ONLY', async (req, res, next) => {
   try {
     if (!UUID_RE.test(req.params.orderId)) return res.status(400).json({ error: 'ID comandă invalid.' });
