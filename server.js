@@ -550,6 +550,19 @@ function isVideoLockActive(order) {
   return !!order.videoRenderClaimedAt && (Date.now() - new Date(order.videoRenderClaimedAt).getTime()) < VIDEO_LOCK_EXPIRY_MS;
 }
 
+// CUTOVER (2026-09-11): garzile de siguranta (anonimizare, cele 2 cronuri de curatare
+// retentie) trebuie sa recunoasca o randare activa INDIFERENT prin care mecanism a fost
+// pornita — lock-ul vechi (isVideoLockActive) NU se mai seteaza niciodata pentru comenzi
+// randate prin noua coada, deci o garda care verifica STRICT lock-ul vechi ar deveni
+// silentios inoperanta (ar lasa sa treaca o stergere/anonimizare chiar in timp ce
+// video-worker randeaza activ comanda respectiva).
+async function isVideoRenderActiveForOrder(order) {
+  if (isVideoLockActive(order)) return true;
+  if (!order.selectedVariantId) return false;
+  const job = await db.getLatestVideoRenderJobForOrder(order.id, order.selectedVariantId, order.mediaRevision);
+  return !!(job && (job.status === 'pending' || job.status === 'claimed'));
+}
+
 // ==========================================================================================
 // REGULA UNICA DE RETENTIE A CONTINUTULUI COMENZII (decizie de business 2026-09-06, runda 3 —
 // simplificare): EXACT 30 de zile depline de la LIVRAREA FINALA (paid_at), aceeasi cifra pentru
@@ -1242,7 +1255,7 @@ app.post('/api/admin/orders/:orderId/anonymize', async (req, res, next) => {
 
     if (
       order.status === 'generating' || order.status === 'processing_provider_result' ||
-      order.regenerationStatus === 'running' || isVideoLockActive(order)
+      order.regenerationStatus === 'running' || await isVideoRenderActiveForOrder(order)
     ) {
       return res.status(409).json({ error: 'Comanda are o operație activă (generare/regenerare/randare video) — reîncearcă după ce se termină.' });
     }
@@ -1290,8 +1303,9 @@ app.post('/api/admin/orders/:orderId/anonymize', async (req, res, next) => {
 // initiala a acestei functii): status='ready' GARANTEAZA deja ca videoclipul exista, pentru
 // TOATE comenzile — verificat exhaustiv (vezi POST /checkout, care REFUZA sa creeze sesiunea
 // Stripe pentru pachetul video daca videoVariant.videoKey lipseste, INAINTE ca plata sa fie
-// macar posibila). Singura garda ramasa necesara e isVideoLockActive — o comanda nu trebuie
-// atinsa cat timp o randare (re-editare admin-mediata) e activa chiar acum.
+// macar posibila). Singura garda ramasa necesara e isVideoRenderActiveForOrder — o comanda nu
+// trebuie atinsa cat timp o randare (re-editare admin-mediata) e activa chiar acum, indiferent
+// prin care mecanism a fost pornita.
 async function purgeStaleSourceMedia() {
   const cutoff = new Date(Date.now() - CONTENT_RETENTION_DAYS * 24 * 60 * 60 * 1000);
   let candidates = [];
@@ -1305,8 +1319,8 @@ async function purgeStaleSourceMedia() {
   let purged = 0, skipped = 0;
   for (const order of candidates) {
     // Re-verificare defensiva in JS (dincolo de filtrul SQL): nu atingem o comanda cu o
-    // randare video inca activa (re-editare admin-mediata in curs).
-    if (isVideoLockActive(order)) { skipped++; continue; }
+    // randare video inca activa (re-editare admin-mediata in curs, veche SAU noua coada).
+    if (await isVideoRenderActiveForOrder(order)) { skipped++; continue; }
 
     const keysToDelete = (order.uploadedMedia || []).map(m => m.key).filter(Boolean);
     for (const key of keysToDelete) {
@@ -1374,7 +1388,7 @@ async function expireStaleFinalMedia() {
 
   let expired = 0, skipped = 0;
   for (const order of candidates) {
-    if (isVideoLockActive(order)) { skipped++; continue; }
+    if (await isVideoRenderActiveForOrder(order)) { skipped++; continue; }
 
     const keysToDelete = [];
     const newVariants = (order.variants || []).map(v => {
@@ -2895,17 +2909,20 @@ app.get('/api/orders/:orderId', async (req, res, next) => {
       else if (currentVariant && currentVariant.videoKey && currentVariant.videoPreviewKey) videoStatus = 'ready';
       else if (currentVariant && currentVariant.videoFailedReason) videoStatus = 'failed';
       else if (order.videoRenderClaimedAt) videoStatus = 'failed'; // lock expirat fara rezultat -> recuperabil, nu "generating" etern
-      // ADITIV (2026-09-11): coada video-worker separata (vezi raportul de scalabilitate) —
-      // NU e inca cablata la fluxul live de declansare, deci pentru orice comanda reala
-      // aceasta interogare nu gaseste niciodata un job si videoStatus ramane neschimbat.
-      // Existenta doar pentru comenzile de test care folosesc explicit noua coada (ruta
-      // admin enqueue-video-render-job-TEST-ONLY) — fara ea, un job 'pending' (confirmat,
-      // asteapta un worker liber) ar aparea clientului identic cu "nicio randare ceruta",
-      // desi jobul e real si va fi preluat automat. 'claimed' se mapeaza pe 'generating' —
-      // aceeasi semantica ("randare activa"), fara vocabular nou.
+      // Coada video-worker (vezi raportul de scalabilitate) — cablata la fluxul live de
+      // declansare (triggerVideoGeneration si create-video enqueueaza direct), deci aceasta
+      // interogare reflecta starea reala a randarii pentru orice comanda. Foloseste cel mai
+      // recent job (indiferent de status) ca sa poata expune corect si 'failed', nu doar
+      // 'pending'/'claimed' — fara ea, un job 'pending' (confirmat, asteapta un worker liber)
+      // ar aparea clientului identic cu "nicio randare ceruta", desi jobul e real si va fi
+      // preluat automat.
       else if (videoStatus === 'none' && order.selectedVariantId) {
-        const activeJob = await db.getActiveVideoRenderJobForOrder(order.id, order.selectedVariantId, order.mediaRevision);
-        if (activeJob) videoStatus = activeJob.status === 'pending' ? 'queued' : 'generating';
+        const job = await db.getLatestVideoRenderJobForOrder(order.id, order.selectedVariantId, order.mediaRevision);
+        if (job) {
+          if (job.status === 'pending') videoStatus = 'queued';
+          else if (job.status === 'claimed') videoStatus = 'generating';
+          else if (job.status === 'failed') videoStatus = 'failed';
+        }
       }
     }
 
@@ -3845,20 +3862,20 @@ app.post('/api/orders/:orderId/create-video', requireOrderToken, async (req, res
       return res.status(409).json({ error: 'Videoclipul este deja în curs de creare.' });
     }
 
-    // CORECȚIE (2026-08-24): asteptam (await) STRICT rezervarea atomica (scrierea lock-ului in
-    // Postgres) inainte de a raspunde — clientul nu mai primeste niciodata "started: true" fara
-    // ca starea durabila sa fie deja garantat scrisa. Randarea propriu-zisa (poate dura minute)
-    // ramane fire-and-forget DUPA acest punct, exact ca inainte.
-    const claim = await claimVideoRenderForOrder(order.id, order.selectedVariantId);
-    if (!claim) {
+    // CUTOVER (2026-09-11): in loc sa rezervam lock-ul si sa pornim randarea sincron chiar in
+    // acest proces, ENQUEUEAZA un job in coada Postgres pentru video-worker — vezi
+    // triggerVideoGeneration mai jos pentru rationamentul complet. db.enqueueVideoRenderJob e
+    // idempotent (index unic partial pe order_id+variant_id+media_revision), deci un al doilea
+    // apel pentru aceeasi tripleta (retry de la client, safety-net etc.) primeste
+    // alreadyQueued:true in loc sa creeze un al doilea job — exact garantia ceruta ("un render
+    // pentru o comanda nu poate porni de doua ori").
+    const { alreadyQueued } = await db.enqueueVideoRenderJob(order.id, order.selectedVariantId, order.mediaRevision);
+    if (alreadyQueued) {
       return res.status(409).json({ error: 'Videoclipul este deja în curs de creare.' });
     }
-    perfLog(order.id, 'create_video_job_claimed');
+    perfLog(order.id, 'create_video_job_enqueued');
 
     res.json({ started: true });
-    runVideoRenderJob(order.id, order.selectedVariantId, claim.mediaRevisionAtStart).catch(err => {
-      console.error('Crearea videoclipului cu memorii a esuat pentru comanda', order.id, err.message);
-    });
   } catch (err) {
     next(err);
   }
@@ -3888,17 +3905,13 @@ app.get('/api/orders/:orderId/media/video-preview-url', requireOrderToken, async
 });
 
 // ==========================================================================================
-// CORECȚIE (2026-08-24, "jobul poate fi pornit fire-and-forget INAINTE ca starea durabila sa
-// fie salvata"): faza de REZERVARE (db.claimVideoRender — scrierea atomica a lock-ului in
-// Postgres) a fost separata explicit de faza de RANDARE propriu-zisa (generatePremiumExtras,
-// care poate dura minute). POST /create-video de mai jos ACUM asteapta (await) STRICT faza de
-// rezervare inainte sa raspunda clientului cu "started: true" — daca procesul crapa sau
-// db.claimVideoRender arunca o eroare INTRE trimiterea raspunsului si scrierea lock-ului (cum
-// se putea intampla inainte, cand intreg triggerVideoGeneration pornea fire-and-forget dupa
-// res.json), clientul primea deja confirmarea, dar niciun job nu exista de fapt niciunde —
-// randarea nu mai pornea NICIODATA, iar starea video ramanea 'none' la infinit, fara nicio cale
-// de recuperare (nu 'failed', pentru ca nu exista niciun lock expirat de recuperat). Acum, daca
-// rezervarea esueaza, raspunsul reflecta exact asta INAINTE de a fi trimis.
+// MECANISM VECHI (pastrat, NEAPELAT din niciun cod live dupa cutover-ul din 2026-09-11) —
+// randarea video sincrona, in procesul web, prin generatePremiumExtras(...forceVideo:true...).
+// Inlocuit ca punct de declansare de db.enqueueVideoRenderJob + serviciul video-worker separat
+// (vezi triggerVideoGeneration si POST /create-video mai jos). Ramas neșters — nu pentru ca ar
+// mai fi invocat undeva, ci ca referinta istorica/plasa de siguranta usor de reactivat daca
+// s-ar descoperi vreodata o problema gravă cu noua coadă; NU este parte din nicio cale de
+// executie reala a unei comenzi.
 // ==========================================================================================
 async function claimVideoRenderForOrder(orderId, variantId) {
   const orderAtStart = await db.getOrderById(orderId);
@@ -3968,23 +3981,29 @@ async function runVideoRenderJob(orderId, variantId, mediaRevisionAtStart) {
 }
 
 // ==========================================================================================
-// Declanseaza randarea video cu rezervare ATOMICA persistenta (vezi db.claimVideoRender) —
-// punct UNIC de intrare pentru orice randare video, apelat automat de:
+// CUTOVER (2026-09-11, "coada video-worker separata"): punct UNIC de intrare pentru orice
+// randare video reala, apelat automat de:
 //   1) finalizeVariantsIfNeeded(), dupa ce melodia (initiala SAU regenerata) ajunge
 //      'preview_ready' pentru un pachet "video" cu materiale deja confirmate;
 //   2) POST /select, cand clientul schimba varianta audio activa;
-//   3) POST /create-video, ca reincercare manuala explicita (care acum apeleaza direct
-//      claimVideoRenderForOrder + runVideoRenderJob, ca sa poata astepta rezervarea inainte de
-//      a raspunde — vezi comentariul de mai sus).
-// Idempotent: daca lock-ul e deja detinut (randare activa) sau videoclipul curent e deja
-// valabil pentru variantId cerut, nu porneste o a doua randare. Foloseste ea insasi cele doua
-// faze de mai sus — pastrata pentru apelantii "fire-and-forget" (background, fara raspuns HTTP
-// de care sa depinda).
+//   3) reincercarea admin (retry-extras).
+// Re-declansarea automata pentru o versiune schimbata IN TIMPUL unei randari (fostul
+// comportament din runVideoRenderJob, acum mort/neapelat) e responsabilitatea worker.js —
+// el detine intreg ciclul de viata al unui job dupa ce il preia din coada.
+// Randarea propriu-zisa NU mai are loc aici, in procesul web — se muta STRICT in serviciul
+// video-worker separat (vezi worker.js), care preia jobul din coada Postgres si apeleaza
+// generateLyricVideo direct. Acest proces (web) doar ENQUEUEAZA: db.enqueueVideoRenderJob e
+// idempotent la nivel de baza de date (index unic partial pe order_id+variant_id+media_revision
+// WHERE status IN ('pending','claimed')) — doua apeluri simultane pentru aceeasi tripleta produc
+// STRICT un singur job (al doilea primeste alreadyQueued:true), deci nu exista nicio fereastra in
+// care doua randari sa porneasca pentru aceeasi comanda. Aceasta e singura cale ramasa care
+// poate produce o randare pentru o comanda reala — claimVideoRenderForOrder/runVideoRenderJob de
+// mai sus raman doar pentru referinta istorica si nu mai sunt apelate din niciun cod live.
 // ==========================================================================================
 async function triggerVideoGeneration(orderId, variantId) {
-  const claim = await claimVideoRenderForOrder(orderId, variantId);
-  if (!claim) return;
-  await runVideoRenderJob(orderId, variantId, claim.mediaRevisionAtStart);
+  const order = await db.getOrderById(orderId);
+  if (!order) return;
+  await db.enqueueVideoRenderJob(orderId, variantId, order.mediaRevision);
 }
 
 // ==========================================================================================

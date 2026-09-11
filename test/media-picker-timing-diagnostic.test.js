@@ -130,12 +130,13 @@ test('server.js: POST .../create-video logheaza EXACT momentul primirii cererii 
   const tryIdx = body.indexOf('try {');
   assert.ok(requestReceivedIdx < tryIdx, 'marcajul de primire trebuie sa fie INAINTE de blocul try (deci inainte de orice validare care ar putea respinge cererea)');
 
-  const claimIdx = server.indexOf('const claim = await claimVideoRenderForOrder(order.id, order.selectedVariantId);', idx);
-  const claimedBody = server.slice(claimIdx, claimIdx + 300);
-  assert.match(claimedBody, /perfLog\(order\.id, 'create_video_job_claimed'\);/);
-  const claimedMarkIdx = claimedBody.indexOf("'create_video_job_claimed'");
-  const resJsonIdx = claimedBody.indexOf('res.json({ started: true });');
-  assert.ok(claimedMarkIdx < resJsonIdx, 'marcajul de rezervare confirmata trebuie sa vina INAINTE de raspunsul catre client');
+  const enqueueIdx = server.indexOf('const { alreadyQueued } = await db.enqueueVideoRenderJob(order.id, order.selectedVariantId, order.mediaRevision);', idx);
+  assert.notEqual(enqueueIdx, -1, 'ruta trebuie sa enqueueze jobul (cutover 2026-09-11) in loc sa mai foloseasca claimVideoRenderForOrder');
+  const enqueuedBody = server.slice(enqueueIdx, enqueueIdx + 400);
+  assert.match(enqueuedBody, /perfLog\(order\.id, 'create_video_job_enqueued'\);/);
+  const enqueuedMarkIdx = enqueuedBody.indexOf("'create_video_job_enqueued'");
+  const resJsonIdx = enqueuedBody.indexOf('res.json({ started: true });');
+  assert.ok(enqueuedMarkIdx < resJsonIdx, 'marcajul de enqueue confirmat trebuie sa vina INAINTE de raspunsul catre client');
 });
 
 test('amintiri-video.html: apasarea butonului "Creează videoclipul" persista T0 (Date.now(), supravietuieste navigarii) INAINTE de cererea de retea', () => {

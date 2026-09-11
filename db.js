@@ -1052,15 +1052,15 @@ async function getVideoRenderJobById(jobId) {
   return rowToVideoRenderJob(result.rows[0]);
 }
 
-// Jobul ACTIV (pending sau claimed) al cozii video-worker separate pentru exact aceasta
-// (comanda, varianta, revizie de materiale) — folosit STRICT de GET /api/orders/:orderId
-// pentru a expune un `videoStatus` corect clientului cat timp jobul asteapta un worker
-// liber (nu are inca niciun echivalent in mecanismul vechi video_render_claimed_at, care
-// nu stie nimic despre aceasta coada). Aditiv — nicio comanda reala nu are inca randuri in
-// video_render_jobs (coada nu e cablata la fluxul live de declansare).
-async function getActiveVideoRenderJobForOrder(orderId, variantId, mediaRevision) {
+// Cel mai recent job al cozii video-worker pentru exact aceasta (comanda, varianta, revizie
+// de materiale) — indiferent de status (pending/claimed/done/failed). Folosit de
+// GET /api/orders/:orderId pentru a expune un `videoStatus` corect ('queued'/'generating'/
+// 'failed') cat timp fluxul live e cablat la aceasta coada (vezi triggerVideoGeneration),
+// SI de garzile defensive (anonimizare, curatare retentie) care trebuie sa stie daca o
+// randare e activa INDIFERENT prin care mecanism a fost pornita.
+async function getLatestVideoRenderJobForOrder(orderId, variantId, mediaRevision) {
   const result = await pool.query(
-    `SELECT * FROM video_render_jobs WHERE order_id = $1 AND variant_id = $2 AND media_revision = $3 AND status IN ('pending', 'claimed') LIMIT 1`,
+    `SELECT * FROM video_render_jobs WHERE order_id = $1 AND variant_id = $2 AND media_revision = $3 ORDER BY created_at DESC LIMIT 1`,
     [orderId, variantId, mediaRevision]
   );
   return rowToVideoRenderJob(result.rows[0]);
@@ -1725,7 +1725,7 @@ module.exports = {
   recordResendEventIfNew, addEmailSuppression, isEmailSuppressed,
   isVideoClaimStillCurrent, mutateOrderMediaAtomically, confirmMediaSelection,
   enqueueVideoRenderJob, claimNextVideoRenderJob, heartbeatVideoRenderJob,
-  completeVideoRenderJob, failVideoRenderJob, getVideoRenderJobById, getActiveVideoRenderJobForOrder,
+  completeVideoRenderJob, failVideoRenderJob, getVideoRenderJobById, getLatestVideoRenderJobForOrder,
   countPendingOrActiveVideoRenderJobs,
   updateOrder, listOrders, computeRevenue,
   logCreditEvent, getCreditEventsSince, getSetting, setSetting,

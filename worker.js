@@ -1,8 +1,10 @@
 // worker.js
 // Punct de intrare pentru serviciul Railway separat "video-worker" — arhitectura de
-// scalare orizontala aprobata (vezi raportul de scalabilitate). ÎN TESTARE — nu e
-// declansat inca de fluxul live de comenzi reale (acela ramane exclusiv pe
-// generatePremiumExtras/triggerVideoGeneration din server.js, neschimbat).
+// scalare orizontala aprobata (vezi raportul de scalabilitate). CABLAT LA FLUXUL LIVE
+// (cutover 2026-09-11): triggerVideoGeneration si POST /create-video din server.js
+// ENQUEUEAZA in video_render_jobs, iar acest proces e singurul care preia joburile din
+// coada si le randeaza — mecanismul sincron vechi (generatePremiumExtras cu forceVideo:true)
+// nu mai e apelat de niciun cod live.
 //
 // Reutilizeaza EXACT functia de randare a fluxului live (generateLyricVideo, exportata
 // aditiv din server.js) — niciodata o copie/reimplementare — deci rezultatul unei randari
@@ -112,6 +114,22 @@ async function claimAndRenderOnce() {
     const stillCurrent = await db.isVideoClaimStillCurrent(job.orderId, job.variantId, job.mediaRevision);
     if (!stillCurrent) {
       log(`Job ${job.id}: isVideoClaimStillCurrent = false — varianta/materialele s-au schimbat intre timp, rezultatul NU se scrie pe comanda (jobul ramane marcat 'done' — randarea a reusit tehnic, dar rezultatul e invechit).`);
+      // PARITATE cu fostul runVideoRenderJob din server.js (mecanismul vechi): daca versiunea
+      // curenta a comenzii inca nu are un videoclip valid, pornim automat o noua randare pentru
+      // EA, altfel un client care schimba varianta/materialele chiar cat randarea veche era in
+      // curs ar ramane fara niciun videoclip generat vreodata, fara nicio actiune manuala.
+      const current = await db.getOrderById(job.orderId);
+      if (current && current.plan === 'video' && current.selectedVariantId && current.mediaConfirmedAt) {
+        const currentVariant = (current.variants || []).find(v => v.id === current.selectedVariantId);
+        if (!currentVariant || !currentVariant.videoKey || !currentVariant.videoPreviewKey) {
+          try {
+            await db.enqueueVideoRenderJob(current.id, current.selectedVariantId, current.mediaRevision);
+            log(`Job ${job.id}: re-randare enqueued pentru versiunea curenta (varianta ${current.selectedVariantId}).`);
+          } catch (enqueueErr) {
+            log(`Job ${job.id}: enqueue re-randare pentru versiunea curenta a esuat:`, enqueueErr.message);
+          }
+        }
+      }
       return true;
     }
 
@@ -134,6 +152,23 @@ async function claimAndRenderOnce() {
       if (err && err.isRateLimit) log(`Job ${job.id}: furnizorul a semnalat rate-limit — backoff ${backoffSeconds}s.`);
       const outcome = await db.failVideoRenderJob(job.id, WORKER_ID, job.fencingToken, (err && err.message) || String(err), backoffSeconds);
       if (outcome) log(`Job ${job.id}: marcat '${outcome.status}' dupa esec${outcome.status === 'pending' ? ` (reincercabil dupa ${backoffSeconds}s)` : ''}.`);
+      // PARITATE cu fostul mecanism sincron (catch-ul din generatePremiumExtras scria motivul
+      // esecului pe varianta): fara asta, un job permanent esuat ('failed', epuizat max_attempts)
+      // ar aparea corect ca videoStatus='failed' pentru client (vezi GET /api/orders/:orderId),
+      // dar fara niciun mesaj specific — doar UI-ul generic de reincercare, fara detaliu util.
+      if (outcome && outcome.status === 'failed') {
+        try {
+          const orderForFailure = await db.getOrderById(job.orderId);
+          if (orderForFailure) {
+            const updatedVariants = (orderForFailure.variants || []).map(v =>
+              v.id === job.variantId ? { ...v, videoFailedReason: (err && err.message) || String(err) } : v
+            );
+            await db.updateOrder(job.orderId, { variants: updatedVariants });
+          }
+        } catch (writeErr) {
+          log(`Job ${job.id}: scrierea videoFailedReason a esuat (ignorata):`, writeErr.message);
+        }
+      }
     }
     return true;
   } finally {

@@ -29,36 +29,40 @@ const amintiriVideo = read('public/amintiri-video.html');
 // ---------------------------------------------------------------------------------------------
 // 1) server.js — rezervarea (claim) e separata de randare si ASTEPTATA inainte de raspuns.
 // ---------------------------------------------------------------------------------------------
-test('server.js: claimVideoRenderForOrder si runVideoRenderJob exista ca functii SEPARATE (faza de rezervare, distincta de randarea propriu-zisa)', () => {
+test('server.js: claimVideoRenderForOrder si runVideoRenderJob (mecanismul vechi, sincron) exista INCA in cod, neinvocate din niciun cod live dupa cutover-ul la coada video-worker', () => {
   assert.match(server, /async function claimVideoRenderForOrder\(orderId, variantId\) \{/);
   assert.match(server, /async function runVideoRenderJob\(orderId, variantId, mediaRevisionAtStart\) \{/);
 });
 
-test('server.js: triggerVideoGeneration (folosit de apelantii fire-and-forget, ex. finalizeVariantsIfNeeded) compune STRICT cele doua faze de mai sus, neschimbat functional', () => {
+test('server.js: triggerVideoGeneration (folosit de apelantii fire-and-forget, ex. finalizeVariantsIfNeeded) ENQUEUEAZA in coada Postgres (cutover 2026-09-11) in loc sa mai randeze sincron in procesul web', () => {
   const idx = server.indexOf('async function triggerVideoGeneration(orderId, variantId) {');
   assert.ok(idx !== -1);
   const snippet = server.slice(idx, idx + 300);
-  assert.match(snippet, /const claim = await claimVideoRenderForOrder\(orderId, variantId\);/);
-  assert.match(snippet, /if \(!claim\) return;/);
-  assert.match(snippet, /await runVideoRenderJob\(orderId, variantId, claim\.mediaRevisionAtStart\);/);
+  assert.match(snippet, /const order = await db\.getOrderById\(orderId\);/);
+  assert.match(snippet, /if \(!order\) return;/);
+  assert.match(snippet, /await db\.enqueueVideoRenderJob\(orderId, variantId, order\.mediaRevision\);/);
+  assert.ok(!snippet.includes('claimVideoRenderForOrder'), 'triggerVideoGeneration nu mai trebuie sa apeleze mecanismul vechi de randare sincrona');
 });
 
-test('server.js: POST /create-video ASTEAPTA (await) claimVideoRenderForOrder INAINTE de res.json({ started: true }) — clientul nu mai poate primi "started" fara ca lock-ul sa fie deja scris', () => {
+test('server.js: POST /create-video ASTEAPTA (await) db.enqueueVideoRenderJob INAINTE de res.json({ started: true }) — clientul nu mai poate primi "started" fara ca jobul sa fie deja scris durabil in coada', () => {
   const idx = server.indexOf("app.post('/api/orders/:orderId/create-video'");
   assert.ok(idx !== -1);
   const snippet = server.slice(idx, idx + 3000);
-  const claimIdx = snippet.indexOf('const claim = await claimVideoRenderForOrder(order.id, order.selectedVariantId);');
-  const respondIdx = snippet.indexOf('res.json({ started: true });');
-  assert.ok(claimIdx !== -1, 'lipseste asteptarea rezervarii in POST /create-video');
-  assert.ok(respondIdx !== -1, 'lipseste raspunsul de succes in POST /create-video');
-  assert.ok(claimIdx < respondIdx, 'rezervarea trebuie asteptata STRICT inainte de raspunsul de succes, nu dupa');
-  assert.match(snippet, /if \(!claim\) \{\s*return res\.status\(409\)/, 'daca rezervarea esueaza (job deja activ, cursa cu alta cerere), raspunsul trebuie sa fie 409, nu "started: true"');
+  const enqueueIdxAbs = server.indexOf('const { alreadyQueued } = await db.enqueueVideoRenderJob(order.id, order.selectedVariantId, order.mediaRevision);', idx);
+  assert.ok(enqueueIdxAbs !== -1, 'lipseste asteptarea enqueue-ului in POST /create-video');
+  const afterEnqueue = server.slice(enqueueIdxAbs, enqueueIdxAbs + 400);
+  const respondIdx = afterEnqueue.indexOf('res.json({ started: true });');
+  assert.ok(respondIdx !== -1, 'lipseste raspunsul de succes in POST /create-video, la scurt timp dupa enqueue');
+  assert.match(snippet, /if \(alreadyQueued\) \{\s*return res\.status\(409\)/, 'daca jobul e deja in coada (retry client, cursa cu alta cerere), raspunsul trebuie sa fie 409, nu "started: true" — garantia ca un render pentru o comanda nu poate porni de doua ori');
+  assert.ok(!snippet.includes('claimVideoRenderForOrder(') && !snippet.includes('runVideoRenderJob('), 'ruta nu mai trebuie sa apeleze mecanismul vechi de randare sincrona');
 });
 
-test('server.js: randarea propriu-zisa (runVideoRenderJob) ramane fire-and-forget DUPA raspunsul HTTP — nu blocheaza cererea clientului cu durata reala a randarii (poate dura minute)', () => {
+test('server.js: POST /create-video NU mai porneste nicio randare fire-and-forget in procesul web dupa raspuns — randarea propriu-zisa se intampla STRICT in serviciul video-worker separat, care preia jobul din coada', () => {
   const idx = server.indexOf("app.post('/api/orders/:orderId/create-video'");
   const snippet = server.slice(idx, idx + 3000);
-  assert.match(snippet, /res\.json\(\{ started: true \}\);\s*runVideoRenderJob\(order\.id, order\.selectedVariantId, claim\.mediaRevisionAtStart\)\.catch\(/);
+  const respondIdx = snippet.indexOf('res.json({ started: true });');
+  const afterRespond = snippet.slice(respondIdx, respondIdx + 200);
+  assert.ok(!afterRespond.includes('runVideoRenderJob'), 'nu trebuie sa existe randare fire-and-forget dupa raspuns — worker.js e singurul care randeaza');
 });
 
 // ---------------------------------------------------------------------------------------------

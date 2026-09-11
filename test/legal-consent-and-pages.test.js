@@ -379,7 +379,7 @@ test('server.js: POST /api/admin/orders/:orderId/anonymize exista, refuza o coma
   assert.match(fn, /order\.status === 'generating'/);
   assert.match(fn, /order\.status === 'processing_provider_result'/);
   assert.match(fn, /order\.regenerationStatus === 'running'/);
-  assert.match(fn, /isVideoLockActive\(order\)/);
+  assert.match(fn, /await isVideoRenderActiveForOrder\(order\)/);
   assert.match(fn, /res\.status\(409\)/);
 });
 
@@ -438,7 +438,7 @@ test('server.js: purgeStaleSourceMedia() foloseste ACEEASI CONTENT_RETENTION_DAY
   assert.match(server, /const CONTENT_RETENTION_DAYS = 30;/);
   const fn = extractFn(server, 'async function purgeStaleSourceMedia() {');
   assert.match(fn, /CONTENT_RETENTION_DAYS/);
-  assert.match(fn, /isVideoLockActive\(order\)/);
+  assert.match(fn, /isVideoRenderActiveForOrder\(order\)/);
   assert.match(fn, /db\.purgeOrderSourceMedia\(order\.id\)/);
 });
 
@@ -542,7 +542,7 @@ test('server.js: expireStaleFinalMedia() sterge REAL toate cele 5 chei media (fu
   for (const key of ['v.fullKey', 'v.previewKey', 'v.videoKey', 'v.videoPreviewKey', 'v.wavKey']) {
     assert.ok(fn.includes(key), `expireStaleFinalMedia trebuie sa colecteze ${key} pentru stergere`);
   }
-  assert.match(fn, /isVideoLockActive\(order\)/);
+  assert.match(fn, /isVideoRenderActiveForOrder\(order\)/);
   assert.match(fn, /db\.expireOrderFinalMedia\(order\.id, newVariants\)/);
   assert.match(server, /setInterval\(\(\) => \{ expireStaleFinalMedia\(\)\.catch/);
   const routeIdx = server.indexOf("app.post('/api/admin/retention/expire-final-media'");
