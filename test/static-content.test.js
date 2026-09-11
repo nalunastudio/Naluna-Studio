@@ -176,3 +176,18 @@ test('index.html: NU s-a atins nimic altceva din footer — culoarea generala a 
   assert.ok(html.includes('© 2026 NALUNA') || html.includes('2026 NALUNA'), 'textul de copyright trebuie sa existe neschimbat');
   assert.ok(html.includes('data-i18n="footer_note"'), 'footer_note trebuie sa ramana un element tradus normal, neatins');
 });
+
+test('comanda.html/comanda-mea.html/melodia-mea.html/succes.html: cele 4 linkuri din footer (Terms/Privacy/Refund/email) folosesc EXACT aceeasi culoare #8B6D3F (var(--gold-deep) de pe homepage), nu gri', () => {
+  for (const page of ['public/comanda.html', 'public/comanda-mea.html', 'public/melodia-mea.html', 'public/succes.html']) {
+    const html = read(page);
+    const footerMatch = html.match(/<footer[^>]*>.*?<\/footer>/s);
+    assert.notEqual(footerMatch, null, `${page} trebuie sa aiba un footer`);
+    const footer = footerMatch[0];
+    const linkColors = [...footer.matchAll(/<a[^>]*href="[^"]*"[^>]*style="([^"]*)"/g)].map(m => m[1]);
+    assert.equal(linkColors.length, 4, `${page} trebuie sa aiba exact 4 linkuri stilizate in footer (Terms/Privacy/Refund/email)`);
+    for (const style of linkColors) {
+      assert.match(style, /color:#8B6D3F/, `${page}: fiecare link din footer trebuie sa foloseasca #8B6D3F, gasit "${style}"`);
+      assert.ok(!style.includes('#8a8a8a'), `${page}: niciun link din footer nu trebuie sa mai fie gri`);
+    }
+  }
+});
