@@ -2895,6 +2895,18 @@ app.get('/api/orders/:orderId', async (req, res, next) => {
       else if (currentVariant && currentVariant.videoKey && currentVariant.videoPreviewKey) videoStatus = 'ready';
       else if (currentVariant && currentVariant.videoFailedReason) videoStatus = 'failed';
       else if (order.videoRenderClaimedAt) videoStatus = 'failed'; // lock expirat fara rezultat -> recuperabil, nu "generating" etern
+      // ADITIV (2026-09-11): coada video-worker separata (vezi raportul de scalabilitate) —
+      // NU e inca cablata la fluxul live de declansare, deci pentru orice comanda reala
+      // aceasta interogare nu gaseste niciodata un job si videoStatus ramane neschimbat.
+      // Existenta doar pentru comenzile de test care folosesc explicit noua coada (ruta
+      // admin enqueue-video-render-job-TEST-ONLY) — fara ea, un job 'pending' (confirmat,
+      // asteapta un worker liber) ar aparea clientului identic cu "nicio randare ceruta",
+      // desi jobul e real si va fi preluat automat. 'claimed' se mapeaza pe 'generating' —
+      // aceeasi semantica ("randare activa"), fara vocabular nou.
+      else if (videoStatus === 'none' && order.selectedVariantId) {
+        const activeJob = await db.getActiveVideoRenderJobForOrder(order.id, order.selectedVariantId, order.mediaRevision);
+        if (activeJob) videoStatus = activeJob.status === 'pending' ? 'queued' : 'generating';
+      }
     }
 
     // IMPORTANT: raspuns construit explicit, camp cu camp — NU facem spread pe `order`.

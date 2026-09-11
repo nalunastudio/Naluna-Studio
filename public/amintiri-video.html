@@ -2014,7 +2014,7 @@
         window.location.href = `/melodia-mea.html?id=${encodeURIComponent(orderId)}&token=${encodeURIComponent(accessToken)}`;
         return;
       }
-      if (order.videoStatus === 'generating' || order.videoStatus === 'stale') {
+      if (order.videoStatus === 'generating' || order.videoStatus === 'stale' || order.videoStatus === 'queued') {
         window.location.href = `/se-creeaza-video.html?id=${encodeURIComponent(orderId)}&token=${encodeURIComponent(accessToken)}`;
         return;
       }

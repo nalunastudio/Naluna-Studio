@@ -1052,6 +1052,20 @@ async function getVideoRenderJobById(jobId) {
   return rowToVideoRenderJob(result.rows[0]);
 }
 
+// Jobul ACTIV (pending sau claimed) al cozii video-worker separate pentru exact aceasta
+// (comanda, varianta, revizie de materiale) — folosit STRICT de GET /api/orders/:orderId
+// pentru a expune un `videoStatus` corect clientului cat timp jobul asteapta un worker
+// liber (nu are inca niciun echivalent in mecanismul vechi video_render_claimed_at, care
+// nu stie nimic despre aceasta coada). Aditiv — nicio comanda reala nu are inca randuri in
+// video_render_jobs (coada nu e cablata la fluxul live de declansare).
+async function getActiveVideoRenderJobForOrder(orderId, variantId, mediaRevision) {
+  const result = await pool.query(
+    `SELECT * FROM video_render_jobs WHERE order_id = $1 AND variant_id = $2 AND media_revision = $3 AND status IN ('pending', 'claimed') LIMIT 1`,
+    [orderId, variantId, mediaRevision]
+  );
+  return rowToVideoRenderJob(result.rows[0]);
+}
+
 // Numarul de joburi care au INCA nevoie de acoperire (pending + active/claimed, indiferent
 // daca lease-ul lor a expirat sau nu) — semnalul de sarcina folosit de autoscaler pentru a
 // decide replicile necesare (vezi autoscaler.js).
@@ -1711,7 +1725,7 @@ module.exports = {
   recordResendEventIfNew, addEmailSuppression, isEmailSuppressed,
   isVideoClaimStillCurrent, mutateOrderMediaAtomically, confirmMediaSelection,
   enqueueVideoRenderJob, claimNextVideoRenderJob, heartbeatVideoRenderJob,
-  completeVideoRenderJob, failVideoRenderJob, getVideoRenderJobById,
+  completeVideoRenderJob, failVideoRenderJob, getVideoRenderJobById, getActiveVideoRenderJobForOrder,
   countPendingOrActiveVideoRenderJobs,
   updateOrder, listOrders, computeRevenue,
   logCreditEvent, getCreditEventsSince, getSetting, setSetting,

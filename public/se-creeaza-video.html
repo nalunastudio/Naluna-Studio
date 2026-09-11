@@ -15,9 +15,11 @@
     - nu exista niciun procent REAL pentru randarea video (server.js nu expune un
       echivalent al generationPhasePercent pentru pasul video) — arătăm STRICT eticheta
       etapei curente, niciodata un procent inventat (cerinta explicita a clientului);
-    - starea vine din order.videoStatus ('generating'/'stale'/'ready'/'failed'/'none'),
+    - starea vine din order.videoStatus ('generating'/'stale'/'queued'/'ready'/'failed'/'none'),
       deja calculata server-side (GET /api/orders/:id, campul videoStatus) — nu introducem
-      niciun endpoint nou;
+      niciun endpoint nou; 'queued' (adaugat 2026-09-11) reflecta un job aflat in coada
+      video-worker separata, confirmat dar inca fara worker liber — vezi server.js;
+
     - Retry apeleaza STRICT POST /create-video (deja idempotent server-side — vezi
       claimVideoRenderForOrder in server.js), tratand 200/202 SI 409 (job deja activ) ca
       succes, exact acelasi tipar folosit acum si in melodia-mea.html.
@@ -197,6 +199,8 @@
       subtitle: 'Transformăm amintirile tale într-un videoclip sincronizat cu melodia aleasă.',
       staleTitle: 'Actualizăm videoclipul tău',
       staleSubtitle: 'Materialele sau melodia s-au schimbat — recreăm videoclipul cu ultima versiune.',
+      queuedTitle: 'Cererea ta e confirmată',
+      queuedSubtitle: 'Videoclipul tău e în așteptare — randarea începe automat imediat ce se eliberează un loc.',
       keepOpen: 'Nu închide această pagină. Rezultatul va apărea automat când este gata.',
       stages: [
         'Materialele tale sunt confirmate...',
@@ -218,6 +222,8 @@
       subtitle: "We're turning your memories into a video synced to the song you chose.",
       staleTitle: 'Updating your video',
       staleSubtitle: 'Your materials or song changed — we\'re recreating the video with the latest version.',
+      queuedTitle: 'Your request is confirmed',
+      queuedSubtitle: 'Your video is in line — rendering starts automatically as soon as a slot frees up.',
       keepOpen: 'Don\'t close this page. The result will appear automatically when ready.',
       stages: [
         'Your materials are confirmed...',
@@ -239,6 +245,8 @@
       subtitle: 'Wir verwandeln deine Erinnerungen in ein Video, das auf dein gewähltes Lied abgestimmt ist.',
       staleTitle: 'Wir aktualisieren dein Video',
       staleSubtitle: 'Deine Materialien oder dein Lied haben sich geändert — wir erstellen das Video mit der neuesten Version neu.',
+      queuedTitle: 'Deine Anfrage ist bestätigt',
+      queuedSubtitle: 'Dein Video steht in der Warteschlange — die Erstellung beginnt automatisch, sobald ein Platz frei wird.',
       keepOpen: 'Schließe diese Seite nicht. Das Ergebnis erscheint automatisch, sobald es fertig ist.',
       stages: [
         'Deine Materialien sind bestätigt...',
@@ -260,6 +268,8 @@
       subtitle: 'Estamos convirtiendo tus recuerdos en un video sincronizado con la canción elegida.',
       staleTitle: 'Estamos actualizando tu video',
       staleSubtitle: 'Tus materiales o tu canción cambiaron — recreamos el video con la última versión.',
+      queuedTitle: 'Tu solicitud está confirmada',
+      queuedSubtitle: 'Tu video está en la cola — la creación comienza automáticamente en cuanto se libere un lugar.',
       keepOpen: 'No cierres esta página. El resultado aparecerá automáticamente cuando esté listo.',
       stages: [
         'Tus materiales están confirmados...',
@@ -281,6 +291,8 @@
       subtitle: 'Stiamo trasformando i tuoi ricordi in un video sincronizzato con la canzone scelta.',
       staleTitle: 'Stiamo aggiornando il tuo video',
       staleSubtitle: 'I tuoi materiali o la tua canzone sono cambiati — ricreiamo il video con l\'ultima versione.',
+      queuedTitle: 'La tua richiesta è confermata',
+      queuedSubtitle: 'Il tuo video è in coda — la creazione inizia automaticamente non appena si libera un posto.',
       keepOpen: 'Non chiudere questa pagina. Il risultato apparirà automaticamente quando sarà pronto.',
       stages: [
         'I tuoi materiali sono confermati...',
@@ -302,6 +314,8 @@
       subtitle: 'Nous transformons tes souvenirs en une vidéo synchronisée avec la chanson choisie.',
       staleTitle: 'Nous mettons à jour ta vidéo',
       staleSubtitle: 'Tes souvenirs ou ta chanson ont changé — nous recréons la vidéo avec la dernière version.',
+      queuedTitle: 'Ta demande est confirmée',
+      queuedSubtitle: 'Ta vidéo est en attente — la création commence automatiquement dès qu\'une place se libère.',
       keepOpen: 'Ne fermez pas cette page. Le résultat apparaîtra automatiquement une fois prêt.',
       stages: [
         'Tes souvenirs sont confirmés...',
@@ -323,6 +337,8 @@
       subtitle: 'Превръщаме спомените ти във видео, синхронизирано с избраната песен.',
       staleTitle: 'Актуализираме видеото ти',
       staleSubtitle: 'Материалите или песента ти са променени — пресъздаваме видеото с последната версия.',
+      queuedTitle: 'Заявката ти е потвърдена',
+      queuedSubtitle: 'Видеото ти е на опашка — създаването започва автоматично веднага щом се освободи място.',
       keepOpen: 'Не затваряй тази страница. Резултатът ще се появи автоматично, когато е готов.',
       stages: [
         'Материалите ти са потвърдени...',
@@ -344,6 +360,8 @@
       subtitle: 'Anılarınızı seçtiğiniz şarkıyla senkronize bir videoya dönüştürüyoruz.',
       staleTitle: 'Videonuzu güncelliyoruz',
       staleSubtitle: 'Materyalleriniz veya şarkınız değişti — videoyu en son sürümle yeniden oluşturuyoruz.',
+      queuedTitle: 'Talebiniz onaylandı',
+      queuedSubtitle: 'Videonuz sırada — bir yer boşalır boşalmaz oluşturma otomatik olarak başlar.',
       keepOpen: 'Bu sayfayı kapatmayın. Sonuç hazır olduğunda otomatik olarak görünecektir.',
       stages: [
         'Materyalleriniz onaylandı...',
@@ -444,6 +462,7 @@
   let currentStageIndex = -1;
   let finished = false;
   let isStale = false;
+  let isQueued = false;
 
   function setStatusMessage(msg) {
     statusMsgEl.classList.add('fading');
@@ -549,7 +568,7 @@
       hideSoftNotice();
       const order = await res.json();
       // DIAGNOSTIC (2026-09-07, TASK 2): statusul e un identificator tehnic scurt dintr-o
-      // enumerare fixa ('generating'/'stale'/'ready'/'failed'/'none') — niciodata date personale.
+      // enumerare fixa ('generating'/'stale'/'queued'/'ready'/'failed'/'none') — niciodata date personale.
       markVideoTiming(`poll_check_${order.videoStatus || 'unknown'}`);
 
       if (order.plan !== 'video') {
@@ -568,15 +587,19 @@
       }
 
       // 'generating' (randare activa) / 'stale' (materialele sau varianta s-au schimbat,
-      // regenerare automata deja pornita server-side) / 'none' (fereastra scurta, reala,
-      // dintre acceptarea jobului si scrierea efectiva a lock-ului — vezi comentariul din
-      // claimVideoRenderForOrder in server.js) — in toate cele trei cazuri, jobul e activ
-      // sau pe cale sa devina activ: continuam sa asteptam si sa verificam.
+      // regenerare automata deja pornita server-side) / 'queued' (jobul e confirmat si
+      // asteapta un worker liber — coada video-worker separata, vezi videoStatus in
+      // server.js) / 'none' (fereastra scurta, reala, dintre acceptarea jobului si scrierea
+      // efectiva a lock-ului — vezi comentariul din claimVideoRenderForOrder in server.js) —
+      // in toate aceste cazuri, jobul e activ, in coada, sau pe cale sa devina activ:
+      // continuam sa asteptam si sa verificam, doar textul afisat difera.
       const nowStale = order.videoStatus === 'stale';
-      if (nowStale !== isStale) {
+      const nowQueued = order.videoStatus === 'queued';
+      if (nowStale !== isStale || nowQueued !== isQueued) {
         isStale = nowStale;
-        pTitleEl.textContent = isStale ? t.staleTitle : t.title;
-        pSubtitleEl.textContent = isStale ? t.staleSubtitle : t.subtitle;
+        isQueued = nowQueued;
+        pTitleEl.textContent = isStale ? t.staleTitle : (isQueued ? t.queuedTitle : t.title);
+        pSubtitleEl.textContent = isStale ? t.staleSubtitle : (isQueued ? t.queuedSubtitle : t.subtitle);
       }
 
       if (Date.now() - startTime > ESTIMATE_MS) showLongNotice();
@@ -633,6 +656,7 @@
 
     finished = false;
     isStale = false;
+    isQueued = false;
     errorState.style.display = 'none';
     progressState.style.display = 'block';
     retryBtn.disabled = false;
