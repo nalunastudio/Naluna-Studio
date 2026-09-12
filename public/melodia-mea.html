@@ -692,6 +692,11 @@
              acelasi container/hidden. Vizibilitatea lui e acum gestionata explicit, independent,
              in updateStandardEditMenuVisibility(). -->
         <div id="edits-info-msg" style="font-size:13px; color:var(--text-secondary); margin-top:10px;"></div>
+        <!-- CORECȚIE (2026-09-12): dezvăluirea celor 30 de zile de acces, integrată ca text
+             simplu, discret, imediat sub mesajul de editare — fără bară separată, fără chenar,
+             fără poziționare fixă. Text plan-specific (Standard/Premium/Video), setat la
+             fel ca #edits-info-msg, in aceeași secvență de randare a comenzii. -->
+        <div id="file-access-note" style="font-size:13px; color:var(--text-secondary); margin-top:6px;"></div>
 
         <!-- CORECȚIE (2026-08-29, "pagina separata pentru selectarea si incarcarea media"):
              pachetul "Cadou video" — acest buton apare STRICT dupa ce versiunea finala e
@@ -750,19 +755,10 @@
     </div>
   </div>
 
-  <!-- CORECȚIE (2026-09-11, Faza 2 v2 — bifa de consimțământ mutată pe pagina Stripe): bara
-       veche (checkbox + text legal complet, vizibilă tot timpul ascultării/editării de îndată
-       ce checkoutBtn devenea activ) a fost eliminată — consimțământul e acum colectat NATIV de
-       Stripe Checkout, chiar pe pagina de plată (vezi consent_collection/custom_text în
-       POST /checkout, server.js). Rămâne STRICT dezvăluirea informativă a perioadei de acces
-       (30 de zile) — nu e o acțiune de bifat, deci poate rămâne vizibilă permanent, discret,
-       fără riscul de a fi confundată cu marea bară de consimțământ raportată. Bara STATICĂ,
-       in afara oricarui container reparentat (checkoutBtn e mutat intre 9+ sloturi diferite in
-       pagina) — TREBUIE sa fie inaintea blocului de JS de mai jos (vezi motivul istoric:
-       applyStaticTexts() ruleaza sincron si are nevoie ca elementul sa existe deja in DOM). -->
-  <div id="checkout-access-note-bar" style="position:fixed;left:0;right:0;bottom:0;z-index:40;background:#FDFCFA;border-top:1px solid #E8E2D6;box-shadow:0 -4px 16px rgba(0,0,0,.08);padding:8px 16px;">
-    <p id="checkout-access-note" style="max-width:640px;margin:0 auto;font-size:12px;line-height:1.4;color:#6B6B6B;text-align:center;"></p>
-  </div>
+  <!-- CORECȚIE (2026-09-12): bara separată/fixă cu dezvăluirea celor 30 de zile a fost
+       eliminată complet — informația e acum text simplu, discret, integrat direct sub mesajul
+       de editare gratuită (#edits-info-msg, vezi #file-access-note mai jos în pagină), fără
+       bară, fără chenar, fără poziționare fixă. -->
 
 <script>
   // ==========================================================================================
@@ -1021,7 +1017,11 @@
       lyrics_empty_error: 'Versurile nu pot fi goale',
       feedback_label: '✏️ Nu este exact cum îți dorești? Spune-ne ce să schimbăm', feedback_explain: 'Dacă totul este în regulă și vrei să schimbi doar vocea sau genul muzical, poți lăsa acest câmp gol.', feedback_optional_badge: 'Opțional', feedback_ph: 'ex: mai vesel, mai lent, alt început...',
       regenerate_btn: 'Editează cântecul',
-      checkout_access_note: 'Vei putea asculta/viziona și descărca fișierele tale timp de 30 de zile de la livrare, din pagina comenzii tale.',
+      file_access_note_standard: 'Melodia ta rămâne disponibilă pentru ascultare și descărcare timp de 30 de zile de la livrare, în pagina comenzii tale.',
+
+      file_access_note_premium: 'Melodiile tale rămân disponibile pentru ascultare și descărcare timp de 30 de zile de la livrare, în pagina comenzii tale.',
+
+      file_access_note_video: 'Melodia și videoclipul tău rămân disponibile pentru vizionare și descărcare timp de 30 de zile de la livrare, în pagina comenzii tale.',
       edits_info_msg: 'Primești 2 variante gratuite și ai dreptul la o singură editare gratuită',
       edits_exhausted_msg: 'Ai folosit editarea gratuită pentru această comandă. Alege varianta preferată pentru a continua',
       confirm_msg: 'Sigur? Aceasta este singura ta editare gratuită pentru această comandă.',
@@ -1102,7 +1102,11 @@
       lyrics_empty_error: 'Lyrics cannot be empty',
       feedback_label: "✏️ Not quite what you wanted? Tell us what to change", feedback_explain: "If everything is fine and you only want to change the voice or genre, you can leave this field empty.", feedback_optional_badge: 'Optional', feedback_ph: 'e.g. more upbeat, slower, different intro...',
       regenerate_btn: 'Edit the song',
-      checkout_access_note: 'You\'ll be able to listen to/watch and download your files for 30 days from delivery, from your order page.',
+      file_access_note_standard: 'Your song remains available to listen to and download for 30 days from delivery, on your order page.',
+
+      file_access_note_premium: 'Your songs remain available to listen to and download for 30 days from delivery, on your order page.',
+
+      file_access_note_video: 'Your song and video remain available to watch and download for 30 days from delivery, on your order page.',
       edits_info_msg: 'You get 2 free versions and one free edit for this order',
       edits_exhausted_msg: "You've used your free edit for this order. Choose your favourite version to continue",
       confirm_msg: 'Are you sure? This is your only free edit for this order.',
@@ -1183,7 +1187,11 @@
       lyrics_empty_error: 'Der Text darf nicht leer sein',
       feedback_label: '✏️ Nicht genau das, was du wolltest? Sag uns, was geändert werden soll', feedback_explain: 'Wenn alles passt und du nur die Stimme oder das Genre ändern möchtest, kannst du dieses Feld leer lassen.', feedback_optional_badge: 'Optional', feedback_ph: 'z.B. fröhlicher, langsamer, anderer Anfang...',
       regenerate_btn: 'Lied bearbeiten',
-      checkout_access_note: 'Du kannst deine Dateien 30 Tage ab Lieferung auf deiner Bestellseite anhören/ansehen und herunterladen.',
+      file_access_note_standard: 'Dein Lied bleibt 30 Tage ab Lieferung auf deiner Bestellseite zum Anhören und Herunterladen verfügbar.',
+
+      file_access_note_premium: 'Deine Lieder bleiben 30 Tage ab Lieferung auf deiner Bestellseite zum Anhören und Herunterladen verfügbar.',
+
+      file_access_note_video: 'Dein Lied und dein Video bleiben 30 Tage ab Lieferung auf deiner Bestellseite zum Ansehen und Herunterladen verfügbar.',
       edits_info_msg: 'Du erhältst 2 kostenlose Versionen und hast Anspruch auf eine kostenlose Änderung',
       edits_exhausted_msg: 'Du hast deine kostenlose Änderung für diese Bestellung genutzt. Wähle deine bevorzugte Version, um fortzufahren',
       confirm_msg: 'Sicher? Dies ist deine einzige kostenlose Änderung für diese Bestellung.',
@@ -1264,7 +1272,11 @@
       lyrics_empty_error: 'La letra no puede estar vacía',
       feedback_label: '✏️ ¿No es exactamente lo que querías? Cuéntanos qué cambiar', feedback_explain: 'Si todo está bien y solo quieres cambiar la voz o el género, puedes dejar este campo vacío.', feedback_optional_badge: 'Opcional', feedback_ph: 'ej: más alegre, más lenta, otro inicio...',
       regenerate_btn: 'Editar la canción',
-      checkout_access_note: 'Podrás escuchar/ver y descargar tus archivos durante 30 días desde la entrega, en la página de tu pedido.',
+      file_access_note_standard: 'Tu canción sigue disponible para escuchar y descargar durante 30 días desde la entrega, en la página de tu pedido.',
+
+      file_access_note_premium: 'Tus canciones siguen disponibles para escuchar y descargar durante 30 días desde la entrega, en la página de tu pedido.',
+
+      file_access_note_video: 'Tu canción y tu vídeo siguen disponibles para ver y descargar durante 30 días desde la entrega, en la página de tu pedido.',
       edits_info_msg: 'Recibes 2 versiones gratuitas y tienes derecho a una edición gratuita',
       edits_exhausted_msg: 'Has usado tu edición gratuita para este pedido. Elige tu versión preferida para continuar',
       confirm_msg: '¿Seguro? Esta es tu única edición gratuita para este pedido.',
@@ -1345,7 +1357,11 @@
       lyrics_empty_error: 'Il testo non può essere vuoto',
       feedback_label: '✏️ Non è esattamente come volevi? Dicci cosa cambiare', feedback_explain: 'Se va tutto bene e vuoi solo cambiare la voce o il genere, puoi lasciare questo campo vuoto.', feedback_optional_badge: 'Facoltativo', feedback_ph: 'es: più allegra, più lenta, inizio diverso...',
       regenerate_btn: 'Modifica la canzone',
-      checkout_access_note: 'Potrai ascoltare/guardare e scaricare i tuoi file per 30 giorni dalla consegna, dalla pagina del tuo ordine.',
+      file_access_note_standard: 'La tua canzone resta disponibile per l\'ascolto e il download per 30 giorni dalla consegna, nella pagina del tuo ordine.',
+
+      file_access_note_premium: 'Le tue canzoni restano disponibili per l\'ascolto e il download per 30 giorni dalla consegna, nella pagina del tuo ordine.',
+
+      file_access_note_video: 'La tua canzone e il tuo video restano disponibili per la visione e il download per 30 giorni dalla consegna, nella pagina del tuo ordine.',
       edits_info_msg: 'Ricevi 2 versioni gratuite e hai diritto a una modifica gratuita',
       edits_exhausted_msg: 'Hai usato la tua modifica gratuita per questo ordine. Scegli la versione preferita per continuare',
       confirm_msg: 'Sicuro? Questa è la tua unica modifica gratuita per questo ordine.',
@@ -1426,7 +1442,11 @@
       lyrics_empty_error: 'Les paroles ne peuvent pas être vides',
       feedback_label: "✏️ Pas tout à fait ce que tu voulais ? Dis-nous ce qu'il faut changer", feedback_explain: "Si tout est bien et que tu veux seulement changer la voix ou le genre, tu peux laisser ce champ vide.", feedback_optional_badge: 'Facultatif', feedback_ph: 'ex : plus joyeux, plus lent, autre intro...',
       regenerate_btn: 'Modifier la chanson',
-      checkout_access_note: 'Vous pourrez écouter/regarder et télécharger vos fichiers pendant 30 jours à compter de la livraison, depuis la page de votre commande.',
+      file_access_note_standard: 'Ta chanson reste disponible à l\'écoute et au téléchargement pendant 30 jours à compter de la livraison, sur la page de ta commande.',
+
+      file_access_note_premium: 'Tes chansons restent disponibles à l\'écoute et au téléchargement pendant 30 jours à compter de la livraison, sur la page de ta commande.',
+
+      file_access_note_video: 'Ta chanson et ta vidéo restent disponibles à visionner et à télécharger pendant 30 jours à compter de la livraison, sur la page de ta commande.',
       edits_info_msg: 'Vous recevez 2 versions gratuites et avez droit à une modification gratuite',
       edits_exhausted_msg: 'Vous avez utilisé votre modification gratuite pour cette commande. Choisissez votre version préférée pour continuer',
       confirm_msg: 'Confirmer ? Ceci est votre unique modification gratuite pour cette commande.',
@@ -1507,7 +1527,11 @@
       lyrics_empty_error: 'Текстът не може да бъде празен',
       feedback_label: '✏️ Не е точно както искаше? Кажи ни какво да променим', feedback_explain: 'Ако всичко е наред и искаш да смениш само гласа или жанра, можеш да оставиш това поле празно.', feedback_optional_badge: 'По избор', feedback_ph: 'напр. по-весело, по-бавно, друго начало...',
       regenerate_btn: 'Редактирай песента',
-      checkout_access_note: 'Ще можеш да слушаш/гледаш и изтеглиш файловете си в рамките на 30 дни от доставката, от страницата на поръчката ти.',
+      file_access_note_standard: 'Песента ти остава достъпна за слушане и изтегляне в продължение на 30 дни от доставката, на страницата на поръчката ти.',
+
+      file_access_note_premium: 'Песните ти остават достъпни за слушане и изтегляне в продължение на 30 дни от доставката, на страницата на поръчката ти.',
+
+      file_access_note_video: 'Песента и видеото ти остават достъпни за гледане и изтегляне в продължение на 30 дни от доставката, на страницата на поръчката ти.',
       edits_info_msg: 'Получаваш 2 безплатни версии и имаш право на една безплатна редакция',
       edits_exhausted_msg: 'Използва безплатната си редакция за тази поръчка. Избери предпочитаната версия, за да продължиш',
       confirm_msg: 'Сигурен ли си? Това е единствената ти безплатна редакция за тази поръчка.',
@@ -1588,7 +1612,11 @@
       lyrics_empty_error: 'Sözler boş olamaz',
       feedback_label: '✏️ Tam istediğiniz gibi değil mi? Neyi değiştireceğimizi söyleyin', feedback_explain: 'Her şey yolundaysa ve yalnızca sesi veya türü değiştirmek istiyorsanız, bu alanı boş bırakabilirsiniz.', feedback_optional_badge: 'İsteğe bağlı', feedback_ph: 'örn: daha neşeli, daha yavaş, farklı bir giriş...',
       regenerate_btn: 'Şarkıyı düzenle',
-      checkout_access_note: 'Dosyalarınızı teslimattan itibaren 30 gün boyunca sipariş sayfanızdan dinleyebilir/izleyebilir ve indirebilirsiniz.',
+      file_access_note_standard: 'Şarkın, teslimattan itibaren 30 gün boyunca sipariş sayfandan dinlenebilir ve indirilebilir durumda kalır.',
+
+      file_access_note_premium: 'Şarkıların, teslimattan itibaren 30 gün boyunca sipariş sayfandan dinlenebilir ve indirilebilir durumda kalır.',
+
+      file_access_note_video: 'Şarkın ve videon, teslimattan itibaren 30 gün boyunca sipariş sayfandan izlenebilir ve indirilebilir durumda kalır.',
       edits_info_msg: '2 ücretsiz versiyon alırsınız ve bir ücretsiz düzenleme hakkınız vardır',
       edits_exhausted_msg: 'Bu sipariş için ücretsiz düzenlemenizi kullandınız. Devam etmek için tercih ettiğiniz versiyonu seçin',
       confirm_msg: 'Emin misiniz? Bu, bu sipariş için tek ücretsiz düzenlemeniz.',
@@ -1675,7 +1703,6 @@
     document.getElementById('voice-name-auto').textContent = t.voice_auto;
     document.getElementById('voice-change-hint').textContent = t.voice_change_hint;
     document.getElementById('memories-cta-btn').textContent = t.memories_cta_title;
-    document.getElementById('checkout-access-note').textContent = t.checkout_access_note;
     document.getElementById('memories-cta-sub').textContent = t.memories_cta_sub;
   }
 
@@ -3731,6 +3758,14 @@
     editsInfoMsgEl.textContent = editsLeft === 0
       ? t.edits_exhausted_msg
       : (hasSingleVariant ? t.edits_info_msg_one : t.edits_info_msg);
+    // CORECȚIE (2026-09-12): dezvăluirea celor 30 de zile de acces, integrată ca text simplu
+    // imediat sub mesajul de editare — text specific pachetului REAL (nu numărului de variante),
+    // pentru că fișierele livrate diferă exact pe plan: Standard = o melodie, Premium = doua
+    // melodii (vezi getGiftVariant, lib/entitlements.js), Video = melodie + videoclip.
+    const fileAccessNoteEl = document.getElementById('file-access-note');
+    fileAccessNoteEl.textContent = order.plan === 'video'
+      ? t.file_access_note_video
+      : (order.plan === 'premium' ? t.file_access_note_premium : t.file_access_note_standard);
 
     checkoutPriceEl.textContent = '£' + order.price;
     if (isStandardEditChoice) {

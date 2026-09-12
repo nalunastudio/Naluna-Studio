@@ -191,15 +191,18 @@ test('refund.html si terms.html: drepturile STATUTARE (CRA 2015) pentru continut
   }
 });
 
-test('server.js: toate cele 8 limbi ale CONSENT_TOS_TEXT includ clauza "nu exista rambursare pentru schimbarea parerii", pastrand neafectate drepturile pentru continut defect/nelivrat din vina Naluna — CORECȚIE 2026-09-11: consimțământul nu mai trăiește ca text în melodia-mea.html, ci ca custom_text nativ Stripe (CONSENT_TOS_TEXT), pentru ca bara veche apărea pe toată durata ascultării/editării, nu doar chiar înaintea plății', () => {
-  const matches = server.match(/^  [a-z]{2}: `/gm) || [];
+// CORECȚIE (2026-09-12, v6->v7): textul scurtat, cerut explicit de business, NU mai include
+// calificativul "din vina Naluna" langa exceptia de nelivrare (verbatim RO cerut: "Drepturile
+// mele in cazul unui produs defect, neconform sau nelivrat raman neafectate.") — substanta
+// (drepturi pastrate pentru defect/neconform/nelivrat) ramane, doar formularea s-a scurtat.
+test('server.js: toate cele 8 limbi ale CONSENT_TOS_TEXT includ clauza "nu exista rambursare pentru schimbarea parerii", pastrand neafectate drepturile pentru produs defect/neconform/nelivrat — text scurtat v7, fara calificativul explicit "din vina Naluna"', () => {
   assert.ok(server.includes('const CONSENT_TOS_TEXT = {'), 'trebuie sa existe harta CONSENT_TOS_TEXT');
   const tosBlock = extractFn(server, 'const CONSENT_TOS_TEXT = {');
   const langCount = (tosBlock.match(/^  [a-z]{2}: `/gm) || []).length;
   assert.equal(langCount, 8, 'trebuie sa existe exact 8 intrari CONSENT_TOS_TEXT (una per limba)');
-  const faultMarkers = ["fault on Naluna's side", 'din vina Naluna', 'eines Fehlers von Naluna', 'un fallo de Naluna', 'un errore di Naluna', 'défaillance de Naluna', 'грешка на Naluna', 'Naluna kaynaklı bir hata'];
+  const faultMarkers = ['faulty, non-conforming, or undelivered', 'defect, neconform sau nelivrat', 'mangelhaften, nicht konformen oder nicht gelieferten', 'defectuoso, no conforme o no entregado', 'difettoso, non conforme o non consegnato', 'défectueux, non conforme ou non livré', 'дефектен, несъответстващ или недоставен', 'Kusurlu, uygun olmayan veya teslim edilmemiş'];
   for (const marker of faultMarkers) {
-    assert.ok(tosBlock.includes(marker), `lipseste mentiunea drepturilor pastrate pentru esecul din vina Naluna: "${marker}"`);
+    assert.ok(tosBlock.includes(marker), `lipseste mentiunea drepturilor pastrate pentru produs defect/neconform/nelivrat: "${marker}"`);
   }
   // Fiecare intrare trebuie sa fie sub limita reala Stripe de 1200 caractere pentru custom_text
   // (verificat direct din documentatia oficiala) — chiar si dupa expandarea ${DOMAIN}.
@@ -216,13 +219,17 @@ test('server.js: toate cele 8 limbi ale CONSENT_TOS_TEXT includ clauza "nu exist
 // a paginilor live): refund.html Secțiunea 2 spune explicit "you lose your statutory 14-day right
 // to cancel once CREATION has started" și terms.html Secțiunea 3/4 confirmă "Creation begins
 // immediately after your payment is confirmed" — deci CONSENT_TOS_TEXT trebuie să reflecte
-// EXACT acest declanșator (crearea, nu livrarea), nu presupunerea anterioară. Emailul de livrare
-// (piesă de text SEPARATĂ, netouchată de această corecție) rămâne verificat separat, neschimbat.
-test('server.js: CONSENT_TOS_TEXT reflectă STRICT declanșatorul real din refund.html/terms.html (crearea, nu livrarea) — "14 zile" păstrat pentru că e explicit real în refund.html Secțiunea 2', () => {
+// EXACT acest declanșator (crearea, nu livrarea), nu presupunerea anterioară.
+// CORECȚIE (2026-09-12, v6->v7): decizie de business — cifra exactă "14 zile" nu mai apare
+// vizibil in text (desi ramane reala si valabila in refund.html, neatins) — text mai scurt,
+// substanta legala identica (creare imediata, fara anulare pentru schimbarea parerii, drepturi
+// pastrate pentru defect/neconform/nelivrat). Emailul de livrare (piesă de text SEPARATĂ,
+// netouchată de această corecție) rămâne verificat separat, neschimbat.
+test('server.js: CONSENT_TOS_TEXT reflectă declanșatorul real (crearea) fără să afiseze explicit numărul de zile — substanța legală identică cu refund.html/terms.html', () => {
   const tosBlock = extractFn(server, 'const CONSENT_TOS_TEXT = {');
-  assert.ok(/begin creating|înceapă imediat crearea|sofort zu erstellen|comience a crear|iniziare subito a creare|commencer immédiatement à créer|започне незабавно да създава|hemen oluşturmaya başlamasını/i.test(tosBlock), 'CONSENT_TOS_TEXT trebuie sa reflecte ca CREAREA incepe la plata, exact ca refund.html/terms.html');
+  assert.ok(/begin creating|înceapă imediat crearea|sofort .* zu erstellen|comience .* a crear|inizi.*a creare|commence.*à créer|започне незабавно да създава|hemen oluşturmaya başlamasını/i.test(tosBlock), 'CONSENT_TOS_TEXT trebuie sa reflecte ca CREAREA incepe la plata, exact ca refund.html/terms.html');
   assert.ok(!/already-created|deja creat,|bereits fertiges|ya creado,|già creato,|déjà créée,|вече готовата|Zaten oluşturulmuş/i.test(tosBlock), 'CONSENT_TOS_TEXT nu mai trebuie sa afirme ca produsul EXISTA DEJA — nu e sustinut de terms.html/refund.html live');
-  assert.match(tosBlock, /14[\s-]?(day|zile|tägiges|días|giorni|jours|дни|günlük)/i, '"14 zile" trebuie pastrat — e explicit real, in refund.html Sectiunea 2 ("statutory 14-day right to cancel")');
+  assert.ok(!/\b14\b/.test(tosBlock), 'CONSENT_TOS_TEXT nu mai trebuie sa afiseze explicit cifra "14" (decizie de business) — substanta ramane, doar cifra nu mai e vizibila aici');
   const legalNoteFn = extractFn(server, "async function sendDeliveryEmail(order) {");
   assert.ok(!/work on your personalised order would begin|lucrul la comanda ta personalizată să înceapă/i.test(legalNoteFn), 'emailul de livrare nu mai trebuie sa afirme ca "lucrul" incepe la plata');
   assert.match(legalNoteFn, /delivery of your already-created personalised song\/video would begin/, 'emailul de livrare (piesa separata, netouchata aici) trebuie sa reflecte corect ca LIVRAREA incepe, nu crearea');
@@ -268,7 +275,7 @@ test('Cele 3 pagini legale NU mai afiseaza deloc "Last updated"/o data de revizu
 });
 
 test('CONSENT_POLICY_VERSION (versionarea interna, dovada consimtamantului) ramane intacta — eliminarea afisarii publice a "Last updated" NU atinge evidenta interna asociata fiecarei comenzi platite', () => {
-  assert.match(server, /const CONSENT_POLICY_VERSION = '2026-09-11-v6';/);
+  assert.match(server, /const CONSENT_POLICY_VERSION = '2026-09-12-v7';/);
   assert.match(server, /consentPolicyVersion:\s*consentAccepted\s*\?\s*CONSENT_POLICY_VERSION\s*:\s*null/);
   assert.match(db, /ALTER TABLE orders ADD COLUMN IF NOT EXISTS consent_policy_version TEXT;/);
 });
@@ -352,14 +359,37 @@ test('melodia-mea.html: bara/checkbox-ul propriu de consimtamant NU mai exista d
   assert.ok(!melodia.includes('consentGiven'), 'fetch-ul de checkout nu mai trebuie sa trimita consentGiven');
 });
 
-test('melodia-mea.html: dezvaluirea celor 30 de zile de acces ramane, intr-o bara STATICA (nu mai gatata de starea checkoutBtn) — informatie, nu actiune de bifat', () => {
-  const barIdx = melodia.indexOf('id="checkout-access-note-bar"');
-  const scriptIdx = melodia.indexOf('<script>');
-  assert.notEqual(barIdx, -1);
-  assert.notEqual(scriptIdx, -1);
-  assert.ok(barIdx < scriptIdx, 'bara trebuie sa fie in DOM INAINTE ca <script> sa ruleze applyStaticTexts()');
-  const noteCount = (melodia.match(/checkout_access_note:/g) || []).length;
-  assert.equal(noteCount, 8, `asteptat 8 aparitii checkout_access_note, gasit ${noteCount}`);
+// CORECȚIE (2026-09-12): bara separată/fixă (#checkout-access-note-bar) a fost eliminată complet
+// — dezvăluirea celor 30 de zile e acum text simplu, inline, imediat sub mesajul de editare
+// (#edits-info-msg), fără bară, fără chenar, fără poziționare fixă, cu text specific per plan
+// (Standard/Premium/Video — fișierele livrate diferă real pe plan, vezi getGiftVariant).
+test('melodia-mea.html: bara separata veche pentru cele 30 de zile NU mai exista deloc — informatia e text simplu, inline, sub mesajul de editare, specific per plan', () => {
+  assert.ok(!melodia.includes('checkout-access-note-bar'), 'bara separata/fixa nu mai trebuie sa existe');
+  assert.ok(!melodia.includes('checkout_access_note'), 'cheia veche de traducere (text generic, neplan-specific) nu mai trebuie sa existe');
+  const noteElIdx = melodia.indexOf('id="file-access-note"');
+  const editsMsgIdx = melodia.indexOf('id="edits-info-msg"');
+  assert.notEqual(noteElIdx, -1, 'trebuie sa existe elementul nou #file-access-note');
+  assert.notEqual(editsMsgIdx, -1);
+  assert.ok(noteElIdx > editsMsgIdx && noteElIdx - editsMsgIdx < 500, '#file-access-note trebuie sa fie IMEDIAT dupa #edits-info-msg in DOM');
+  // Elementul nou nu trebuie sa aiba chenar/fundal/pozitionare fixa — text simplu de pagina.
+  const noteTagStart = melodia.lastIndexOf('<div', noteElIdx);
+  const noteTagEnd = melodia.indexOf('>', noteElIdx);
+  const noteTag = melodia.slice(noteTagStart, noteTagEnd + 1);
+  assert.ok(!/border|background|position:\s*fixed|box-shadow/.test(noteTag), '#file-access-note nu trebuie sa aiba chenar/fundal/pozitionare fixa — text simplu de pagina');
+  const standardCount = (melodia.match(/file_access_note_standard:/g) || []).length;
+  const premiumCount = (melodia.match(/file_access_note_premium:/g) || []).length;
+  const videoCount = (melodia.match(/file_access_note_video:/g) || []).length;
+  assert.equal(standardCount, 8, `asteptat 8 aparitii file_access_note_standard, gasit ${standardCount}`);
+  assert.equal(premiumCount, 8, `asteptat 8 aparitii file_access_note_premium, gasit ${premiumCount}`);
+  assert.equal(videoCount, 8, `asteptat 8 aparitii file_access_note_video, gasit ${videoCount}`);
+});
+
+test('melodia-mea.html: textul #file-access-note e setat corect per PLAN REAL (nu numar de variante) — Standard/Premium/Video, in aceeasi secventa unde se seteaza #edits-info-msg', () => {
+  const idx = melodia.indexOf('const fileAccessNoteEl = document.getElementById');
+  assert.notEqual(idx, -1, 'trebuie sa existe logica JS care seteaza #file-access-note');
+  const snippet = melodia.slice(idx, idx + 400);
+  assert.match(snippet, /order\.plan === 'video'\s*\n?\s*\?\s*t\.file_access_note_video/, 'Video trebuie sa foloseasca file_access_note_video');
+  assert.match(snippet, /order\.plan === 'premium'\s*\?\s*t\.file_access_note_premium\s*:\s*t\.file_access_note_standard/, 'Premium/Standard trebuie sa foloseasca cheia corecta per plan');
 });
 
 test('melodia-mea.html: goToCheckout() nu mai verifica niciun checkbox propriu si trimite cererea de checkout fara body — Stripe respinge singur plata fara bifa', () => {
@@ -588,17 +618,8 @@ test('comanda-mea.html: getDeviceDownloadTip() arata STRICT sfatul relevant (iOS
   assert.match(fn, /return '';/, 'pe desktop (niciun UA de mobil detectat) nu trebuie afisat niciun sfat');
 });
 
-test('melodia-mea.html: checkout_access_note (dezvaluire pre-cumparare a celor 30 de zile) exista in toate cele 8 limbi si e afisat in bara statica de jos, INAINTE de plata', () => {
-  const html = read('public/melodia-mea.html');
-  const count = (html.match(/checkout_access_note:/g) || []).length;
-  assert.equal(count, 8, `asteptat 8 aparitii checkout_access_note, gasit ${count}`);
-  assert.ok(html.includes('id="checkout-access-note"'));
-  const fn = extractFn(html, 'function applyStaticTexts() {');
-  assert.match(fn, /checkout-access-note'\)\.textContent = t\.checkout_access_note;/);
-});
-
-test('server.js: CONSENT_POLICY_VERSION e la v6 (v3 adaugase dezvaluirea celor 30 de zile; v4 corecteaza framing-ul factual creare->livrare; v5 muta consimtamantul pe Stripe nativ; v6 corecteaza declansatorul real la CREARE, verificat direct contra terms.html/refund.html) — niciodata retroactiva pentru comenzi deja platite', () => {
-  assert.match(server, /const CONSENT_POLICY_VERSION = '2026-09-11-v6';/);
+test('server.js: CONSENT_POLICY_VERSION e la v7 (v3 adaugase dezvaluirea celor 30 de zile; v4 corecteaza framing-ul factual creare->livrare; v5 muta consimtamantul pe Stripe nativ; v6 corecteaza declansatorul real la CREARE; v7 scurteaza textul si elimina afisarea explicita a cifrei de 14 zile) — niciodata retroactiva pentru comenzi deja platite', () => {
+  assert.match(server, /const CONSENT_POLICY_VERSION = '2026-09-12-v7';/);
 });
 
 test('server.js: emailul de livrare mentioneaza EXPLICIT "30 days"/"30 de zile" (nu "1 month") si incurajarea de a descarca, in toate cele 8 sabloane', () => {
