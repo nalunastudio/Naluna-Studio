@@ -5721,6 +5721,14 @@ async function finalizeVariantsIfNeeded(orderId, requestsInfo, options = {}) {
 const TIMESTAMPED_LYRICS_TIMEOUT_MS = 8000; // timeout scurt — nu tinem procesarea in loc
 const TARGET_VOICE_POSITION_S = 9;          // pozitia dorita a vocii IN preview (secunda 8-10)
 const PREVIEW_START_MAX_S = 25;             // plafon dur — niciodata mai mult de 25 sec sarite
+// CORECȚIE (2026-09-13, esec real de productie confirmat direct — comanda Cadou Video,
+// alignedWords gol de 9 ori la rand, apoi INTERROGAT DIN NOU manual, direct la furnizor, cu
+// exact acelasi taskId/audioId — de data asta raspunsul a venit COMPLET): un raspuns HTTP 200
+// valid structural, dar cu alignedWords GOL, nu e o eroare permanenta — inseamna ca furnizorul
+// inca nu a terminat calculul alinierii cuvant-cu-cuvant pentru piesa respectiva (piesele mai
+// lungi par sa aiba nevoie de mai mult timp). Valoare folosita STRICT ca semnal de retry pentru
+// generateLyricVideo() mai jos — vezi comentariul de acolo.
+const EMPTY_ALIGNED_WORDS_RETRY_SECONDS = 45;
 
 // Eticheta structurala intre paranteze patrate (ex. "[Verse]", "[Chorus]") nu e un cuvant
 // cantat efectiv — o eliminam ca sa vedem daca ramane text real dupa ea (uneori raspunsul
@@ -7334,8 +7342,21 @@ async function generateLyricVideo(order, variant, tempFullMp3Path) {
     throw err;
   }
   const body = await outcome.res.json();
-  if (!body || body.code !== 200 || !body.data || !Array.isArray(body.data.alignedWords) || body.data.alignedWords.length === 0) {
+  const hasValidStructure = !!(body && body.code === 200 && body.data && Array.isArray(body.data.alignedWords));
+  if (!hasValidStructure) {
     throw new Error('Raspunsul cu versuri sincronizate e gol sau are o structura neasteptata.');
+  }
+  if (body.data.alignedWords.length === 0) {
+    // CORECȚIE (2026-09-13): structura raspunsului e corecta (HTTP 200, code 200, data
+    // prezenta), dar alignedWords e gol — furnizorul inca nu a terminat calculul alinierii
+    // pentru aceasta piesa (confirmat direct: acelasi taskId/audioId, interogat din nou cateva
+    // minute mai tarziu, a returnat alinierea completa). Atasam retryAfterSeconds (acelasi
+    // mecanism deja folosit pentru 429/430/405, respectat de computeBackoffSeconds in
+    // worker.js), ca job-ul sa astepte mai mult inainte de urmatoarea incercare, in loc sa
+    // epuizeze cele 3 incercari intr-un interval prea scurt pentru piese mai lungi.
+    const err = new Error('Versurile cu marcaj de timp nu sunt inca disponibile la furnizor pentru aceasta piesa.');
+    err.retryAfterSeconds = EMPTY_ALIGNED_WORDS_RETRY_SECONDS;
+    throw err;
   }
 
   // CORECȚIE (2026-08-29): buildCaptionLines() nu mai primeste recipient/lang — cue-ul
