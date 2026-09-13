@@ -7356,6 +7356,10 @@ async function generateLyricVideo(order, variant, tempFullMp3Path) {
   const alignedWords = (body && body.code === 200 && body.data && Array.isArray(body.data.alignedWords))
     ? body.data.alignedWords : null;
   if (!alignedWords || alignedWords.length === 0) {
+    // DIAGNOSTIC TEMPORAR (2026-09-13) — de eliminat imediat dupa gasirea cauzei exacte a
+    // discrepantei intre raspunsul primit aici si o interogare manuala, separata, cu aceeasi
+    // pereche taskId/audioId. Nu contine token-uri/date personale — STRICT forma raspunsului.
+    console.log(`[diag-timestamped-lyrics] taskId=${effectiveMusicTaskId} audioId=${variant.sunoTrackId} bodyKeys=${body ? Object.keys(body).join(',') : 'null'} rawBodySample=${JSON.stringify(body).slice(0, 300)}`);
     const err = new Error('Raspunsul cu versuri sincronizate e gol sau are o structura neasteptata.');
     err.retryAfterSeconds = EMPTY_ALIGNED_WORDS_RETRY_SECONDS;
     throw err;
