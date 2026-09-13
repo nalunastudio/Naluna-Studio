@@ -531,10 +531,11 @@ test('server.js: CONTENT_RETENTION_DAYS=30, hostedAccessExpiresAt calculeaza STR
   assert.ok(!fn.includes('createdAt'), 'reperul trebuie sa fie livrarea (paidAt), niciodata crearea comenzii');
 });
 
-test('server.js: toate cele 4 rute de descarcare a produsului final (/media/full, /media/full/:id/gift, /media/wav, /media/video) refuza cu 410 cand accesul gazduit a expirat, INAINTE de a semna vreun URL', () => {
+test('server.js: toate cele 5 rute de descarcare a produsului final (/media/full, /media/full/:id/gift, /media/full/:id/bonus, /media/wav, /media/video) refuza cu 410 cand accesul gazduit a expirat, INAINTE de a semna vreun URL', () => {
   for (const sig of [
     "app.get('/media/full/:orderId', async (req, res, next) => {",
     "app.get('/media/full/:orderId/gift', async (req, res, next) => {",
+    "app.get('/media/full/:orderId/bonus', async (req, res, next) => {",
     "app.get('/media/wav/:orderId', async (req, res, next) => {",
     "app.get('/media/video/:orderId', async (req, res, next) => {"
   ]) {

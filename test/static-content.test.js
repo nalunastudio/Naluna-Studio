@@ -102,7 +102,10 @@ test('scenariul 14/15: exista un endpoint dedicat pentru descarcarea melodiei ca
 test('scenariul 17: emailul de livrare include un link catre melodia cadou, pentru toate planurile', () => {
   const server = read('server.js');
   assert.ok(server.includes('giftLine'), 'sablonul de email trebuie sa includa giftLine');
-  assert.ok(server.includes('${giftLine}${videoLine}'), 'giftLine trebuie inserat in corpul emailului pentru toate limbile');
+  // CORECȚIE (2026-09-13, runda 2, "a treia melodie cadou pentru Premium"): premiumBonusLine
+  // (STRICT Premium) a fost inserat intre giftLine si videoLine — giftLine ramane inserat
+  // in corpul emailului pentru toate limbile, neschimbat ca pozitie relativa fata de continut.
+  assert.ok(server.includes('${giftLine}${premiumBonusLine}${videoLine}'), 'giftLine trebuie inserat in corpul emailului pentru toate limbile');
 });
 
 test('scenariul 17: emailul de livrare include link direct catre videoclip pentru pachetul Video (deja gata la momentul platii)', () => {

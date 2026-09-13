@@ -2,6 +2,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { getGiftVariant } = require('../lib/entitlements');
 
+// Testele pentru pickPremiumBonusVariantId/getPremiumBonusVariant (Premium, "a treia melodie
+// cadou") sunt in test/premium-third-bonus-song.test.js — fisier dedicat, feature separata.
+
 test('getGiftVariant — returneaza cealalta varianta cand exista exact 2', () => {
   const order = {
     selectedVariantId: 'a',

@@ -12,6 +12,7 @@
 
 const { Pool } = require('pg');
 const { randomUUID } = require('crypto');
+const { pickPremiumBonusVariantId } = require('./lib/entitlements');
 
 if (!process.env.DATABASE_URL) {
   throw new Error(
@@ -439,6 +440,13 @@ async function initDb() {
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS regeneration_progress INTEGER;`);
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS regeneration_updated_at TIMESTAMPTZ;`);
 
+  // CERINTA (2026-09-13, runda 2, "a treia melodie cadou pentru Premium"): id-ul variantei
+  // alese ca bonus surpriza pentru Premium (dintre variantele NESELECTATE de client) — ales
+  // O SINGURA DATA, atomic, la confirmarea platii (vezi recordPaidOrderAtomically mai jos) si
+  // persistat aici PENTRU TOTDEAUNA — niciodata recalculat la fiecare vizualizare a paginii.
+  // NULL pentru orice alt pachet, si pentru Premium fara nicio varianta ramasa nealeasa.
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS premium_bonus_variant_id TEXT;`);
+
   // credit_events: jurnal complet al fiecarui apel real catre providerul de muzica (Suno),
   // plus fiecare blocare de generare/checkout facuta de sistemul de protectie a creditelor —
   // baza pentru statistici zilnice, estimarea comenzilor ramase si detectarea consumului
@@ -597,6 +605,7 @@ function rowToOrder(row) {
     regenerateSourceVariantId: row.regenerate_source_variant_id,
     regenerateKeepOriginal: !!row.regenerate_keep_original,
     regenerateFeedback: row.regenerate_feedback || null,
+    premiumBonusVariantId: row.premium_bonus_variant_id || null,
     editReserved: row.edit_reserved,
     // NULL (comenzi vechi, dinainte de aceasta coloana) devine 'auto' aici, o singura
     // data, central — restul aplicatiei (buildPrompt, API, comanda.html, melodia-mea.html)
@@ -1353,6 +1362,19 @@ async function recordPaidOrderAtomically(eventId, orderId, patch) {
     if (!current) return { isNewEvent: true, order: null };
     if (current.status === 'ready') return { isNewEvent: true, order: current, alreadyPaid: true };
 
+    // CERINTA (2026-09-13, runda 2, "a treia melodie cadou pentru Premium"): alegerea RANDOM a
+    // bonusului trebuie sa se intample O SINGURA DATA, exact aici — in ACEEASI tranzactie care
+    // marcheaza comanda "ready" (randul e deja blocat FOR UPDATE mai sus). Facuta oriunde
+    // altundeva (ex. la fiecare GET /api/orders), orice client care reincarca pagina ar vedea o
+    // alta melodie "cadou", si fisierul livrat efectiv prin /media/full/:id/bonus nu ar mai
+    // corespunde cu ce s-a aratat anterior. `current` e randul FRESH, FOR UPDATE — reflecta
+    // exact variantele/selectiile finale, validate deja de processConfirmedPayment inainte de
+    // acest apel. Verificarea `!current.premiumBonusVariantId` e defensiva (statusul deja
+    // garanteaza "prima si singura data"), niciodata suprascrie o alegere deja persistata.
+    if (current.plan === 'premium' && !current.premiumBonusVariantId) {
+      patch = { ...patch, premiumBonusVariantId: pickPremiumBonusVariantId(current) };
+    }
+
     const keys = Object.keys(patch).filter(k => COLUMN_MAP[k]);
     const setClauses = keys.map((k, i) => `${COLUMN_MAP[k]} = $${i + 2}`);
     const values = keys.map(k => ((k === 'variants' || k === 'uploadedMedia' || k === 'regenerateEditVariantIds') ? JSON.stringify(patch[k]) : patch[k]));
@@ -1518,6 +1540,7 @@ const COLUMN_MAP = {
   regenerateSourceVariantId: 'regenerate_source_variant_id',
   regenerateKeepOriginal: 'regenerate_keep_original',
   regenerateFeedback: 'regenerate_feedback',
+  premiumBonusVariantId: 'premium_bonus_variant_id',
   editReserved: 'edit_reserved',
   voicePreference: 'voice_preference',
   generationAttempts: 'generation_attempts',
