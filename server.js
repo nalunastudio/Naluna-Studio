@@ -8603,15 +8603,23 @@ function buildPrompt(order, feedback, genreOverride) {
   // descriptiv) alege sa comprime cuvinte pentru rima/ritm. Singura parghie reala disponibila e
   // o instructiune explicita, care cere clar cuvinte intregi si gramatica corecta — adaugata
   // aici (bugetul marit la 600 face loc acestei clauze fara sa elimine povestea).
-  const instructionWithSenderFull = ' Write this as a personal song from the sender to the recipient, opening the first verse with a real, specific, never-invented detail from the story — never a generic line. Use only complete, grammatically correct words in the target language — never a shortened or invented word form. Start the vocals around 8-10 seconds, never immediately. Name the recipient early and again in the chorus. Mention the sender once.';
+  // CORECȚIE (2026-09-13, runda 3, P1 — "povestea clientului nu se regaseste suficient in
+  // versuri"): clauza cerea anterior UN SINGUR detaliu real, STRICT in deschiderea primului
+  // vers ("opening the first verse with a real... detail") — restul melodiei (refren, versuri
+  // urmatoare, punte) nu avea nicio cerinta similara, lasand Suno liber sa devina generic dupa
+  // prima linie. Reformulata sa ceara detalii reale RASPANDITE in tot textul ("throughout"),
+  // nu doar la inceput — lungime EGALA sau mai mica decat inainte (masurat direct), deci
+  // supravietuieste cascadei de scurtare exact la fel de fiabil ca formularea veche, pentru
+  // orice comanda reala unde formularea veche ar fi supravietuit.
+  const instructionWithSenderFull = ' Write this as a personal song from the sender to the recipient, weaving several real, specific, never-invented details from the story throughout — never a generic line. Use only complete, grammatically correct words in the target language — never a shortened or invented word form. Start the vocals around 8-10 seconds, never immediately. Name the recipient early and again in the chorus. Mention the sender once.';
   // fereastra SCURTA trebuie sa ramana chiar scurta (folosita cand bugetul fix, `head`, tot nu
   // incape — daca ea insasi devine lunga, cascada de scurtare isi pierde sensul, exact bug-ul
   // gasit empiric aici la runda "cuvinte taiate": adaugarea clauzei de gramatica ca text simplu
   // concatenat umfla forma "scurta" la 200+ caractere, impingand `head` mult peste buget chiar
   // si pentru comenzi tipice, scurte).
-  const instructionWithSenderShort = ' Short intro; verse 1: real, not invented, story detail; complete words only, no shortening; name recipient early+chorus; mention sender once.';
-  const instructionNoSenderFull = ' Open the first verse with a real, specific, never-invented detail from the story — never a generic line. Use only complete, grammatically correct words in the target language — never a shortened or invented word form. Start the vocals around 8-10 seconds, never immediately. Address the recipient by name naturally in the lyrics.';
-  const instructionNoSenderShort = ' Short intro; verse 1: real, not invented, story detail. Address recipient by name naturally, complete words only, no shortening.';
+  const instructionWithSenderShort = ' Short intro; story details throughout, not invented; complete words only, no shortening; name recipient early+chorus; mention sender once.';
+  const instructionNoSenderFull = ' Weave real, specific, never-invented details from the story throughout — never a generic line. Use only complete, grammatically correct words in the target language — never a shortened or invented word form. Start the vocals around 8-10 seconds, never immediately. Address the recipient by name naturally in the lyrics.';
+  const instructionNoSenderShort = ' Short intro; story details throughout, not invented. Address recipient by name naturally, complete words only, no shortening.';
 
   let useShortInstruction = false;
   function currentInstruction() {
@@ -8739,9 +8747,12 @@ function buildPrompt(order, feedback, genreOverride) {
   // SI directa la cauza principala raportata acum (inventia, nu doar omiterea mesajelor). Forma
   // COMPLETA pastreaza ambele cerinte (mesaj exact + fara inventii), folosita cand bugetul chiar
   // permite.
+  // CORECȚIE (2026-09-13, runda 3, P1): la fel ca la instructiunea de mai sus (currentInstruction),
+  // etichetele cereau anterior un detaliu real STRICT in "verse 1" — reformulate sa ceara detalii
+  // raspandite "throughout" (in tot textul), lungime EGALA sau mai mica decat inainte.
   const storyLabelPlain = ' Story/details to include: ';
-  const storyLabelShort = ' Verse 1 opens with a real story detail — invent nothing beyond it. Story: ';
-  const storyLabelFull = ' First verse must open with a real detail from this story, never a generic line; include any explicit written message exactly; invent nothing beyond what is written here. Story: ';
+  const storyLabelShort = ' Use real story details throughout — invent nothing beyond them. Story: ';
+  const storyLabelFull = ' Weave real details from this story throughout, never one generic line; include any explicit written message exactly; invent nothing beyond what is written here. Story: ';
   const MIN_USEFUL_STORY_CHARS = 40;
   const feedbackLabel = ' Client-requested adjustment: ';
   // CORECTIE (2026-09-06, regresie urgenta gasita prin MASURARE directa, nu presupunere):

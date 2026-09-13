@@ -101,7 +101,11 @@ test('buildPrompt: pentru o comanda tipica (campuri normale, poveste rezonabila)
 // la fel de fiabil ca instructiunea dinainte de aceasta corectie — verificat pe o comanda tipica
 // SI pe cel mai incarcat caz real (nunta, campuri lungi, gen cu tag de stil lung).
 // ---------------------------------------------------------------------------------------------
-test('buildPrompt: instructiunea "deschide primul vers cu un detaliu real din poveste" ajunge in prompt, atat pentru o comanda tipica cat si pentru cazul cel mai incarcat (nunta, campuri lungi)', () => {
+// CORECȚIE (2026-09-13, runda 3, P1 — "povestea clientului nu se regaseste suficient in
+// versuri"): instructiunea veche cerea un detaliu real STRICT in deschiderea primului vers —
+// reformulata sa ceara detalii raspandite "throughout" (in tot textul, nu doar la inceput),
+// lungime egala sau mai mica, testul de mai jos accepta ambele formulari istorice.
+test('buildPrompt: instructiunea "detalii reale din poveste, raspandite in tot textul" ajunge in prompt, atat pentru o comanda tipica cat si pentru cazul cel mai incarcat (nunta, campuri lungi)', () => {
   const typical = {
     occasion: 'aniversare', genre: 'pop', lang: 'ro',
     recipient: 'Maria', senderName: 'Ana', relationship: 'prietena', voicePreference: 'auto',
@@ -117,8 +121,8 @@ test('buildPrompt: instructiunea "deschide primul vers cu un detaliu real din po
   [typical, worstCase].forEach((order) => {
     const prompt = buildPrompt(order, '', undefined);
     assert.ok(prompt.length <= 600, `promptul trebuie sa ramana sub 600 caractere, a produs ${prompt.length}`);
-    assert.match(prompt, /verse 1:? real,? (not invented,? )?(never-invented )?story detail|opening the first verse with a real,? specific,? (never-invented )?detail/i,
-      `instructiunea de deschidere a primului vers trebuie sa fie prezenta, a produs: ${prompt}`);
+    assert.match(prompt, /verse 1:? real,? (not invented,? )?(never-invented )?story detail|opening the first verse with a real,? specific,? (never-invented )?detail|story details throughout|details from the story throughout|weav(e|ing) (real|several)/i,
+      `instructiunea de detalii reale din poveste (raspandite in tot textul) trebuie sa fie prezenta, a produs: ${prompt}`);
     assert.match(prompt, /never-invented|not invented/i, `clauza "niciodata inventat" trebuie sa fie prezenta (echivalentul cerintei vechi "Use only real details — invent nothing"), a produs: ${prompt}`);
     assert.match(prompt, /complete words only, no shortening|grammatically correct words/i, `instructiunea de cuvinte complete/gramatica corecta trebuie sa fie prezenta, a produs: ${prompt}`);
     const storyIdx = prompt.search(/Story[^:]*:\s*\S/i);
@@ -136,7 +140,7 @@ test('buildPrompt: o poveste scurta este integrata COMPLET (netrunchiata) alatur
   // eticheta dinaintea povestii difera dupa spatiul disponibil (vezi testul de mai sus) — ce
   // conteaza aici e ca textul povestii insusi ajunge COMPLET, netrunchiat, indiferent de eticheta.
   assert.ok(prompt.includes('Esti cea mai buna prietena.'), `povestea scurta trebuie sa apara integral, netrunchiata, a produs: ${prompt}`);
-  assert.match(prompt, /verse 1:? real,? (not invented,? )?(never-invented )?story detail/i);
+  assert.match(prompt, /verse 1:? real,? (not invented,? )?(never-invented )?story detail|story details throughout|details from the story throughout|weav(e|ing) (real|several)/i);
 });
 
 // ---------------------------------------------------------------------------------------------
