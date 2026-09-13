@@ -78,10 +78,31 @@ test('normalizeSingingText(): elimina controale C0, dar PASTREAZA tab/newline/ca
   assert.equal(normalizeSingingText('a\rb'), 'a\rb', 'carriage-return-ul trebuie pastrat');
 });
 
-test('normalizeSingingText(): corecteaza ș/ț vechi cu sedila (ş/ţ) la forma corecta cu virgula, ambele capitalizari', () => {
+test('normalizeSingingText(): corecteaza ș/ț vechi cu sedila (ş/ţ) la forma corecta cu virgula, ambele capitalizari — comportament implicit (fara `lang`) sau pentru orice limba diferita de "tr"', () => {
   assert.equal(normalizeSingingText('şi ţie'), 'și ție');
   assert.equal(normalizeSingingText('Ştefan'), 'Ștefan');
   assert.equal(normalizeSingingText('Ţara'), 'Țara');
+  assert.equal(normalizeSingingText('şi ţie', 'ro'), 'și ție');
+});
+
+// BUG REAL (2026-09-13, gasit prin testare cu text turcesc autentic — nu presupunere): ş
+// (s-cedilla, U+015F) si ţ (t-cedilla, U+0163) sunt litere CORECTE, native, ale alfabetului
+// turcesc (ex. "yürüyüşü", "tanıştık", "başlangıç") — corectia de mai sus le rescria silentios in
+// litere romanesti (ș/ț, virgula subscrisa), corupand text turcesc valid. `lang==='tr'` dezactiveaza
+// STRICT aceasta corectie — restul normalizarii (NFC, caractere invizibile, punctuatie) ramane
+// neschimbata si pentru turca.
+test('normalizeSingingText(): NU corecteaza ş/ţ cand lang="tr" — sunt litere turcesti corecte, nu o greseala de tastatura ca in romana', () => {
+  const turkish = 'Üniversitede tanıştık, yağmurda yürüyüşü hatırlıyorum, başlangıç güzeldi.';
+  assert.equal(normalizeSingingText(turkish, 'tr'), turkish.normalize('NFC'), 'textul turcesc cu ş/ţ trebuie sa ramana EXACT neschimbat cand lang="tr"');
+  // demonstram si regresia care ar aparea FARA acest parametru — acelasi text, tratat implicit
+  // ca romana (comportamentul dinaintea corectiei), ar fi corupt:
+  assert.notEqual(normalizeSingingText(turkish), turkish.normalize('NFC'), 'fara parametrul lang, corectia romaneasca s-ar aplica gresit si peste text turcesc (comportamentul vechi, bugat)');
+});
+
+test('normalizeSingingText(): pentru "tr", restul normalizarii (NFC, caractere invizibile, punctuatie) ramane neschimbat — STRICT corectia ş/ţ e dezactivata', () => {
+  const withInvisible = 'Merhaba​ dünya';
+  assert.equal(normalizeSingingText(withInvisible, 'tr'), 'Merhaba dünya');
+  assert.equal(normalizeSingingText('a  ,b', 'tr'), 'a,b');
 });
 
 test('normalizeSingingText(): NU rescrie fonetic numele proprii — un nume corect ramane byte-identic (in afara de cedilla/NFC/invizibile)', () => {

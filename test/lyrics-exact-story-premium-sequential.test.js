@@ -199,10 +199,12 @@ test('buildPrompt: separarea poveste 1/poveste 2 Premium ramane corecta cu noua 
 test('server.js: buildExactLyricsRequest trimite versurile editate VERBATIM (customMode:true, campul "prompt" = versurile), niciodata ca instructiune catre un model care le rescrie', () => {
   assert.match(server, /function buildExactLyricsRequest\(order, exactLyrics, genreOverride, voicePreference, feedback\) \{/);
   const idx = server.indexOf('function buildExactLyricsRequest');
-  // fereastra marita (2026-09-07, corectia etichetei de feedback pentru Standard/Premium — vezi
-  // edit-regenerate-direction-change.test.js — a impins din nou "return { style, title, lyrics };"
-  // dincolo de fereastra anterioara de 5200 caractere).
-  const body = server.slice(idx, idx + 5600);
+  // Fereastra e delimitata de sfarsitul REAL al functiei (urmatoarea sectiune a fisierului),
+  // nu de un numar arbitrar de caractere — evita sa se rupa din nou la fiecare corectie viitoare
+  // care lungeste corpul functiei (s-a intamplat de doua ori pana acum, vezi istoricul acestui test).
+  const end = server.indexOf('// EMAIL DE LIVRARE', idx);
+  assert.ok(end > idx, 'trebuie sa gasim sfarsitul sectiunii buildExactLyricsRequest');
+  const body = server.slice(idx, end);
   assert.ok(body.includes('return { style, title, lyrics };'), 'trebuie sa returneze versurile ca un camp separat, netrunchiat de bugetul de stil');
 });
 
@@ -226,32 +228,30 @@ test('server.js: editarea Standard/Video (handleLegacyRegenerate) foloseste vers
   assert.ok(body.includes('exactLyrics: exactLyrics || null'));
 });
 
-// CORECȚIE (2026-08-30, "o schimbare de gen/voce/feedback nu trebuie sa rescrie accidental
-// versurile" — Cadou video): STRICT pentru Video, cand clientul NU a folosit niciodata editorul
-// separat de versuri (editedLyrics gol), exactLyrics cade acum pe originalLyrics ale variantei —
-// niciodata pe buildPrompt() (care ar lasa Suno sa rescrie versurile de la zero). Standard ramane
-// byte-identic (fallback gol, comportament vechi neschimbat, verificat separat mai jos).
-test('server.js: pentru Video, exactLyrics cade pe originalLyrics (nu ramane gol) cand clientul nu a editat niciodata versurile manual — Suno nu mai are voie sa le rescrie la o editare de gen/voce/feedback', () => {
+// SUPERSEDAT (2026-09-13, "feedback despre versuri trebuie sa functioneze la fel in toate cele 3
+// pachete" — cerinta explicita a acestei runde): fallback-ul STRICT-Video pe originalLyrics
+// (introdus 2026-08-30) bloca PERMANENT orice feedback despre versuri pentru Video Gift (in toate
+// limbile) — buildExactLyricsRequest() trimite feedback-ul STRICT catre `style`, niciodata catre
+// `lyrics`, deci "un alt inceput" nu putea NICIODATA schimba versurile cat timp acest fallback
+// exista. Video foloseste ACUM aceeasi regula ca Standard/Premium: exact/locked STRICT cand
+// clientul a folosit explicit editorul dedicat de versuri (editedLyrics existent) — vezi
+// server.js, handleLegacyRegenerate.
+test("server.js: exactLyrics ramane gol ('') pentru Standard SI Video cand nu exista editedLyrics — feedback-ul liber trebuie sa poata regenera versurile prin buildPrompt() in ambele pachete (fallback-ul STRICT-Video pe originalLyrics a fost eliminat)", () => {
   const idx = server.indexOf('async function handleLegacyRegenerate');
   const body = server.slice(idx, idx + 11000);
-  assert.match(body, /order\.plan === 'video' && typeof sourceVariant\.originalLyrics === 'string' \? sourceVariant\.originalLyrics\.trim\(\) : ''/);
-});
-
-test("server.js: pentru Standard, exactLyrics ramane gol ('') cand nu exista editedLyrics — comportament NESCHIMBAT (fallback pe originalLyrics e STRICT pentru Video)", () => {
-  const idx = server.indexOf('async function handleLegacyRegenerate');
-  const body = server.slice(idx, idx + 11000);
-  // simulam sandbox minimal ca sa evaluam expresia reala din server.js, nu o presupunere
-  const exprMatch = body.match(/const exactLyrics = \(typeof sourceVariant\.editedLyrics[\s\S]*?: ''\);/);
-  assert.ok(exprMatch, 'expresia exactLyrics trebuie sa existe in forma noua (cu fallback conditionat de plan)');
-  const fn = new Function('sourceVariant', 'order', `${exprMatch[0]}\nreturn exactLyrics;`);
-  assert.equal(fn({ editedLyrics: null, originalLyrics: 'Versuri originale Standard' }, { plan: 'standard' }), '');
-  assert.equal(fn({ editedLyrics: '', originalLyrics: 'Versuri originale Video' }, { plan: 'video' }), 'Versuri originale Video');
-  assert.equal(fn({ editedLyrics: 'Versuri editate manual', originalLyrics: 'Versuri originale' }, { plan: 'video' }), 'Versuri editate manual');
+  const exprMatch = body.match(/const exactLyrics = \(typeof sourceVariant\.editedLyrics[\s\S]*?: '';/);
+  assert.ok(exprMatch, 'expresia exactLyrics trebuie sa existe');
+  assert.ok(!/order\.plan === 'video'/.test(exprMatch[0]), 'exactLyrics nu mai trebuie sa depinda de order.plan — Video foloseste acum aceeasi regula ca Standard');
+  const fn = new Function('sourceVariant', `${exprMatch[0]}\nreturn exactLyrics;`);
+  assert.equal(fn({ editedLyrics: null, originalLyrics: 'Versuri originale Standard' }), '');
+  assert.equal(fn({ editedLyrics: '', originalLyrics: 'Versuri originale Video' }), '');
+  assert.equal(fn({ editedLyrics: 'Versuri editate manual', originalLyrics: 'Versuri originale' }), 'Versuri editate manual');
 });
 
 test('server.js: editarea selectiva Premium foloseste versurile exacte per melodie (song.exactLyrics), separat de feedback-ul liber', () => {
   const idx = server.indexOf('async function handlePremiumSelectiveRegenerate');
-  const body = server.slice(idx, idx + 10000);
+  const end = server.indexOf('async function handleLegacyRegenerate');
+  const body = server.slice(idx, end);
   assert.ok(body.includes('exactLyrics: exactLyrics || null'));
 });
 
@@ -781,7 +781,10 @@ test('buildExactLyricsRequest: campul style contine acum o cerere explicita de r
   // de mai jos verifica STRICT ca aceasta normalizare e prezenta (nu textul vechi, netrecut prin
   // ea) — comportamentul functional real (nicio schimbare de continut pe text deja curat) e
   // acoperit de test/diction-and-normalization.test.js.
-  assert.ok(body.includes('const lyrics = normalizeSingingText(String(exactLyrics || \'\').trim());'), 'campul lyrics trebuie sa treaca prin normalizeSingingText() (curatare sigura, niciodata rescriere de continut)');
+  // CORECȚIE (2026-09-13, "ş/ţ turcesti corupte in ș/ț romanesti"): normalizeSingingText()
+  // primeste acum si `order.lang`, ca sa dezactiveze corectia cedilla romaneasca STRICT pentru
+  // limba turca — vezi lib/diction.js si test/diction-and-normalization.test.js.
+  assert.ok(body.includes("const lyrics = normalizeSingingText(String(exactLyrics || '').trim(), order.lang);"), 'campul lyrics trebuie sa treaca prin normalizeSingingText() (curatare sigura, niciodata rescriere de continut), cu limba comenzii transmisa explicit');
 });
 
 // ---------------------------------------------------------------------------------------------

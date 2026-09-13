@@ -2521,12 +2521,27 @@ async function handlePremiumSelectiveRegenerate(req, res, next) {
     // daca inca nu a fost editata), le salvam ACUM pe varianta sursa — inainte de a porni
     // regenerarea, ca modificarea manuala sa nu se piarda niciodata, nici daca regenerarea
     // esueaza (acelasi comportament ca POST /variants/:variantId/lyrics, aplicat aici inline).
+    // BUG REAL (gasit prin urmarirea traseului real, 2026-09-13, "feedback-ul liber nu schimba
+    // niciodata versurile in Premium"): campul de versuri din ecranul de editare selectiva
+    // (melodia-mea.html) e ÎNTOTDEAUNA precompletat cu versurile curente si ÎNTOTDEAUNA retrimis
+    // ca `entry.lyrics`, indiferent daca clientul l-a atins sau nu (vezi songPayload() in
+    // melodia-mea.html). `currentEffectiveLyrics` (calculata o singura data, refolosita mai jos
+    // la constructia lui exactLyrics) distinge cele doua cazuri: text NESCHIMBAT (clientul nu a
+    // editat versurile — feedback-ul liber trebuie sa poata REscrie versurile prin buildPrompt())
+    // fata de text CHIAR modificat (versuri exact/locked, protejate, prin buildExactLyricsRequest()
+    // — comportamentul existent, corect, ramane neatins). Inainte de aceasta corectie, ORICE
+    // regenerare Premium prin acest ecran trata versurile ca "exact/locked" (campul era mereu
+    // truthy), deci feedback-ul despre versuri (ex. "un alt inceput") nu putea NICIODATA sa
+    // schimbe versurile — doar campul `style` (gen/voce/mood) era afectat.
+    function currentEffectiveLyrics(sourceVariant) {
+      return (typeof sourceVariant.editedLyrics === 'string' && sourceVariant.editedLyrics.trim())
+        ? sourceVariant.editedLyrics.trim()
+        : (sourceVariant.originalLyrics || '').trim();
+    }
     const lyricsPatches = [];
     for (const song of parsedSongs) {
       if (!song.lyricsInput) continue;
-      const currentEffective = (typeof song.sourceVariant.editedLyrics === 'string' && song.sourceVariant.editedLyrics.trim())
-        ? song.sourceVariant.editedLyrics.trim()
-        : (song.sourceVariant.originalLyrics || '').trim();
+      const currentEffective = currentEffectiveLyrics(song.sourceVariant);
       if (song.lyricsInput !== currentEffective) {
         lyricsPatches.push({ variantId: song.variantId, lyrics: song.lyricsInput });
       }
@@ -2562,8 +2577,18 @@ async function handlePremiumSelectiveRegenerate(req, res, next) {
     // putea rescrie propriile versuri). Transmis SEPARAT catre runPremiumEditGeneration, care
     // il trimite verbatim prin customMode:true (vezi buildExactLyricsRequest) — `feedback`
     // ramane STRICT observatia libera a clientului (voce/gen/alte cereri), niciodata versuri.
+    // CORECȚIE (2026-09-13): un `lyricsInput` IDENTIC cu versurile efective curente nu reprezinta
+    // o editare explicita — vezi currentEffectiveLyrics() mai sus — deci NU trebuie tratat ca
+    // exact/locked doar pentru ca ecranul il retrimite mereu precompletat. Ramane locked STRICT
+    // daca (a) clientul chiar l-a schimbat acum, sau (b) era deja locked dintr-o runda anterioara
+    // (editedLyrics existent) — in ambele cazuri, continutul locked ramane protejat de feedback,
+    // exact cerinta P3 ("exact/locked lyrics au prioritate fata de feedback-ul liber").
     const editSongsForGeneration = parsedSongs.map(song => {
-      const exactLyrics = song.lyricsInput || (typeof song.sourceVariant.editedLyrics === 'string' ? song.sourceVariant.editedLyrics.trim() : '');
+      const currentEffective = currentEffectiveLyrics(song.sourceVariant);
+      const isGenuineLyricsEdit = song.lyricsInput && song.lyricsInput !== currentEffective;
+      const exactLyrics = isGenuineLyricsEdit
+        ? song.lyricsInput
+        : (typeof song.sourceVariant.editedLyrics === 'string' ? song.sourceVariant.editedLyrics.trim() : '');
       return { variantId: song.variantId, feedback: song.feedback, exactLyrics: exactLyrics || null, voicePreference: song.songVoice };
     });
 
@@ -2688,18 +2713,22 @@ async function handleLegacyRegenerate(req, res, next) {
     // clientului (voce/gen/alte cereri), niciodata versuri. Nu folosim niciodata versurile
     // altei variante decat cea aleasa explicit.
     // CORECȚIE (2026-08-30, "o schimbare de gen/voce/feedback nu trebuie sa rescrie accidental
-    // versurile" — Cadou video): STRICT pentru Video (Standard ramane byte-identic, cerinta
-    // explicita de scope), cand clientul edita DOAR gen/voce/feedback prin meniul mare (fara sa
-    // fi folosit vreodata editorul separat de versuri), editedLyrics era gol -> runGeneration
-    // cadea pe buildPrompt() (customMode:false), care lasa Suno sa REscrie versurile din poveste
-    // de la zero — o schimbare de atmosfera putea produce accidental versuri diferite de cele pe
-    // care clientul le-a auzit deja si le-a ales. Pentru Video, folosim ACUM intotdeauna calea
-    // verbatim (buildExactLyricsRequest) — editedLyrics daca exista, altfel chiar versurile deja
-    // generate ale variantei (originalLyrics) — garantand ca versurile raman EXACT cele alese,
-    // indiferent ce alt camp s-a schimbat.
+    // versurile" — Cadou video): fortase STRICT pentru Video intotdeauna calea verbatim
+    // (buildExactLyricsRequest), chiar si fara nicio editare explicita de versuri — editedLyrics
+    // gol cadea pe originalLyrics, niciodata pe buildPrompt().
+    // CORECȚIE (2026-09-13, "feedback despre versuri nu functioneaza pentru Video Gift" — cerinta
+    // explicita, toate pachetele trebuie sa trateze feedback-ul liber la fel): fallback-ul de mai
+    // sus bloca ORICE feedback despre versuri (ex. "un alt inceput") pentru Video, permanent, in
+    // toate limbile — versurile ramaneau mereu identice cu cele deja generate, indiferent ce cerea
+    // clientul in campul liber, pentru ca buildExactLyricsRequest() trimite feedback-ul STRICT catre
+    // `style`, niciodata catre `lyrics`. Video foloseste ACUM exact aceeasi regula ca Standard —
+    // exact/locked STRICT cand clientul a folosit explicit editorul dedicat de versuri
+    // (editedLyrics existent); altfel, buildPrompt() regenereaza versurile, lasand feedback-ul
+    // liber sa le influenteze, exact ca la Standard/Premium (comportament acum comun tuturor celor
+    // 3 pachete). Versurile editate manual raman la fel de protejate ca inainte — NESCHIMBAT.
     const exactLyrics = (typeof sourceVariant.editedLyrics === 'string' && sourceVariant.editedLyrics.trim())
       ? sourceVariant.editedLyrics.trim()
-      : (order.plan === 'video' && typeof sourceVariant.originalLyrics === 'string' ? sourceVariant.originalLyrics.trim() : '');
+      : '';
 
     // Daca clientul a cerut si o schimbare de gen, actualizam ACUM coloana corecta din DB
     // (genre pentru Standard sau varianta 1, genre2 pentru varianta 2 la Premium/Video) —
@@ -8006,6 +8035,22 @@ const BRIGHTEN_MOOD_CLAUSE = ' Interpret this as a request for a brighter, energ
 // producea exact aceasta eroare falsa pentru "Mai veselă" pe o comanda tipica).
 const VIDEO_FEEDBACK_PRIORITY_LABEL = ' Client override (priority): ';
 
+// CAUZA REALA (2026-09-13, gasita prin urmarirea traseului real, nu presupunere) — de ce genul
+// se schimba corect la o regenerare dar feedback-ul liber ("mai de jale", "un alt inceput") era
+// slab respectat pentru Standard/Premium: buildPrompt() repeta, de DOUA ori, o instructiune FIXA,
+// necondiționata ("open verse 1 with a real detail from the story" — vezi currentInstruction() si
+// storyLabelFull/Short mai jos), care ramane identica la fiecare regenerare (aceeasi poveste) —
+// asta impinge modelul sa reproduca un inceput similar de fiecare data, chiar cand feedback-ul
+// cere explicit altceva. Feedback-ul verbatim al clientului (deja livrat corect, vezi corectiile
+// 2026-09-06/07 de mai sus) nu avea NICIUN semnal ca trebuie sa aiba prioritate fata de instructiunile
+// fixe de mai sus — spre deosebire de Video, care are deja VIDEO_FEEDBACK_PRIORITY_LABEL. Aceasta
+// clauza generalizeaza acelasi principiu la TOATE planurile si la ORICE tip de feedback (muzical
+// SAU despre versuri, nu doar "mai vesel") — adaugata STRICT ca adaos opțional, dupa feedback-ul
+// verbatim, NICIODATA pe seama rezervei minime garantate pentru poveste (acelasi tratament ca
+// BRIGHTEN_MOOD_CLAUSE mai sus). Scurta, deliberat — bugetul de 600 caractere al buildPrompt() e
+// deja strans; o formulare lunga nu ar incapea aproape niciodata alaturi de o poveste completa.
+const FEEDBACK_PRIORITY_CLAUSE = ' This request takes priority over any conflicting instruction above.';
+
 // ==========================================================================================
 // COERENTA NARATIVA A EXPEDITORULUI (2026-08-24) — cauza reala raportata: pentru o comanda cu
 // UN SINGUR expeditor ("bunicul Andrei") si un mesaj explicit la persoana I singular ("te
@@ -8329,9 +8374,9 @@ function buildPrompt(order, feedback, genreOverride) {
   // ş/ţ->ș/ț + punctuatie prudenta. Niciodata mareste lungimea textului (doar o poate scurta
   // usor, prin eliminarea caracterelor invizibile), deci nu poate destabiliza cascada de
   // scurtare deja testata mai jos — o face, daca ceva, marginal mai permisiva.
-  let recipient = truncateSafely(normalizeSingingText(String(order.recipient || '').trim()), recipientIsProtectedCombo ? 140 : RECIPIENT_MAX_LEN);
-  let sender = hasSender ? truncateSafely(normalizeSingingText(order.senderName.trim()), SENDER_MAX_LEN) : '';
-  let relationship = hasRelationship ? truncateSafely(normalizeSingingText(order.relationship.trim()), RELATIONSHIP_MAX_LEN) : '';
+  let recipient = truncateSafely(normalizeSingingText(String(order.recipient || '').trim(), order.lang), recipientIsProtectedCombo ? 140 : RECIPIENT_MAX_LEN);
+  let sender = hasSender ? truncateSafely(normalizeSingingText(order.senderName.trim(), order.lang), SENDER_MAX_LEN) : '';
+  let relationship = hasRelationship ? truncateSafely(normalizeSingingText(order.relationship.trim(), order.lang), RELATIONSHIP_MAX_LEN) : '';
 
   // Instructiunea de voce e SEPARATA de personalizare (nume, relatie, poveste) — o propozitie
   // proprie, scurta, niciodata amestecata in aceeasi fraza cu destinatarul/expeditorul/relatia.
@@ -8627,6 +8672,14 @@ function buildPrompt(order, feedback, genreOverride) {
           remaining -= BRIGHTEN_MOOD_CLAUSE.length;
         }
       }
+      // MASURAT DIRECT (2026-09-13, nu presupus): FEEDBACK_PRIORITY_CLAUSE (vezi definitia ei mai
+      // sus) NU a fost adaugata aici — verificat exhaustiv ca, la fel ca BRIGHTEN_MOOD_CLAUSE,
+      // "remaining" la acest punct e aproape mereu SUB (STORY_MIN_RESERVE + lungimea clauzei),
+      // chiar si pentru o comanda deliberat minimala (poveste de 15 caractere, fara expeditor,
+      // ocazie "altceva") — ar fi cod mort, niciodata activ pe date reale, pentru bugetul de 600
+      // caractere al buildPrompt(). Clauza ramane utila si FUNCTIONALA STRICT pentru
+      // buildExactLyricsRequest() (buget 1000 caractere, mult mai generos — vezi mai jos), unde
+      // conteaza cel mai mult (feedback despre stil/interpretare, langa versuri deja blocate).
     }
   }
   if (remaining < 0) remaining = 0;
@@ -8676,7 +8729,7 @@ function buildPrompt(order, feedback, genreOverride) {
 
   let storyFull = '';
   if (storyBudget > 0) {
-    const storyTrimmed = truncateSafely(normalizeSingingText(order.story), storyBudget);
+    const storyTrimmed = truncateSafely(normalizeSingingText(order.story, order.lang), storyBudget);
     if (storyTrimmed) {
       storyFull = `${storyLabel}${storyTrimmed}`;
     }
@@ -8746,7 +8799,7 @@ function buildPrompt(order, feedback, genreOverride) {
 // toAss) si orice afisare catre client continua sa citeasca STRICT campul original din DB,
 // niciodata aceasta copie locala.
 function buildExactLyricsRequest(order, exactLyrics, genreOverride, voicePreference, feedback) {
-  const lyrics = normalizeSingingText(String(exactLyrics || '').trim());
+  const lyrics = normalizeSingingText(String(exactLyrics || '').trim(), order.lang);
   if (!lyrics) {
     throw new Error('Versurile editate sunt goale — cererea cu versuri exacte nu poate fi trimisa.');
   }
@@ -8812,7 +8865,15 @@ function buildExactLyricsRequest(order, exactLyrics, genreOverride, voicePrefere
         throw new Error('Instrucțiunea ta de stil e prea lungă ca să încapă alături de versurile alese — scurteaz-o și încearcă din nou.');
       }
     }
-    style += `${label}${feedbackText}${brighten}`;
+    // Vezi comentariul de la FEEDBACK_PRIORITY_CLAUSE (buildPrompt) — acelasi principiu, aplicat
+    // si aici: feedback-ul despre stil/interpretare (ex. "mai de jale", "mai lent") trebuie sa
+    // aiba prioritate fata de descrierea fixa a genului (styleTags), nu doar fata de mood-ul
+    // "vesel/trist" deja acoperit de BRIGHTEN_MOOD_CLAUSE. Bugetul de 1000 caractere e generos,
+    // deci incape aproape intotdeauna — adaos optional, niciodata parte din verificarea stricta
+    // de mai sus (care priveste STRICT textul verbatim al clientului).
+    const priority = (Array.from(style).length + Array.from(`${label}${feedbackText}${brighten}${FEEDBACK_PRIORITY_CLAUSE}`).length <= 1000)
+      ? FEEDBACK_PRIORITY_CLAUSE : '';
+    style += `${label}${feedbackText}${brighten}${priority}`;
   }
   style = truncateSafely(style, 1000);
 
