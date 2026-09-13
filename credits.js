@@ -205,11 +205,15 @@ async function checkThresholdsAndAlert(db) {
 
   if (ADMIN_ALERT_EMAIL && process.env.RESEND_API_KEY) {
     try {
+      // CERINTA (2026-09-13, runda 3): acelasi nume de expeditor "Naluna Studio" ca la emailul
+      // de livrare (server.js sendDeliveryEmail) — aceeasi adresa/configurare Resend, neschimbata.
+      const rawFromAddress = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
+      const fromWithDisplayName = rawFromAddress.includes('<') ? rawFromAddress : `Naluna Studio <${rawFromAddress}>`;
       const res = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          from: process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev',
+          from: fromWithDisplayName,
           to: ADMIN_ALERT_EMAIL,
           subject: `Naluna: credite SunoAPI sub ${pctLabel}`,
           html: `<p>${message}</p>`,
@@ -343,11 +347,15 @@ async function sendThresholdAlertEmail({ currentBalance, previousBalance, stats 
     <p>Data/ora (UK): ${timestamp}</p>
   `;
 
+  // CERINTA (2026-09-13, runda 3): acelasi nume de expeditor "Naluna Studio" ca la emailul de
+  // livrare (server.js sendDeliveryEmail) — aceeasi adresa/configurare Resend, neschimbata.
+  const rawFromAddressFixedAlert = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
+  const fromWithDisplayNameFixedAlert = rawFromAddressFixedAlert.includes('<') ? rawFromAddressFixedAlert : `Naluna Studio <${rawFromAddressFixedAlert}>`;
   const attempt = async () => fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      from: process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev',
+      from: fromWithDisplayNameFixedAlert,
       to: ADMIN_ALERT_EMAIL,
       subject: `Naluna Alert: Credits Reached ${FIXED_ALERT_THRESHOLD}`,
       html,

@@ -9270,11 +9270,20 @@ async function sendDeliveryEmail(order) {
 
   const template = templates[order.lang] || templates.ro;
 
+  // CERINTA (2026-09-13, runda 3): numele afisat expeditorului ("From") trebuie sa fie
+  // "Naluna Studio" pentru toate emailurile, pastrand ACEEASI adresa/configurare Resend
+  // (RESEND_FROM_EMAIL ramane neschimbata — vezi .env.example, un simplu email fara nume).
+  // Adaugam numele DOAR daca adresa nu il are deja pe cont propriu (defensiv — daca cineva
+  // configureaza vreodata direct un format "Nume <email>" in variabila de mediu, nu il
+  // suprascriem/dublam).
+  const rawFromAddress = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
+  const fromWithDisplayName = rawFromAddress.includes('<') ? rawFromAddress : `Naluna Studio <${rawFromAddress}>`;
+
   const res = await fetchWithTimeout('https://api.resend.com/emails', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      from: process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev',
+      from: fromWithDisplayName,
       // Raspunsul clientului la emailul de livrare (intrebari, probleme cu comanda) trebuie
       // sa ajunga la adresa publica de contact, nu la adresa tehnica de trimitere automata.
       reply_to: 'contact@nalunastudio.com',
