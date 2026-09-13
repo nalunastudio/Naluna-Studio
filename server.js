@@ -512,6 +512,52 @@ function invalidGenreMessage(lang) {
   return INVALID_GENRE_MESSAGES[safe];
 }
 
+// AUDIT PRE-LAUNCH (2026-09-13, Faza D1 — "8 limbi", validare live): POST /api/orders folosea
+// deja safeLang/missingFieldMessage/invalidPhoneMessage pentru majoritatea erorilor de validare,
+// dar patru verificari din ACELASI bloc (ocazie, ocazie melodia 2, email, pachet) raman
+// necorectat cu mesaje hardcodate STRICT in romana — verificat live: un client care completeaza
+// comanda in orice alta limba si declanseaza una din aceste erori (ex. campul de email invalid)
+// primeste un mesaj in romana, nu in limba lui. Adaugate cele 8 traduceri, acelasi tipar exact ca
+// INVALID_GENRE_MESSAGES/missingFieldMessage de mai sus.
+const INVALID_OCCASION_MESSAGES = {
+  ro: 'Ocazie invalidă.', en: 'Invalid occasion.', de: 'Ungültiger Anlass.',
+  es: 'Ocasión no válida.', it: 'Occasione non valida.', fr: "Occasion invalide.",
+  bg: 'Невалиден повод.', tr: 'Geçersiz özel gün.'
+};
+function invalidOccasionMessage(lang) {
+  const safe = ALLOWED_LANGS.includes(lang) ? lang : 'ro';
+  return INVALID_OCCASION_MESSAGES[safe];
+}
+const INVALID_OCCASION2_MESSAGES = {
+  ro: 'Ocazie invalidă pentru a doua melodie.', en: 'Invalid occasion for the second song.',
+  de: 'Ungültiger Anlass für das zweite Lied.', es: 'Ocasión no válida para la segunda canción.',
+  it: 'Occasione non valida per la seconda canzone.', fr: "Occasion invalide pour la deuxième chanson.",
+  bg: 'Невалиден повод за втората песен.', tr: 'İkinci şarkı için geçersiz özel gün.'
+};
+function invalidOccasion2Message(lang) {
+  const safe = ALLOWED_LANGS.includes(lang) ? lang : 'ro';
+  return INVALID_OCCASION2_MESSAGES[safe];
+}
+const INVALID_EMAIL_MESSAGES = {
+  ro: 'Adresa de email nu este validă.', en: 'The email address is not valid.',
+  de: 'Die E-Mail-Adresse ist ungültig.', es: 'La dirección de correo electrónico no es válida.',
+  it: "L'indirizzo email non è valido.", fr: "L'adresse e-mail n'est pas valide.",
+  bg: 'Имейл адресът не е валиден.', tr: 'E-posta adresi geçerli değil.'
+};
+function invalidEmailMessage(lang) {
+  const safe = ALLOWED_LANGS.includes(lang) ? lang : 'ro';
+  return INVALID_EMAIL_MESSAGES[safe];
+}
+const INVALID_PLAN_MESSAGES = {
+  ro: 'Pachet invalid.', en: 'Invalid package.', de: 'Ungültiges Paket.',
+  es: 'Paquete no válido.', it: 'Pacchetto non valido.', fr: 'Forfait invalide.',
+  bg: 'Невалиден пакет.', tr: 'Geçersiz paket.'
+};
+function invalidPlanMessage(lang) {
+  const safe = ALLOWED_LANGS.includes(lang) ? lang : 'ro';
+  return INVALID_PLAN_MESSAGES[safe];
+}
+
 // Validare E.164 STRICT independenta de tara — NU presupune si NU forteaza niciodata un
 // prefix anume (ex. +44). Accepta orice tara valida: "+" urmat de 7-15 cifre, prima cifra
 // nefiind 0 (asa cum cere standardul E.164). Numarul trebuie sa fi fost deja normalizat de
@@ -1998,7 +2044,7 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
     const safeLang = ALLOWED_LANGS.includes(lang) ? lang : 'ro';
 
     if (!ALLOWED_OCCASIONS.includes(occasion)) {
-      return res.status(400).json({ error: 'Ocazie invalidă.' });
+      return res.status(400).json({ error: invalidOccasionMessage(safeLang) });
     }
 
     // MODIFICARE STRICTĂ — pagina de ocazie (hotfix 2026-08-08): relatia destinatarului
@@ -2114,7 +2160,7 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
       return res.status(400).json({ error: missingFieldMessage('relationship', safeLang) });
     }
     if (!isValidEmail(email)) {
-      return res.status(400).json({ error: 'Adresa de email nu este validă.' });
+      return res.status(400).json({ error: invalidEmailMessage(safeLang) });
     }
     // Telefonul (WhatsApp) e OPTIONAL — gol e intotdeauna acceptat. Daca e trimis, TREBUIE sa
     // fie deja format international E.164 (frontend-ul il normalizeaza inainte sa trimita) —
@@ -2129,10 +2175,10 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
       return res.status(400).json({ error: missingFieldMessage('story', safeLang) });
     }
     if (!ALLOWED_GENRES.includes(genre)) {
-      return res.status(400).json({ error: 'Gen muzical invalid.' });
+      return res.status(400).json({ error: invalidGenreMessage(safeLang) });
     }
     if (!PLAN_PRICES[plan]) {
-      return res.status(400).json({ error: 'Pachet invalid.' });
+      return res.status(400).json({ error: invalidPlanMessage(safeLang) });
     }
     // REGULA FINALA A PACHETELOR (corectata 2026-08-14): Standard SI Video = o singura
     // melodie initiala, un singur gen (Video primeste apoi o singura editare gratuita, care
@@ -2187,7 +2233,7 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
       safeSong2Target = song2Target;
       if (song2Target === 'other') {
         if (!ALLOWED_OCCASIONS.includes(occasion2)) {
-          return res.status(400).json({ error: 'Ocazie invalidă pentru a doua melodie.' });
+          return res.status(400).json({ error: invalidOccasion2Message(safeLang) });
         }
         safeOccasion2 = occasion2;
 
