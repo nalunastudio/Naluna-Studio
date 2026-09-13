@@ -8892,6 +8892,24 @@ function buildPrompt(order, feedback, genreOverride) {
   // DOAR pentru poveste (comportamentul original) — dictia e omisa cu gratie STRICT in acel caz
   // extrem, NICIODATA in detrimentul rezervei garantate pentru poveste (STORY_MIN_RESERVE).
   const dictionInstruction = getDictionInstruction(order.lang, 'short');
+  // OBIECTIV UNIC (2026-09-13, "durata melodiei 3:15-3:40"): confirmat prin citirea directa a
+  // callMusicProvider() (requestBody trimis catre SunoAPI.org /api/v1/generate) ca V4_5/V4_5ALL nu
+  // primeste NICIODATA un camp de durata — furnizorul nu expune asa ceva, deci nu poate garanta
+  // matematic intervalul cerut. Singura parghie reala e un indiciu text catre model, exact ca
+  // indiciul deja existent "Start the vocals around 8-10 seconds" de mai sus (aceeasi natura de
+  // instructiune, acelasi grad de certitudine — cerere, nu comanda garantata).
+  // Tratat STRICT ca al treilea "extra" optional, dupa modelul deja testat pentru
+  // dictionInstruction/bracketLanguageClause mai jos (pickStoryLabel/storyTextFloor) — dar cu
+  // PRIORITATE MAI MICA decat amandoua (e sacrificat PRIMUL dintre cele trei, niciodata ultimul):
+  // o incercare initiala de a-i da prioritate mai mare a REGRESAT dictionInstruction/
+  // bracketLanguageClause pentru comenzi tipice (gasit prin testare directa, corectat imediat) —
+  // functiile deja existente si testate raman intotdeauna mai protejate decat acest obiectiv nou.
+  // Verificat prin masurare directa pe comenzi reale (poveste scurta/medie/lunga, cele mai grele
+  // campuri/genuri/ocazii): mecanismul NU coboara niciodata povestea sub storyTextFloor (aceeasi
+  // garantie matematica, neschimbata) si NU schimba niciodata comportamentul dictiei/parantezelor
+  // — in comenzi tipice/ample (expeditor numit + limba non-engleza), indiciul e frecvent omis cu
+  // gratie, niciodata pe seama povestii sau a functiilor deja existente.
+  const durationTargetClause = ' Target song length 3:15-3:40.';
   // PUNCT 3 (2026-09-06): vezi si comentariul de mai jos, la locul unde e efectiv adaugata in
   // prompt — mutata AICI (calculata devreme) ca sa poata fi rezervata, la fel ca dictia, INAINTE
   // de a alege eticheta povestii, nu doar incercata "daca mai ramane loc" dupa (verificat direct:
@@ -8927,7 +8945,12 @@ function buildPrompt(order, feedback, genreOverride) {
   const desiredStoryTextLen = Array.from(normalizeSingingText(order.story, order.lang) || '').length;
   const storyTextFloor = Math.min(desiredStoryTextLen, STORY_MIN_RESERVE);
   function pickStoryLabel(reserveLevel) {
-    // reserveLevel: 2 = dictie + eticheta paranteze, 1 = doar dictie, 0 = niciuna
+    // reserveLevel: 2 = dictie + eticheta paranteze, 1 = doar dictie, 0 = niciuna — NESCHIMBAT
+    // fata de comportamentul dinainte de OBIECTIV UNIC (durata): indiciul de durata NU
+    // influenteaza niciodata aceste praguri (vezi canReserveForDuration mai jos, calculat STRICT
+    // dupa ce dictia/parantezele si-au rezervat deja spatiul, niciodata inainte) — evita exact
+    // regresia gasita prin testare (dictionInstruction/bracketLanguageClause pierdeau comenzi pe
+    // care le castigau inainte de aceasta modificare).
     const extra = reserveLevel === 2 ? (dictionInstruction.length + bracketLanguageClause.length)
       : reserveLevel === 1 ? dictionInstruction.length : 0;
     let label = storyLabelFull;
@@ -8945,7 +8968,13 @@ function buildPrompt(order, feedback, genreOverride) {
   }
   const reservedExtra = canReserveForBoth ? (dictionInstruction.length + bracketLanguageClause.length)
     : canReserveForDiction ? dictionInstruction.length : 0;
-  const storyBudget = remaining - storyLabel.length - reservedExtra;
+  // OBIECTIV UNIC (2026-09-13): indiciul de durata e STRICT ultimul in prioritate dintre cele
+  // trei extra-uri optionale — verificat DOAR cu spatiul CHIAR ramas dupa ce dictia/parantezele
+  // si-au rezervat deja tot ce le trebuie (reservedExtra de mai sus, neschimbat), niciodata
+  // inaintea lor — garanteaza ca dictia/parantezele raman byte-identice cu comportamentul
+  // dinainte de aceasta modificare, si ca povestea nu coboara niciodata sub storyTextFloor.
+  const canReserveForDuration = (remaining - storyLabel.length - reservedExtra - durationTargetClause.length) >= storyTextFloor;
+  const storyBudget = remaining - storyLabel.length - reservedExtra - (canReserveForDuration ? durationTargetClause.length : 0);
 
   let storyFull = '';
   if (storyBudget > 0) {
@@ -8973,6 +9002,13 @@ function buildPrompt(order, feedback, genreOverride) {
   // plasa de siguranta (feedback-ul/alte piese pot varia usor fata de estimarea initiala).
   if (canReserveForDiction && prompt.length + dictionInstruction.length <= SUNO_PROMPT_MAX_LEN) {
     prompt += dictionInstruction;
+  }
+
+  // OBIECTIV UNIC (2026-09-13): adaugat ULTIMUL dintre cele trei extra-uri optionale, cu cea mai
+  // mica prioritate de rezervare (vezi canReserveForDuration mai sus — calculat DUPA ce dictia/
+  // parantezele si-au rezervat deja spatiul) — niciodata pe seama povestii sau a lor.
+  if (canReserveForDuration && prompt.length + durationTargetClause.length <= SUNO_PROMPT_MAX_LEN) {
+    prompt += durationTargetClause;
   }
 
   // PUNCT 3 (2026-09-06, "indicatiile de regie/structura intre paranteze raman in engleza chiar
@@ -9063,7 +9099,16 @@ function buildExactLyricsRequest(order, exactLyrics, genreOverride, voicePrefere
   // limbii versurilor — bugetul `style` (1000 caractere) e mult mai generos decat cel al
   // buildPrompt() (600), asa ca aici NU trebuie comprimata la forma "short".
   const dictionInstruction = getDictionInstruction(order.lang, 'full');
-  let style = `${styleTags}. Sing entirely in ${lyricsLanguage}. Short natural intro, vocals starting around 8-10 seconds. Fully sung vocal performance throughout.${VOICE_STYLE_NOTE[effectiveVoice]}${dictionInstruction} Sing these exact lyrics precisely as written, word for word — never paraphrase, alter, skip, or add words.`;
+  // OBIECTIV UNIC (2026-09-13, "durata melodiei 3:15-3:40"): SunoAPI.org nu expune niciun
+  // parametru real de durata (verificat direct in callMusicProvider() — requestBody trimis catre
+  // /api/v1/generate nu contine niciun camp de lungime/durata) — singura parghie posibila e un
+  // indiciu text, in stil identic cu indiciile deja existente mai sus ("Short natural intro,
+  // vocals starting around 8-10 seconds"), fara nicio garantie matematica din partea furnizorului.
+  // Aici (customMode:true, versuri deja fixate/blocate) bugetul `style` (1000 caractere) are
+  // rezerva foarte generoasa (masurat direct: chiar si cel mai lung gen + cea mai lunga
+  // instructiune de dictie + indiciul de durata insumeaza sub 720 caractere, inainte de feedback)
+  // — adaugat necondiționat, fara nicio scurtare a versurilor sau schimbare de tempo.
+  let style = `${styleTags}. Sing entirely in ${lyricsLanguage}. Short natural intro, vocals starting around 8-10 seconds. Fully sung vocal performance throughout.${VOICE_STYLE_NOTE[effectiveVoice]}${dictionInstruction} Sing these exact lyrics precisely as written, word for word — never paraphrase, alter, skip, or add words. Target song length 3:15-3:40.`;
   if (feedbackText) {
     const isVideoPlan = order.plan === 'video';
     // CORECTIE (2026-09-07, gasita prin executie reala — nu presupunere): eticheta pentru
