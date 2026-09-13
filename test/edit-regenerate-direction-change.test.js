@@ -83,8 +83,8 @@ for (const plan of ['standard', 'premium']) {
     const edited = buildPrompt(realisticOrder(plan, 'motivational'), 'mai vesela', 'motivational');
 
     assert.notEqual(initial, edited, `${plan}: promptul editat trebuie sa difere de cel initial`);
-    assert.match(edited, /inspirational anthem, driving toms, major-key triumphant chords/i, `${plan}: tag-ul de stil pentru Motivational trebuie sa apara`);
-    assert.ok(!edited.includes('intimate romantic ballad'), `${plan}: tag-ul vechi (Romantic) nu trebuie sa mai apara`);
+    assert.match(edited, /motivational anthem, builds from moderate to high energy/i, `${plan}: tag-ul de stil pentru Motivational trebuie sa apara`);
+    assert.ok(!edited.includes('timeless romantic love song'), `${plan}: tag-ul vechi (Romantic) nu trebuie sa mai apara`);
     assert.ok(edited.includes('mai vesela'), `${plan}: feedback-ul verbatim al clientului trebuie sa apara in prompt — inainte de fix, disparea complet pentru o comanda tipica`);
   });
 }

@@ -462,11 +462,12 @@ test('server.js: toate cele 15 genuri existente raman mapate — niciunul elimin
 });
 
 // ---------------------------------------------------------------------------------------------
-// CERINTE (2026-08-13, runda 7, "profilurile Hip-Hop și Rock"): DOAR aceste doua chei din
-// GENRE_STYLE_MAP au fost rescrise, ca melodia sa fie imediat recognoscibila drept genul ales —
-// celelalte 13 genuri raman byte-identice cu inainte. Niciun nume de artist, titlu de piesa sau
-// link TikTok nu apare in text (cerinta explicita — referintele trebuie transformate in
-// caracteristici muzicale generale, niciodata citate direct).
+// CERINTE (2026-08-13, runda 7, "profilurile Hip-Hop și Rock") — SUPRASEDATE 2026-09-13 de
+// corectia completa de diferentiere a celor 16 genuri noi (toate 16 rescrise acum, nu doar
+// aceste doua) — verificarile de mai jos raman valabile ca nivel MINIM de caracteristici
+// obligatorii, actualizate sa reflecte noile descrieri compacte. Niciun nume de artist, titlu
+// de piesa sau link TikTok nu apare in text (verificat programatic, vezi si
+// test/genre-differentiation-v2.test.js).
 // ---------------------------------------------------------------------------------------------
 test('server.js: profilul Hip-Hop (GENRE_STYLE_MAP.hiphop) contine caracteristicile obligatorii — beat/kick/snare/hi-hat/bass, hook melodic scurt, versuri ritmice apropiate de rap, dictie clara, refren melodic, mix modern curat', () => {
   const idx = server.indexOf('const GENRE_STYLE_MAP = {');
@@ -514,11 +515,12 @@ test('server.js: descrierile Hip-Hop si Rock nu contin nume de artisti, titluri 
   });
 });
 
-// CORECȚIE (2026-08-31, "16 genuri"): "pop" a fost REDESENAT intentionat ca parte a noii liste
-// de 16 genuri (vezi test/genre-16-new-list.test.js) — scos din setul "neschimbat" de mai jos.
-// Toate celelalte 12 raman byte-identice, inclusiv hiphop/rock (deja rescrise intr-o runda
-// anterioara, nemaischimbate acum).
-test('server.js: celelalte 12 genuri raman BYTE-IDENTICE cu inainte de aceasta runda — DOAR "pop" a mai fost rescris intentionat (cerinta 16 genuri)', () => {
+// CORECȚIE (2026-09-13, "diferentiere muzicala reala"): toate cele 16 NEW_GENRES au fost
+// rescrise intentionat, cu aprobare explicita, ca sa aiba identitate muzicala reala,
+// diferentiata (vezi test/genre-differentiation-v2.test.js pentru verificarea completa a
+// noilor descrieri). STRICT cele 7 chei LEGACY_ONLY_GENRES (pastrate byte-identic pentru
+// regenerarea comenzilor vechi, niciodata aratate clientilor noi) raman verificate aici.
+test('server.js: cele 7 chei LEGACY_ONLY_GENRES raman BYTE-IDENTICE — NU au fost atinse de corectia de diferentiere a celor 16 genuri noi', () => {
   const idx = server.indexOf('const GENRE_STYLE_MAP = {');
   const end = server.indexOf('};', idx);
   const body = server.slice(idx, end);
@@ -529,15 +531,10 @@ test('server.js: celelalte 12 genuri raman BYTE-IDENTICE cu inainte de aceasta r
     petrecere: 'fast Romanian party beat, 130+bpm, syncopated dance rhythm, horns and synth stabs, shouted chorus, club energy',
     balada: 'slow rubato piano ballad, sustained strings, no beat, dramatic dynamic swells, powerful sustained vocal',
     manele: 'Romanian manele de jale, oriental scale, mournful clarinet, melismatic vocal slides, minor key grief',
-    copii: 'cheerful childrens song, simple major-key melody, glockenspiel and ukulele, bouncy rhythm, bright vocal',
-    populara: 'Romanian muzica populara, taraf violin and accordion, rustic dance rhythm, unornamented vocal, no autotune',
-    colind: 'traditional Romanian carol, sleigh bells and choir, warm acoustic guitar, gentle festive reverent vocal',
-    modern: 'sleek modern pop-electronic, deep 808 sub bass, glossy synth pads, vocal chops, minimalist premium production',
-    manele_suflet: 'Romanian manele de suflet, oriental scale, romantic clarinet, warm melismatic vocal, devoted love build',
-    motivational: 'inspirational anthem, driving toms, major-key triumphant chords, confident vocal, uplifting final chorus'
+    modern: 'sleek modern pop-electronic, deep 808 sub bass, glossy synth pads, vocal chops, minimalist premium production'
   };
   Object.entries(unchanged).forEach(([genre, expectedTag]) => {
-    assert.ok(body.includes(`${genre}: '${expectedTag}'`), `genul "${genre}" trebuie sa ramana neschimbat, a produs alta valoare`);
+    assert.ok(body.includes(`${genre}: '${expectedTag}'`), `cheia legacy "${genre}" trebuie sa ramana neschimbata, a produs alta valoare`);
   });
 });
 
@@ -549,10 +546,10 @@ test('buildPrompt: comanda cu genre=hiphop primeste STRICT profilul Hip-Hop in p
   };
   const hiphopPrompt = buildPrompt({ ...baseOrder, genre: 'hiphop' }, '', undefined);
   const rockPrompt = buildPrompt({ ...baseOrder, genre: 'rock' }, '', undefined);
-  assert.match(hiphopPrompt, /modern hip-hop/i, `promptul pentru genre=hiphop trebuie sa contina profilul Hip-Hop, a produs: ${hiphopPrompt}`);
+  assert.match(hiphopPrompt, /hip-hop/i, `promptul pentru genre=hiphop trebuie sa contina profilul Hip-Hop, a produs: ${hiphopPrompt}`);
   assert.ok(!/distorted electric guitar/i.test(hiphopPrompt), `promptul pentru genre=hiphop NU trebuie sa contina profilul Rock, a produs: ${hiphopPrompt}`);
   assert.match(rockPrompt, /distorted electric guitar/i, `promptul pentru genre=rock trebuie sa contina profilul Rock, a produs: ${rockPrompt}`);
-  assert.ok(!/modern hip-hop/i.test(rockPrompt), `promptul pentru genre=rock NU trebuie sa contina profilul Hip-Hop, a produs: ${rockPrompt}`);
+  assert.ok(!/hip-hop/i.test(rockPrompt), `promptul pentru genre=rock NU trebuie sa contina profilul Hip-Hop, a produs: ${rockPrompt}`);
   // versurile/povestea/vocea raman neschimbate — doar stilul difera intre cele doua prompturi.
   assert.ok(hiphopPrompt.includes('Ne-am cunoscut la facultate') && rockPrompt.includes('Ne-am cunoscut la facultate'), 'povestea trebuie sa ramana identica, indiferent de gen');
 });

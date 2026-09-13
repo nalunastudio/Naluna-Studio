@@ -7932,22 +7932,35 @@ const GENRE_STYLE_MAP = {
   manele: 'Romanian manele de jale, oriental scale, mournful clarinet, melismatic vocal slides, minor key grief',
   modern: 'sleek modern pop-electronic, deep 808 sub bass, glossy synth pads, vocal chops, minimalist premium production',
   // --- NEW_GENRES — cele 16 genuri noi aratate clientilor ---
-  pop: 'contemporary pop, 100-120bpm, verse-chorus-bridge, catchy memorable chorus hook, clean polished production, radio-ready vocal',
-  ballad_emotional: 'emotional piano and strings ballad, rubato build, expressive heartfelt vocal, cinematic emotional climax, slow tempo, cathartic dynamic swell',
-  acoustic_folk: 'acoustic folk, fingerpicked guitar, organic natural instrumentation, light percussion, warm intimate atmosphere, sincere unpolished vocal',
-  rnb: 'contemporary R&B, warm groove, deep bass, smooth soulful vocal, natural ad-libs, laid-back modern production',
-  country: 'modern country, acoustic and electric guitar, warm storytelling vocal, driving rhythm, contemporary country-pop production',
-  jazz: 'jazz combo, piano, upright bass, brushed drums, elegant sophisticated harmony, smooth expressive vocal',
-  rock: 'live rock sound, distorted electric guitar riff, power chords, electric bass, energetic drums, strong vocal, dynamic verses building to a big chorus, guitar and vocal upfront',
-  hiphop: 'modern hip-hop, punchy kick, firm snare/clap, syncopated hi-hats, deep bass, short repeatable hook, rhythmic near-rap verses, clear diction, melodic chorus, clean modern mix',
-  edm_dance: 'EDM dance, four-on-the-floor kick, driving synth arpeggios, big build-up and energetic drop, festival-ready energy, processed vocal hook',
-  manele_suflet: 'Romanian manele de suflet, oriental scale, romantic clarinet, warm melismatic vocal, devoted love build',
-  manele_jale: 'Romanian manele de jale, minor key oriental scale, mournful clarinet, melismatic vocal slides, intense heartfelt grief',
-  populara: 'Romanian muzica populara, taraf violin and accordion, rustic dance rhythm, unornamented vocal, no autotune',
-  copii: 'cheerful childrens song, simple major-key melody, glockenspiel and ukulele, bouncy rhythm, bright vocal',
-  colind: 'traditional Romanian carol, sleigh bells and choir, warm acoustic guitar, gentle festive reverent vocal',
-  romantic: 'intimate romantic ballad, warm close vocal, soft piano and strings, tender atmosphere, slow loving mood',
-  motivational: 'inspirational anthem, driving toms, major-key triumphant chords, confident vocal, uplifting final chorus'
+  // CORECȚIE (2026-09-13, diferentiere muzicala reala): descrieri rescrise, compacte dar dense
+  // informational (prioritate: identitate de gen clara -> diferentiere fata de vecinii cei mai
+  // apropiati -> instrumentatie/ritm principal -> aranjament/energie -> culoare optionala doar
+  // daca ramane spatiu) — pastreaza bugetul de 600 caractere al buildPrompt() (190 rezervati
+  // garantat pentru povestea clientului) neatins; NU s-a marit limita si NU s-a construit un
+  // sistem dublu lung/scurt. Fiecare gen permite variatie naturala in familia lui (ex: Jazz sax-
+  // sau-piano, Rock balada-pana-la-stadion, Motivational construieste energia fara un singur
+  // instrument fix) — nu un aranjament rigid identic de fiecare data. STRICT descriptori
+  // muzicali generici — verificat programatic ca niciun nume de artist/titlu de piesa/link
+  // TikTok nu apare (vezi test/genre-differentiation-v2.test.js).
+  pop: 'contemporary pop, catchy chorus hook, clean modern production, melody-led rhythm, vocals forward, upbeat energy',
+  ballad_emotional: 'emotional ballad, piano and/or acoustic guitar, slow rubato build, vulnerable vocal, dynamic emotional climax',
+  acoustic_folk: 'acoustic folk, fingerpicked guitar, organic instrumentation, light percussion, warm intimate sound, sincere vocal',
+  rnb: 'modern smooth R&B, warm deep bass, syncopated groove, atmospheric keys and pads, intimate melodic vocal, relaxed tempo',
+  country: 'storytelling country, acoustic guitar foundation, steel or electric guitar, warm narrative vocal, natural drums, melodic chorus',
+  jazz: 'smooth jazz, saxophone or piano, warm bass, brushed drums, jazz-coloured harmony, slow-medium groove, soulful vocal',
+  rock: 'live rock band, distorted electric guitar riff, bass, drums, strong vocal, chorus expands from verse, ranges soft-rock to stadium rock',
+  hiphop: 'authentic hip-hop, punchy kick/snare/hi-hat groove, bass-led, rhythmic clear-diction rap verses, storytelling attitude, melodic chorus, organic not just trap',
+  edm_dance: 'EDM dance, four-on-the-floor kick, synth-driven, powerful bass, build-up into drop, danceable groove, festival energy',
+  manele_suflet: 'Romanian manele de suflet, violin accordion or clarinet, warm melismatic vocal, hopeful devoted mood',
+  manele_jale: 'Romanian manele de jale, minor-key oriental colour, mournful violin and clarinet, melismatic lament vocal, heavier longing mood',
+  // CORECȚIE (2026-09-13): "unornamented vocal"/"no autotune" eliminate — ornamentatia vocala
+  // e autentica si legitima in muzica populara romaneasca; diferentierea reala fata de Manele
+  // vine din identitatea de ansamblu traditional/ritm traditional, nu din absenta ornamentatiei.
+  populara: 'Romanian muzica populara, traditional folk ensemble, violin accordion or flute, traditional dance rhythm, folk ornamentation',
+  copii: 'cheerful song for children, simple major-key melody, easy sing-along chorus, piano ukulele or bells, bright vocal',
+  colind: 'traditional Romanian Christmas carol, warm communal vocal, acoustic instruments, tasteful bells, ceremonial warmth',
+  romantic: 'timeless romantic love song, piano or acoustic guitar, optional strings, soft percussion, intimate vocal',
+  motivational: 'motivational anthem, builds from moderate to high energy, confident drums, piano or guitar, rising vocal, anthemic chorus'
 };
 const LYRICS_LANGUAGE_NAMES = {
   ro: 'Romanian', en: 'English', de: 'German', es: 'Spanish',
