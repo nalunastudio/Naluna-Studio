@@ -1282,6 +1282,30 @@ app.get('/admin', adminAuthLimiter, requireAdminAuth, (req, res) => {
 });
 app.use('/api/admin', adminAuthLimiter, requireAdminAuth);
 
+// AUDIT PRE-LAUNCH (2026-09-13, Faza A1 — "CSRF pentru endpoint-urile unde modelul de
+// autentificare il face relevant"): /api/admin/* foloseste HTTP Basic Auth — browserul reatasaza
+// SINGUR credentialul cache-uit la orice cerere ulterioara catre aceeasi origine, indiferent
+// cine a initiat-o (spre deosebire de un cookie de sesiune, nu exista niciun mecanism SameSite
+// care sa limiteze asta). Mai multe actiuni distructive/operationale (anonymize, retention
+// purge/expire/anonymize-stale-stories, retry-extras, enqueue-video-render-job-TEST-ONLY,
+// cleanup/abandoned-uploads, testimonials POST) sunt POST-uri fara body obligatoriu — exact
+// tiparul pe care un simplu formular HTML cross-origin (sau un fetch cu Content-Type "simplu")
+// il poate declansa fara sa activeze un preflight CORS, daca adminul are respectivul credential
+// Basic Auth cache-uit in browser si viziteaza intre timp o pagina rau-intentionata. PUT/DELETE
+// raman deja protejate (declanseaza intotdeauna un preflight CORS, blocat implicit — nu exista
+// nicio politica CORS care sa il permita). Cerem acum explicit un header custom
+// (X-Requested-With) pentru orice metoda care schimba starea — un formular HTML simplu NU poate
+// seta headere custom, iar un fetch cross-origin cu acest header declanseaza un preflight CORS
+// care va fi respins (fara politica CORS configurata). admin.html (singurul apelant legitim,
+// same-origin) e actualizat sa il trimita.
+app.use('/api/admin', (req, res, next) => {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+  if (req.get('X-Requested-With') !== 'XMLHttpRequest') {
+    return res.status(403).json({ error: 'Cerere respinsă (lipsește antetul necesar).' });
+  }
+  next();
+});
+
 app.get('/api/admin/orders', async (req, res, next) => {
   try {
     const list = await db.listOrders();
@@ -1414,6 +1438,15 @@ async function purgeStaleSourceMedia() {
 // refoloseasca generateLyricVideo — altfel joburile de curatare/retentie ar rula DUBLU, in
 // ambele procese. Comportamentul pentru `node server.js` insusi ramane 100% neschimbat.
 if (require.main === module) {
+  // AUDIT PRE-LAUNCH (2026-09-13, Faza A3 — retentie 30 zile): setInterval() singur nu ruleaza
+  // NICIODATA prima curatare decat dupa 24h de la pornirea procesului — daca serverul repornise
+  // mai des decat o data pe zi (deploy-uri dese, exact tiparul din dezvoltare), timer-ul se
+  // reseta la fiecare pornire si continutul eligibil putea ramane necuratat mult peste cele 30 de
+  // zile promise public. Adaugata o rulare IMEDIATA, o singura data la pornire (acelasi tratament
+  // de erori — izolat, niciodata fatal pentru boot-ul serverului), inainte de a porni si timer-ul
+  // periodic — garanteaza ca politica de 30 de zile e verificata real la fiecare pornire, nu doar
+  // presupusa.
+  purgeStaleSourceMedia().catch(() => {});
   setInterval(() => { purgeStaleSourceMedia().catch(() => {}); }, 24 * 60 * 60 * 1000).unref();
 }
 
@@ -1484,6 +1517,8 @@ async function expireStaleFinalMedia() {
 }
 
 if (require.main === module) {
+  // Vezi comentariul identic de la purgeStaleSourceMedia mai sus.
+  expireStaleFinalMedia().catch(() => {});
   setInterval(() => { expireStaleFinalMedia().catch(() => {}); }, 24 * 60 * 60 * 1000).unref();
 }
 
@@ -1542,6 +1577,8 @@ async function anonymizeStaleStories() {
 }
 
 if (require.main === module) {
+  // Vezi comentariul identic de la purgeStaleSourceMedia mai sus.
+  anonymizeStaleStories().catch(() => {});
   setInterval(() => { anonymizeStaleStories().catch(() => {}); }, 24 * 60 * 60 * 1000).unref();
 }
 

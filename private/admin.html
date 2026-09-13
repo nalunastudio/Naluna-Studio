@@ -307,7 +307,7 @@
 
   window.deleteTestimonial = async function(id) {
     if (!confirm('Ștergi definitiv această reacție?')) return;
-    const res = await fetch(`/api/admin/testimonials/${id}`, { method: 'DELETE' });
+    const res = await fetch(`/api/admin/testimonials/${id}`, { method: 'DELETE', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
     if (res.ok) loadTestimonials();
     else alert('Eroare la ștergere');
   };
@@ -315,7 +315,7 @@
   window.moveTestimonial = async function(id, direction) {
     await fetch(`/api/admin/testimonials/${id}/move`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
       body: JSON.stringify({ direction })
     });
     loadTestimonials();
@@ -340,7 +340,7 @@
     const method = editId ? 'PUT' : 'POST';
 
     try {
-      const res = await fetch(url, { method, body: formData });
+      const res = await fetch(url, { method, headers: { 'X-Requested-With': 'XMLHttpRequest' }, body: formData });
       const data = await res.json();
 
       if (!res.ok) {
