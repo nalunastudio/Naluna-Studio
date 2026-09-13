@@ -67,11 +67,20 @@ const LANG_NAMES = {
   fr: 'French', bg: 'Bulgarian', tr: 'Turkish'
 };
 
+// CORECȚIE (2026-09-13, "povestea clientului nu se mai regaseste in versuri" — REGRESIE REALA
+// gasita direct cu ACEST test): povestea originala de aici (82 caractere, "...mereu impreuna.")
+// era trunchiata la "...si de atunci sun" — pierzand "tem inseparabili, mereu impreuna" — STRICT
+// ca sa faca loc dictiei+etichetei de paranteze (ambele instructiuni generice de sistem, prioritate
+// cea mai joasa). Testul insusi codifica, fara sa-si dea seama, exact bug-ul raportat. Povestea de
+// mai jos e acum suficient de scurta cat sa nu fie NICIODATA nevoie sa aleaga intre continutul ei
+// si aceste doua adaosuri optionale — demonstreaza ca mecanismul de rezervare inca functioneaza
+// cand chiar exista loc, fara sa sacrifice povestea pentru asta (vezi si testul EDGE CASE de mai
+// jos pentru cazul opus, cand povestea CHIAR are nevoie de tot spatiul).
 function realisticOrder(lang) {
   return {
     plan: 'standard', occasion: 'aniversare', lang, recipient: 'Maria', senderName: 'Andrei',
     senderRole: null, recipientRole: null, recipientMode: 'single', genre: 'romantic',
-    story: 'Ne-am cunoscut acum cativa ani si de atunci suntem inseparabili, mereu impreuna.',
+    story: 'Ne-am cunoscut acum cativa ani.',
     voicePreference: 'auto'
   };
 }
@@ -112,9 +121,15 @@ test('EDGE CASE: poveste foarte lunga + gen cu tag lung + voce duet (cazul cel m
   assert.ok(prompt.length > 0);
 });
 
-test('STRUCTURAL: buildPrompt() rezerva EXPLICIT spatiu pentru instructiunea de paranteze inainte de a alege eticheta povestii (canReserveForBoth), cu degradare graduala (2 -> 1 -> 0), niciodata in detrimentul rezervei minime a povestii', () => {
+// CORECȚIE (2026-09-13): pragul folosit de canReserveForBoth NU mai e o constanta fixa
+// (MIN_USEFUL_STORY_CHARS, 40 caractere — prea mic, permitea sacrificarea unei parti reale din
+// poveste doar ca dictia/paranteze sa incapa) — e acum `storyTextFloor`, dinamic: fie lungimea
+// REALA a povestii (daca e mai scurta decat rezerva promisa — niciun cost real pentru poveste),
+// fie STORY_MIN_RESERVE insusi (daca povestea e lunga — rezerva promisa ramane pragul de jos).
+test('STRUCTURAL: buildPrompt() rezerva EXPLICIT spatiu pentru instructiunea de paranteze inainte de a alege eticheta povestii (canReserveForBoth), cu degradare graduala (2 -> 1 -> 0), niciodata in detrimentul continutului real al povestii', () => {
   const promptFn = extractFn(server, 'function buildPrompt(order, feedback, genreOverride) {');
   assert.match(promptFn, /const bracketLanguageClause = lyricsLanguage !== 'English'/);
-  assert.match(promptFn, /const canReserveForBoth = \(remaining - storyLabel\.length - dictionInstruction\.length - bracketLanguageClause\.length\) >= MIN_USEFUL_STORY_CHARS;/);
+  assert.match(promptFn, /const storyTextFloor = Math\.min\(desiredStoryTextLen, STORY_MIN_RESERVE\);/);
+  assert.match(promptFn, /const canReserveForBoth = \(remaining - storyLabel\.length - dictionInstruction\.length - bracketLanguageClause\.length\) >= storyTextFloor;/);
   assert.match(promptFn, /if \(canReserveForBoth && bracketLanguageClause && prompt\.length \+ bracketLanguageClause\.length <= SUNO_PROMPT_MAX_LEN\)/);
 });

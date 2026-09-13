@@ -8706,21 +8706,47 @@ function buildPrompt(order, feedback, genreOverride) {
   const bracketLanguageClause = lyricsLanguage !== 'English'
     ? ` Bracketed tags/notes also in ${lyricsLanguage}, not English.`
     : '';
+  // BUG REAL (2026-09-13, "povestea clientului nu se mai regaseste in versuri" — gasit prin
+  // MASURARE directa, nu presupunere): comentariul de mai sus promite explicit ca dictia/eticheta
+  // de paranteze nu sunt rezervate "NICIODATA in detrimentul rezervei garantate pentru poveste
+  // (STORY_MIN_RESERVE)" — dar codul folosea de fapt MIN_USEFUL_STORY_CHARS (40 caractere!) ca
+  // prag, nu STORY_MIN_RESERVE (190). Efect real, verificat pe o comanda REALISTA (ocazie
+  // "declaratie", voce duet, expeditor numit — fara camp relationship, foarte comun): de indata
+  // ce scurtarea capului (shrinkSteps de mai sus) elibera suficient spatiu ca povestea sa treaca
+  // de 40 de caractere, tot spatiul nou eliberat era instantaneu redirectionat catre rezervarea
+  // dictiei + etichetei de paranteze (ambele "instructiuni generice de sistem", prioritate cea
+  // mai joasa, cerinta explicita a acestei runde) — NICIODATA catre continutul real, important,
+  // al povestii — pierzand exact fraze scrise de client mai departe in poveste (ex. "te iubesc
+  // viata mea").
+  //
+  // Pragul e acum dinamic (`storyTextFloor`), nu o constanta fixa: daca povestea CHIAR are nevoie
+  // de intreaga rezerva promisa (STORY_MIN_RESERVE, 190) sau mai mult (poveste lunga), pragul
+  // ramane 190 — dictia/paranteze sunt rezervate STRICT din surplus real peste acea rezerva,
+  // niciodata mai devreme. Dar daca povestea insasi e mai SCURTA decat 190 (foarte comun — o
+  // comanda tipica, cu poveste de 1-2 propozitii), pragul devine STRICT lungimea ei reala — altfel
+  // spatiul ramas neutilizat de o poveste scurta (care oricum nu are nevoie de tot bugetul) ar fi
+  // fost irosit (nici la poveste, care nu-l cere, nici la dictie/paranteze, care ar fi putut incapea
+  // fara sa coste nimic povestii) — regresie gasita direct: comenzi TIPICE, scurte, pierdeau dictia
+  // desi era loc suficient pentru amandoua. Degradeaza cu gratie (omise complet) STRICT cand chiar
+  // ar costa din continutul povestii — exact acelasi tratament ca BRIGHTEN_MOOD_CLAUSE/
+  // FEEDBACK_PRIORITY_CLAUSE.
+  const desiredStoryTextLen = Array.from(normalizeSingingText(order.story, order.lang) || '').length;
+  const storyTextFloor = Math.min(desiredStoryTextLen, STORY_MIN_RESERVE);
   function pickStoryLabel(reserveLevel) {
     // reserveLevel: 2 = dictie + eticheta paranteze, 1 = doar dictie, 0 = niciuna
     const extra = reserveLevel === 2 ? (dictionInstruction.length + bracketLanguageClause.length)
       : reserveLevel === 1 ? dictionInstruction.length : 0;
     let label = storyLabelFull;
-    if (remaining - label.length - extra < MIN_USEFUL_STORY_CHARS) label = storyLabelShort;
-    if (remaining - label.length - extra < MIN_USEFUL_STORY_CHARS) label = storyLabelPlain;
+    if (remaining - label.length - extra < storyTextFloor) label = storyLabelShort;
+    if (remaining - label.length - extra < storyTextFloor) label = storyLabelPlain;
     return label;
   }
   let storyLabel = pickStoryLabel(2);
-  const canReserveForBoth = (remaining - storyLabel.length - dictionInstruction.length - bracketLanguageClause.length) >= MIN_USEFUL_STORY_CHARS;
+  const canReserveForBoth = (remaining - storyLabel.length - dictionInstruction.length - bracketLanguageClause.length) >= storyTextFloor;
   let canReserveForDiction = canReserveForBoth;
   if (!canReserveForBoth) {
     storyLabel = pickStoryLabel(1);
-    canReserveForDiction = (remaining - storyLabel.length - dictionInstruction.length) >= MIN_USEFUL_STORY_CHARS;
+    canReserveForDiction = (remaining - storyLabel.length - dictionInstruction.length) >= storyTextFloor;
     if (!canReserveForDiction) storyLabel = pickStoryLabel(0);
   }
   const reservedExtra = canReserveForBoth ? (dictionInstruction.length + bracketLanguageClause.length)
@@ -8729,7 +8755,12 @@ function buildPrompt(order, feedback, genreOverride) {
 
   let storyFull = '';
   if (storyBudget > 0) {
-    const storyTrimmed = truncateSafely(normalizeSingingText(order.story, order.lang), storyBudget);
+    // CORECȚIE (2026-09-13, "povestea clientului nu se mai regaseste in versuri"): truncateSafely()
+    // taia STRICT la caracterul N, putand rupe un cuvant la mijloc (ex. "lumin" in loc de "lumina")
+    // — truncateAtWordBoundary() (deja folosita pentru feedback, mai jos) se retrage la ultimul
+    // spatiu/linie noua din interiorul bugetului, niciodata mai departe — povestea trunchiata
+    // ramane intotdeauna formata din cuvinte complete, niciodata un fragment rupt.
+    const storyTrimmed = truncateAtWordBoundary(normalizeSingingText(order.story, order.lang), storyBudget);
     if (storyTrimmed) {
       storyFull = `${storyLabel}${storyTrimmed}`;
     }
