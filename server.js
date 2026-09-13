@@ -7342,19 +7342,21 @@ async function generateLyricVideo(order, variant, tempFullMp3Path) {
     throw err;
   }
   const body = await outcome.res.json();
-  const hasValidStructure = !!(body && body.code === 200 && body.data && Array.isArray(body.data.alignedWords));
-  if (!hasValidStructure) {
-    throw new Error('Raspunsul cu versuri sincronizate e gol sau are o structura neasteptata.');
-  }
-  if (body.data.alignedWords.length === 0) {
-    // CORECȚIE (2026-09-13): structura raspunsului e corecta (HTTP 200, code 200, data
-    // prezenta), dar alignedWords e gol — furnizorul inca nu a terminat calculul alinierii
-    // pentru aceasta piesa (confirmat direct: acelasi taskId/audioId, interogat din nou cateva
-    // minute mai tarziu, a returnat alinierea completa). Atasam retryAfterSeconds (acelasi
-    // mecanism deja folosit pentru 429/430/405, respectat de computeBackoffSeconds in
-    // worker.js), ca job-ul sa astepte mai mult inainte de urmatoarea incercare, in loc sa
-    // epuizeze cele 3 incercari intr-un interval prea scurt pentru piese mai lungi.
-    const err = new Error('Versurile cu marcaj de timp nu sunt inca disponibile la furnizor pentru aceasta piesa.');
+  // CORECȚIE (2026-09-13, extinsa dupa recuperarea REALA a comenzii esuate): incercarea initiala
+  // a acestei corectii trata STRICT "alignedWords gol" ca semnal de retry, tratand orice alta
+  // structura neasteptata (code diferit de 200, data lipsa) ca eroare permanenta, fara retry
+  // lung. Recuperarea comenzii reale a demonstrat insa direct ca AMBELE forme apar tranzitoriu
+  // pentru ACELASI taskId/audioId, inainte ca furnizorul sa termine calculul alinierii — o
+  // interogare directa, facuta separat, cu exact aceeasi pereche, a returnat de fiecare data
+  // raspunsul complet. Tratam acum orice raspuns fara alignedWords utilizabil (structura
+  // neasteptata SAU gol) identic — nu o eroare permanenta — cu acelasi semnal retryAfterSeconds
+  // (mecanismul deja existent pentru 429/430/405, respectat de computeBackoffSeconds in
+  // worker.js), ca job-ul sa astepte mai mult inainte de urmatoarea incercare, in loc sa
+  // epuizeze cele 3 incercari intr-un interval prea scurt pentru piese mai lungi.
+  const alignedWords = (body && body.code === 200 && body.data && Array.isArray(body.data.alignedWords))
+    ? body.data.alignedWords : null;
+  if (!alignedWords || alignedWords.length === 0) {
+    const err = new Error('Raspunsul cu versuri sincronizate e gol sau are o structura neasteptata.');
     err.retryAfterSeconds = EMPTY_ALIGNED_WORDS_RETRY_SECONDS;
     throw err;
   }
