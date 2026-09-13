@@ -206,8 +206,10 @@ test('lib/entitlements.js: getGiftVariant() livreaza bonusul pentru plan="video"
   assert.equal(gift.id, 'v2', 'bonusul trebuie sa fie varianta NESELECTATA');
 });
 
-test('lib/entitlements.js: getGiftVariant() ramane null pentru Video FARA nicio editare reala (o singura varianta) si pentru Standard (neschimbat); continua sa functioneze corect pentru Premium', () => {
-  assert.equal(getGiftVariant({ plan: 'standard', selectedVariantId: 'v1', variants: [{ id: 'v1' }, { id: 'v2', isEditedAlternative: true }] }), null);
+test('lib/entitlements.js: getGiftVariant() ramane null pentru Video/Standard FARA nicio editare reala (o singura varianta); CORECȚIE (2026-09-13): Standard CU o editare reala livreaza acum bonusul, la fel ca Video; continua sa functioneze corect pentru Premium', () => {
+  const standardWithRealEdit = getGiftVariant({ plan: 'standard', selectedVariantId: 'v1', variants: [{ id: 'v1' }, { id: 'v2', isEditedAlternative: true }] });
+  assert.ok(standardWithRealEdit && standardWithRealEdit.id === 'v2', 'Standard cu o pereche legitima initiala+editata trebuie sa livreze acum bonusul (revizuire hotfix 2026-08-08)');
+  assert.equal(getGiftVariant({ plan: 'standard', selectedVariantId: 'v1', variants: [{ id: 'v1', fullKey: 'a' }] }), null, 'Standard cu o singura varianta (nicio editare) nu are ce bonus sa livreze');
   assert.equal(getGiftVariant({ plan: 'video', selectedVariantId: 'v1', variants: [{ id: 'v1', fullKey: 'a' }] }), null, 'Video cu o singura varianta (nicio editare) nu are ce bonus sa livreze');
   const premiumOrder = { plan: 'premium', selectedVariantId: 'v1', selectedVariantId2: 'v2', variants: [{ id: 'v1', fullKey: 'a' }, { id: 'v2', fullKey: 'b' }] };
   const gift = getGiftVariant(premiumOrder);
@@ -232,7 +234,9 @@ test('server.js: PLAN_PRICES.video ramane £35 — checkout-ul foloseste STRICT 
 // aici) — vezi test/video-dual-checkout-buttons.test.js / raportul Cerintei 7 pentru context.
 test('public/succes.html: calculeaza "melodia cadou" pentru plan="video" STRICT cand exista o pereche legitima initiala+editata (replica getGiftVariant) — nu mai e refuzat neconditionat', () => {
   assert.ok(!succes.includes("const giftVariant = (data.plan === 'video') ? null : (data.variants || []).find(v => v.id !== data.selectedVariantId);"), 'refuzul neconditionat vechi nu mai trebuie sa existe');
-  assert.match(succes, /if \(data\.plan === 'video'\) \{\s*if \(variants\.length !== 2\) return null;\s*const editedCount = variants\.filter\(v => v\.isEditedAlternative\)\.length;\s*if \(editedCount !== 1\) return null;/);
+  // CORECȚIE (2026-09-13): Standard intra acum pe ACEEASI ramura STRICTA ca Video (livreaza si
+  // el bonusul cand exista o editare reala) — regexul de mai jos reflecta noua conditie comuna.
+  assert.match(succes, /if \(data\.plan === 'video' \|\| data\.plan === 'standard'\) \{\s*if \(variants\.length !== 2\) return null;\s*const editedCount = variants\.filter\(v => v\.isEditedAlternative\)\.length;\s*if \(editedCount !== 1\) return null;/);
 });
 
 // ---------------------------------------------------------------------------------------------

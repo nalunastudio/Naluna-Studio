@@ -367,16 +367,15 @@ test('dublul click pe plata nu creeaza checkouturi Stripe duplicate (idempotency
   );
 });
 
-test('emailul si descarcarea dupa plata livreaza EXCLUSIV versiunea selectata pentru Standard (fara "melodie cadou")', () => {
+test('emailul si descarcarea principala dupa plata livreaza EXCLUSIV versiunea selectata (selectedVariantId), pentru toate pachetele', () => {
   const server = read('server.js');
   const entitlements = read('lib/entitlements.js');
-  // deja verificat separat (getGiftVariant), reconfirmat aici in contextul explicit al cerintei:
-  // Standard NU mai livreaza niciodata a doua varianta, indiferent de ce alta varianta exista.
-  // CORECȚIE (2026-08-30, Cerinta 7): Video a fost SCOS din acest refuz global — primeste acum
-  // propria ramura (mai stricta), care POATE livra bonusul cand exista o editare reala. Standard
-  // ramane STRICT refuzat, neschimbat.
-  assert.match(entitlements, /if \(!order \|\| order\.plan === 'standard'\) return null;/, 'getGiftVariant trebuie sa refuze explicit Standard');
-  assert.ok(!entitlements.includes("order.plan === 'video') return null;"), 'Video nu mai trebuie refuzat neconditionat — vezi ramura dedicata Video din getGiftVariant');
+  // CORECȚIE (2026-09-13, "livrare Standard/Premium/Video dupa plata"): Standard nu mai e
+  // refuzat neconditionat de getGiftVariant — foloseste acum aceeasi ramura STRICTA ca Video
+  // (exact 2 variante, exact una marcata isEditedAlternative). Vezi test/entitlements.test.js
+  // pentru acoperirea completa a noii reguli. Ramane neschimbat: livrarea PRINCIPALA
+  // (email/descarcare) foloseste mereu exact selectedVariantId, niciodata cea "cadou".
+  assert.match(entitlements, /order\.plan === 'video' \|\| order\.plan === 'standard'/, 'getGiftVariant trebuie sa trateze Standard cu aceeasi ramura STRICTA ca Video');
   assert.ok(
     server.includes("const variant = (order.variants || []).find(v => v.id === order.selectedVariantId);"),
     'livrarea principala (email/descarcare) trebuie sa foloseasca exact selectedVariantId, niciodata prima varianta din array sau alta presupunere'

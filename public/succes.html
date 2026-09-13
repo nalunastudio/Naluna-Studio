@@ -15,13 +15,23 @@
   *{box-sizing:border-box;}
   body{
     background:var(--bg); color:var(--text); font-family:'Sora', sans-serif;
-    min-height:100vh; display:flex; align-items:center; justify-content:center; margin:0;
-    padding:24px 0;
+    min-height:100vh; margin:0; padding:24px 0;
   }
+  /* CORECȚIE (2026-09-13, "pagina finala de livrare — layout vertical, responsive"): body era
+     display:flex fara flex-direction:column — cu .card (max-width:480px) si <footer>
+     (max-width:900px) ca frati direcți, asta le aseza unul langa altul (randul implicit al
+     flexbox-ului), niciodata unul sub altul — exact bug-ul "doua coloane" raportat pe mobil.
+     .page-wrap e acum singurul container centrat (o coloana verticala normala, block layout),
+     iar .card si <footer> sunt copiii lui directi, in ordine DOM — se aseaza unul sub altul
+     natural, fara flexbox pe axa principala. */
+  .page-wrap{ max-width:560px; margin:0 auto; padding:0 20px; }
   .logo-mark{ width:56px; margin:0 auto 24px; display:block; }
   .card{
     background:var(--bg-secondary); border:1px solid var(--line); border-radius:20px;
-    padding:48px; max-width:480px; width:100%; text-align:center;
+    padding:48px; width:100%; text-align:center;
+  }
+  @media (max-width:480px){
+    .card{ padding:32px 20px; border-radius:16px; }
   }
   h1{ font-family:'Fraunces', serif; font-weight:400; font-size:26px; margin-bottom:12px; }
   h2{ font-family:'Fraunces', serif; font-weight:400; font-size:19px; margin:0 0 6px; }
@@ -51,6 +61,19 @@
     border:1px solid var(--gold); border-radius:999px; padding:7px 16px; margin-bottom:16px;
     font-size:13px; font-weight:600; color:var(--gold-deep);
   }
+  .song-block{ margin-top:24px; padding-top:20px; border-top:1px solid var(--line); }
+  .song-block-first{ margin-top:0; padding-top:0; border-top:none; }
+  .gift-badge{
+    display:inline-flex; align-items:center; gap:6px; background:var(--surface);
+    border:1px solid var(--gold); border-radius:999px; padding:5px 14px; margin-bottom:10px;
+    font-size:12px; font-weight:600; color:var(--gold-deep);
+  }
+  footer.page-footer{
+    margin-top:32px; padding:16px 0 40px; font-size:12px; color:#8a8a8a;
+    display:flex; flex-direction:column; gap:8px 16px;
+    border-top:1px solid #e8e2d6; text-align:left;
+  }
+  footer.page-footer .footer-links{ display:flex; flex-wrap:wrap; gap:8px 16px; }
 
   .memories{ margin-top:28px; padding-top:28px; border-top:1px solid var(--line); text-align:left; }
   .memories-sub{ font-size:13px; margin-bottom:16px; }
@@ -139,11 +162,14 @@
 </style>
 </head>
 <body>
-  <div class="card" id="card">
-    <img class="logo-mark" src="/logo.svg" alt="NALUNA">
-    <div class="spinner"></div>
-    <h1 id="h1-waiting">Plata confirmată. Se compune melodia...</h1>
-    <p id="p-waiting">Durează de obicei 2-3 minute. Nu închide pagina — actualizăm automat</p>
+  <div class="page-wrap">
+    <div class="card" id="card">
+      <img class="logo-mark" src="/logo.svg" alt="NALUNA">
+      <div class="spinner"></div>
+      <h1 id="h1-waiting">Plata confirmată. Se compune melodia...</h1>
+      <p id="p-waiting">Durează de obicei 2-3 minute. Nu închide pagina — actualizăm automat</p>
+    </div>
+    <footer class="page-footer"><div class="footer-links"><a href="/terms.html" style="color:#8B6D3F;text-decoration:underline;">Terms &amp; Conditions</a><a href="/privacy.html" style="color:#8B6D3F;text-decoration:underline;">Privacy Policy</a><a href="/refund.html" style="color:#8B6D3F;text-decoration:underline;">Cancellation &amp; Refund Policy</a><a href="mailto:contact@nalunastudio.com" style="color:#8B6D3F;text-decoration:underline;">contact@nalunastudio.com</a></div><span>Naluna Studio, 5 Brayford Square, London, E1 0SG, United Kingdom</span></footer>
   </div>
 
   <script src="/js/media-compress.js"></script>
@@ -159,6 +185,7 @@
         error_sub: 'Nu am putut genera melodia din cauza unei erori tehnice.',
         not_found: 'Comanda nu a fost găsită', download_wav: 'Descarcă WAV', download_video: 'Descarcă videoclipul', video_gift_title: 'Videoclipul tău cadou', video_song_title: 'Melodia din videoclip', video_gift_song_title: 'Melodia cadou', variant_original_label: 'Versiunea inițială', variant_edited_label: 'Versiunea editată', extra_processing: 'Se pregătește — reîmprospătează pagina în câteva minute',
         gift_title: 'A doua melodie completă', gift_download: 'Descarcă a doua melodie',
+        gift_badge: 'Cadou din partea noastră', included_song_1: 'Prima melodie din pachet', included_song_2: 'A doua melodie din pachet',
         memories_title: 'Adaugă pozele și videoclipurile tale',
         memories_sub: 'Adaugă între 3 și 30 poze sau clipuri video, iar noi le vom transforma într-un videoclip cu versuri, cu tranziții cinematice.',
         memories_hint: 'Poți sări acest pas — videoclipul va folosi un fundal simplu, elegant.',
@@ -201,6 +228,7 @@
         error_sub: 'We couldn\'t generate the song due to a technical error.',
         not_found: 'Order not found.', download_wav: 'Download WAV', download_video: 'Download the video', video_gift_title: 'Your gift video', video_song_title: 'The song in the video', video_gift_song_title: 'The gift song', variant_original_label: 'Original version', variant_edited_label: 'Edited version', extra_processing: 'Still preparing — refresh this page in a few minutes',
         gift_title: 'Your second complete song', gift_download: 'Download the second song',
+        gift_badge: 'A gift from us', included_song_1: 'First song in your package', included_song_2: 'Second song in your package',
         memories_title: 'Add your photos & videos',
         memories_sub: 'Add 3 to 30 photos or video clips and we\'ll weave them into a lyric video with cinematic transitions.',
         memories_hint: 'You can skip this — the video will use a simple, elegant background instead.',
@@ -243,6 +271,7 @@
         error_sub: 'Wir konnten das Lied aufgrund eines technischen Fehlers nicht erstellen.',
         not_found: 'Bestellung nicht gefunden.', download_wav: 'WAV herunterladen', download_video: 'Video herunterladen', video_gift_title: 'Dein Geschenkvideo', video_song_title: 'Das Lied im Video', video_gift_song_title: 'Das Geschenklied', variant_original_label: 'Ursprüngliche Version', variant_edited_label: 'Bearbeitete Version', extra_processing: 'Wird noch vorbereitet — aktualisiere diese Seite in ein paar Minuten',
         gift_title: 'Dein zweites vollständiges Lied', gift_download: 'Zweites Lied herunterladen',
+        gift_badge: 'Ein Geschenk von uns', included_song_1: 'Erstes Lied deines Pakets', included_song_2: 'Zweites Lied deines Pakets',
         memories_title: 'Füge deine Fotos & Videos hinzu',
         memories_sub: 'Füge 3 bis 30 Fotos oder Videoclips hinzu — wir verweben sie zu einem Lyric-Video mit filmischen Übergängen.',
         memories_hint: 'Du kannst diesen Schritt überspringen — das Video verwendet dann einen einfachen, eleganten Hintergrund.',
@@ -285,6 +314,7 @@
         error_sub: 'No pudimos generar la canción debido a un error técnico.',
         not_found: 'Pedido no encontrado.', download_wav: 'Descargar WAV', download_video: 'Descargar el video', video_gift_title: 'Tu video de regalo', video_song_title: 'La canción del video', video_gift_song_title: 'La canción de regalo', variant_original_label: 'Versión inicial', variant_edited_label: 'Versión editada', extra_processing: 'Aún preparando — actualiza esta página en unos minutos',
         gift_title: 'Tu segunda canción completa', gift_download: 'Descargar la segunda canción',
+        gift_badge: 'Un regalo de nuestra parte', included_song_1: 'Primera canción de tu paquete', included_song_2: 'Segunda canción de tu paquete',
         memories_title: 'Añade tus fotos y videos',
         memories_sub: 'Añade entre 3 y 30 fotos o clips de video y los combinaremos en un video lírico con transiciones cinematográficas.',
         memories_hint: 'Puedes saltarte este paso — el video usará un fondo sencillo y elegante.',
@@ -327,6 +357,7 @@
         error_sub: 'Non siamo riusciti a generare la canzone a causa di un errore tecnico.',
         not_found: 'Ordine non trovato.', download_wav: 'Scarica WAV', download_video: 'Scarica il video', video_gift_title: 'Il tuo video regalo', video_song_title: 'La canzone nel video', video_gift_song_title: 'La canzone regalo', variant_original_label: 'Versione iniziale', variant_edited_label: 'Versione modificata', extra_processing: 'Ancora in preparazione — aggiorna questa pagina tra qualche minuto',
         gift_title: 'La tua seconda canzone completa', gift_download: 'Scarica la seconda canzone',
+        gift_badge: 'Un regalo da parte nostra', included_song_1: 'Prima canzone del tuo pacchetto', included_song_2: 'Seconda canzone del tuo pacchetto',
         memories_title: 'Aggiungi le tue foto e i tuoi video',
         memories_sub: 'Aggiungi da 3 a 30 foto o clip video: le trasformeremo in un video con testo e transizioni cinematografiche.',
         memories_hint: 'Puoi saltare questo passaggio — il video userà uno sfondo semplice ed elegante.',
@@ -369,6 +400,7 @@
         error_sub: 'Nous n\'avons pas pu générer la chanson en raison d\'une erreur technique.',
         not_found: 'Commande introuvable.', download_wav: 'Télécharger le WAV', download_video: 'Télécharger la vidéo', video_gift_title: 'Ta vidéo cadeau', video_song_title: 'La chanson de la vidéo', video_gift_song_title: 'La chanson cadeau', variant_original_label: 'Version initiale', variant_edited_label: 'Version modifiée', extra_processing: 'Encore en préparation — actualisez cette page dans quelques minutes',
         gift_title: 'Votre deuxième chanson complète', gift_download: 'Télécharger la deuxième chanson',
+        gift_badge: 'Un cadeau de notre part', included_song_1: 'Première chanson de votre pack', included_song_2: 'Deuxième chanson de votre pack',
         memories_title: 'Ajoutez vos photos et vidéos',
         memories_sub: 'Ajoutez 3 à 30 photos ou clips vidéo, nous les intégrerons dans un clip lyrique avec des transitions cinématographiques.',
         memories_hint: 'Vous pouvez ignorer cette étape — la vidéo utilisera alors un fond simple et élégant.',
@@ -411,6 +443,7 @@
         error_sub: 'Не успяхме да генерираме песента поради техническа грешка.',
         not_found: 'Поръчката не е намерена.', download_wav: 'Изтегли WAV', download_video: 'Изтегли видеото', video_gift_title: 'Твоето видео подарък', video_song_title: 'Песента във видеото', video_gift_song_title: 'Песента подарък', variant_original_label: 'Оригинална версия', variant_edited_label: 'Редактирана версия', extra_processing: 'Все още се подготвя — опресни страницата след няколко минути',
         gift_title: 'Втората ти пълна песен', gift_download: 'Изтегли втората песен',
+        gift_badge: 'Подарък от нас', included_song_1: 'Първата песен от пакета', included_song_2: 'Втората песен от пакета',
         memories_title: 'Добави своите снимки и видеа',
         memories_sub: 'Добави между 3 и 30 снимки или видеоклипа и ние ще ги вплетем в лирик видео с кинематографични преходи.',
         memories_hint: 'Можеш да пропуснеш тази стъпка — видеото ще използва прост, елегантен фон.',
@@ -453,6 +486,7 @@
         error_sub: 'Teknik bir hata nedeniyle şarkıyı oluşturamadık.',
         not_found: 'Sipariş bulunamadı.', download_wav: 'WAV indir', download_video: 'Videoyu indir', video_gift_title: 'Hediye videon', video_song_title: 'Videodaki şarkı', video_gift_song_title: 'Hediye şarkı', variant_original_label: 'Orijinal versiyon', variant_edited_label: 'Düzenlenmiş versiyon', extra_processing: 'Hâlâ hazırlanıyor — birkaç dakika içinde bu sayfayı yenileyin',
         gift_title: 'İkinci tam şarkınız', gift_download: 'İkinci şarkıyı indir',
+        gift_badge: 'Bizden bir hediye', included_song_1: 'Paketinizdeki ilk şarkı', included_song_2: 'Paketinizdeki ikinci şarkı',
         memories_title: 'Fotoğraflarınızı ve videolarınızı ekleyin',
         memories_sub: '3 ile 30 arası fotoğraf veya video klip ekleyin, bunları sinematik geçişlerle bir söz videosuna dönüştürelim.',
         memories_hint: 'Bu adımı atlayabilirsiniz — video basit, şık bir arka plan kullanır.',
@@ -1388,25 +1422,35 @@
       const fullUrl = `/media/full/${orderId}?token=${encodeURIComponent(accessToken || '')}`;
       const variant = (data.variants || []).find(v => v.id === data.selectedVariantId) || {};
 
-      // "Melodia cadou" (cealalta varianta, nealeasa ca principala) — livrata la Premium (doua
-      // melodii complete, in doua genuri diferite) SI, dupa CORECȚIA 2026-08-30 (Cerinta 7), la
-      // Video — DOAR daca exista o editare REALA (perechea legitima initiala+editata). Vezi
-      // getGiftVariant in lib/entitlements.js (server.js) — regula REPLICATA aici identic:
-      // exact 2 variante, exact una marcata real ca editare (isEditedAlternative), bonusul e
-      // varianta diferita de cea selectata pentru checkout. O comanda Video FARA nicio editare
-      // reala (o singura varianta, sau 2 variante nemarcate) NU primeste nicio melodie cadou —
-      // la fel ca inainte de aceasta corectie.
+      // "Melodia cadou" (cealalta varianta, nealeasa ca principala) — vezi getGiftVariant in
+      // lib/entitlements.js (server.js), SINGURA sursa de adevar pentru CARE fisier se serveste
+      // efectiv la /media/full/:orderId/gift — regula REPLICATA aici identic:
+      // - Standard/Video: exact 2 variante, exact una marcata real ca editare
+      //   (isEditedAlternative) — CORECȚIE (2026-09-13): Standard livreaza acum si el bonusul,
+      //   la fel ca Video (hotfix-ul vechi 2026-08-08 care il refuza a fost revizuit explicit).
+      // - Premium cu selectedVariantId2: e A DOUA MELODIE CUMPARATA (nu un bonus real — vezi mai
+      //   jos, isPremiumSecondPurchasedSong), livrata prin ACELASI endpoint tehnic.
       const giftVariant = (() => {
         const variants = data.variants || [];
-        if (data.plan === 'video') {
+        if (data.plan === 'video' || data.plan === 'standard') {
           if (variants.length !== 2) return null;
           const editedCount = variants.filter(v => v.isEditedAlternative).length;
           if (editedCount !== 1) return null;
           return variants.find(v => v.id !== data.selectedVariantId) || null;
         }
+        if (data.plan === 'premium' && data.selectedVariantId2) {
+          return variants.find(v => v.id === data.selectedVariantId2) || null;
+        }
         return variants.find(v => v.id !== data.selectedVariantId) || null;
       })();
       const giftUrl = giftVariant ? `/media/full/${orderId}/gift?token=${encodeURIComponent(accessToken || '')}` : null;
+      // Premium cu ambele melodii alese explicit inainte de plata (selectedVariantId +
+      // selectedVariantId2) NU primeste un "cadou" prin acest slot — cea de-a doua melodie e
+      // parte din pachetul CUMPARAT (£25 pentru 2 melodii complete), nu un bonus. O comanda
+      // Premium foarte veche (dinainte de migrarea la selectedVariantId2) ramane pe regula
+      // originala ("cealalta varianta" = bonus), neschimbata.
+      const isPremiumSecondPurchasedSong = data.plan === 'premium' && !!data.selectedVariantId2
+        && giftVariant && giftVariant.id === data.selectedVariantId2;
       // Cerinta 7: pentru Video, cand exista o editare REALA, etichetele devin explicit
       // "Versiunea inițială"/"Versiunea editată" (identice cu cele deja folosite in
       // melodia-mea.html) — mai clare decat genericul "Melodia din videoclip"/"Melodia cadou",
@@ -1452,6 +1496,20 @@
       // prin API DOM (mountMedia) DUPA ce innerHTML e asignat mai jos, niciodata interpolate
       // direct ca "<audio src=...>"/"<video src=...>" in acest string (vezi comentariul de la
       // mountMedia despre de ce).
+      // Blocul melodiei "cadou" (gift-audio-wrap) e ACELASI marcaj HTML in toate cazurile —
+      // doar eticheta de deasupra difera: 🎁 real (Standard/Video cu editare, Premium vechi
+      // fara selectedVariantId2) vs. "a doua melodie inclusa" (Premium cu selectedVariantId2 —
+      // NU e un bonus, vezi isPremiumSecondPurchasedSong mai sus).
+      const giftBlockHeadingHtml = isPremiumSecondPurchasedSong
+        ? `<h2>${t.included_song_2}</h2>`
+        : `<div class="gift-badge">🎁 ${t.gift_badge}</div><h2>${data.plan === 'video' ? videoGiftLabel : t.gift_title}</h2>`;
+      const giftBlockHtml = giftUrl ? `
+        <div class="song-block">
+          ${giftBlockHeadingHtml}
+          <div id="gift-audio-wrap"></div>
+          <a class="btn" href="${giftUrl}" download>${t.gift_download}</a>
+        </div>` : '';
+
       let resultHtml;
       let videoUrl = null;
       if (data.plan === 'video' && variant.hasVideo) {
@@ -1461,29 +1519,22 @@
         <div id="gift-video-wrap"></div>
         <a class="btn" href="${videoUrl}" download>${t.download_video}</a>
 
-        <div style="margin-top:24px; padding-top:20px; border-top:1px solid var(--line);">
+        <div class="song-block">
           <h2>${videoMainLabel}</h2>
           <div id="main-audio-wrap"></div>
           <a class="btn" href="${fullUrl}" download>${t.download}</a>
         </div>
 
-        ${giftUrl ? `
-        <div style="margin-top:24px; padding-top:20px; border-top:1px solid var(--line);">
-          <h2>${videoGiftLabel}</h2>
-          <div id="gift-audio-wrap"></div>
-          <a class="btn" href="${giftUrl}" download>${t.gift_download}</a>
-        </div>` : ''}`;
+        ${giftBlockHtml}`;
       } else {
         resultHtml = `
-        <div id="main-audio-wrap"></div>
-        <a class="btn" href="${fullUrl}" download>${t.download}</a>
-        ${extrasHtml}
-        ${giftUrl ? `
-        <div style="margin-top:24px; padding-top:20px; border-top:1px solid var(--line);">
-          <h2>${t.gift_title}</h2>
-          <div id="gift-audio-wrap"></div>
-          <a class="btn" href="${giftUrl}" download>${t.gift_download}</a>
-        </div>` : ''}`;
+        <div class="song-block-first">
+          ${isPremiumSecondPurchasedSong ? `<h2>${t.included_song_1}</h2>` : ''}
+          <div id="main-audio-wrap"></div>
+          <a class="btn" href="${fullUrl}" download>${t.download}</a>
+          ${extrasHtml}
+        </div>
+        ${giftBlockHtml}`;
       }
 
       card.innerHTML = `
@@ -1525,6 +1576,5 @@
     if (orderId) checkStatus();
     else card.innerHTML = `<h1 class="err">${t.not_found}</h1>`;
   </script>
-<footer style="max-width:900px;margin:32px auto 0;padding:16px 20px 40px;font-size:12px;color:#8a8a8a;display:flex;flex-wrap:wrap;gap:8px 16px;border-top:1px solid #e8e2d6;"><a href="/terms.html" style="color:#8B6D3F;text-decoration:underline;">Terms &amp; Conditions</a><a href="/privacy.html" style="color:#8B6D3F;text-decoration:underline;">Privacy Policy</a><a href="/refund.html" style="color:#8B6D3F;text-decoration:underline;">Cancellation &amp; Refund Policy</a><a href="mailto:contact@nalunastudio.com" style="color:#8B6D3F;text-decoration:underline;">contact@nalunastudio.com</a><span>Naluna Studio, 5 Brayford Square, London, E1 0SG, United Kingdom</span></footer>
 </body>
 </html>

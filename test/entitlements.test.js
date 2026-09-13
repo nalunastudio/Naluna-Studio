@@ -40,16 +40,33 @@ test('getGiftVariant — nu se sparge pe un order fara camp variants deloc', () 
   assert.equal(getGiftVariant({ selectedVariantId: 'a' }), null);
 });
 
-test('getGiftVariant — Standard NU livreaza niciodata "melodia cadou", chiar daca exista 2 variante (original+editat)', () => {
+// CORECȚIE (2026-09-13, "livrare Standard/Premium/Video dupa plata"): Standard livreaza acum
+// "melodia cadou" cu ACEEASI regula STRICTA ca Video (exact 2 variante, exact una marcata real
+// ca editare) — vezi lib/entitlements.js pentru contextul complet al reversarii hotfix-ului
+// 2026-08-08.
+test('getGiftVariant — Standard livreaza "melodia cadou" cand exista o editare REALA (exact 2 variante, exact una marcata isEditedAlternative)', () => {
   const order = {
     plan: 'standard',
     selectedVariantId: 'a',
     variants: [{ id: 'a', fullKey: 'k1' }, { id: 'b', fullKey: 'k2', isEditedAlternative: true }]
   };
-  // Standard ramane o singura melodie finala — cele 2 variante sunt alternative ALE ACELEIASI
-  // melodii (originala/editata), nu doua melodii diferite; livrarea celeilalte ca "bonus"
-  // ar incalca cerinta explicita "Standard ramane o singura melodie finala".
+  const gift = getGiftVariant(order);
+  assert.ok(gift);
+  assert.equal(gift.id, 'b');
+});
+
+test('getGiftVariant — Standard: NICIUN cadou daca are doar 1 varianta (nicio editare a existat vreodata)', () => {
+  const order = { plan: 'standard', selectedVariantId: 'a', variants: [{ id: 'a', fullKey: 'k1' }] };
   assert.equal(getGiftVariant(order), null);
+});
+
+test('getGiftVariant — Standard: NICIUN cadou pentru o comanda VECHE cu 2 variante NEMARCATE (niciuna isEditedAlternative) — nu acorda acces accidental', () => {
+  const order = {
+    plan: 'standard',
+    selectedVariantId: 'a',
+    variants: [{ id: 'a', fullKey: 'k1' }, { id: 'b', fullKey: 'k2' }]
+  };
+  assert.equal(getGiftVariant(order), null, 'fara marcajul explicit de editare, cele 2 variante nu formeaza o pereche legitima initiala+editata');
 });
 
 test('getGiftVariant — Premium livreaza "melodia cadou" (doua melodii reale, distincte), fara sa ceara isEditedAlternative', () => {
