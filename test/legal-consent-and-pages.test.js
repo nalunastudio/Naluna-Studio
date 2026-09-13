@@ -215,24 +215,36 @@ test('server.js: toate cele 8 limbi ale CONSENT_TOS_TEXT includ clauza "nu exist
 
 // CORECȚIE (2026-09-11, v5->v6): versiunea anterioară a acestui test cerea ca CONSENT_TOS_TEXT
 // să afirme "produsul EXISTĂ DEJA" — framing preluat din vechiul consent_text, NEVERIFICAT direct
-// contra textului real, live, al terms.html/refund.html. Verificat acum exhaustiv (citire directă
-// a paginilor live): refund.html Secțiunea 2 spune explicit "you lose your statutory 14-day right
-// to cancel once CREATION has started" și terms.html Secțiunea 3/4 confirmă "Creation begins
-// immediately after your payment is confirmed" — deci CONSENT_TOS_TEXT trebuie să reflecte
-// EXACT acest declanșator (crearea, nu livrarea), nu presupunerea anterioară.
+// contra textului real, live, al terms.html/refund.html.
 // CORECȚIE (2026-09-12, v6->v7): decizie de business — cifra exactă "14 zile" nu mai apare
 // vizibil in text (desi ramane reala si valabila in refund.html, neatins) — text mai scurt,
-// substanta legala identica (creare imediata, fara anulare pentru schimbarea parerii, drepturi
-// pastrate pentru defect/neconform/nelivrat). Emailul de livrare (piesă de text SEPARATĂ,
-// netouchată de această corecție) rămâne verificat separat, neschimbat.
-test('server.js: CONSENT_TOS_TEXT reflectă declanșatorul real (crearea) fără să afiseze explicit numărul de zile — substanța legală identică cu refund.html/terms.html', () => {
+// substanta legala identica.
+// CORECȚIE (2026-09-13, v7->v8, verificare finala pre-launch — acuratete tehnica): verificat
+// exhaustiv codul real (buildVariantFromTrack, processConfirmedPayment) — pentru TOATE pachetele,
+// melodia (si, pentru Cadou video, videoclipul) sunt DEJA create INTEGRAL inainte de plata, in
+// timpul previzualizarii gratuite; plata deblocheaza STRICT accesul (URL semnat) + livrarea. "v7"
+// (mai sus) afirma gresit ca CREAREA incepe la plata — inversul e adevarat (crearea s-a intamplat
+// deja, livrarea incepe la plata) — exact ce spunea deja corect LEGAL_NOTE din sendDeliveryEmail()
+// inca din v5->v6, dar care nu fusese propagat si la CONSENT_TOS_TEXT/terms.html/refund.html.
+// "v8" aliniaza toate cele trei la ACELASI vocabular ("livrare" + "deja creat"), verificat mai jos.
+test('server.js: CONSENT_TOS_TEXT reflectă declanșatorul real (livrarea unui continut DEJA creat, nu crearea) — consistent cu LEGAL_NOTE din sendDeliveryEmail(), fără să afiseze explicit numărul de zile', () => {
   const tosBlock = extractFn(server, 'const CONSENT_TOS_TEXT = {');
-  assert.ok(/begin creating|înceapă imediat crearea|sofort .* zu erstellen|comience .* a crear|inizi.*a creare|commence.*à créer|започне незабавно да създава|hemen oluşturmaya başlamasını/i.test(tosBlock), 'CONSENT_TOS_TEXT trebuie sa reflecte ca CREAREA incepe la plata, exact ca refund.html/terms.html');
-  assert.ok(!/already-created|deja creat,|bereits fertiges|ya creado,|già creato,|déjà créée,|вече готовата|Zaten oluşturulmuş/i.test(tosBlock), 'CONSENT_TOS_TEXT nu mai trebuie sa afirme ca produsul EXISTA DEJA — nu e sustinut de terms.html/refund.html live');
+  assert.ok(/begin delivering|înceapă imediat livrarea|Lieferung .* beginnt|comience .* la entrega|inizi subito la consegna|commence immédiatement la livraison|започне незабавно доставката|teslimatına hemen başlamasını/i.test(tosBlock), 'CONSENT_TOS_TEXT trebuie sa reflecte ca LIVRAREA incepe la plata (nu crearea)');
+  assert.ok(/already-created|deja creat,|bereits fertigen|ya creado,|già creato,|déjà créée,|вече готова|zaten oluşturulmuş/i.test(tosBlock), 'CONSENT_TOS_TEXT trebuie sa afirme explicit ca produsul e DEJA CREAT — consistent cu realitatea tehnica (fisierul complet exista deja in storage privat inainte de plata) si cu LEGAL_NOTE');
+  assert.ok(!/begin creating|creation has started/i.test(tosBlock), 'CONSENT_TOS_TEXT nu mai trebuie sa afirme ca CREAREA incepe la plata — factual incorect, corectat in v8');
   assert.ok(!/\b14\b/.test(tosBlock), 'CONSENT_TOS_TEXT nu mai trebuie sa afiseze explicit cifra "14" (decizie de business) — substanta ramane, doar cifra nu mai e vizibila aici');
   const legalNoteFn = extractFn(server, "async function sendDeliveryEmail(order) {");
   assert.ok(!/work on your personalised order would begin|lucrul la comanda ta personalizată să înceapă/i.test(legalNoteFn), 'emailul de livrare nu mai trebuie sa afirme ca "lucrul" incepe la plata');
   assert.match(legalNoteFn, /delivery of your already-created personalised song\/video would begin/, 'emailul de livrare (piesa separata, netouchata aici) trebuie sa reflecte corect ca LIVRAREA incepe, nu crearea');
+});
+
+test('terms.html/refund.html: folosesc "supply"/"deliver" (nu "creation") pentru declansatorul pierderii dreptului de anulare — consistent cu realitatea tehnica (continutul e deja creat inainte de plata) si cu CONSENT_TOS_TEXT/LEGAL_NOTE', () => {
+  const terms = read('public/terms.html');
+  const refund = read('public/refund.html');
+  assert.ok(!/creation begins|begin creating|creation has started|creation genuinely starts/i.test(terms), 'terms.html nu mai trebuie sa afirme ca CREAREA incepe la plata');
+  assert.ok(!/begin creating|creation has started|creation genuinely starts/i.test(refund), 'refund.html nu mai trebuie sa afirme ca CREAREA incepe la plata');
+  assert.match(terms, /Supply begins immediately after your payment is confirmed/i);
+  assert.match(refund, /begin supplying your personalised song or video immediately/i);
 });
 
 test('Cele 3 pagini legale NU mai contin nicio referinta la "AI"/"artificial intelligence" — EU AI Act art.50 (deepfake) nu se aplica unui cantec personalizat/unui montaj din pozele reale ale clientului, deci nu e o dezvaluire ceruta legal; formularea a fost mutata spre limbaj neutru de produs, fara a pretinde "handmade" sau compus de muzicieni', () => {
@@ -275,7 +287,7 @@ test('Cele 3 pagini legale NU mai afiseaza deloc "Last updated"/o data de revizu
 });
 
 test('CONSENT_POLICY_VERSION (versionarea interna, dovada consimtamantului) ramane intacta — eliminarea afisarii publice a "Last updated" NU atinge evidenta interna asociata fiecarei comenzi platite', () => {
-  assert.match(server, /const CONSENT_POLICY_VERSION = '2026-09-12-v7';/);
+  assert.match(server, /const CONSENT_POLICY_VERSION = '2026-09-13-v8';/);
   assert.match(server, /consentPolicyVersion:\s*consentAccepted\s*\?\s*CONSENT_POLICY_VERSION\s*:\s*null/);
   assert.match(db, /ALTER TABLE orders ADD COLUMN IF NOT EXISTS consent_policy_version TEXT;/);
 });
@@ -618,8 +630,8 @@ test('comanda-mea.html: getDeviceDownloadTip() arata STRICT sfatul relevant (iOS
   assert.match(fn, /return '';/, 'pe desktop (niciun UA de mobil detectat) nu trebuie afisat niciun sfat');
 });
 
-test('server.js: CONSENT_POLICY_VERSION e la v7 (v3 adaugase dezvaluirea celor 30 de zile; v4 corecteaza framing-ul factual creare->livrare; v5 muta consimtamantul pe Stripe nativ; v6 corecteaza declansatorul real la CREARE; v7 scurteaza textul si elimina afisarea explicita a cifrei de 14 zile) — niciodata retroactiva pentru comenzi deja platite', () => {
-  assert.match(server, /const CONSENT_POLICY_VERSION = '2026-09-12-v7';/);
+test('server.js: CONSENT_POLICY_VERSION e la v8 (v3 adaugase dezvaluirea celor 30 de zile; v4 corecteaza framing-ul factual creare->livrare; v5 muta consimtamantul pe Stripe nativ; v6 corecteaza declansatorul la CREARE, aliniat cu terms.html/refund.html de atunci; v7 scurteaza textul si elimina cifra de 14 zile; v8, verificare finala pre-launch, verifica DIRECT codul — nu doar text-cu-text — si corecteaza atat CONSENT_TOS_TEXT CAT SI terms.html/refund.html la declansatorul real, LIVRAREA unui continut deja creat) — niciodata retroactiva pentru comenzi deja platite', () => {
+  assert.match(server, /const CONSENT_POLICY_VERSION = '2026-09-13-v8';/);
 });
 
 test('server.js: emailul de livrare mentioneaza EXPLICIT "30 days"/"30 de zile" (nu "1 month") si incurajarea de a descarca, in toate cele 8 sabloane', () => {

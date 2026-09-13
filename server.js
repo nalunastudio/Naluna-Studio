@@ -178,7 +178,23 @@ const PLAN_PRICES = { standard: 15, premium: 25, video: 35 };
 // pentru schimbarea părerii odată începută crearea, drepturi păstrate pentru produs defect/
 // neconform/nelivrat) — doar formularea a fost scurtată și cifra exactă a zilelor a fost scoasă
 // din acest text specific.
-const CONSENT_POLICY_VERSION = '2026-09-12-v7';
+// CORECȚIE (2026-09-13, v7->v8, verificare finala pre-launch — acuratete tehnica): textul v7
+// (mai jos) spunea "will begin CREATING my personalised content" / "odata inceputa CREAREA" —
+// verificat acum exhaustiv contra codului real (buildVariantFromTrack, processConfirmedPayment):
+// pentru TOATE cele 3 pachete, melodia (si, pentru Cadou video, videoclipul intreg) sunt DEJA
+// create INTEGRAL inainte de plata, in timpul previzualizarii gratuite — fisierul complet
+// ajunge deja in bucket-ul privat R2 la generare, accesibil STRICT prin URL semnat, generat
+// abia dupa confirmarea platii (vezi comentariul din buildVariantFromTrack). Checkout-ul pentru
+// "Cadou video" chiar REFUZA plata daca videoclipul nu e deja gata. Ce se intampla REAL la plata:
+// deblocarea accesului (URL semnat) + livrarea (email) + STRICT pentru Premium/Video, extragerea
+// WAV-ului (unica procesare noua, reala, post-plata). "Creating" era deci factual incorect pentru
+// esenta produsului (melodia/videoclipul) — inlocuit cu "providing"/"furnizarea" (limbaj aliniat
+// cu termenul folosit deja de reglementarea citata, "digital content not SUPPLIED on a tangible
+// medium" — vezi terms.html). Substanta legala ramane IDENTICA (pierderea dreptului de anulare
+// pentru schimbarea parerii, drepturile pentru produs defect/neconform/nelivrat neafectate) — doar
+// caracterizarea factuala a MOMENTULUI e corectata. terms.html/refund.html (engleza, neatinse de
+// limba) primesc aceeasi corectie, pentru identitate deplina cu acest text.
+const CONSENT_POLICY_VERSION = '2026-09-13-v8';
 // Text localizat pentru custom_text.terms_of_service_acceptance (Stripe Checkout) — versiune
 // scurtă, fără mențiunea explicită a numărului de zile, substanță identică cu refund.html
 // Secțiunea 2 (creare imediată, fără anulare pentru schimbarea părerii) și excepțiile din
@@ -186,15 +202,19 @@ const CONSENT_POLICY_VERSION = '2026-09-12-v7';
 // (${DOMAIN}/terms.html, ${DOMAIN}/refund.html) — pagina Stripe e găzduită separat de domeniul
 // Naluna. Sub limita reală Stripe de 1200 caractere (verificat, maximum 490 caractere înainte de
 // expandarea ${DOMAIN}).
+// CORECȚIE (2026-09-13, v7->v8): reformulat sa foloseasca EXACT acelasi vocabular ("livrare" +
+// "deja creat") ca LEGAL_NOTE din sendDeliveryEmail() (mai jos, netouchat, deja corect din runda
+// v5->v6) — cele doua texte descriu ACELASI eveniment/consimtamant, la doua momente diferite
+// (checkout, respectiv confirmare prin email), si trebuie sa fie perfect consistente.
 const CONSENT_TOS_TEXT = {
-  ro: `Sunt de acord ca Naluna Studio să înceapă imediat crearea conținutului meu personalizat și înțeleg că, odată începută crearea, nu mai pot anula comanda doar pentru că m-am răzgândit. Drepturile mele în cazul unui produs defect, neconform sau nelivrat rămân neafectate. Vezi [Termenii](${DOMAIN}/terms.html) și [Politica de anulare și rambursare](${DOMAIN}/refund.html).`,
-  en: `I agree that Naluna Studio will begin creating my personalised content immediately, and I understand that once creation has started, I can no longer cancel the order simply because I've changed my mind. My rights in case of a faulty, non-conforming, or undelivered product remain unaffected. See [Terms](${DOMAIN}/terms.html) and [Cancellation & Refund Policy](${DOMAIN}/refund.html).`,
-  de: `Ich bin damit einverstanden, dass Naluna Studio sofort mit der Erstellung meines personalisierten Inhalts beginnt, und verstehe, dass ich die Bestellung nach Beginn der Erstellung nicht mehr stornieren kann, nur weil ich es mir anders überlegt habe. Meine Rechte bei einem mangelhaften, nicht konformen oder nicht gelieferten Produkt bleiben unberührt. Siehe [AGB](${DOMAIN}/terms.html) und [Stornierungs- und Rückerstattungsrichtlinie](${DOMAIN}/refund.html).`,
-  es: `Acepto que Naluna Studio comience de inmediato a crear mi contenido personalizado y entiendo que, una vez iniciada la creación, ya no puedo cancelar el pedido simplemente porque haya cambiado de opinión. Mis derechos en caso de un producto defectuoso, no conforme o no entregado permanecen intactos. Consulta los [Términos](${DOMAIN}/terms.html) y la [Política de cancelación y reembolso](${DOMAIN}/refund.html).`,
-  it: `Accetto che Naluna Studio inizi subito a creare il mio contenuto personalizzato e comprendo che, una volta iniziata la creazione, non posso più annullare l'ordine solo perché ho cambiato idea. I miei diritti in caso di prodotto difettoso, non conforme o non consegnato restano invariati. Consulta i [Termini](${DOMAIN}/terms.html) e la [Politica di cancellazione e rimborso](${DOMAIN}/refund.html).`,
-  fr: `J'accepte que Naluna Studio commence immédiatement à créer mon contenu personnalisé, et je comprends qu'une fois la création commencée, je ne peux plus annuler la commande simplement parce que j'ai changé d'avis. Mes droits en cas de produit défectueux, non conforme ou non livré restent inchangés. Voir les [Conditions](${DOMAIN}/terms.html) et la [Politique d'annulation et de remboursement](${DOMAIN}/refund.html).`,
-  bg: `Съгласен/на съм Naluna Studio да започне незабавно създаването на моето персонализирано съдържание и разбирам, че след като създаването е започнало, вече не мога да отменя поръчката само защото съм размислил/а. Правата ми в случай на дефектен, несъответстващ или недоставен продукт остават незасегнати. Виж [Общите условия](${DOMAIN}/terms.html) и [Политиката за анулиране и възстановяване](${DOMAIN}/refund.html).`,
-  tr: `Naluna Studio'nun kişiselleştirilmiş içeriğimi hemen oluşturmaya başlamasını kabul ediyorum ve oluşturma başladıktan sonra, sadece fikrimi değiştirdiğim için siparişi iptal edemeyeceğimi anlıyorum. Kusurlu, uygun olmayan veya teslim edilmemiş bir ürün durumunda haklarım etkilenmez. Bkz. [Şartlar](${DOMAIN}/terms.html) ve [İptal ve İade Politikası](${DOMAIN}/refund.html).`
+  ro: `Sunt de acord ca Naluna Studio să înceapă imediat livrarea melodiei/videoclipului meu personalizat, deja creat, și înțeleg că, odată începută livrarea, nu mai pot anula comanda doar pentru că m-am răzgândit. Drepturile mele în cazul unui produs defect, neconform sau nelivrat rămân neafectate. Vezi [Termenii](${DOMAIN}/terms.html) și [Politica de anulare și rambursare](${DOMAIN}/refund.html).`,
+  en: `I agree that Naluna Studio will begin delivering my already-created personalised song/video immediately, and I understand that once delivery has started, I can no longer cancel the order simply because I've changed my mind. My rights in case of a faulty, non-conforming, or undelivered product remain unaffected. See [Terms](${DOMAIN}/terms.html) and [Cancellation & Refund Policy](${DOMAIN}/refund.html).`,
+  de: `Ich bin damit einverstanden, dass Naluna Studio sofort mit der Lieferung meines bereits fertigen, personalisierten Lieds/Videos beginnt, und verstehe, dass ich die Bestellung nach Beginn der Lieferung nicht mehr stornieren kann, nur weil ich es mir anders überlegt habe. Meine Rechte bei einem mangelhaften, nicht konformen oder nicht gelieferten Produkt bleiben unberührt. Siehe [AGB](${DOMAIN}/terms.html) und [Stornierungs- und Rückerstattungsrichtlinie](${DOMAIN}/refund.html).`,
+  es: `Acepto que Naluna Studio comience de inmediato la entrega de mi canción/vídeo personalizado, ya creado, y entiendo que, una vez iniciada la entrega, ya no puedo cancelar el pedido simplemente porque haya cambiado de opinión. Mis derechos en caso de un producto defectuoso, no conforme o no entregado permanecen intactos. Consulta los [Términos](${DOMAIN}/terms.html) y la [Política de cancelación y reembolso](${DOMAIN}/refund.html).`,
+  it: `Accetto che Naluna Studio inizi subito la consegna della mia canzone/video personalizzato, già creato, e comprendo che, una volta iniziata la consegna, non posso più annullare l'ordine solo perché ho cambiato idea. I miei diritti in caso di prodotto difettoso, non conforme o non consegnato restano invariati. Consulta i [Termini](${DOMAIN}/terms.html) e la [Politica di cancellazione e rimborso](${DOMAIN}/refund.html).`,
+  fr: `J'accepte que Naluna Studio commence immédiatement la livraison de ma chanson/vidéo personnalisée, déjà créée, et je comprends qu'une fois la livraison commencée, je ne peux plus annuler la commande simplement parce que j'ai changé d'avis. Mes droits en cas de produit défectueux, non conforme ou non livré restent inchangés. Voir les [Conditions](${DOMAIN}/terms.html) et la [Politique d'annulation et de remboursement](${DOMAIN}/refund.html).`,
+  bg: `Съгласен/на съм Naluna Studio да започне незабавно доставката на моята вече готова персонализирана песен/видео и разбирам, че след като доставката е започнала, вече не мога да отменя поръчката само защото съм размислил/а. Правата ми в случай на дефектен, несъответстващ или недоставен продукт остават незасегнати. Виж [Общите условия](${DOMAIN}/terms.html) и [Политиката за анулиране и възстановяване](${DOMAIN}/refund.html).`,
+  tr: `Naluna Studio'nun zaten oluşturulmuş kişiselleştirilmiş şarkımın/videomun teslimatına hemen başlamasını kabul ediyorum ve teslimat başladıktan sonra, sadece fikrimi değiştirdiğim için siparişi iptal edemeyeceğimi anlıyorum. Kusurlu, uygun olmayan veya teslim edilmemiş bir ürün durumunda haklarım etkilenmez. Bkz. [Şartlar](${DOMAIN}/terms.html) ve [İptal ve İade Politikası](${DOMAIN}/refund.html).`
 };
 // REGULA FINALA A PACHETELOR (2026-08-14, corectata — vezi si comentariul de la
 // getGiftVariant in lib/entitlements.js): sursa unica server-side pentru cate melodii
