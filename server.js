@@ -8970,7 +8970,17 @@ function buildPrompt(order, feedback, genreOverride) {
     // de protejata ca inainte) si nu coboara niciodata povestea sub propriul ei prag absolut de
     // utilitate (storyLabelPlain + MIN_USEFUL_STORY_CHARS) — foloseste STRICT eticheta scurtata,
     // acelasi principiu de degradare gratioasa deja folosit pentru eticheta povestii si dictie.
-    if (!isVideoPlan && feedbackBudget < 15) {
+    // CORECȚIE (2026-09-14, regresie reala de productie, comanda 33fa3146 — regenerare Cadou
+    // Video blocata complet de un feedback de 14 caractere, "Un alt inceput"): rezerva garantata
+    // de mai jos era STRICT pentru Standard/Premium (`!isVideoPlan &&`) — Video nu o primea
+    // niciodata, indiferent cat de scurt era feedback-ul clientului. CAUZA EXACTA (demonstrata cu
+    // datele comenzii reale): pentru o ocazie de familie + genul cu cel mai lung tag de stil
+    // ("hiphop"), `head` ajunge la 551/600 caractere chiar si dupa toate scurtarile existente —
+    // `remaining` (49) nu mai lasa loc DELOC pentru eticheta completa de feedback a Video-ului
+    // (VIDEO_FEEDBACK_PRIORITY_LABEL, 29 caractere) — desi textul clientului insusi avea doar 14
+    // caractere. Rezerva garantata (aceeasi formula, neschimbata) se aplica acum IDENTIC pentru
+    // toate planurile — Video nu mai e exclus.
+    if (feedbackBudget < 15) {
       const absoluteStoryFloor = storyLabelPlain.length + MIN_USEFUL_STORY_CHARS;
       // CORECTIE (2026-09-07, "vreau un alt inceput" nerespectata — masurata direct, nu
       // presupusa): plafonul anterior (50) fusese ales sa garanteze DOAR ca ceva de feedback
@@ -8990,12 +9000,24 @@ function buildPrompt(order, feedback, genreOverride) {
         feedbackBudget = safeGuaranteedReserve - labelToUse.length;
       }
     }
-    // Cerinta explicita — "nu tăia și nu elimina în tăcere instrucțiunea din cauza bugetului
-    // promptului": STRICT pentru Video, daca insusi textul VERBATIM al clientului nu ar incapea
-    // (nu doar clauza suplimentara, care e un adaos optional), eroare clara AICI, inainte de a
-    // trimite o cerere care l-ar ignora silentios. Extrem de rar in practica (feedback deja
-    // limitat la 500 caractere la granita cererii HTTP).
-    if (isVideoPlan && feedbackBudget < Array.from(feedbackText).length) {
+    // CORECȚIE (2026-09-14, regresie reala de productie, comanda 33fa3146): eroarea explicita
+    // "STRICT pentru Video" de aici arunca INDIFERENT de motivul pentru care feedbackBudget era
+    // prea mic — inclusiv cand cauza NU era deloc lungimea feedback-ului clientului (14 caractere,
+    // "Un alt inceput"), ci un `head` extrem (ocazie de familie + genul cu cel mai lung tag de
+    // stil), care singur consuma aproape tot bugetul de 600, inainte ca feedback-ul sa apuce sa
+    // concureze pentru spatiu. Rezultat: o cerere de editare complet rezonabila bloca INTREAGA
+    // regenerare, in loc sa degradeze gratios ca Standard/Premium in exact aceeasi situatie.
+    //
+    // Pastram totusi INTENTIA ORIGINALA, corecta, a acestei erori (2026-09-06/07): daca
+    // feedback-ul clientului insusi e nerezonabil de lung (dincolo de ce ar putea incapea REALIST
+    // chiar si cu rezerva maxima garantata de mai sus, 150 caractere), o trunchiere silentioasa
+    // l-ar putea reduce la un fragment fara sens — acolo o eroare clara ramane corecta. Pragul de
+    // 150 e ACELASI folosit mai sus la safeGuaranteedReserve (2026-09-07) — feedback-uri REALISTE
+    // (sub acest prag) nu mai blocheaza NICIODATA regenerarea din cauza unui `head` extrem,
+    // indiferent de plan; STRICT un text al clientului genuin foarte lung tot primeste eroarea
+    // clara, neschimbata.
+    const FEEDBACK_TEXT_REASONABLE_MAX_CHARS = 150;
+    if (isVideoPlan && feedbackBudget < Array.from(feedbackText).length && Array.from(feedbackText).length > FEEDBACK_TEXT_REASONABLE_MAX_CHARS) {
       throw new Error('Instrucțiunea ta de stil e prea lungă ca să încapă alături de restul detaliilor melodiei — scurteaz-o și încearcă din nou.');
     }
     // CORECTIE (2026-09-07): trunchiere la limita de cuvant (nu la mijlocul unui cuvant) — daca

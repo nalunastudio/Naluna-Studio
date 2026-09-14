@@ -72,12 +72,16 @@ function realisticOrder(plan, genre) {
   };
 }
 
-// Standard/Premium folosesc buildPrompt() (buget 600 caractere) pentru regenerare cu feedback
-// liber — exact scenariul raportat de utilizator. Video, pentru regenerare FARA editare manuala
-// de versuri, foloseste in schimb buildExactLyricsRequest() (buget 1000 caractere, versurile
-// raman verbatim) — comportamentul STRICT (eroare clara daca nu incape, niciodata trunchiere
-// silentioasa) e deja corect si NEATINS de aceasta corectie; testat separat mai jos.
-for (const plan of ['standard', 'premium']) {
+// Standard/Premium/Video folosesc TOATE buildPrompt() (buget 600 caractere) pentru regenerare cu
+// feedback, ATUNCI CAND lyrics nu sunt editate manual (cazul obisnuit "vreau alt inceput"/"mai
+// vesela", NU "pastreaza EXACT aceste versuri") — exact scenariul raportat de utilizator.
+// CORECȚIE (2026-09-14, regresie reala de productie, comanda 33fa3146): presupunerea anterioara
+// de aici ("Video foloseste TIPIC buildExactLyricsRequest pentru regenerare") era FALSA — un
+// client care cere o regenerare needitata foloseste EXACT buildPrompt(), la fel ca Standard/
+// Premium. Testul original astepta ca Video sa arunce eroare pentru un feedback scurt,
+// rezonabil ("mai vesela") — exact bug-ul care a blocat regenerarea reala. Video foloseste acum
+// ACELASI mecanism de degradare gratioasa ca Standard/Premium — testat impreuna, mai jos.
+for (const plan of ['standard', 'premium', 'video']) {
   test(`FUNCTIONAL (${plan}), comanda REALISTA: editare Romantic->Motivational + "mai vesela" produce un prompt DIFERIT de cel initial, cu noul gen SI feedback-ul verbatim al clientului prezente — inainte de fix, feedback-ul disparea COMPLET (feedbackBudget=0) pentru acest tip de comanda tipica`, () => {
     const initial = buildPrompt(realisticOrder(plan, 'romantic'), '', undefined);
     const edited = buildPrompt(realisticOrder(plan, 'motivational'), 'mai vesela', 'motivational');
@@ -89,13 +93,6 @@ for (const plan of ['standard', 'premium']) {
   });
 }
 
-test('FUNCTIONAL (video): buildPrompt() cu o comanda REALISTA si feedback pastreaza comportamentul STRICT preexistent (eroare clara daca feedback-ul verbatim nu incape) — NEATINS de aceasta corectie, prin design (video foloseste tipic buildExactLyricsRequest, buget 1000, pentru regenerare)', () => {
-  assert.throws(
-    () => buildPrompt(realisticOrder('video', 'motivational'), 'mai vesela', 'motivational'),
-    /prea lungă ca să încapă/,
-    'comportamentul video (eroare clara, nu trunchiere silentioasa) trebuie sa ramana neschimbat'
-  );
-});
 
 // REGRESIE (2026-09-07): buildExactLyricsRequest() (versuri deja blocate — customMode:true)
 // folosea o eticheta STRICT GOALA (' ') pentru Standard/Premium — instructiunea clientului ajungea

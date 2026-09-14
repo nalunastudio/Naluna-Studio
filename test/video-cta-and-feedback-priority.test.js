@@ -226,24 +226,22 @@ test('buildExactLyricsRequest: descriptorul trist al genului "emotional" ("tearf
   assert.ok(req.style.indexOf('REPLACES any somber') > req.style.indexOf('tearful climax'), 'clauza de neutralizare trebuie sa vina DUPA descriptorul trist, ca sa il suprascrie explicit in ordinea citirii');
 });
 
-// DESCOPERIT in timpul scrierii acestui test (nu presupus): SUNO_PROMPT_MAX_LEN=600 e o valoare
-// DELIBERAT stransa (comentariul de la declararea ei documenteaza o regresie reala anterioara —
-// un buget mai mare de prompt corela cu piese generate integral instrumental de furnizor) — nu o
-// putem mari, nici doar pentru Video, fara sa riscam exact acea regresie deja descoperita si
-// reparata. Consecinta REALA, verificata direct: pentru aproape orice comanda reala (ocazie +
-// destinatar + expeditor + poveste), bugetul ramas pentru feedback dupa rezerva minima a
-// povestii (STORY_MIN_RESERVE) e deja aproape de zero — INAINTE de aceasta corectie, acel
-// feedback ar fi fost trunchiat SILENTIOS la aproape nimic (exact bug-ul raportat de client).
-// Corectia aplicata (mai jos) respecta STRICT cerinta explicita: "nu tăia și nu elimina în
-// tăcere instrucțiunea din cauza bugetului promptului... oferă o eroare clară" — arunca eroare
-// in loc sa trimita o cerere care ar ignora tacit cuvintele clientului. In PRACTICA, aceasta
-// ramura (buildPrompt, fara exactLyrics) e acum rar/niciodata atinsa de Video, dupa corectia
-// separata care face ca exactLyrics sa foloseasca intotdeauna originalLyrics ca fallback (vezi
-// handleLegacyRegenerate) — testat separat mai jos, cu buildExactLyricsRequest (bugetul generos
-// de 1000 caractere), calea REALA folosita de Video in productie.
-test('buildPrompt (ramura rara, fara exactLyrics): pentru o comanda REALA (ocazie+destinatar+expeditor+poveste), bugetul ramas pentru feedback e aproape mereu zero — Video arunca eroare clara in loc sa trunchieze silentios "Mai veselă"', () => {
+// CORECȚIE (2026-09-14, regresie reala de productie, comanda 33fa3146): comentariul original de
+// aici presupunea ca aceasta ramura (buildPrompt, fara exactLyrics) e "rar/niciodata atinsa de
+// Video" — PRESUPUNERE demonstrata FALSA de un incident real: un client care cere o regenerare
+// NEEDITATA (fara editedLyrics — cazul obisnuit "vreau alt inceput", nu "pastreaza EXACT aceste
+// versuri") foloseste EXACT aceasta ramura, nu buildExactLyricsRequest. Testul de mai jos
+// arunca ANTERIOR o eroare chiar pentru un feedback scurt, rezonabil ("Mai veselă", 10
+// caractere) — STRICT din cauza unui `head` extrem (ocazie de familie + gen cu tag de stil
+// lung), nelegat de lungimea feedback-ului insusi — blocand COMPLET regenerarea in loc sa
+// degradeze gratios ca Standard/Premium in aceeasi situatie. Reparat: eroarea explicita ramane
+// STRICT pentru feedback GENUIN foarte lung (peste 150 caractere — vezi testul urmator, neschimbat)
+// — un feedback scurt/rezonabil nu mai blocheaza niciodata regenerarea.
+test('buildPrompt (ramura reala, fara exactLyrics — "vreau alt inceput"): feedback SCURT si rezonabil ("Mai veselă") NU mai blocheaza regenerarea, chiar si cu un `head` extrem (ocazie de familie + gen cu tag lung)', () => {
   const order = { ...BASE_VIDEO_ORDER };
-  assert.throws(() => buildPrompt(order, 'Mai veselă', null), /prea lungă/, 'trebuie sa refuze explicit, nu sa trimita o cerere care ignora feedback-ul clientului');
+  let prompt;
+  assert.doesNotThrow(() => { prompt = buildPrompt(order, 'Mai veselă', null); }, 'un feedback scurt si rezonabil nu mai trebuie sa blocheze regenerarea');
+  assert.ok(Array.from(prompt).length <= 600);
 });
 
 test('buildPrompt: cu un feedback GOL (fara nicio cerere de stil), comanda reala functioneaza normal — eroarea apare STRICT cand exista feedback de trimis, nu mereu', () => {
@@ -293,6 +291,10 @@ test('buildExactLyricsRequest: instructiune de stil extrem de lunga, care nu ar 
   assert.throws(() => buildExactLyricsRequest(order, 'Vers scurt.', null, 'auto', veryLongFeedback), /prea lungă/);
 });
 
+// Protectie PASTRATA neschimbata (2026-09-14) — STRICT pentru feedback GENUIN foarte lung
+// (>150 caractere, mult peste acest exemplu de ~1470), independent de cat de extrem e `head`-ul:
+// aici, spre deosebire de testul anterior, chiar textul clientului e motivul real pentru care nu
+// incape, deci o eroare clara ramane comportamentul corect.
 test('buildPrompt: instructiune de stil extrem de lunga — Video arunca eroare clara (nu trunchiaza silentios) inainte de a trimite cererea', () => {
   const order = { ...BASE_VIDEO_ORDER };
   const veryLongFeedback = 'Mai veselă si mai energica, te rog foarte mult, '.repeat(30);
