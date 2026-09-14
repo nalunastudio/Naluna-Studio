@@ -56,6 +56,10 @@ test('CSP: connect-src permite explicit google-analytics.com si googletagmanager
   assert.ok(flatVal.includes('https://www.googletagmanager.com'));
 });
 
+test('CSP: connect-src permite explicit region1.google-analytics.com (endpoint-ul regional REAL folosit de gtag.js pentru /g/collect — gasit prin testare live: request-ul real generat de gtag era blocat de CSP, desi www.google-analytics.com era deja permis)', () => {
+  assert.ok(flat(directives.connectSrc).includes('https://region1.google-analytics.com'));
+});
+
 test('CSP: connect-src si media-src permit gazda R2 privata, derivata din env, niciodata hardcodata literal', () => {
   const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'lib', 'csp.js'), 'utf8');
   assert.ok(!/r2\.cloudflarestorage\.com/.test(src.replace(/\/\/.*$/gm, '')) || /process\.env\.S3_ENDPOINT/.test(src), 'gazda R2 trebuie derivata din process.env, nu hardcodata');
