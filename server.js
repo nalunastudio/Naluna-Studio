@@ -5345,12 +5345,19 @@ function orderTracksByCoherence(tracks, order, recipientSnapshot) {
 // codul inlocuia `built` cu prima piesa PROCESATA TEHNIC cu succes, INDIFERENT daca era sau nu
 // coerenta, si o impingea in builtVariants necondiţionat. Functia de mai jos e SINGURUL punct de
 // decizie acum: incearca pana la doua piese initiale (in ordinea preferata de coerenta), apoi —
-// STRICT pentru versuri scrise de furnizor (customMode:false, fara canonicalLyrics) — O SINGURA
-// reincercare completa (regenerare prompt) daca nicio piesa initiala nu e acceptabila. Returneaza
-// { built: null } daca NIMIC acceptabil nu a putut fi obtinut — apelantul (finalizeVariantsIfNeeded)
-// trateaza asta ca esec al cererii prin fluxul EXISTENT (requestFailures), NICIODATA nu salveaza
-// versuri incoerente sau goale. canonicalLyrics (versuri editate manual de client) ocolesc COMPLET
-// verificarea de coerenta — doar succesul TEHNIC al procesarii audio conteaza pentru ele.
+// STRICT pentru versuri scrise de furnizor (customMode:false, fara canonicalLyrics) — pana la
+// MAX_COHERENCE_RETRIES reincercari complete (regenerare prompt) daca nicio piesa initiala nu e
+// acceptabila (vezi corectia 2026-09-14 de la MAX_COHERENCE_RETRIES pentru motivul cresterii de
+// la 1 la 2). Returneaza { built: null } daca NIMIC acceptabil nu a putut fi obtinut — apelantul
+// (finalizeVariantsIfNeeded) trateaza asta ca esec al cererii prin fluxul EXISTENT
+// (requestFailures), NICIODATA nu salveaza versuri incoerente sau goale. canonicalLyrics (versuri
+// editate manual de client) ocolesc COMPLET verificarea de coerenta — doar succesul TEHNIC al
+// procesarii audio conteaza pentru ele.
+// CORECȚIE (2026-09-14, comanda reala 5f4b1e2f): marit de la 1 la 2 — vezi comentariul detaliat
+// de la bucla de reincercari, mai jos in obtainAcceptableVariant(). Nu schimba NICIUN prag de
+// validare, NICIUN prompt/stil/gen/voce — STRICT cate incercari complete se fac inainte de a
+// declara cererea esuata.
+const MAX_COHERENCE_RETRIES = 2;
 async function obtainAcceptableVariant(orderId, tracks, taskId, genre, order, recipientSnapshot, canonicalLyrics) {
   async function attempt(candidateTracks, candidateTaskId, phase) {
     const ordered = canonicalLyrics ? (candidateTracks || []).slice(0, 2) : orderTracksByCoherence(candidateTracks, order, recipientSnapshot);
@@ -5383,21 +5390,37 @@ async function obtainAcceptableVariant(orderId, tracks, taskId, genre, order, re
   const first = await attempt(tracks, taskId, 'initial');
   if (first.built || canonicalLyrics) return first; // canonicalLyrics: fara reincercare de coerenta — un esec tehnic ramane final
 
-  console.warn(`Comanda ${orderId}: nicio piesa acceptabila (versuri goale sau incoerente gramatical/narativ) pentru genul "${genre}" — reincerc o singura data.`);
-  try {
-    const retryOrder = recipientSnapshot ? { ...order, ...recipientSnapshot } : order;
-    const retryPrompt = buildPrompt(retryOrder, '', genre);
-    const retryTaskId = await callMusicProvider(orderId, retryPrompt);
-    const retryResult = await pollForResult(retryTaskId, orderId);
-    if (retryResult.status === SUNO_SUCCESS_STATUS && retryResult.tracks && retryResult.tracks.length) {
-      const second = await attempt(retryResult.tracks, retryTaskId, 'retry');
-      if (second.built) return second;
+  // CORECȚIE (2026-09-14, comanda reala 5f4b1e2f, Premium, editare selectiva "jazz"): O SINGURA
+  // reincercare (comportamentul de mai sus, pana acum) nu a fost suficienta — demonstrat direct
+  // din loguri: 4 din 4 piese (2 initiale + 2 de la singura reincercare) respinse de
+  // validateLyricsCoherence (motiv: sender_self_declaration), inainte ca cererea sa fie declarata
+  // esuata. Validarea insasi a functionat CORECT (nicio varianta incoerenta salvata) — problema e
+  // STRICT bugetul de reincercari, insuficient impotriva variabilitatii furnizorului. MAX_
+  // COHERENCE_RETRIES marit de la 1 la 2 (pana la 3 incercari complete in total) — NU schimba
+  // validateLyricsCoherence()/pragurile ei, NU schimba buildPrompt()/stilul/genul/vocea, NU
+  // introduce nicio bucla noua de reprocesare a comenzilor reale — STRICT numarul de incercari
+  // inauntrul ACESTUI apel, inainte de a declara cererea esuata. Generic pentru orice gen/limba/
+  // pachet — obtainAcceptableVariant() e SINGURUL punct folosit atat pentru generarea initiala
+  // cat si pentru regenerare/editare (customMode:false, versuri scrise de furnizor).
+  let lastAttempt = first;
+  for (let retryAttempt = 1; retryAttempt <= MAX_COHERENCE_RETRIES; retryAttempt++) {
+    console.warn(`Comanda ${orderId}: nicio piesa acceptabila (versuri goale sau incoerente gramatical/narativ) pentru genul "${genre}" — reincercare ${retryAttempt}/${MAX_COHERENCE_RETRIES}.`);
+    try {
+      const retryOrder = recipientSnapshot ? { ...order, ...recipientSnapshot } : order;
+      const retryPrompt = buildPrompt(retryOrder, '', genre);
+      const retryTaskId = await callMusicProvider(orderId, retryPrompt);
+      const retryResult = await pollForResult(retryTaskId, orderId);
+      if (retryResult.status === SUNO_SUCCESS_STATUS && retryResult.tracks && retryResult.tracks.length) {
+        const second = await attempt(retryResult.tracks, retryTaskId, 'retry');
+        if (second.built) return second;
+        lastAttempt = second;
+      }
+    } catch (retryErr) {
+      console.error(`Comanda ${orderId}: reincercarea ${retryAttempt}/${MAX_COHERENCE_RETRIES} pentru genul "${genre}" a esuat (${retryErr.message}).`);
     }
-  } catch (retryErr) {
-    console.error(`Comanda ${orderId}: reincercarea pentru genul "${genre}" a esuat (${retryErr.message}).`);
   }
-  console.error(`Comanda ${orderId}: nicio piesa acceptabila pentru genul "${genre}" dupa singura reincercare permisa — cererea e tratata ca esuata, NICIO varianta incoerenta nu e salvata.`);
-  return { built: null, lastErr: first.lastErr };
+  console.error(`Comanda ${orderId}: nicio piesa acceptabila pentru genul "${genre}" dupa ${MAX_COHERENCE_RETRIES} reincercari — cererea e tratata ca esuata, NICIO varianta incoerenta nu e salvata.`);
+  return { built: null, lastErr: lastAttempt.lastErr };
 }
 
 function checkLyricsContainExpectedNames(order, variant) {

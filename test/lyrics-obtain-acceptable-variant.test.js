@@ -46,6 +46,12 @@ function loadModule() {
   const coherenceRegion = server.slice(buildPromptStartIdx, server.indexOf('function buildPrompt(order, feedback, genreOverride) {'));
 
   const orderTracksSnippet = sliceFunctionBody(server, 'function orderTracksByCoherence(tracks, order, recipientSnapshot) {').text;
+  // MAX_COHERENCE_RETRIES (2026-09-14, comanda reala 5f4b1e2f): constanta REALA, declarata chiar
+  // inainte de obtainAcceptableVariant() in server.js — extrasa aici ca sandboxul sa reflecte
+  // exact valoarea de productie, nu o copie hardcodata separat (risc de deriva).
+  const maxRetriesIdx = server.indexOf('const MAX_COHERENCE_RETRIES = ');
+  assert.ok(maxRetriesIdx !== -1, 'nu am gasit MAX_COHERENCE_RETRIES in server.js');
+  const maxRetriesSnippet = server.slice(maxRetriesIdx, server.indexOf(';', maxRetriesIdx) + 1);
   const obtainSnippet = sliceFunctionBody(server, 'async function obtainAcceptableVariant(orderId, tracks, taskId, genre, order, recipientSnapshot, canonicalLyrics) {').text;
 
   const sandboxSrc = `
@@ -79,6 +85,7 @@ function loadModule() {
 
     ${coherenceRegion}
     ${orderTracksSnippet}
+    ${maxRetriesSnippet}
     ${obtainSnippet}
 
     return { obtainAcceptableVariant, orderTracksByCoherence, validateLyricsCoherence, resolveSenderMode, __mock };
@@ -96,7 +103,7 @@ function baseOrder() {
   };
 }
 
-test('obtainAcceptableVariant: AMBELE trackuri initiale sunt incoerente si REINCERCAREA produce si ea doar trackuri incoerente -> built:null (nicio varianta incoerenta livrata)', async () => {
+test('obtainAcceptableVariant: AMBELE trackuri initiale sunt incoerente si TOATE reincercarile (MAX_COHERENCE_RETRIES) produc si ele doar trackuri incoerente -> built:null (nicio varianta incoerenta livrata)', async () => {
   const mod = loadModule();
   const order = baseOrder();
   const badTrackA = { id: 'a', lyrics: 'Sunt Bunicului Andrei, te iubim mult, Maria.' }; // auto-identificare + derapaj
@@ -105,17 +112,21 @@ test('obtainAcceptableVariant: AMBELE trackuri initiale sunt incoerente si REINC
   const retryBadTrackB = { id: 'rb', lyrics: 'Melodie fara mesajul explicit din poveste.' }; // omisiune
 
   let buildCalls = 0;
+  let pollCalls = 0;
   mod.__mock.buildVariantFromTrack = async (orderId, variantId, track) => {
     buildCalls++;
     return { id: variantId, originalLyrics: track.lyrics };
   };
   mod.__mock.buildPrompt = () => 'prompt-fals';
   mod.__mock.callMusicProvider = async () => 'retry-task-1';
-  mod.__mock.pollForResult = async () => ({ status: 'SUCCESS', tracks: [retryBadTrackA, retryBadTrackB] });
+  // Mock STATIC (aceleasi 2 trackuri rele la fiecare reincercare) — demonstreaza ca TOATE
+  // reincercarile permise (MAX_COHERENCE_RETRIES, azi 2) sunt chiar folosite, nu doar prima.
+  mod.__mock.pollForResult = async () => { pollCalls++; return { status: 'SUCCESS', tracks: [retryBadTrackA, retryBadTrackB] }; };
 
   const result = await mod.obtainAcceptableVariant('order-1', [badTrackA, badTrackB], 'task-1', 'pop', order, {}, null);
-  assert.equal(result.built, null, 'nicio varianta incoerenta nu trebuie acceptata, nici din incercarea initiala, nici din reincercare');
-  assert.equal(buildCalls, 4, 'trebuie incercate exact toate cele 4 trackuri (2 initiale + 2 din reincercare), niciunul sarit');
+  assert.equal(result.built, null, 'nicio varianta incoerenta nu trebuie acceptata, nici din incercarea initiala, nici din vreo reincercare');
+  assert.equal(pollCalls, 2, 'trebuie folosite EXACT cele 2 reincercari permise (MAX_COHERENCE_RETRIES), niciuna sarita, niciuna in plus');
+  assert.equal(buildCalls, 6, 'trebuie incercate exact toate cele 6 trackuri (2 initiale + 2 x 2 din cele 2 reincercari), niciunul sarit');
 });
 
 test('obtainAcceptableVariant: AMBELE trackuri initiale incoerente, dar REINCERCAREA produce un track coerent ("retry bun") -> acceptat', async () => {
