@@ -172,9 +172,15 @@ test('PROTECTIE: validateLyricsCoherence() (pragurile de coerenta) ramane BYTE-I
 // PROTECTIE: GENRE_STYLE_MAP / VOICE_INSTRUCTIONS / buildPrompt / buildExactLyricsRequest raman
 // neatinse — fixul e STRICT in obtainAcceptableVariant() (numarul de reincercari).
 // ===============================================================================================
-test('PROTECTIE: GENRE_STYLE_MAP (toate cele 16 genuri) ramane BYTE-IDENTIC fata de inaintea acestei corectii', () => {
+// CORECȚIE (2026-09-14, "instrumentalul de dinainte de voce suna a manea, nu a Hip Hop" —
+// aprobata explicit, ULTERIOARA corectiei de buget de reincercari testata in acest fisier):
+// hiphop a fost EXCLUS din aceasta verificare — e singurul gen modificat intentionat de acea
+// corectie ulterioara, neatinsa fata de commit-ul 57e37db la momentul CORECTIEI DE FATA (buget
+// reincercari). Vezi test/hiphop-genre-redefinition.test.js pentru verificarea dedicata a
+// schimbarii de hiphop.
+test('PROTECTIE: GENRE_STYLE_MAP (15 din cele 16 genuri, hiphop exclus) ramane BYTE-IDENTIC fata de commit-ul 57e37db', () => {
   const { execSync } = require('node:child_process');
-  const beforeSrc = execSync('git show HEAD:server.js', { cwd: path.join(__dirname, '..'), maxBuffer: 20 * 1024 * 1024 }).toString('utf8');
+  const beforeSrc = execSync('git show 57e37db:server.js', { cwd: path.join(__dirname, '..'), maxBuffer: 20 * 1024 * 1024 }).toString('utf8');
   function loadGenreStyleMap(src) {
     const idx = src.indexOf('const GENRE_STYLE_MAP = {');
     const end = src.indexOf('};', idx);
@@ -188,7 +194,7 @@ test('PROTECTIE: GENRE_STYLE_MAP (toate cele 16 genuri) ramane BYTE-IDENTIC fata
   }
   const before = loadGenreStyleMap(beforeSrc);
   const after = loadGenreStyleMap(server);
-  for (const g of NEW_GENRES) assert.equal(after[g], before[g], `genul "${g}" trebuie sa ramana byte-identic`);
+  for (const g of NEW_GENRES.filter(g => g !== 'hiphop')) assert.equal(after[g], before[g], `genul "${g}" trebuie sa ramana byte-identic`);
 });
 
 test('PROTECTIE: VOICE_INSTRUCTIONS_FULL/SHORT raman prezente si neatinse (fixul nu le-a modificat)', () => {

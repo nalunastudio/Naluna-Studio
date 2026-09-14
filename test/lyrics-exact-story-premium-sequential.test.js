@@ -473,7 +473,14 @@ test('server.js: toate cele 15 genuri existente raman mapate — niciunul elimin
 // de piesa sau link TikTok nu apare in text (verificat programatic, vezi si
 // test/genre-differentiation-v2.test.js).
 // ---------------------------------------------------------------------------------------------
-test('server.js: profilul Hip-Hop (GENRE_STYLE_MAP.hiphop) contine caracteristicile obligatorii — beat/kick/snare/hi-hat/bass, hook melodic scurt, versuri ritmice apropiate de rap, dictie clara, refren melodic, mix modern curat', () => {
+// CORECȚIE (2026-09-14, "instrumentalul de dinainte de voce suna a manea, nu a Hip Hop" —
+// aprobata explicit): profilul Hip-Hop a fost re-definit spre directia early-2000s club hip-hop
+// (beat prezent din primul bar, nu doar dupa ce intra vocea) — caracteristicile obligatorii de
+// mai jos au fost ajustate ca sa reflecte NOUA descriere aprobata (ex. "hook" in loc de "chorus",
+// dictia clara nu mai e o cerinta separata a acestui profil specific), pastrand intacta cerinta
+// structurala (beat/kick/snare/hi-hat/bass, versuri ritmice de rap, refren/hook memorabil,
+// descriere compacta).
+test('server.js: profilul Hip-Hop (GENRE_STYLE_MAP.hiphop) contine caracteristicile obligatorii — beat/kick/snare/hi-hat/bass, hook memorabil, versuri ritmice apropiate de rap, mix compact', () => {
   const idx = server.indexOf('const GENRE_STYLE_MAP = {');
   const end = server.indexOf('};', idx);
   const body = server.slice(idx, end);
@@ -485,8 +492,7 @@ test('server.js: profilul Hip-Hop (GENRE_STYLE_MAP.hiphop) contine caracteristic
   assert.match(tag, /hi-hat/i, 'trebuie sa mentioneze hi-hat-urile');
   assert.match(tag, /bass/i, 'trebuie sa mentioneze bass-ul');
   assert.match(tag, /rap|rhythmic/i, 'trebuie sa mentioneze interpretarea ritmica/apropiata de rap');
-  assert.match(tag, /diction/i, 'trebuie sa mentioneze dictia clara');
-  assert.match(tag, /chorus/i, 'trebuie sa mentioneze refrenul');
+  assert.match(tag, /chorus|hook/i, 'trebuie sa mentioneze refrenul/hook-ul memorabil');
   assert.ok(tag.length <= 220, `descrierea trebuie sa ramana rezonabil de compacta, a produs ${tag.length} caractere`);
 });
 

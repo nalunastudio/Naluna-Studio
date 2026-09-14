@@ -196,13 +196,17 @@ test('TEST 5: "8-10 seconds" ramane prezent in constantele FULL (buildPrompt) si
 // TEST 7/9 — GENRE_STYLE_MAP byte-identic, cele 16 genuri neatinse (comparat cu commit-ul
 // 57e37db, sursa deja verificata a "configuratiei aprobate").
 // ===============================================================================================
-test('TEST 7/9: GENRE_STYLE_MAP ramane BYTE-IDENTIC pentru toate cele 16 genuri noi fata de commit-ul 57e37db', () => {
+// CORECȚIE (2026-09-14, "instrumentalul de dinainte de voce suna a manea, nu a Hip Hop" —
+// aprobata explicit): hiphop a fost EXCLUS din aceasta verificare — e singurul gen modificat
+// intentionat de acea corectie, ulterioara acesteia. Celelalte 15 genuri raman verificate
+// byte-identic fata de 57e37db, neschimbat.
+test('TEST 7/9: GENRE_STYLE_MAP ramane BYTE-IDENTIC pentru 15 din cele 16 genuri noi fata de commit-ul 57e37db (hiphop exclus — modificat intentionat ulterior, vezi test/hiphop-genre-redefinition.test.js)', () => {
   const { execSync } = require('node:child_process');
   const yesterdaySrc = execSync('git show 57e37db:server.js', { cwd: path.join(__dirname, '..'), maxBuffer: 20 * 1024 * 1024 }).toString('utf8');
   const idx = yesterdaySrc.indexOf('const GENRE_STYLE_MAP = {');
   const end = yesterdaySrc.indexOf('};', idx);
   const body = yesterdaySrc.slice(idx, end);
-  for (const g of NEW_GENRES) {
+  for (const g of NEW_GENRES.filter(g => g !== 'hiphop')) {
     const m = body.match(new RegExp(`\\b${g}: '([^']+)'`));
     assert.ok(m, `nu am gasit "${g}" in versiunea de referinta`);
     assert.equal(GENRE_STYLE_MAP[g], m[1], `genul "${g}" trebuie sa ramana byte-identic`);
