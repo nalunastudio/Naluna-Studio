@@ -8465,6 +8465,9 @@ function buildPrompt(order, feedback, genreOverride) {
     : (OCCASION_INSTRUCTIONS[order.occasion] || OCCASION_INSTRUCTION_FALLBACK);
   let useShortOccasionInstruction = false;
   let includeOccasionInstruction = true;
+  // CORECȚIE (2026-09-14, comanda reala 400d4a20): ultima plasa de siguranta a cascadei de mai
+  // jos — vezi relationClause() mai sus si guard-ul de dupa shrinkSteps.
+  let useMinimalRelationClause = false;
   // Clauza de relatie — mentioneaza NATURAL, o singura data, relatia exacta a destinatarului
   // si (daca e cunoscuta) a expeditorului. NICIODATA eliminata complet de cascada de scurtare
   // (acelasi tratament ca vocea aleasa explicit) — doar comprimata la forma scurta, pentru ca
@@ -8500,7 +8503,11 @@ function buildPrompt(order, feedback, genreOverride) {
     // adresarea "relatie+nume" trebuie sa se activeze dupa rolul ALES pentru acea melodie, nu
     // dupa occasion-ul comun al comenzii.
     if (!FAMILY_RECIPIENT_ROLE_VALUES.includes(effectiveRecipientRole)) {
-      // Comportament ORIGINAL, neschimbat, pentru Nuntă/Botez.
+      // Comportament ORIGINAL, complet NESCHIMBAT, pentru Nuntă/Botez si celelalte roluri
+      // non-familiale — bugul real (400d4a20) si textul lung care l-a cauzat (roNoun-uri de
+      // familie precum "grandmother"/"granddaughter") apar STRICT pe ramura de familie de mai jos;
+      // aceasta ramura nu a fost niciodata parte a problemei, deci ramane exact ca inainte,
+      // inclusiv in cel mai extrem caz (verificat direct, test dedicat).
       return useShortOccasionInstruction
         ? (senderNoun
             ? ` Mention once: recipient's ${recipientNoun}, song from their ${senderNoun}.`
@@ -8518,6 +8525,14 @@ function buildPrompt(order, feedback, genreOverride) {
     // "Amândoi" ramane STRICT recipientMode==='both', suficient si pentru comenzile vechi (care
     // au si recipientNames, ignorat aici acum) si pentru cele noi (care nu il mai au deloc).
     const isBoth = bothKeys && order.recipientMode === 'both';
+    // CORECȚIE (2026-09-14, comanda reala 400d4a20 — "povestea a ajuns doar 'Te' din 'Te iubesc
+    // bunica mea...'"): forma "minimal", ULTIMA plasa de siguranta (vezi useMinimalRelationClause
+    // mai jos) — pastreaza STRICT adresarea prin relatie+nume (roNoun, testat separat — ex.
+    // "mother"/"grandmother" trebuie sa ramana identificabil in prompt), renuntand la
+    // "never bare name" si la mentiunea expeditorului ("from their X") — text de intarire, util,
+    // dar niciodata la fel de important ca insasi povestea clientului. "Never omit either person."
+    // (Amândoi) RAMANE — previne o regresie reala, deja raportata, de omitere a unei persoane.
+    if (useMinimalRelationClause) return ` As ${roNoun}+name.${isBoth ? ' Never omit either person.' : ''}`;
     let clause = useShortOccasionInstruction
       ? (senderNoun
           ? ` Address as ${roNoun}+name, never bare name (from their ${senderNoun}).`
@@ -8719,6 +8734,17 @@ function buildPrompt(order, feedback, genreOverride) {
   // Povestea insasi nu e scurtata aici — bugetul ei se calculeaza separat mai jos, cu o
   // rezerva minima garantata (STORY_MIN_RESERVE, 160-180 caractere utile).
   //
+  // CORECȚIE (2026-09-14, comanda reala 400d4a20 — "povestea a ajuns doar 'Te' din 'Te iubesc
+  // bunica mea...'"): CAUZA EXACTA a bugului (demonstrata direct, nu presupusa, cu datele comenzii
+  // reale): pentru ocazii de familie (bunici/parinti/matusa-unchi/socri), relationClause() (parte
+  // din currentOccasionInstruction, nu un pas separat) poate fi lunga ("grandmother"/
+  // "granddaughter" etc.) — dupa pasii 1-4 de mai sus, `head` ramanea la 571 caractere pentru
+  // comanda reala, cu 161 peste budgetForFixedPart (410), lasand doar 2 caractere pentru poveste
+  // (sub storyTextFloor, calculat corect la 72, dar niciodata aplicat ca o garantie reala a
+  // alocarii). Reparatia (vezi guard-ul de dupa bucla de mai jos, si forma "minimal" a
+  // relationClause() de mai sus) e generica pentru orice ocazie/gen/limba — NU specifica
+  // "bunici"/"populara"/romana.
+  //
   // CORECȚIE (2026-08-13, runda 6, "numele proprii sunt imuabile" — ex. real, raportat live:
   // numele expeditorului "Alexandru" aparea in versuri ca "Alexandr"): pasii care trunchiau
   // `sender`/`recipient` la 30/15/8-10 caractere AU FOST ELIMINAȚI COMPLET — un nume real de 9+
@@ -8729,6 +8755,13 @@ function buildPrompt(order, feedback, genreOverride) {
   // lungi SI ocazie/gen cu descriere lunga), `head` poate depasi usor budgetForFixedPart — accepta
   // deliberat, ca in orice alt caz extrem documentat mai sus: povestea primeste corespunzator mai
   // putin spatiu, NICIODATA numele.
+  //
+  // Mutate AICI (2026-09-14), din locul lor original de mai jos (langa pickStoryLabel) — pure,
+  // depind STRICT de order.story/order.lang, deci pot fi calculate oricand; mutarea nu schimba
+  // valoarea lor, doar le face disponibile pentru plasa de siguranta de mai jos.
+  const storyLabelPlain = ' Story/details to include: ';
+  const desiredStoryTextLen = Array.from(normalizeSingingText(order.story, order.lang) || '').length;
+  const storyTextFloor = Math.min(desiredStoryTextLen, STORY_MIN_RESERVE);
   const budgetForFixedPart = SUNO_PROMPT_MAX_LEN - STORY_MIN_RESERVE;
   const shrinkSteps = [
     () => { useShortOccasionInstruction = true; },
@@ -8742,10 +8775,43 @@ function buildPrompt(order, feedback, genreOverride) {
     step();
     head = buildFixedPart(recipient, sender, relationship);
   }
-  // In cazuri extreme (foarte rare — necesita simultan campuri la lungime maxima SI cel mai
-  // lung gen muzical SI cea mai lunga ocazie), pasii de mai sus pot sa nu ajunga exact la
-  // budgetForFixedPart — dar il aduc suficient de aproape incat povestea tot primeste in
-  // jur de 180+ caractere (calculat mai jos din spatiul chiar ramas, nu presupus).
+  // CORECȚIE (2026-09-14, comanda reala 400d4a20 — "povestea a ajuns doar 'Te' din 'Te iubesc
+  // bunica mea...'"): pasii 1-5 de mai sus tinteau STRICT budgetForFixedPart (o rezerva FIXA de
+  // 190, presupunand ca povestea are mereu nevoie de tot atat) — dar `storyTextFloor` (mutat mai
+  // sus, calculat din lungimea REALA a povestii) poate fi mult mai mic pentru o poveste scurta.
+  // CAUZA EXACTA a bugului (demonstrata direct, cu datele comenzii reale): pentru ocazii de
+  // familie (bunici/parinti/matusa-unchi/socri), relationClause() (parte din
+  // currentOccasionInstruction, nu un pas separat) poate fi lunga ("grandmother"/"granddaughter"
+  // etc.) — dupa pasii 1-5, `head` ramanea la 571 caractere pentru comanda reala, cu 161 peste
+  // budgetForFixedPart (410), lasand doar 2 caractere pentru poveste.
+  //
+  // INCERCARE INITIALA (respinsa, gasita prin testare directa): eliminarea COMPLETA a
+  // occasionInstructionSet (textul de ton/atmosfera al ocaziei) ca ultima plasa de siguranta —
+  // regresa instructiuni SEMANTIC IMPORTANTE pentru alte ocazii (nunta vs botez: "today is your
+  // wedding/baptism day"; pierdere: interzicerea explicita a tonului festiv; frati: "sibling
+  // bond") — text NICIODATA doar decorativ, deci nesigur de eliminat generic, indiferent de
+  // ocazie. Reparatia corecta tinteste STRICT relationClause() (adresarea prin relatie+nume) —
+  // aceasta ramane load-bearing DOAR pentru identificarea relatiei (testata separat, ex.
+  // "mother"/"grandmother" trebuie sa ramana identificabil), nu pentru continutul tematic al
+  // ocaziei — comprimata la forma "minimal" (vezi relationClause() mai sus), NICIODATA eliminata
+  // complet (roNoun/recipientNoun raman intotdeauna prezenti).
+  //
+  // Conditia foloseste STRICT ce spatiu chiar mai ramane (SUNO_PROMPT_MAX_LEN - head.length) fata
+  // de ce are NEVOIE REALA povestea (storyTextFloor + eticheta minima, storyLabelPlain) — NU fata
+  // de rezerva fixa, generica (budgetForFixedPart). Generic pentru orice ocazie/gen/limba — NU
+  // specific "bunici"/"populara"/RO.
+  if ((SUNO_PROMPT_MAX_LEN - head.length) < (storyTextFloor + storyLabelPlain.length) && !useMinimalRelationClause) {
+    useMinimalRelationClause = true;
+    head = buildFixedPart(recipient, sender, relationship);
+  }
+  // In cazuri extreme ramase (necesita simultan nume protejate la lungime mare SI cel mai lung gen
+  // muzical SI cea mai lunga ocazie/relatie), chiar si dupa plasa de mai sus, `head` poate depasi
+  // usor budgetForFixedPart — dar, verificat direct (nu presupus) pe comenzi reale grele, povestea
+  // tot primeste cel putin storyTextFloor. Singurul caz ramas neacoperit, demonstrat separat:
+  // destinatar SI expeditor SIMULTAN la lungimea maxima protejata (nume proprii, niciodata
+  // trunchiate) — o combinatie extrema, preexistenta acestei corectii, neschimbata aici (ar
+  // necesita sacrificarea unui element deja protejat explicit — numele sau vocea aleasa —
+  // depaseste scopul acestei reparatii).
 
   // CORECȚIE (2026-08-13, "povestea din prima strofă"): pe langa clauza integrata deja in
   // `currentInstruction()` (care nu consuma buget suplimentar fata de instructiunea originala),
@@ -8773,7 +8839,6 @@ function buildPrompt(order, feedback, genreOverride) {
   // CORECȚIE (2026-09-13, runda 3, P1): la fel ca la instructiunea de mai sus (currentInstruction),
   // etichetele cereau anterior un detaliu real STRICT in "verse 1" — reformulate sa ceara detalii
   // raspandite "throughout" (in tot textul), lungime EGALA sau mai mica decat inainte.
-  const storyLabelPlain = ' Story/details to include: ';
   const storyLabelShort = ' Use real story details throughout — invent nothing beyond them. Story: ';
   const storyLabelFull = ' Weave real details from this story throughout, never one generic line; include any explicit written message exactly; invent nothing beyond what is written here. Story: ';
   const MIN_USEFUL_STORY_CHARS = 40;
@@ -8942,8 +9007,6 @@ function buildPrompt(order, feedback, genreOverride) {
   // desi era loc suficient pentru amandoua. Degradeaza cu gratie (omise complet) STRICT cand chiar
   // ar costa din continutul povestii — exact acelasi tratament ca BRIGHTEN_MOOD_CLAUSE/
   // FEEDBACK_PRIORITY_CLAUSE.
-  const desiredStoryTextLen = Array.from(normalizeSingingText(order.story, order.lang) || '').length;
-  const storyTextFloor = Math.min(desiredStoryTextLen, STORY_MIN_RESERVE);
   function pickStoryLabel(reserveLevel) {
     // reserveLevel: 2 = dictie + eticheta paranteze, 1 = doar dictie, 0 = niciuna — NESCHIMBAT
     // fata de comportamentul dinainte de OBIECTIV UNIC (durata): indiciul de durata NU

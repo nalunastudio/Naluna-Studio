@@ -164,24 +164,30 @@ test('buildPrompt: clauza de relatie pentru "Amândoi" la bunici mentioneaza exp
 // ---------------------------------------------------------------------------------------------
 // TEST 7: versurile folosesc relatie+nume (nu doar prenume) pentru toate cele 4 categorii.
 // ---------------------------------------------------------------------------------------------
-test('buildPrompt: bunici (rol individual) instruieste explicit sa NU se foloseasca doar prenumele', () => {
+// CORECȚIE (2026-09-14, "povestea a ajuns doar 'Te' " — reparatie generala a bugetului): pentru
+// aceste comenzi (poveste realista de ~97 caractere + gen/relatie/expeditor), plasa de siguranta
+// finala (relationClause "minimal", vezi server.js) se poate activa ca sa protejeze povestea
+// intreaga — adresarea prin relatie+nume ("grandmother"/"mother"/"aunt"+name) ramane intacta;
+// STRICT "never bare name" (fraza explicita de intarire) poate lipsi in acest caz, ca ultim
+// compromis fata de povestea clientului. Testele accepta acum ambele forme.
+test('buildPrompt: bunici (rol individual) instruieste explicit adresarea relatie+nume, nu doar prenumele', () => {
   const order = typicalOrder({ recipient: 'Maria', recipientRole: 'grandmother', recipientMode: 'single', recipientNames: null });
   const prompt = buildPrompt(order, '', undefined);
-  assert.ok(/never (bare( first)?|by first) name/i.test(prompt), `promptul trebuie sa interzica adresarea prin prenume gol, a produs: ${prompt}`);
+  assert.ok(/never (bare( first)?|by first) name/i.test(prompt) || /As "grandmother"\+name\./.test(prompt), `promptul trebuie sa interzica adresarea prin prenume gol SAU sa foloseasca forma minimala relatie+nume, a produs: ${prompt}`);
   assert.ok(prompt.includes('"grandmother"') || prompt.includes('grandmother'), 'promptul trebuie sa mentioneze relatia "grandmother"');
 });
 
 test('buildPrompt: parinti (Mamă/Tată) instruieste relatie+nume, nu doar prenume', () => {
   const order = typicalOrder({ occasion: 'parinti', recipient: 'Elena', recipientRole: 'mother', senderRole: 'daughter', recipientMode: 'single', recipientNames: null });
   const prompt = buildPrompt(order, '', undefined);
-  assert.ok(/never (bare( first)?|by first) name/i.test(prompt));
+  assert.ok(/never (bare( first)?|by first) name/i.test(prompt) || /As "mother"\+name\./.test(prompt));
   assert.ok(prompt.includes('mother'));
 });
 
 test('buildPrompt: matusa-unchi (Mătușă/Unchi) instruieste relatie+nume, nu doar prenume', () => {
   const order = typicalOrder({ occasion: 'matusa-unchi', recipient: 'Ana', recipientRole: 'aunt', senderRole: 'niece', recipientMode: 'single', recipientNames: null });
   const prompt = buildPrompt(order, '', undefined);
-  assert.ok(/never (bare( first)?|by first) name/i.test(prompt));
+  assert.ok(/never (bare( first)?|by first) name/i.test(prompt) || /As "aunt"\+name\./.test(prompt));
   assert.ok(prompt.includes('aunt'));
 });
 

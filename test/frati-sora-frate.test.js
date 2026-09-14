@@ -198,7 +198,13 @@ test('buildPrompt: tema reala (Occasion + instructiune de atmosfera) reflecta le
 test('buildPrompt: instructiunea pentru "sister" cere adresarea ca "sora mea" + nume, niciodata prenume gol', () => {
   const order = typicalOrder({ recipient: 'Maria', recipientRole: 'sister' });
   const prompt = buildPrompt(order, '', undefined);
-  assert.ok(prompt.includes('Address as "sora mea"+name, never bare name.') || prompt.includes('Always address the recipient as "sora mea" plus their name, never by first name alone.'), `promptul trebuie sa contina instructiunea de adresare "sora mea"+nume, a produs: ${prompt}`);
+  // CORECȚIE (2026-09-14, "povestea a ajuns doar 'Te' " — reparatie generala a bugetului): pentru
+  // aceasta comanda, povestea (85 caractere) + genul "pop" + celelalte campuri chiar umplu bugetul
+  // de 600 — plasa de siguranta finala (relationClause minimal, vezi server.js) se activeaza AICI
+  // ca sa protejeze povestea intreaga, comprimand adresarea la forma "As X+name." — identificarea
+  // relatiei ("sora mea") ramane intacta, doar "never bare name"/atributia expeditorului sunt
+  // renuntate ca ultim compromis. Testul accepta acum toate cele 3 forme posibile.
+  assert.ok(prompt.includes('Address as "sora mea"+name, never bare name.') || prompt.includes('Always address the recipient as "sora mea" plus their name, never by first name alone.') || prompt.includes('As "sora mea"+name.'), `promptul trebuie sa contina instructiunea de adresare "sora mea"+nume, a produs: ${prompt}`);
 });
 
 test('buildPrompt: in alte limbi decat romana, conceptul "my sister" e trimis (Suno traduce natural, ex. "my sister Maria" in engleza)', () => {
@@ -213,7 +219,8 @@ test('buildPrompt: in alte limbi decat romana, conceptul "my sister" e trimis (S
 test('buildPrompt: instructiunea pentru "brother" cere adresarea ca "fratele meu" + nume, niciodata prenume gol', () => {
   const order = typicalOrder({ recipient: 'Vasile', recipientRole: 'brother' });
   const prompt = buildPrompt(order, '', undefined);
-  assert.ok(prompt.includes('Address as "fratele meu"+name, never bare name.') || prompt.includes('Always address the recipient as "fratele meu" plus their name, never by first name alone.'), `promptul trebuie sa contina instructiunea de adresare "fratele meu"+nume, a produs: ${prompt}`);
+  // Vezi comentariul identic de la testul "sora" de mai sus — aceeasi plasa de siguranta.
+  assert.ok(prompt.includes('Address as "fratele meu"+name, never bare name.') || prompt.includes('Always address the recipient as "fratele meu" plus their name, never by first name alone.') || prompt.includes('As "fratele meu"+name.'), `promptul trebuie sa contina instructiunea de adresare "fratele meu"+nume, a produs: ${prompt}`);
 });
 
 test('buildPrompt: in alte limbi decat romana, conceptul "my brother" e trimis (Suno traduce natural, ex. "my brother Vasile" in engleza)', () => {
