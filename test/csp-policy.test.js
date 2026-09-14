@@ -46,6 +46,16 @@ test('CSP: img-src permite explicit cdnjs.cloudflare.com (flags.png de la intl-t
   assert.ok(flat(directives.imgSrc).includes('https://cdnjs.cloudflare.com'));
 });
 
+test('CSP: script-src permite explicit googletagmanager.com (necesar pentru incarcarea gtag.js — GA4, gasit prin testare live: request-ul era blocat, "Failed to fetch")', () => {
+  assert.ok(flat(directives.scriptSrc).includes('https://www.googletagmanager.com'));
+});
+
+test('CSP: connect-src permite explicit google-analytics.com si googletagmanager.com (necesar pentru trimiterea evenimentelor GA4 catre Google)', () => {
+  const flatVal = flat(directives.connectSrc);
+  assert.ok(flatVal.includes('https://www.google-analytics.com'));
+  assert.ok(flatVal.includes('https://www.googletagmanager.com'));
+});
+
 test('CSP: connect-src si media-src permit gazda R2 privata, derivata din env, niciodata hardcodata literal', () => {
   const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'lib', 'csp.js'), 'utf8');
   assert.ok(!/r2\.cloudflarestorage\.com/.test(src.replace(/\/\/.*$/gm, '')) || /process\.env\.S3_ENDPOINT/.test(src), 'gazda R2 trebuie derivata din process.env, nu hardcodata');
