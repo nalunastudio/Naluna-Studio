@@ -246,9 +246,11 @@ test('server.js: rezerva garantata de feedback (safeGuaranteedReserve) se aplica
 });
 
 test('server.js: Video Gift intro (3b75f64) si progressive video offsets (c5a2692) NU au fost modificate de aceasta reparatie', () => {
-  assert.ok(server.includes('function applyVideoGiftIntro(shots, mediaItems, vocalOnsetSeconds)') === false, 'applyVideoGiftIntro e in lib/media-analysis.js, nu server.js — verificat separat mai jos');
+  // NOTA (2026-09-14): applyVideoGiftIntro() a primit ulterior un al 4-lea parametru optional
+  // (videoDurationsByIndex, selectia celui mai lung video) intr-o corectie SEPARATA, izolata —
+  // vezi test/video-gift-intro-longest-video.test.js. Semnatura de mai jos reflecta acea stare.
   const mediaAnalysisSrc = fs.readFileSync(path.join(__dirname, '..', 'lib', 'media-analysis.js'), 'utf8');
-  assert.ok(mediaAnalysisSrc.includes('function applyVideoGiftIntro(shots, mediaItems, vocalOnsetSeconds) {'));
+  assert.ok(mediaAnalysisSrc.includes('function applyVideoGiftIntro(shots, mediaItems, vocalOnsetSeconds, videoDurationsByIndex) {'));
   assert.ok(server.includes('function computeVideoProgressByShot(shots) {'));
   assert.ok(server.includes('function computeVideoStartOffsetFromProgress(consumedSecondsSoFar, sourceDurationSeconds, segDurationSeconds) {'));
 });

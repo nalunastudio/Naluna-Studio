@@ -7281,6 +7281,53 @@ async function buildMemoryBackground(order, mediaItems, durationSeconds, section
   try {
     const onsetTimes = songFilePath ? await extractAudioOnsets(songFilePath, order.id) : [];
 
+    // Descarcare LENESA + memoizata (cerinta F, vezi comentariul original mai jos, la
+    // remainingUsesByItem) — MUTATA mai devreme (2026-09-14) STRICT ca sa poata fi reutilizata de
+    // pre-trecerea de mai jos (alegerea video-ului pentru intro dupa durata reala) — comportamentul
+    // ei propriu (descarcare + memoizare per itemIndex) ramane complet neschimbat; doar MOMENTUL
+    // la care poate fi apelata prima data e mai devreme pentru cazul (rar) cu 2+ video-uri.
+    const localPathByItem = new Array(ordered.length).fill(null);
+    const downloadPromiseByItem = new Array(ordered.length).fill(null);
+    function ensureDownloaded(itemIndex) {
+      if (localPathByItem[itemIndex]) return Promise.resolve(localPathByItem[itemIndex]);
+      if (!downloadPromiseByItem[itemIndex]) {
+        downloadPromiseByItem[itemIndex] = downloadOneOrderMediaItem(order, ordered[itemIndex], itemIndex).then(downloaded => {
+          localPathByItem[itemIndex] = downloaded.localPath;
+          cleanupPaths.push(downloaded.localPath);
+          return downloaded.localPath;
+        });
+      }
+      return downloadPromiseByItem[itemIndex];
+    }
+
+    // INTRO CADOU VIDEO — CE VIDEO SE FOLOSESTE (2026-09-14, "video-ul de 2 secunde a fost ales
+    // pentru intro si s-a repetat in bucla"): daca clientul a incarcat 2+ video-uri, alegem pentru
+    // intro cel cu durata REALA cea mai mare (vezi selectVideoGiftIntroItemIndex,
+    // lib/media-analysis.js) — NICIODATA doar primul din ordine. Durata reala nu e cunoscuta din
+    // metadatele usoare (`ordered`) — necesita ffprobe pe fisierul efectiv descarcat local, deci
+    // se calculeaza AICI, STRICT pentru itemii video, folosind ACEEASI functie de descarcare
+    // memoizata de mai sus (niciun fisier nu se descarca de doua ori — cand randarea efectiva a
+    // cadrelor are nevoie mai tarziu de acelasi fisier, ensureDownloaded() returneaza instant
+    // calea deja descarcata). Pentru 0 sau 1 video candidat, NU se face niciun probe suplimentar —
+    // applyVideoGiftIntro() revine la comportamentul original (primul/singurul video eligibil).
+    const videoCandidateIndexes = ordered
+      .map((m, i) => (m && m.type === 'video') ? i : -1)
+      .filter(i => i !== -1);
+    let videoDurationsByIndex = null;
+    if (videoCandidateIndexes.length > 1) {
+      videoDurationsByIndex = {};
+      const probeCache = order.__mediaProbeCache || (order.__mediaProbeCache = { dims: new Map(), duration: new Map(), hdr: new Map() });
+      for (const idx of videoCandidateIndexes) {
+        try {
+          const localPath = await ensureDownloaded(idx);
+          videoDurationsByIndex[idx] = await getVideoSourceDurationSeconds(localPath, probeCache.duration);
+        } catch (err) {
+          videoDurationsByIndex[idx] = null; // esec la descarcare/probe — selectVideoGiftIntroItemIndex trece gratios la fallback
+        }
+      }
+      perfLog(order.id, 'video_gift_intro_duration_probe', `candidati=${videoCandidateIndexes.length}, durate=${JSON.stringify(videoDurationsByIndex)}`);
+    }
+
     // SHOT PLAN (2026-08-24, rescris 2026-08-31 — storyboard pe ture, vezi lib/media-analysis.js)
     // — plan de cadre SCURTE, posibil multiple per material, cu ritm dupa sectiunea REALA
     // curenta. Construit din `ordered` (metadate, NU fisiere descarcate — vezi comentariul de
@@ -7297,7 +7344,7 @@ async function buildMemoryBackground(order, mediaItems, durationSeconds, section
     // incarcat de client, sau vocalOnsetSeconds nu e disponibil/sigur — comportamentul ACTUAL,
     // niciodata un fallback nou/degradat.
     const shotPlanBeforeIntro = shotPlan;
-    shotPlan = applyVideoGiftIntro(shotPlan, ordered, vocalOnsetSeconds);
+    shotPlan = applyVideoGiftIntro(shotPlan, ordered, vocalOnsetSeconds, videoDurationsByIndex);
     // REUTILIZARE PROGRESIVA A VIDEO-URILOR (2026-09-14, "nu vreau sa fie afisata repetat aceeasi
     // portiune dintr-un video reutilizat"): o singura trecere, sincrona, peste planul FINAL (dupa
     // eventualul intro de mai sus) — vezi comentariul detaliat de la computeVideoProgressByShot()
@@ -7319,25 +7366,13 @@ async function buildMemoryBackground(order, mediaItems, durationSeconds, section
     }
     perfLog(order.id, 'memory_transition_distribution', `tipuri=${JSON.stringify(transitionTypeCounts)}, durate=${JSON.stringify(transitionDurationCounts)}`);
 
-    // Descarcare LENESA + memoizata + numarator de referinte (cerinta F, vezi comentariul
-    // functiei) — `remainingUsesByItem` e cunoscut INTEGRAL inainte de a descarca ceva, pentru
-    // ca planul de cadre e deja complet la acest punct.
+    // Numarator de referinte (cerinta F, vezi comentariul functiei releaseItem mai jos) —
+    // `remainingUsesByItem` e cunoscut INTEGRAL inainte de a descarca orice altceva, pentru ca
+    // planul de cadre e deja complet la acest punct. `ensureDownloaded`/`localPathByItem`/
+    // `downloadPromiseByItem` sunt declarate mai sus (2026-09-14) — descarcarea/memoizarea in
+    // sine raman complet neschimbate, doar mutate mai devreme.
     const remainingUsesByItem = new Array(ordered.length).fill(0);
     shotPlan.forEach(sh => { remainingUsesByItem[sh.itemIndex]++; });
-    const localPathByItem = new Array(ordered.length).fill(null);
-    const downloadPromiseByItem = new Array(ordered.length).fill(null);
-
-    function ensureDownloaded(itemIndex) {
-      if (localPathByItem[itemIndex]) return Promise.resolve(localPathByItem[itemIndex]);
-      if (!downloadPromiseByItem[itemIndex]) {
-        downloadPromiseByItem[itemIndex] = downloadOneOrderMediaItem(order, ordered[itemIndex], itemIndex).then(downloaded => {
-          localPathByItem[itemIndex] = downloaded.localPath;
-          cleanupPaths.push(downloaded.localPath);
-          return downloaded.localPath;
-        });
-      }
-      return downloadPromiseByItem[itemIndex];
-    }
 
     // Sterge sursa locala a unui material IMEDIAT ce ultimul cadru care o foloseste a terminat
     // de randat (await deja rezolvat inainte de acest apel — vezi renderNextShot mai jos) —

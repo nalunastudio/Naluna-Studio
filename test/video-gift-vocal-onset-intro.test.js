@@ -247,7 +247,9 @@ test('server.js: buildMemoryBackground() aplica applyVideoGiftIntro() STRICT dup
   const fn = extractFn(server, 'async function buildMemoryBackground(order, mediaItems, durationSeconds, sectionTimings, songFilePath, assForFilter, vocalOnsetSeconds) {');
   assert.ok(fn.includes("let shotPlan = buildShotPlan(ordered, durationSeconds, sectionTimings, MEMORY_XFADE_SECONDS, onsetTimes, CONCAT_BATCH_SIZE);"));
   assert.ok(fn.includes("if (shotPlan.length === 0) throw new Error('Planul de cadre a rezultat gol — nu pot construi fundalul cinematic.');"));
-  assert.ok(fn.includes('shotPlan = applyVideoGiftIntro(shotPlan, ordered, vocalOnsetSeconds);'));
+  // CORECȚIE (2026-09-14): al 4-lea argument, videoDurationsByIndex, a fost adaugat (alegerea
+  // celui mai lung video pentru intro) — vezi test/video-gift-intro-longest-video.test.js.
+  assert.ok(fn.includes('shotPlan = applyVideoGiftIntro(shotPlan, ordered, vocalOnsetSeconds, videoDurationsByIndex);'));
   // applyVideoGiftIntro ruleaza DUPA validarea de plan gol, niciodata inainte — un plan gol tot
   // arunca aceeasi eroare ca inainte, neschimbata.
   const idxEmpty = fn.indexOf("if (shotPlan.length === 0)");

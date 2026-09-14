@@ -198,10 +198,16 @@ test('intro Cadou Video: portiunea consumata de intro e considerata "deja folosi
   }
 });
 
-test('intro-ul Cadou Video (commit 3b75f64) ramane NESCHIMBAT — applyVideoGiftIntro() nu a fost modificata de aceasta corectie', () => {
+// CORECȚIE (2026-09-14, "video-ul de 2 secunde a fost ales pentru intro si s-a repetat in
+// bucla"): applyVideoGiftIntro() a primit un al 4-lea parametru OPTIONAL, videoDurationsByIndex
+// (vezi test/video-gift-intro-longest-video.test.js) — STRICT pentru alegerea SURSEI video a
+// intro-ului (cel mai lung video, nu primul din ordine); limita/momentul intro-ului, mecanismul
+// de inlocuire a cadrelor si tot restul corpului functiei raman identice, neschimbate.
+test('intro-ul Cadou Video (commit 3b75f64) ramane NESCHIMBAT in ESENTA — applyVideoGiftIntro() a primit STRICT un al 4-lea parametru optional (alegerea sursei, 2026-09-14), fara alta modificare', () => {
   const mediaAnalysisSrc = fs.readFileSync(path.join(__dirname, '..', 'lib', 'media-analysis.js'), 'utf8');
-  assert.ok(mediaAnalysisSrc.includes('function applyVideoGiftIntro(shots, mediaItems, vocalOnsetSeconds) {'), 'semnatura applyVideoGiftIntro trebuie sa ramana identica');
-  assert.ok(mediaAnalysisSrc.includes("kenBurns: null, // video, niciodata Ken Burns (rezervat exclusiv pozelor — vezi renderShot)"), 'corpul functiei nu trebuie modificat');
+  assert.ok(mediaAnalysisSrc.includes('function applyVideoGiftIntro(shots, mediaItems, vocalOnsetSeconds, videoDurationsByIndex) {'), 'semnatura trebuie sa aiba STRICT parametrul nou aditiv, restul neschimbat');
+  assert.ok(mediaAnalysisSrc.includes("kenBurns: null, // video, niciodata Ken Burns (rezervat exclusiv pozelor — vezi renderShot)"), 'corpul functiei (dincolo de selectia sursei) nu trebuie modificat');
+  assert.ok(mediaAnalysisSrc.includes('const boundaryIdx = shots.findIndex(s => s.start >= vocalOnsetSeconds);'), 'limita intro-ului (vocal onset) trebuie sa ramana identica');
 });
 
 // ===============================================================================================
