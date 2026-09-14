@@ -1,9 +1,10 @@
-// CORECȚIE (2026-09-14, "instrumentalul de dinainte de voce suna a manea, nu a Hip Hop" —
-// aprobata explicit): singura modificare functionala — GENRE_STYLE_MAP.hiphop inlocuit de la
-// 'authentic hip-hop, punchy kick/snare/hi-hat groove, bass-led, rhythmic clear-diction rap
-// verses, storytelling attitude, melodic chorus, organic not just trap' (157 caractere) la
-// 'early-2000s club hip-hop, hard punchy kick/snare, deep bass, crisp hi-hats, confident sparse
-// beat from bar one, rhythmic rap verses, big club hook' (146 caractere, mai scurta).
+// CORECȚIE (2026-09-14, runda 2 — "rezultatul real nu suna ca Hip Hop-ul dorit, directia
+// 'club hip-hop' nu a functionat" — aprobata explicit): singura modificare functionala —
+// GENRE_STYLE_MAP.hiphop inlocuit de la versiunea "club" anterioara ('early-2000s club hip-hop,
+// hard punchy kick/snare, deep bass, crisp hi-hats, confident sparse beat from bar one, rhythmic
+// rap verses, big club hook', 146 caractere) la directia street hip-hop/rap ceruta explicit
+// ('2000s street hip-hop, hard drums, punchy kick, dry snare, deep heavy bass, sparse dark gritty
+// beat from the first beat, rap verses, street hook', 143 caractere, mai scurta).
 // Celelalte 15 genuri, VOICE_INSTRUCTIONS_FULL/SHORT, clauza de vocal-onset, story/feedback/
 // duration/validator/prompt architecture raman NESCHIMBATE — verificat explicit mai jos.
 const test = require('node:test');
@@ -16,8 +17,8 @@ function read(relPath) {
 }
 const server = read('server.js');
 
-const NEW_HIPHOP = 'early-2000s club hip-hop, hard punchy kick/snare, deep bass, crisp hi-hats, confident sparse beat from bar one, rhythmic rap verses, big club hook';
-const OLD_HIPHOP = 'authentic hip-hop, punchy kick/snare/hi-hat groove, bass-led, rhythmic clear-diction rap verses, storytelling attitude, melodic chorus, organic not just trap';
+const NEW_HIPHOP = '2000s street hip-hop, hard drums, punchy kick, dry snare, deep heavy bass, sparse dark gritty beat from the first beat, rap verses, street hook';
+const OLD_HIPHOP = 'early-2000s club hip-hop, hard punchy kick/snare, deep bass, crisp hi-hats, confident sparse beat from bar one, rhythmic rap verses, big club hook';
 const OTHER_GENRES = ['pop', 'ballad_emotional', 'acoustic_folk', 'rnb', 'country', 'jazz', 'rock',
   'edm_dance', 'manele_suflet', 'manele_jale', 'populara', 'copii', 'colind', 'romantic', 'motivational'];
 const LANGS = ['ro', 'en', 'de', 'es', 'it', 'fr', 'bg', 'tr'];
@@ -56,12 +57,12 @@ function loadGenreStyleMap() {
 const GENRE_STYLE_MAP = loadGenreStyleMap();
 
 // ===============================================================================================
-// TEST 1/3 — GENRE_STYLE_MAP.hiphop e EXACT valoarea aprobata; caractere 157 -> 146.
+// TEST 1/3 — GENRE_STYLE_MAP.hiphop e EXACT valoarea aprobata; caractere 146 -> 143.
 // ===============================================================================================
-test('GENRE_STYLE_MAP.hiphop e EXACT noua valoare aprobata (146 caractere, fata de 157 anterior)', () => {
+test('GENRE_STYLE_MAP.hiphop e EXACT noua valoare aprobata (143 caractere, fata de 146 anterior)', () => {
   assert.equal(GENRE_STYLE_MAP.hiphop, NEW_HIPHOP);
-  assert.equal(NEW_HIPHOP.length, 146);
-  assert.equal(OLD_HIPHOP.length, 157);
+  assert.equal(NEW_HIPHOP.length, 143);
+  assert.equal(OLD_HIPHOP.length, 146);
   assert.ok(NEW_HIPHOP.length < OLD_HIPHOP.length, 'noua definitie trebuie sa fie mai scurta, nu mai lunga');
 });
 

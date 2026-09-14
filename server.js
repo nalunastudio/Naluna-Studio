@@ -8333,15 +8333,16 @@ const GENRE_STYLE_MAP = {
   country: 'storytelling country, acoustic guitar foundation, steel or electric guitar, warm narrative vocal, natural drums, melodic chorus',
   jazz: 'smooth jazz, saxophone or piano, warm bass, brushed drums, jazz-coloured harmony, slow-medium groove, soulful vocal',
   rock: 'live rock band, distorted electric guitar riff, bass, drums, strong vocal, chorus expands from verse, ranges soft-rock to stadium rock',
-  // CORECȚIE (2026-09-14, "instrumentalul de dinainte de voce suna a manea, nu a Hip Hop" —
-  // aprobata explicit, scop STRICT limitat la aceasta valoare): comparat cu descrierea veche,
-  // ancoreaza explicit era/sub-genul ("early-2000s club hip-hop") si descrie beat-ul ca prezent
-  // "from bar one" — caracteristica a INTREGII melodii (ca toate celelalte descrieri de gen),
-  // NICIODATA o regula separata de intro. Fara nume de artist/titlu de piesa (verificat, vezi
-  // test/hiphop-genre-redefinition.test.js) — STRICT caracteristici muzicale generale. Mai
-  // scurta decat vechea descriere (146 vs 157 caractere) — imbunatateste, nu inrautateste,
-  // bugetul de 600 caractere.
-  hiphop: 'early-2000s club hip-hop, hard punchy kick/snare, deep bass, crisp hi-hats, confident sparse beat from bar one, rhythmic rap verses, big club hook',
+  // CORECȚIE (2026-09-14, runda 2 — "rezultatul real nu suna ca Hip Hop-ul dorit, directia
+  // 'club hip-hop' nu a functionat" — aprobata explicit, scop STRICT limitat la aceasta valoare):
+  // inlocuieste versiunea anterioara ("early-2000s club hip-hop...") cu directia street hip-hop/
+  // rap ceruta — "dry snare"/"sparse dark gritty beat" (nu "confident"/"club") resping activ
+  // caracterul de club/petrecere; beat-ul descris ca prezent "from the first beat" — caracteristica
+  // a INTREGII melodii (ca toate celelalte descrieri de gen), NICIODATA o regula separata de
+  // intro. Fara nume de artist/titlu de piesa (verificat, vezi test/hiphop-genre-redefinition.
+  // test.js) — STRICT caracteristici muzicale generale. Mai scurta decat versiunea anterioara
+  // (143 vs 146 caractere) — imbunatateste, nu inrautateste, bugetul de 600 caractere.
+  hiphop: '2000s street hip-hop, hard drums, punchy kick, dry snare, deep heavy bass, sparse dark gritty beat from the first beat, rap verses, street hook',
   edm_dance: 'EDM dance, four-on-the-floor kick, synth-driven, powerful bass, build-up into drop, danceable groove, festival energy',
   manele_suflet: 'Romanian manele de suflet, violin accordion or clarinet, warm melismatic vocal, hopeful devoted mood',
   manele_jale: 'Romanian manele de jale, minor-key oriental colour, mournful violin and clarinet, melismatic lament vocal, heavier longing mood',

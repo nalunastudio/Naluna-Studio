@@ -473,14 +473,15 @@ test('server.js: toate cele 15 genuri existente raman mapate — niciunul elimin
 // de piesa sau link TikTok nu apare in text (verificat programatic, vezi si
 // test/genre-differentiation-v2.test.js).
 // ---------------------------------------------------------------------------------------------
-// CORECȚIE (2026-09-14, "instrumentalul de dinainte de voce suna a manea, nu a Hip Hop" —
-// aprobata explicit): profilul Hip-Hop a fost re-definit spre directia early-2000s club hip-hop
-// (beat prezent din primul bar, nu doar dupa ce intra vocea) — caracteristicile obligatorii de
-// mai jos au fost ajustate ca sa reflecte NOUA descriere aprobata (ex. "hook" in loc de "chorus",
-// dictia clara nu mai e o cerinta separata a acestui profil specific), pastrand intacta cerinta
-// structurala (beat/kick/snare/hi-hat/bass, versuri ritmice de rap, refren/hook memorabil,
-// descriere compacta).
-test('server.js: profilul Hip-Hop (GENRE_STYLE_MAP.hiphop) contine caracteristicile obligatorii — beat/kick/snare/hi-hat/bass, hook memorabil, versuri ritmice apropiate de rap, mix compact', () => {
+// CORECȚIE (2026-09-14, runda 2 — "rezultatul real nu suna ca Hip Hop-ul dorit, directia
+// 'club hip-hop' nu a functionat" — aprobata explicit): profilul Hip-Hop a fost re-definit spre
+// directia street hip-hop/rap (beat prezent din primul beat, nu doar dupa ce intra vocea) —
+// caracteristicile obligatorii de mai jos au fost ajustate ca sa reflecte NOUA descriere
+// aprobata (ex. "hi-hat" nu mai e o cerinta — descrierea "sparse dark gritty" prioritizeaza
+// drums/kick/snare/bass, nu hi-hat-uri crocante, tipice mai degraba directiei de club abandonate),
+// pastrand intacta cerinta structurala (beat/kick/snare/bass, versuri ritmice de rap, refren/hook
+// memorabil, descriere compacta).
+test('server.js: profilul Hip-Hop (GENRE_STYLE_MAP.hiphop) contine caracteristicile obligatorii — beat/kick/snare/bass, hook memorabil, versuri ritmice apropiate de rap, mix compact', () => {
   const idx = server.indexOf('const GENRE_STYLE_MAP = {');
   const end = server.indexOf('};', idx);
   const body = server.slice(idx, end);
@@ -489,7 +490,6 @@ test('server.js: profilul Hip-Hop (GENRE_STYLE_MAP.hiphop) contine caracteristic
   const tag = hiphopMatch[1];
   assert.match(tag, /kick/i, 'trebuie sa mentioneze kick-ul');
   assert.match(tag, /snare|clap/i, 'trebuie sa mentioneze snare/clap');
-  assert.match(tag, /hi-hat/i, 'trebuie sa mentioneze hi-hat-urile');
   assert.match(tag, /bass/i, 'trebuie sa mentioneze bass-ul');
   assert.match(tag, /rap|rhythmic/i, 'trebuie sa mentioneze interpretarea ritmica/apropiata de rap');
   assert.match(tag, /chorus|hook/i, 'trebuie sa mentioneze refrenul/hook-ul memorabil');
