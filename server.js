@@ -1138,6 +1138,54 @@ app.post('/api/resend/webhook', express.raw({ type: 'application/json' }), async
 // pentru o versiune pe care clientul a schimbat-o intre timp in alt tab — nu poate debloca
 // sau livra versiunea gresita.
 // ==========================================================================================
+
+// ANALYTICS (2026-09-14) — trimite evenimentul GA4 "purchase" prin Measurement Protocol
+// (server-side, NICIODATA client-side pentru acest eveniment — vezi motivul la locul apelului,
+// mai jos in processConfirmedPayment). STRICT best-effort: orice eroare (retea, GA4 indisponibil,
+// GA_API_SECRET/GA_MEASUREMENT_ID lipsa) e prinsa aici si NU ajunge niciodata la apelant — GA4
+// e analytics, niciodata sursa de adevar financiara (Stripe/DB raman neatinse indiferent de
+// rezultatul acestui apel). Fara niciun camp PII: STRICT transaction_id (orderId, UUID aleator,
+// fara continut personal), value/currency (deja calculate de Stripe), item (planul comenzii) si,
+// daca a fost capturat la checkout (vezi POST /api/orders/:orderId/checkout), client_id-ul GA4
+// pentru atribuire corecta sursa/UTM — NICIODATA nume, email, poveste, versuri, fotografii.
+async function sendGa4PurchaseEvent({ orderId, plan, value, currency, gaClientId }) {
+  const measurementId = (process.env.GA_MEASUREMENT_ID || '').trim();
+  const apiSecret = (process.env.GA_API_SECRET || '').trim();
+  if (!measurementId || !apiSecret) return; // GA4 neconfigurat — no-op silentios, niciodata o eroare
+  // Measurement Protocol cere STRICT client_id SAU user_id — fara niciunul, evenimentul ar
+  // aparea in GA4 ca un "utilizator" nou, fantoma, dintr-un singur eveniment, stricand
+  // atribuirea/funnel-ul (Stripe/DB raman oricum sursa de adevar pentru plata reala, indiferent
+  // de acest caz) — mai bine omis complet decat trimis cu o valoare inventata.
+  if (!gaClientId) {
+    console.warn(`Comanda ${orderId}: GA4 purchase omis — niciun client_id capturat la checkout (consimtamant refuzat/analytics blocat la client).`);
+    return;
+  }
+  try {
+    const url = `https://www.google-analytics.com/mp/collect?measurement_id=${encodeURIComponent(measurementId)}&api_secret=${encodeURIComponent(apiSecret)}`;
+    const res = await fetchWithTimeout(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        client_id: gaClientId,
+        events: [{
+          name: 'purchase',
+          params: {
+            transaction_id: orderId,
+            value,
+            currency: (currency || 'GBP').toUpperCase(),
+            items: [{ item_id: plan, item_name: plan, price: value, quantity: 1 }]
+          }
+        }]
+      })
+    }, 8000);
+    if (!res.ok) {
+      console.warn(`Comanda ${orderId}: GA4 Measurement Protocol a raspuns cu HTTP ${res.status} pentru evenimentul purchase.`);
+    }
+  } catch (err) {
+    console.warn(`Comanda ${orderId}: trimiterea evenimentului GA4 purchase a esuat (${err.message}) — livrarea comenzii NU e afectata.`);
+  }
+}
+
 async function processConfirmedPayment(event, session) {
   const orderId = session.metadata && session.metadata.orderId;
   if (!orderId) return { httpStatus: 200, body: { received: true, noOrderId: true } };
@@ -1252,6 +1300,23 @@ async function processConfirmedPayment(event, session) {
   generatePremiumExtras(orderId).catch(err => {
     console.error('Generarea extraselor de pachet a esuat pentru comanda', orderId, err.message);
   });
+
+  // ANALYTICS (2026-09-14) — evenimentul GA4 "purchase" e trimis STRICT aici, niciodata din
+  // pagina de succes client-side: acest punct e protejat de ACELASI mecanism atomic de
+  // deduplicare (processed_stripe_events + FOR UPDATE, vezi db.recordPaidOrderAtomically mai
+  // sus) care garanteaza deja ca emailul de livrare/extrasele nu se trimit de doua ori — un
+  // refresh pe succes.html, un retry de webhook Stripe, sau reprocesarea aceleiasi comenzi NU
+  // pot ajunge niciodata din nou aici (result.isNewEvent/alreadyPaid le-ar fi oprit deja mai
+  // sus). value/currency vin STRICT din Stripe (amountTotal/paymentCurrency, deja calculate mai
+  // sus din session), niciodata recalculate separat — Stripe/DB raman sursa de adevar; GA4 doar
+  // reflecta aceeasi valoare, pentru analytics.
+  sendGa4PurchaseEvent({
+    orderId,
+    plan: updated.plan,
+    value: amountTotal,
+    currency: paymentCurrency,
+    gaClientId: (session.metadata && session.metadata.gaClientId) || null
+  }).catch(() => { /* sendGa4PurchaseEvent isi prinde deja toate erorile — plasa suplimentara */ });
 
   return { httpStatus: 200, body: { received: true } };
 }
@@ -2048,6 +2113,22 @@ app.use(express.static(path.join(__dirname, 'public'), {
     }
   }
 }));
+
+// ==========================================================================================
+// ANALYTICS (2026-09-14) — config runtime pentru public/js/analytics.js. Measurement ID-ul GA4
+// vine STRICT din variabila de mediu GA_MEASUREMENT_ID, niciodata hardcodat in fisierele
+// statice servite din public/ (care nu trec prin niciun pas de build/templating) — aceasta
+// e SINGURA cale prin care valoarea ajunge la client, fara sa introducem un mecanism nou de
+// templating HTML doar pentru atat. Fara GA_MEASUREMENT_ID setat, raspunde cu o valoare goala —
+// analytics.js deja trateaza asta explicit ca "nu incarca nimic", niciodata o eroare.
+// NECACHE-uit (acelasi tratament ca paginile HTML, mai sus) — o schimbare a variabilei de mediu
+// (redeploy) trebuie sa ajunga imediat la clienti, fara sa astepte expirarea unui cache vechi.
+app.get('/js/config.js', (req, res) => {
+  res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store');
+  const measurementId = (process.env.GA_MEASUREMENT_ID || '').trim();
+  res.send(`window.NALUNA_GA_MEASUREMENT_ID = ${JSON.stringify(measurementId)};\n`);
+});
 
 // ==========================================================================================
 // 1. Creeaza comanda (fara plata) — VALIDARE STRICTA + PRET CALCULAT SERVER-SIDE
@@ -3211,6 +3292,16 @@ app.get('/api/orders/:orderId', async (req, res, next) => {
 app.post('/api/orders/:orderId/checkout', requireOrderToken, async (req, res, next) => {
   try {
     const order = req.order;
+    // ANALYTICS (2026-09-14) — client_id GA4 (vezi public/js/analytics.js -> getClientId()),
+    // trimis optional de client STRICT daca a fost deja consimtit/capturat — transportat prin
+    // metadata Stripe deja existenta (niciodata persistat separat in DB, nicio schimbare de
+    // schema) pana la webhook, unde e folosit STRICT pentru evenimentul GA4 "purchase" (vezi
+    // sendGa4PurchaseEvent). Format GA4 real: "<numar>.<numar>" — validat strict, altfel ignorat
+    // silentios (niciodata o eroare care ar putea bloca plata).
+    const rawGaClientId = typeof req.body === 'object' && req.body ? req.body.gaClientId : null;
+    const gaClientId = (typeof rawGaClientId === 'string' && /^[0-9]{1,20}\.[0-9]{1,20}$/.test(rawGaClientId))
+      ? rawGaClientId
+      : '';
     if (order.status === 'ready') {
       return res.status(400).json({ error: 'Comanda a fost deja plătită.' });
     }
@@ -3345,7 +3436,8 @@ app.post('/api/orders/:orderId/checkout', requireOrderToken, async (req, res, ne
         selectedVariantId2: order.selectedVariantId2 || '',
         mediaRevision: String(order.mediaRevision),
         expectedAmount: String(Math.round(order.price * 100)),
-        expectedCurrency: 'gbp'
+        expectedCurrency: 'gbp',
+        gaClientId
       },
       success_url: `${DOMAIN}/succes.html?order=${order.id}&token=${order.accessToken}`,
       // plata abandonata sau esuata -> revine la pagina dedicata melodiei (nu la formular),

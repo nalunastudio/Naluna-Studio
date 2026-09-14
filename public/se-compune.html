@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Se compune melodia ta — NALUNA</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<script src="/js/config.js"></script>
+<script src="/js/analytics.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;1,9..144,400&family=Sora:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root{
@@ -513,6 +515,12 @@
 
   function finishSuccess() {
     finished = true;
+    // ANALYTICS (2026-09-14, eveniment OPTIONAL de product analytics): generation_completed —
+    // trimis STRICT aici, unde polling-ul deja existent a detectat DIRECT de la server starea
+    // finala reala ('preview_ready'/'ready', sau regenerationStatus==='ready') — niciodata
+    // presupusa client-side. finished=true (linia de mai sus) garanteaza ca aceasta functie nu
+    // se re-executa pentru aceeasi incarcare de pagina.
+    if (typeof window !== 'undefined' && window.NalunaAnalytics) window.NalunaAnalytics.track('generation_completed');
     clearInterval(progressTimer);
     localStorage.removeItem(startKey);
 
@@ -560,6 +568,9 @@
   // pentru fiecare incercare automata); clientul decide explicit daca vrea sa reincerce.
   function handleGenerationFailed() {
     finished = true;
+    // ANALYTICS (2026-09-14, eveniment OPTIONAL de product analytics): generation_failed —
+    // aceeasi logica ca la finishSuccess() mai sus, STRICT pe starea reala confirmata de server.
+    if (typeof window !== 'undefined' && window.NalunaAnalytics) window.NalunaAnalytics.track('generation_failed');
     if (pollTimer) clearTimeout(pollTimer);
     clearInterval(progressTimer);
     hideSoftNotice();

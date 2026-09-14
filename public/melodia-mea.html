@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Melodia mea — NALUNA</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<script src="/js/config.js"></script>
+<script src="/js/analytics.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;1,9..144,400&family=Sora:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root{
@@ -2470,13 +2472,32 @@
     statusMsgEl.className = '';
 
     try {
+      // ANALYTICS (2026-09-14): client_id GA4 capturat AICI (STRICT daca deja consimtit — vezi
+      // getClientId() in analytics.js, care rezolva null in <=300ms daca gtag nu e disponibil/
+      // consimtamant refuzat, niciodata blocand checkout-ul) si transportat prin metadata
+      // Stripe deja existenta, pana la webhook — folosit STRICT pentru atribuirea evenimentului
+      // "purchase" (server-side, vezi sendGa4PurchaseEvent in server.js) la aceeasi calatorie de
+      // utilizator masurata client-side.
+      const gaClientId = (typeof window !== 'undefined' && window.NalunaAnalytics) ? await window.NalunaAnalytics.getClientId() : null;
       const res = await fetch(`/api/orders/${orderId}/checkout`, {
         method: 'POST',
-        headers: { 'X-Access-Token': accessToken }
+        headers: { 'X-Access-Token': accessToken, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gaClientId: gaClientId || undefined })
       });
       const data = await res.json();
 
       if (data.url) {
+        // ANALYTICS (2026-09-14): begin_checkout — trimis STRICT aici, imediat inainte de
+        // redirectul real catre Stripe (data.url confirmat valid) — niciodata mai devreme
+        // (buton apasat dar cererea inca in curs/esuata nu conteaza ca "a inceput checkout-ul").
+        if (typeof window !== 'undefined' && window.NalunaAnalytics) {
+          window.NalunaAnalytics.track('begin_checkout', {
+            currency: 'GBP',
+            value: currentOrder.price,
+            package: currentOrder.plan,
+            order_id: orderId
+          });
+        }
         window.location.href = data.url;
       } else {
         statusMsgEl.textContent = t.msg_error_prefix + (data.error || t.msg_try_again);
