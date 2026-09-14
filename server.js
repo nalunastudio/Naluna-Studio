@@ -8798,15 +8798,35 @@ function buildPrompt(order, feedback, genreOverride) {
   // nu doar la inceput — lungime EGALA sau mai mica decat inainte (masurat direct), deci
   // supravietuieste cascadei de scurtare exact la fel de fiabil ca formularea veche, pentru
   // orice comanda reala unde formularea veche ar fi supravietuit.
-  const instructionWithSenderFull = ' Write this as a personal song from the sender to the recipient, weaving several real, specific, never-invented details from the story throughout — never a generic line. Use only complete, grammatically correct words in the target language — never a shortened or invented word form. Start the vocals around 8-10 seconds, never immediately. Name the recipient early and again in the chorus. Mention the sender once.';
+  // CORECȚIE (2026-09-14, "vocea din intro suna mai artificial decat vocea din Verse 1" —
+  // aprobata explicit, scop STRICT limitat la aceasta clauza): tiparul real, demonstrat pe
+  // comenzi reale (RO/EN/IT) — sectiunea [Intro] avea consecvent o densitate de cuvinte de
+  // 2-3x mai mica decat [Verse 1] (cateva cuvinte intinse pe note lungi/sustinute), pentru ca
+  // instructiunea veche ("Start the vocals around 8-10 seconds, never immediately.") cerea
+  // STRICT o intrare vocala intarziata, fara niciun indiciu despre CUM sa fie umpluta acea
+  // fereastra. INLOCUIT "never immediately" (17 caractere) cu "like the verse" (14 caractere) —
+  // INLOCUIRE, NICIODATA ADAOS: -3 caractere, `head` iese STRICT mai scurt decat inainte, deci
+  // bugetul disponibil pentru poveste/feedback/dictie NU poate scadea niciodata fata de
+  // dinainte de aceasta corectie. Doua incercari anterioare, mai lungi (un indiciu separat,
+  // adaugat dupa clauza existenta — intai +79/+66 caractere, apoi +17/+30 dupa o prima
+  // scurtare) au produs REGRESII MASURATE (dictie/paranteze/feedback/poveste pierdute pentru
+  // comenzi TIPICE, nu doar extreme, in toate cele 8 limbi — teste picate) — bugetul de 600
+  // caractere e prea strans pentru orice ADAOS, indiferent cat de mic; o INLOCUIRE de lungime
+  // egala sau mai mica e singura varianta care nu fura buget de la poveste/feedback/dictie.
+  // Cerere, nu garantie — aceeasi natura ca durationTargetClause de mai jos. NU elimina
+  // cerinta de 8-10 secunde, NU cere intro instrumental, NU atinge GENRE_STYLE_MAP/
+  // VOICE_INSTRUCTIONS (neschimbate).
+  const instructionWithSenderFull = ' Write this as a personal song from the sender to the recipient, weaving several real, specific, never-invented details from the story throughout — never a generic line. Use only complete, grammatically correct words in the target language — never a shortened or invented word form. Start the vocals around 8-10 seconds, like the verse. Name the recipient early and again in the chorus. Mention the sender once.';
   // fereastra SCURTA trebuie sa ramana chiar scurta (folosita cand bugetul fix, `head`, tot nu
   // incape — daca ea insasi devine lunga, cascada de scurtare isi pierde sensul, exact bug-ul
   // gasit empiric aici la runda "cuvinte taiate": adaugarea clauzei de gramatica ca text simplu
   // concatenat umfla forma "scurta" la 200+ caractere, impingand `head` mult peste buget chiar
   // si pentru comenzi tipice, scurte).
-  const instructionWithSenderShort = ' Short intro; story details throughout, not invented; complete words only, no shortening; name recipient early+chorus; mention sender once.';
-  const instructionNoSenderFull = ' Weave real, specific, never-invented details from the story throughout — never a generic line. Use only complete, grammatically correct words in the target language — never a shortened or invented word form. Start the vocals around 8-10 seconds, never immediately. Address the recipient by name naturally in the lyrics.';
-  const instructionNoSenderShort = ' Short intro; story details throughout, not invented. Address recipient by name naturally, complete words only, no shortening.';
+  // Forma SHORT: acelasi principiu (INLOCUIRE, nu ADAOS) — "Short intro" (11 caractere) ->
+  // "Verse intro" (11 caractere, delta ZERO) — restul propozitiei ramane neschimbat.
+  const instructionWithSenderShort = ' Verse intro; story details throughout, not invented; complete words only, no shortening; name recipient early+chorus; mention sender once.';
+  const instructionNoSenderFull = ' Weave real, specific, never-invented details from the story throughout — never a generic line. Use only complete, grammatically correct words in the target language — never a shortened or invented word form. Start the vocals around 8-10 seconds, like the verse. Address the recipient by name naturally in the lyrics.';
+  const instructionNoSenderShort = ' Verse intro; story details throughout, not invented. Address recipient by name naturally, complete words only, no shortening.';
 
   let useShortInstruction = false;
   function currentInstruction() {
@@ -9342,7 +9362,11 @@ function buildExactLyricsRequest(order, exactLyrics, genreOverride, voicePrefere
   // rezerva foarte generoasa (masurat direct: chiar si cel mai lung gen + cea mai lunga
   // instructiune de dictie + indiciul de durata insumeaza sub 720 caractere, inainte de feedback)
   // — adaugat necondiționat, fara nicio scurtare a versurilor sau schimbare de tempo.
-  let style = `${styleTags}. Sing entirely in ${lyricsLanguage}. Short natural intro, vocals starting around 8-10 seconds. Fully sung vocal performance throughout.${VOICE_STYLE_NOTE[effectiveVoice]}${dictionInstruction} Sing these exact lyrics precisely as written, word for word — never paraphrase, alter, skip, or add words. Target song length 3:15-3:40.`;
+  // CORECȚIE (2026-09-14): acelasi indiciu de continuitate intro/Verse 1 ca in buildPrompt() (vezi
+  // instructionWithSenderFull mai sus pentru motiv/dovada si principiul INLOCUIRE-nu-ADAOS) — buget
+  // `style` (1000 caractere) mult mai generos, dar aceeasi formulare compacta pastrata, pentru
+  // consistenta intre cele doua cai de generare — nimic altceva din acest string modificat.
+  let style = `${styleTags}. Sing entirely in ${lyricsLanguage}. Short natural intro, vocals starting around 8-10 seconds, like the verse. Fully sung vocal performance throughout.${VOICE_STYLE_NOTE[effectiveVoice]}${dictionInstruction} Sing these exact lyrics precisely as written, word for word — never paraphrase, alter, skip, or add words. Target song length 3:15-3:40.`;
   if (feedbackText) {
     const isVideoPlan = order.plan === 'video';
     // CORECTIE (2026-09-07, gasita prin executie reala — nu presupunere): eticheta pentru

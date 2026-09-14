@@ -94,9 +94,9 @@ const LANGS = ['ro', 'en', 'de', 'es', 'it', 'fr', 'bg', 'tr'];
 // ===============================================================================================
 test('server.js: instructiunile noi ("throughout") nu depasesc niciodata lungimea celor vechi ("verse 1"/"opening the first verse") — nu a fost furat buget din poveste', () => {
   assert.ok(server.includes("' Write this as a personal song from the sender to the recipient, weaving several real, specific, never-invented details from the story throughout — never a generic line."), 'instructionWithSenderFull trebuie sa foloseasca noua formulare');
-  assert.ok(server.includes("' Short intro; story details throughout, not invented; complete words only, no shortening; name recipient early+chorus; mention sender once.'"), 'instructionWithSenderShort trebuie sa foloseasca noua formulare');
+  assert.ok(server.includes("' Verse intro; story details throughout, not invented; complete words only, no shortening; name recipient early+chorus; mention sender once.'"), 'instructionWithSenderShort trebuie sa foloseasca noua formulare');
   assert.ok(server.includes("' Weave real, specific, never-invented details from the story throughout — never a generic line."), 'instructionNoSenderFull trebuie sa foloseasca noua formulare');
-  assert.ok(server.includes("' Short intro; story details throughout, not invented. Address recipient by name naturally, complete words only, no shortening.'"), 'instructionNoSenderShort trebuie sa foloseasca noua formulare');
+  assert.ok(server.includes("' Verse intro; story details throughout, not invented. Address recipient by name naturally, complete words only, no shortening.'"), 'instructionNoSenderShort trebuie sa foloseasca noua formulare');
   assert.ok(server.includes("' Use real story details throughout — invent nothing beyond them. Story: '"), 'storyLabelShort trebuie sa foloseasca noua formulare');
   assert.ok(server.includes("' Weave real details from this story throughout, never one generic line;"), 'storyLabelFull trebuie sa foloseasca noua formulare');
   // niciuna dintre formularile vechi, centrate STRICT pe "verse 1"/"opening the first verse", nu
