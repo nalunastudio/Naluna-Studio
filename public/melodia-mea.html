@@ -2472,17 +2472,22 @@
     statusMsgEl.className = '';
 
     try {
-      // ANALYTICS (2026-09-14): client_id GA4 capturat AICI (STRICT daca deja consimtit — vezi
-      // getClientId() in analytics.js, care rezolva null in <=300ms daca gtag nu e disponibil/
-      // consimtamant refuzat, niciodata blocand checkout-ul) si transportat prin metadata
-      // Stripe deja existenta, pana la webhook — folosit STRICT pentru atribuirea evenimentului
-      // "purchase" (server-side, vezi sendGa4PurchaseEvent in server.js) la aceeasi calatorie de
-      // utilizator masurata client-side.
-      const gaClientId = (typeof window !== 'undefined' && window.NalunaAnalytics) ? await window.NalunaAnalytics.getClientId() : null;
+      // ANALYTICS (2026-09-14): client_id + session_id GA4 capturate AICI (STRICT daca deja
+      // consimtit — vezi getClientId()/getSessionId() in analytics.js, care rezolva null in
+      // <=300ms daca gtag nu e disponibil/consimtamant refuzat, niciodata blocand checkout-ul)
+      // si transportate prin metadata Stripe deja existenta, pana la webhook — folosite STRICT
+      // pentru atribuirea evenimentului "purchase" (server-side, vezi sendGa4PurchaseEvent in
+      // server.js) la aceeasi calatorie SI aceeasi sesiune masurate client-side. CORECȚIE
+      // (2026-09-14, runda 2): client_id singur nu e suficient — fara session_id, Measurement
+      // Protocol poate crea o sesiune noua, sintetica, pentru evenimentul purchase, fara sursa/
+      // campanie asociata ("(not set)" in rapoartele scoped-la-sesiune).
+      const [gaClientId, gaSessionId] = (typeof window !== 'undefined' && window.NalunaAnalytics)
+        ? await Promise.all([window.NalunaAnalytics.getClientId(), window.NalunaAnalytics.getSessionId()])
+        : [null, null];
       const res = await fetch(`/api/orders/${orderId}/checkout`, {
         method: 'POST',
         headers: { 'X-Access-Token': accessToken, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gaClientId: gaClientId || undefined })
+        body: JSON.stringify({ gaClientId: gaClientId || undefined, gaSessionId: gaSessionId || undefined })
       });
       const data = await res.json();
 

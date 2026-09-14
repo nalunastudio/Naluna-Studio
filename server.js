@@ -1145,10 +1145,20 @@ app.post('/api/resend/webhook', express.raw({ type: 'application/json' }), async
 // GA_API_SECRET/GA_MEASUREMENT_ID lipsa) e prinsa aici si NU ajunge niciodata la apelant — GA4
 // e analytics, niciodata sursa de adevar financiara (Stripe/DB raman neatinse indiferent de
 // rezultatul acestui apel). Fara niciun camp PII: STRICT transaction_id (orderId, UUID aleator,
-// fara continut personal), value/currency (deja calculate de Stripe), item (planul comenzii) si,
-// daca a fost capturat la checkout (vezi POST /api/orders/:orderId/checkout), client_id-ul GA4
-// pentru atribuire corecta sursa/UTM — NICIODATA nume, email, poveste, versuri, fotografii.
-async function sendGa4PurchaseEvent({ orderId, plan, value, currency, gaClientId }) {
+// fara continut personal), value/currency (deja calculate de Stripe), item (planul comenzii),
+// client_id-ul GA4 (pentru atribuire corecta sursa/UTM) si, daca a fost capturat la checkout,
+// session_id-ul GA4 (vezi comentariul de la gaSessionId mai jos) — NICIODATA nume, email,
+// poveste, versuri, fotografii.
+// CORECȚIE (2026-09-14, runda 2 — "purchase lipsit de session_id poate produce (not set) sau
+// attribution incorect"): client_id singur identifica VIZITATORUL, dar Measurement Protocol nu
+// poate lega evenimentul de ACEEASI sesiune deja masurata client-side (begin_checkout etc.) fara
+// session_id explicit in parametrii evenimentului — documentat direct de Google (GA4 Measurement
+// Protocol) ca necesar pentru atribuirea corecta scoped-la-sesiune (sursa/mediu/campanie). Spre
+// deosebire de client_id (cerinta STRICTA a API-ului — fara el, evenimentul e omis complet, vezi
+// mai jos), session_id ramane OPTIONAL aici: inclus daca a fost capturat, dar absenta lui NU
+// blocheaza trimiterea evenimentului (degradeaza doar precizia atribuirii de sesiune, nu
+// existenta evenimentului/venitului in GA4).
+async function sendGa4PurchaseEvent({ orderId, plan, value, currency, gaClientId, gaSessionId }) {
   const measurementId = (process.env.GA_MEASUREMENT_ID || '').trim();
   const apiSecret = (process.env.GA_API_SECRET || '').trim();
   if (!measurementId || !apiSecret) return; // GA4 neconfigurat — no-op silentios, niciodata o eroare
@@ -1160,22 +1170,24 @@ async function sendGa4PurchaseEvent({ orderId, plan, value, currency, gaClientId
     console.warn(`Comanda ${orderId}: GA4 purchase omis — niciun client_id capturat la checkout (consimtamant refuzat/analytics blocat la client).`);
     return;
   }
+  if (!gaSessionId) {
+    console.warn(`Comanda ${orderId}: GA4 purchase trimis FARA session_id — atribuirea sursa/mediu/campanie pentru acest eveniment poate fi incompleta ("(not set)"), venitul/client_id raman totusi corecte.`);
+  }
   try {
     const url = `https://www.google-analytics.com/mp/collect?measurement_id=${encodeURIComponent(measurementId)}&api_secret=${encodeURIComponent(apiSecret)}`;
+    const params = {
+      transaction_id: orderId,
+      value,
+      currency: (currency || 'GBP').toUpperCase(),
+      items: [{ item_id: plan, item_name: plan, price: value, quantity: 1 }]
+    };
+    if (gaSessionId) params.session_id = gaSessionId;
     const res = await fetchWithTimeout(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         client_id: gaClientId,
-        events: [{
-          name: 'purchase',
-          params: {
-            transaction_id: orderId,
-            value,
-            currency: (currency || 'GBP').toUpperCase(),
-            items: [{ item_id: plan, item_name: plan, price: value, quantity: 1 }]
-          }
-        }]
+        events: [{ name: 'purchase', params }]
       })
     }, 8000);
     if (!res.ok) {
@@ -1315,7 +1327,8 @@ async function processConfirmedPayment(event, session) {
     plan: updated.plan,
     value: amountTotal,
     currency: paymentCurrency,
-    gaClientId: (session.metadata && session.metadata.gaClientId) || null
+    gaClientId: (session.metadata && session.metadata.gaClientId) || null,
+    gaSessionId: (session.metadata && session.metadata.gaSessionId) || null
   }).catch(() => { /* sendGa4PurchaseEvent isi prinde deja toate erorile — plasa suplimentara */ });
 
   return { httpStatus: 200, body: { received: true } };
@@ -3302,6 +3315,14 @@ app.post('/api/orders/:orderId/checkout', requireOrderToken, async (req, res, ne
     const gaClientId = (typeof rawGaClientId === 'string' && /^[0-9]{1,20}\.[0-9]{1,20}$/.test(rawGaClientId))
       ? rawGaClientId
       : '';
+    // ANALYTICS (2026-09-14, runda 2 — corectie: client_id singur nu ajunge sa lege evenimentul
+    // "purchase" de ACEEASI sesiune GA4 deja masurata client-side, vezi comentariul detaliat de
+    // la sendGa4PurchaseEvent mai jos). Format GA4 real: STRICT numeric (timestamp Unix in
+    // secunde, ex. "1694712345") — validat strict, altfel ignorat silentios.
+    const rawGaSessionId = typeof req.body === 'object' && req.body ? req.body.gaSessionId : null;
+    const gaSessionId = (typeof rawGaSessionId === 'string' && /^[0-9]{1,20}$/.test(rawGaSessionId))
+      ? rawGaSessionId
+      : '';
     if (order.status === 'ready') {
       return res.status(400).json({ error: 'Comanda a fost deja plătită.' });
     }
@@ -3437,7 +3458,8 @@ app.post('/api/orders/:orderId/checkout', requireOrderToken, async (req, res, ne
         mediaRevision: String(order.mediaRevision),
         expectedAmount: String(Math.round(order.price * 100)),
         expectedCurrency: 'gbp',
-        gaClientId
+        gaClientId,
+        gaSessionId
       },
       success_url: `${DOMAIN}/succes.html?order=${order.id}&token=${order.accessToken}`,
       // plata abandonata sau esuata -> revine la pagina dedicata melodiei (nu la formular),

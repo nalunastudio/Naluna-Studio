@@ -404,10 +404,17 @@ test('melodia-mea.html: textul #file-access-note e setat corect per PLAN REAL (n
   assert.match(snippet, /order\.plan === 'premium'\s*\?\s*t\.file_access_note_premium\s*:\s*t\.file_access_note_standard/, 'Premium/Standard trebuie sa foloseasca cheia corecta per plan');
 });
 
-test('melodia-mea.html: goToCheckout() nu mai verifica niciun checkbox propriu si trimite cererea de checkout fara body — Stripe respinge singur plata fara bifa', () => {
+// CORECȚIE (2026-09-14, analytics GA4): goToCheckout() trimite acum un body — STRICT
+// gaClientId/gaSessionId (analytics, vezi test/analytics-html-wiring.test.js), NICIODATA vreo
+// bifa de consimtamant proprie. Verificarea originala ("fara body deloc") era specifica
+// motivului de atunci (Stripe respinge singur plata fara bifa, nu mai era nevoie de niciun
+// camp trimis de noi) — actualizata sa reflecte noul motiv, pastrand intacta cerinta esentiala:
+// niciun checkbox de consimtamant propriu, Stripe ramane singura sursa care cere bifa.
+test('melodia-mea.html: goToCheckout() nu mai verifica niciun checkbox propriu — Stripe respinge singur plata fara bifa — iar body-ul trimis contine STRICT campuri de analytics (gaClientId/gaSessionId), niciodata un camp de consimtamant', () => {
   const fn = extractFn(melodia, 'async function goToCheckout() {');
   assert.ok(!fn.includes('checkoutConsentCheckbox'));
-  assert.ok(!fn.includes("body: JSON.stringify"));
+  assert.match(fn, /body:\s*JSON\.stringify\(\{\s*gaClientId:[^,]*,\s*gaSessionId:[^}]*\}\)/, 'body-ul trebuie sa contina STRICT gaClientId/gaSessionId');
+  assert.ok(!/consent/i.test(fn.slice(fn.indexOf('body: JSON.stringify'))), 'niciun camp de consimtamant nu trebuie sa apara in body-ul trimis catre /checkout');
 });
 
 // ---------------------------------------------------------------------------------------------

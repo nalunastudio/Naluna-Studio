@@ -27,7 +27,7 @@ function sliceFunctionBody(src, fnSignature, fromIdx) {
 // sendGa4PurchaseEvent() — extras real, cu fetch/console mocate.
 // ===============================================================================================
 function loadSendGa4PurchaseEvent(mocks) {
-  const snippet = sliceFunctionBody(server, 'async function sendGa4PurchaseEvent({ orderId, plan, value, currency, gaClientId }) {');
+  const snippet = sliceFunctionBody(server, 'async function sendGa4PurchaseEvent({ orderId, plan, value, currency, gaClientId, gaSessionId }) {');
   const fetchWithTimeoutSnippet = sliceFunctionBody(server, 'async function fetchWithTimeout(url, options = {}, timeoutMs = FETCH_TIMEOUT_MS) {');
   const sandboxSrc = `
     const FETCH_TIMEOUT_MS = 30000;
@@ -67,7 +67,7 @@ test('sendGa4PurchaseEvent: gaClientId lipsa -> no-op silentios (fara client_id,
   assert.ok(warnings.some(w => w.includes('order-2')), 'trebuie logat, dar niciodata aruncat mai departe');
 });
 
-test('sendGa4PurchaseEvent: configurat complet + gaClientId prezent -> trimite EXACT payload-ul asteptat, fara PII', async () => {
+test('sendGa4PurchaseEvent: configurat complet + gaClientId SI gaSessionId prezente -> trimite EXACT payload-ul asteptat (INCLUSIV session_id), fara PII', async () => {
   let capturedUrl = null;
   let capturedBody = null;
   const fn = loadSendGa4PurchaseEvent({
@@ -78,7 +78,7 @@ test('sendGa4PurchaseEvent: configurat complet + gaClientId prezent -> trimite E
     },
     process: baseEnv()
   });
-  await fn({ orderId: 'order-3', plan: 'video', value: 35, currency: 'gbp', gaClientId: '111.222' });
+  await fn({ orderId: 'order-3', plan: 'video', value: 35, currency: 'gbp', gaClientId: '111.222', gaSessionId: '1694712345' });
 
   assert.ok(capturedUrl.startsWith('https://www.google-analytics.com/mp/collect?'));
   assert.match(capturedUrl, /measurement_id=G-TEST123/);
@@ -91,6 +91,7 @@ test('sendGa4PurchaseEvent: configurat complet + gaClientId prezent -> trimite E
   assert.equal(ev.params.transaction_id, 'order-3');
   assert.equal(ev.params.value, 35);
   assert.equal(ev.params.currency, 'GBP', 'currency trebuie normalizata la majuscule (GA4 cere ISO 4217 majuscul)');
+  assert.equal(ev.params.session_id, '1694712345', 'session_id trebuie inclus in params, ca sa lege evenimentul de sesiunea reala GA4');
   assert.deepEqual(ev.params.items, [{ item_id: 'video', item_name: 'video', price: 35, quantity: 1 }]);
 
   // NICIUN camp PII in payload-ul REAL trimis — verificare structurala directa pe obiectul construit.
@@ -98,6 +99,22 @@ test('sendGa4PurchaseEvent: configurat complet + gaClientId prezent -> trimite E
   for (const forbidden of ['email', 'story', 'lyrics', 'poveste', 'recipient', 'sender', '@']) {
     assert.ok(!serialized.includes(forbidden), `payload-ul GA4 nu trebuie sa contina "${forbidden}"`);
   }
+});
+
+test('sendGa4PurchaseEvent: gaSessionId ABSENT dar gaClientId prezent -> evenimentul TOT se trimite (client_id ramane suficient pentru API), STRICT fara campul session_id in params, cu un avertisment logat', async () => {
+  let capturedBody = null;
+  let fetchCalled = false;
+  const warnings = [];
+  const fn = loadSendGa4PurchaseEvent({
+    fetch: async (url, options) => { fetchCalled = true; capturedBody = JSON.parse(options.body); return { ok: true }; },
+    process: baseEnv(),
+    console: { warn: (...args) => warnings.push(args.join(' ')), error: () => {} }
+  });
+  await fn({ orderId: 'order-6', plan: 'standard', value: 15, currency: 'gbp', gaClientId: '111.222', gaSessionId: null });
+
+  assert.equal(fetchCalled, true, 'session_id lipsa NU trebuie sa blocheze evenimentul (spre deosebire de client_id, care e strict necesar)');
+  assert.ok(!Object.prototype.hasOwnProperty.call(capturedBody.events[0].params, 'session_id'), 'params nu trebuie sa contina session_id daca nu a fost capturat');
+  assert.ok(warnings.some(w => w.includes('order-6')), 'trebuie logat un avertisment ca atribuirea de sesiune poate fi incompleta');
 });
 
 test('sendGa4PurchaseEvent: fetch arunca (retea indisponibila) -> NU propaga eroarea mai departe (analytics nu poate bloca livrarea)', async () => {
@@ -186,6 +203,52 @@ test('checkout: gaClientId lipsa/invalid/garbage/injectie -> ignorat silentios, 
 test('checkout: metadata Stripe include gaClientId (pass-through, fara coloana noua in DB)', () => {
   const routeBody = sliceFunctionBody(server, "app.post('/api/orders/:orderId/checkout', requireOrderToken, async (req, res, next) => {");
   assert.match(routeBody, /metadata:\s*\{[\s\S]*?gaClientId[\s\S]*?\}/);
+});
+
+// ===============================================================================================
+// Checkout — validarea gaSessionId primit de la client (format GA4 real: STRICT numeric).
+// ===============================================================================================
+function loadGaSessionIdValidator() {
+  const routeBody = sliceFunctionBody(server, "app.post('/api/orders/:orderId/checkout', requireOrderToken, async (req, res, next) => {");
+  const idx = routeBody.indexOf('const rawGaSessionId');
+  const end = routeBody.indexOf(';', routeBody.indexOf(';', idx) + 1) + 1;
+  const snippet = routeBody.slice(idx, end);
+  const sandboxSrc = `
+    function validate(req) {
+      ${snippet}
+      return gaSessionId;
+    }
+    return validate;
+  `;
+  return new Function('return (function() { ' + sandboxSrc + ' })()')();
+}
+
+test('checkout: gaSessionId valid (format GA4 real, STRICT numeric — timestamp Unix) -> acceptat neschimbat', () => {
+  const validate = loadGaSessionIdValidator();
+  assert.equal(validate({ body: { gaSessionId: '1694712345' } }), '1694712345');
+});
+
+test('checkout: gaSessionId lipsa/invalid/garbage/injectie -> ignorat silentios, string gol (niciodata o eroare, niciodata trimis mai departe catre Stripe)', () => {
+  const validate = loadGaSessionIdValidator();
+  assert.equal(validate({ body: {} }), '');
+  assert.equal(validate({ body: { gaSessionId: null } }), '');
+  assert.equal(validate({ body: { gaSessionId: undefined } }), '');
+  assert.equal(validate({ body: { gaSessionId: 'not-numeric' } }), '');
+  assert.equal(validate({ body: { gaSessionId: '123.456' } }), '', 'session_id GA4 nu are punct (spre deosebire de client_id) — trebuie respins');
+  assert.equal(validate({ body: { gaSessionId: '<script>alert(1)</script>' } }), '');
+  assert.equal(validate({ body: { gaSessionId: 123 } }), '', 'non-string trebuie ignorat, niciodata coercizat');
+  assert.equal(validate({ body: null }), '', 'req.body absent -> nu trebuie sa arunce');
+  assert.equal(validate({}), '', 'req.body undefined -> nu trebuie sa arunce');
+});
+
+test('checkout: metadata Stripe include gaSessionId (pass-through, fara coloana noua in DB), alaturi de gaClientId', () => {
+  const routeBody = sliceFunctionBody(server, "app.post('/api/orders/:orderId/checkout', requireOrderToken, async (req, res, next) => {");
+  assert.match(routeBody, /metadata:\s*\{[\s\S]*?gaClientId[\s\S]*?gaSessionId[\s\S]*?\}/);
+});
+
+test('processConfirmedPayment(): sendGa4PurchaseEvent primeste gaSessionId din session.metadata.gaSessionId, la fel ca gaClientId', () => {
+  const fnBody = sliceFunctionBody(server, 'async function processConfirmedPayment(event, session) {');
+  assert.match(fnBody, /gaSessionId:\s*\(session\.metadata\s*&&\s*session\.metadata\.gaSessionId\)\s*\|\|\s*null/);
 });
 
 // ===============================================================================================

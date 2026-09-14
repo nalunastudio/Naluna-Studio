@@ -67,12 +67,15 @@ test('melodia-mea.html: begin_checkout se trimite STRICT dupa confirmarea "data.
   assert.ok(idxIf < idxTrack && idxTrack < idxRedirect, 'begin_checkout trebuie sa fie STRICT intre confirmarea data.url si redirectul real');
 });
 
-test('melodia-mea.html: gaClientId e capturat INAINTE de cererea catre /checkout si transmis in body — flow-ul de checkout ramane STRICT acelasi (acelasi endpoint, acelasi X-Access-Token)', () => {
+test('melodia-mea.html: gaClientId SI gaSessionId sunt capturate (in paralel) INAINTE de cererea catre /checkout si transmise in body — flow-ul de checkout ramane STRICT acelasi (acelasi endpoint, acelasi X-Access-Token)', () => {
   const html = readHtml('melodia-mea.html');
-  const idxGetClientId = html.indexOf('await window.NalunaAnalytics.getClientId()');
+  const idxGetClientId = html.indexOf('window.NalunaAnalytics.getClientId()');
+  const idxGetSessionId = html.indexOf('window.NalunaAnalytics.getSessionId()');
   const idxFetch = html.indexOf('fetch(`/api/orders/${orderId}/checkout`');
-  assert.ok(idxGetClientId !== -1 && idxFetch !== -1);
+  assert.ok(idxGetClientId !== -1 && idxGetSessionId !== -1 && idxFetch !== -1);
   assert.ok(idxGetClientId < idxFetch, 'client_id-ul trebuie capturat inainte de a fi trimis in cerere');
+  assert.ok(idxGetSessionId < idxFetch, 'session_id-ul trebuie capturat inainte de a fi trimis in cerere');
+  assert.match(html, /body:\s*JSON\.stringify\(\{\s*gaClientId:[^,]*,\s*gaSessionId:/, 'body-ul cererii trebuie sa contina AMBELE campuri');
   assert.match(html, /'X-Access-Token':\s*accessToken/, 'autentificarea comenzii (X-Access-Token) trebuie sa ramana STRICT neschimbata');
 });
 

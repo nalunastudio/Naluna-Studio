@@ -69,10 +69,15 @@ test('GENRE_STYLE_MAP.hiphop e EXACT noua valoare aprobata (143 caractere, fata 
 // ===============================================================================================
 // TEST 2 — DOAR hiphop s-a schimbat: celelalte 15 genuri raman BYTE-IDENTICE fata de commit-ul
 // anterior acestei corectii.
+// CORECȚIE (2026-09-14): comparat fata de commit-ul FIX 9e35377 (runda 1, "club hip-hop"),
+// NICIODATA fata de HEAD (mobil) — comparatia cu HEAD se auto-invalideaza in chiar momentul in
+// care acest commit devine el insusi HEAD (git show HEAD:server.js ar reflecta atunci exact
+// valoarea NOUA, facand assert.notEqual sa esueze mereu de acolo inainte) — acelasi principiu
+// deja aplicat la corectiile similare din celelalte fisiere de test analytics/genre.
 // ===============================================================================================
-test('DOAR hiphop s-a schimbat: celelalte 15 genuri (NEW_GENRES) raman BYTE-IDENTICE fata de HEAD (inaintea acestei corectii)', () => {
+test('DOAR hiphop s-a schimbat: celelalte 15 genuri (NEW_GENRES) raman BYTE-IDENTICE fata de commit-ul 9e35377 (runda 1, dinaintea acestei corectii)', () => {
   const { execSync } = require('node:child_process');
-  const beforeSrc = execSync('git show HEAD:server.js', { cwd: path.join(__dirname, '..'), maxBuffer: 20 * 1024 * 1024 }).toString('utf8');
+  const beforeSrc = execSync('git show 9e35377:server.js', { cwd: path.join(__dirname, '..'), maxBuffer: 20 * 1024 * 1024 }).toString('utf8');
   const idx = beforeSrc.indexOf('const GENRE_STYLE_MAP = {');
   const end = beforeSrc.indexOf('};', idx);
   const body = beforeSrc.slice(idx, end);

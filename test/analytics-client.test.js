@@ -219,6 +219,50 @@ test('getClientId: gtag lipseste complet (ad-blocker) -> rezolva null, fara eroa
   assert.equal(id, null);
 });
 
+// ===============================================================================================
+// getSessionId(): 2026-09-14, runda 2 — corectie "purchase fara session_id poate produce
+// (not set) sau attribution incorect". Acelasi tipar STRICT ca getClientId() de mai sus.
+// ===============================================================================================
+test('getSessionId: gtag NU raspunde niciodata -> rezolva null dupa timeout, nu ramane blocat', async () => {
+  const win = makeFakeWindow({ gtag: function () { /* nu apeleaza niciodata callback-ul */ } });
+  win.localStorage.setItem('naluna_consent', 'granted');
+  const api = loadAnalyticsIntoSandbox(win);
+  const id = await api.getSessionId(30);
+  assert.equal(id, null);
+});
+
+test('getSessionId: gtag raspunde normal -> rezolva session_id-ul real, imediat, folosind campul "session_id" (nu "client_id")', async () => {
+  const win = makeFakeWindow({ gtag: undefined });
+  const api = loadAnalyticsIntoSandbox(win);
+  win.localStorage.setItem('naluna_consent', 'granted');
+  let requestedField = null;
+  win.gtag = function (cmd, id, field, cb) {
+    requestedField = field;
+    if (cmd === 'get') cb('1694712345');
+  };
+  const id = await api.getSessionId(5000);
+  assert.equal(id, '1694712345');
+  assert.equal(requestedField, 'session_id', 'trebuie cerut STRICT campul "session_id" de la gtag, nu "client_id"');
+});
+
+test('getSessionId: consimtamant NEACORDAT -> rezolva null IMEDIAT, fara sa apeleze gtag deloc', async () => {
+  let gtagCalled = false;
+  const win = makeFakeWindow({ gtag: function () { gtagCalled = true; } });
+  win.localStorage.setItem('naluna_consent', 'denied');
+  const api = loadAnalyticsIntoSandbox(win);
+  const id = await api.getSessionId(30);
+  assert.equal(id, null);
+  assert.equal(gtagCalled, false);
+});
+
+test('getSessionId: gtag lipseste complet (ad-blocker) -> rezolva null, fara eroare', async () => {
+  const win = makeFakeWindow({ gtag: undefined });
+  win.localStorage.setItem('naluna_consent', 'granted');
+  const api = loadAnalyticsIntoSandbox(win);
+  const id = await api.getSessionId(30);
+  assert.equal(id, null);
+});
+
 test('public/js/analytics.js ramane sintactic valid', () => {
   assert.doesNotThrow(() => new Function(analyticsSrc));
 });

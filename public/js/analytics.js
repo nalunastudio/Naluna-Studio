@@ -151,6 +151,30 @@
     });
   }
 
+  // session_id GA4 (2026-09-14, corectie — atribuire sesiune pentru "purchase" server-side):
+  // client_id (mai sus) identifica VIZITATORUL, dar NU e suficient pentru ca Measurement
+  // Protocol sa lege evenimentul de ACEEASI sesiune deja masurata client-side (begin_checkout
+  // etc.) — fara session_id, GA4 poate crea o sesiune noua, sintetica, pentru hit-ul server-side,
+  // fara context de sursa/campanie, aparand ca "(not set)" in rapoartele scoped-la-sesiune
+  // pentru acel purchase. Acelasi tipar STRICT ca getClientId() — timeout scurt obligatoriu,
+  // niciodata nu blocam checkout-ul, rezolva null daca gtag nu raspunde.
+  function getSessionId(timeoutMs) {
+    return new Promise(function (resolve) {
+      try {
+        if (!isConsentGranted(readConsent()) || typeof global.gtag !== 'function' || !GA_ID) {
+          return resolve(null);
+        }
+        var done = false;
+        var timer = setTimeout(function () {
+          if (!done) { done = true; resolve(null); }
+        }, timeoutMs || 300);
+        global.gtag('get', GA_ID, 'session_id', function (id) {
+          if (!done) { done = true; clearTimeout(timer); resolve(id || null); }
+        });
+      } catch (e) { resolve(null); }
+    });
+  }
+
   // ==========================================================================================
   // BANNER DE CONSIMTAMANT — injectat o singura data (nu duplica markup in fiecare pagina HTML).
   // Minimal, deliberat — STRICT Accept/Refuz pentru o singura categorie (analytics), pentru ca
@@ -240,6 +264,7 @@
     track: track,
     onFormStarted: onFormStarted,
     getClientId: getClientId,
+    getSessionId: getSessionId,
     // expuse STRICT pentru teste (logica pura, fara efecte asupra paginii reale)
     _isConsentGranted: isConsentGranted,
     _isConsentDecided: isConsentDecided,
