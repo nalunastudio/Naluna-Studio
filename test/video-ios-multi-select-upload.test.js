@@ -257,8 +257,8 @@ test('server.js: durata TOTALA a fundalului cinematic ramane exact durata melodi
   // CORECȚIE (2026-08-24, "reel dinamic sincronizat cu melodia"): semnatura a primit un al
   // cincilea parametru, songFilePath — calea locala a melodiei REALE, pentru analiza audio
   // (onset/impuls) — vezi extractAudioOnsets(); durationSeconds/sectionTimings raman neschimbate.
-  assert.ok(server.includes('async function buildMemoryBackground(order, mediaItems, durationSeconds, sectionTimings, songFilePath, assForFilter) {'));
-  assert.ok(server.includes('memoryBackground = await buildMemoryBackground(order, mediaItems, durationSeconds, sectionTimings, tempFullMp3Path, assForFilter);'));
+  assert.ok(server.includes('async function buildMemoryBackground(order, mediaItems, durationSeconds, sectionTimings, songFilePath, assForFilter, vocalOnsetSeconds) {'));
+  assert.ok(server.includes('memoryBackground = await buildMemoryBackground(order, mediaItems, durationSeconds, sectionTimings, tempFullMp3Path, assForFilter, vocalOnsetSeconds);'));
 });
 
 // CORECȚIE (2026-08-24): computeSectionAwareSegmentDurations() (un singur segment lung per
@@ -275,7 +275,7 @@ test('server.js: buildMemoryBackground() foloseste buildShotPlan() (plan de cadr
   // buildMemoryBackground). Al cincilea argument, onsetTimes, si al saselea, CONCAT_BATCH_SIZE
   // (necesar ca simularea de aliniere la impuls sa corespunda EXACT cu reducerea pe loturi din
   // concatWithCrossfades), raman neschimbate.
-  assert.ok(server.includes('const shotPlan = buildShotPlan(ordered, durationSeconds, sectionTimings, MEMORY_XFADE_SECONDS, onsetTimes, CONCAT_BATCH_SIZE);'));
+  assert.ok(server.includes('let shotPlan = buildShotPlan(ordered, durationSeconds, sectionTimings, MEMORY_XFADE_SECONDS, onsetTimes, CONCAT_BATCH_SIZE);'));
   assert.ok(server.includes("perfLog(order.id, 'memory_shot_plan',"));
 });
 

@@ -103,7 +103,7 @@ test('STRUCTURAL: cazul cu UN SINGUR cadru total (nicio reducere necesara) e tot
 
 test('STRUCTURAL: buildMemoryBackground() primeste acum assForFilter si incearca fuziunea STRICT daca are audio+subtitrari disponibile (canFuse) — altfel ramane STRICT pe pipeline-ul vechi (muxed:false), niciodata o schimbare de comportament pentru apelantii care nu furnizeaza subtitrari', () => {
   const fn = extractFn('buildMemoryBackground');
-  assert.match(fn, /async function buildMemoryBackground\(order, mediaItems, durationSeconds, sectionTimings, songFilePath, assForFilter\)/);
+  assert.match(fn, /async function buildMemoryBackground\(order, mediaItems, durationSeconds, sectionTimings, songFilePath, assForFilter, vocalOnsetSeconds\)/);
   assert.match(fn, /const canFuse = !!\(songFilePath && assForFilter\);/);
   assert.match(fn, /concatWithCrossfadesAndMux\(segments, shotPlan, order, songFilePath, assForFilter\)/);
   assert.match(fn, /return \{ backgroundPath, cleanupPaths, muxed \};/);

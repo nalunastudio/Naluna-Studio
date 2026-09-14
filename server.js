@@ -82,6 +82,7 @@ const {
   MEMORY_SECTION_ORDER,
   sortMediaBySection,
   buildShotPlan,
+  applyVideoGiftIntro,
   detectOnsets
 } = require('./lib/media-analysis');
 const { getGiftVariant, getPremiumBonusVariant } = require('./lib/entitlements');
@@ -5737,6 +5738,22 @@ function stripStructuralTagsFromWord(word) {
   return String(word || '').replace(/\[[^[\]]*\]/g, '').trim();
 }
 
+// "Vocal onset" / "primul cuvant real" — conceptul EXISTENT, deja folosit de
+// getPreviewStartFromLyrics() (mai jos) pentru pozitionarea preview-ului gratuit. Extras aici
+// STRICT ca sa fie reutilizat identic si de intro-ul Cadou Video (vezi applyVideoGiftIntro,
+// lib/media-analysis.js, apelat din generateLyricVideo mai jos) — NICIODATA un al doilea concept
+// paralel de "inceput de voce". Comportamentul getPreviewStartFromLyrics() ramane neschimbat
+// (acelasi filtru, doar mutat intr-o functie separata).
+function findFirstRealWordStartS(alignedWords) {
+  const words = Array.isArray(alignedWords) ? alignedWords : [];
+  const firstReal = words.find(w =>
+    w && w.success === true &&
+    typeof w.startS === 'number' && Number.isFinite(w.startS) && w.startS >= 0 &&
+    stripStructuralTagsFromWord(w.word).length > 0
+  );
+  return firstReal ? firstReal.startS : null;
+}
+
 // Un singur apel HTTP, cu maximum o reincercare — DOAR pentru timeout sau erori 5xx
 // (probleme temporare ale furnizorului). O eroare 4xx (ex. audioId invalid) nu se
 // reincearca, pentru ca repetarea ei nu ar schimba rezultatul.
@@ -5813,13 +5830,9 @@ async function getPreviewStartFromLyrics(taskId, audioId, orderId) {
     return fallback('alignedWords gol');
   }
 
-  const firstReal = words.find(w =>
-    w && w.success === true &&
-    typeof w.startS === 'number' && Number.isFinite(w.startS) && w.startS >= 0 &&
-    stripStructuralTagsFromWord(w.word).length > 0
-  );
+  const firstRealStartS = findFirstRealWordStartS(words);
 
-  if (!firstReal) {
+  if (firstRealStartS === null) {
     return fallback('niciun cuvant real cu success:true gasit');
   }
 
@@ -5829,12 +5842,12 @@ async function getPreviewStartFromLyrics(taskId, audioId, orderId) {
   // TARGET_VOICE_POSITION_S in interiorul preview-ului. Daca vocea porneste deja devreme
   // in melodie (<= 9s), previewStart ramane 0 — nu mutam nimic, se pastreaza inceputul
   // original (vocea se va auzi pur si simplu mai devreme de secunda 9, ceea ce e in regula).
-  let previewStart = firstReal.startS - TARGET_VOICE_POSITION_S;
+  let previewStart = firstRealStartS - TARGET_VOICE_POSITION_S;
   previewStart = Math.max(0, previewStart);
   previewStart = Math.min(previewStart, PREVIEW_START_MAX_S);
 
   console.log(
-    `${logPrefix}: primul cuvant real la ${firstReal.startS.toFixed(2)}s -> ` +
+    `${logPrefix}: primul cuvant real la ${firstRealStartS.toFixed(2)}s -> ` +
     `previewStart=${previewStart.toFixed(2)}s (fallback: nu)`
   );
   return previewStart;
@@ -7208,7 +7221,7 @@ async function extractAudioOnsets(audioFilePath, orderId) {
 // aceluiasi fisier) si STEARSA imediat ce ULTIMUL cadru care o foloseste s-a terminat de randat
 // (numarator de referinte per material, decrementat DUPA ce randarea acelui cadru s-a incheiat
 // — deci orice worker concurent care mai citea acel fisier a terminat deja de citit el).
-async function buildMemoryBackground(order, mediaItems, durationSeconds, sectionTimings, songFilePath, assForFilter) {
+async function buildMemoryBackground(order, mediaItems, durationSeconds, sectionTimings, songFilePath, assForFilter, vocalOnsetSeconds) {
   const ordered = sortMediaBySection(mediaItems);
   const cleanupPaths = [];
   try {
@@ -7221,9 +7234,17 @@ async function buildMemoryBackground(order, mediaItems, durationSeconds, section
     // detectate suficient de aproape. CONCAT_BATCH_SIZE e transmis explicit (2026-08-24, corectie
     // audit runda 2) — aliniere la impuls simuleaza EXACT reducerea pe loturi din
     // concatWithCrossfades() mai jos.
-    const shotPlan = buildShotPlan(ordered, durationSeconds, sectionTimings, MEMORY_XFADE_SECONDS, onsetTimes, CONCAT_BATCH_SIZE);
+    let shotPlan = buildShotPlan(ordered, durationSeconds, sectionTimings, MEMORY_XFADE_SECONDS, onsetTimes, CONCAT_BATCH_SIZE);
     if (shotPlan.length === 0) throw new Error('Planul de cadre a rezultat gol — nu pot construi fundalul cinematic.');
-    perfLog(order.id, 'memory_shot_plan', `materiale=${ordered.length}, cadre=${shotPlan.length}, sectiuni=${(sectionTimings || []).length}, onset-uri=${onsetTimes.length}`);
+    // INTRO CADOU VIDEO (2026-09-14, "o singura secventa video pana la intrarea vocii, apoi
+    // montajul normal, neschimbat"): transformare POST-HOC, STRICT pe cadrele de la inceput —
+    // vezi applyVideoGiftIntro (lib/media-analysis.js) pentru garantia exacta ca restul planului
+    // ramane byte-identic. No-op (returneaza shotPlan neschimbat) daca nu exista niciun video
+    // incarcat de client, sau vocalOnsetSeconds nu e disponibil/sigur — comportamentul ACTUAL,
+    // niciodata un fallback nou/degradat.
+    const shotPlanBeforeIntro = shotPlan;
+    shotPlan = applyVideoGiftIntro(shotPlan, ordered, vocalOnsetSeconds);
+    perfLog(order.id, 'memory_shot_plan', `materiale=${ordered.length}, cadre=${shotPlan.length}, sectiuni=${(sectionTimings || []).length}, onset-uri=${onsetTimes.length}, intro_video_gift=${shotPlan !== shotPlanBeforeIntro}`);
     // DIAGNOSTIC (2026-09-08, cerut explicit: "distributia tipurilor/duratelor de tranzitie"):
     // STRICT tipuri de tranzitie (enumerare fixa) + durate rotunjite — niciodata continut media.
     const transitionTypeCounts = {};
@@ -7381,6 +7402,12 @@ async function generateLyricVideo(order, variant, tempFullMp3Path) {
   // diferit -> sunoTrackId diferit -> alignedWords diferit), niciodata pe cele vechi.
   const sectionTimings = deriveSectionTimings(body.data.alignedWords, durationSeconds, variant.id);
   perfLog(order.id, 'section_timing_derived', `varianta=${variant.id}, sectiuni=${sectionTimings.length}, sursa=${sectionTimings[0] ? sectionTimings[0].source : 'n/a'}`);
+  // INTRO CADOU VIDEO (2026-09-14): "vocal onset" — momentul REAL al primului cuvant cantat,
+  // din ACELASI alignedWords deja obtinut mai sus (nicio cerere suplimentara) — acelasi concept
+  // deja folosit de getPreviewStartFromLyrics() pentru pozitionarea preview-ului. Trecut mai jos
+  // catre buildMemoryBackground(); null daca nu poate fi determinat fiabil (fallback: comportament
+  // ACTUAL, neschimbat — vezi applyVideoGiftIntro, lib/media-analysis.js).
+  const vocalOnsetSeconds = findFirstRealWordStartS(body.data.alignedWords);
   const tempVideo = path.join(TEMP_DIR, `${order.id}-${variant.id}-video.mp4`);
   // subtitles= foloseste propria sintaxa cu ':' ca separator de optiuni — calea trebuie
   // sa foloseasca '/' (nu '\'), iar orice ':' din cale (litera de disc pe Windows, irelevant
@@ -7400,7 +7427,7 @@ async function generateLyricVideo(order, variant, tempFullMp3Path) {
       // pentru video. Fundalul solid ramane folosit DOAR cand clientul chiar nu are
       // materiale incarcate (mediaItems.length === 0) — caz limita pentru comenzi vechi,
       // nu un fallback de eroare.
-      memoryBackground = await buildMemoryBackground(order, mediaItems, durationSeconds, sectionTimings, tempFullMp3Path, assForFilter);
+      memoryBackground = await buildMemoryBackground(order, mediaItems, durationSeconds, sectionTimings, tempFullMp3Path, assForFilter, vocalOnsetSeconds);
       perfLog(order.id, 'memory_background_ready', `elemente=${mediaItems.length}, fuzionat=${!!memoryBackground.muxed}`);
     }
 
