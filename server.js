@@ -5738,12 +5738,18 @@ function stripStructuralTagsFromWord(word) {
   return String(word || '').replace(/\[[^[\]]*\]/g, '').trim();
 }
 
-// "Vocal onset" / "primul cuvant real" — conceptul EXISTENT, deja folosit de
-// getPreviewStartFromLyrics() (mai jos) pentru pozitionarea preview-ului gratuit. Extras aici
-// STRICT ca sa fie reutilizat identic si de intro-ul Cadou Video (vezi applyVideoGiftIntro,
-// lib/media-analysis.js, apelat din generateLyricVideo mai jos) — NICIODATA un al doilea concept
-// paralel de "inceput de voce". Comportamentul getPreviewStartFromLyrics() ramane neschimbat
-// (acelasi filtru, doar mutat intr-o functie separata).
+// "Vocal onset" / "primul cuvant real" — conceptul EXISTENT, folosit de
+// getPreviewStartFromLyrics() (mai jos) pentru pozitionarea preview-ului gratuit — vocea trebuie
+// doar sa ajunga sa se auda in jurul secundei 9 din preview, indiferent din ce sectiune vine
+// primul cuvant. Comportamentul getPreviewStartFromLyrics() ramane neschimbat.
+// CORECȚIE (2026-09-14, "intro-ul Cadou Video se termina prea devreme fata de prima strofa
+// reala"): pana acum, intro-ul Cadou Video (applyVideoGiftIntro, lib/media-analysis.js) folosea
+// ACEST ACELASI "prim cuvant real" ca limita — gresit, pentru ca sectiunea de intro/inceput
+// ([Introducere]/[Intro]) poate contine ea insasi versuri cantate (ex. comanda reala 88d1486e:
+// "[Introducere] Maria, asculta-ma o clipa..." la 5.98s, cu [Strofa 1] abia la 14.87s) — un
+// cuvant real, dar NU primul vers real. Vezi findFirstVerseStartS() mai jos, folosit acum STRICT
+// pentru limita intro-ului Cadou Video — cele doua concepte ("prim cuvant" pentru preview, "prima
+// strofa reala" pentru intro) sunt acum separate intentionat, nu mai un singur concept comun.
 function findFirstRealWordStartS(alignedWords) {
   const words = Array.isArray(alignedWords) ? alignedWords : [];
   const firstReal = words.find(w =>
@@ -5752,6 +5758,24 @@ function findFirstRealWordStartS(alignedWords) {
     stripStructuralTagsFromWord(w.word).length > 0
   );
   return firstReal ? firstReal.startS : null;
+}
+
+// "Prima strofa reala" — pentru intro-ul Cadou Video STRICT (vezi comentariul de mai sus).
+// Reutilizeaza sectionTimings DEJA calculat (deriveSectionTimings, lib/media-analysis.js), din
+// ACELASI alignedWords ca mai sus — niciun parser paralel, nicio cerere suplimentara. Prima
+// sectiune REALA (alignmentStatus==='aligned', deci un marcaj Suno confirmat, niciodata
+// fallback-ul 'full_song') de tip 'verse' ii da limita. O eticheta structurala ([Verse]/[Strofa])
+// sau un ad-lib/cuvant izolat INAINTE de acel vers (chiar daca in interiorul sectiunii de intro)
+// nu mai termina intro-ul prematur, pentru ca nu mai cautam "primul cuvant", ci "prima strofa".
+// FALLBACK (melodie fara nicio sectiune etichetata drept vers, sau fara marcaje de sectiune deloc
+// — sectionTimings cade pe 'full_song'): revine la findFirstRealWordStartS() — comportamentul
+// ACTUAL, dovedit, neschimbat pentru acest caz limita.
+function findFirstVerseStartS(sectionTimings, alignedWords) {
+  const verseSections = (Array.isArray(sectionTimings) ? sectionTimings : [])
+    .filter(s => s && s.sectionType === 'verse' && s.alignmentStatus === 'aligned' && typeof s.startTime === 'number' && Number.isFinite(s.startTime))
+    .sort((a, b) => a.startTime - b.startTime);
+  if (verseSections.length > 0) return verseSections[0].startTime;
+  return findFirstRealWordStartS(alignedWords);
 }
 
 // Un singur apel HTTP, cu maximum o reincercare — DOAR pentru timeout sau erori 5xx
@@ -7499,12 +7523,13 @@ async function generateLyricVideo(order, variant, tempFullMp3Path) {
   // diferit -> sunoTrackId diferit -> alignedWords diferit), niciodata pe cele vechi.
   const sectionTimings = deriveSectionTimings(body.data.alignedWords, durationSeconds, variant.id);
   perfLog(order.id, 'section_timing_derived', `varianta=${variant.id}, sectiuni=${sectionTimings.length}, sursa=${sectionTimings[0] ? sectionTimings[0].source : 'n/a'}`);
-  // INTRO CADOU VIDEO (2026-09-14): "vocal onset" — momentul REAL al primului cuvant cantat,
-  // din ACELASI alignedWords deja obtinut mai sus (nicio cerere suplimentara) — acelasi concept
-  // deja folosit de getPreviewStartFromLyrics() pentru pozitionarea preview-ului. Trecut mai jos
-  // catre buildMemoryBackground(); null daca nu poate fi determinat fiabil (fallback: comportament
-  // ACTUAL, neschimbat — vezi applyVideoGiftIntro, lib/media-analysis.js).
-  const vocalOnsetSeconds = findFirstRealWordStartS(body.data.alignedWords);
+  // INTRO CADOU VIDEO (2026-09-14, CORECȚIE: limita trebuie sa fie prima strofa reala, nu primul
+  // cuvant cantat — vezi comentariul detaliat de la findFirstVerseStartS() mai sus): momentul
+  // limitei intro-ului, din ACELASI alignedWords/sectionTimings deja obtinute mai sus (nicio
+  // cerere/parser suplimentar). Trecut mai jos catre buildMemoryBackground(); null daca nu poate
+  // fi determinat fiabil (fallback: comportament ACTUAL, neschimbat — vezi applyVideoGiftIntro,
+  // lib/media-analysis.js).
+  const vocalOnsetSeconds = findFirstVerseStartS(sectionTimings, body.data.alignedWords);
   const tempVideo = path.join(TEMP_DIR, `${order.id}-${variant.id}-video.mp4`);
   // subtitles= foloseste propria sintaxa cu ':' ca separator de optiuni — calea trebuie
   // sa foloseasca '/' (nu '\'), iar orice ':' din cale (litera de disc pe Windows, irelevant

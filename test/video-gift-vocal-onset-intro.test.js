@@ -5,10 +5,13 @@
 // normala de cadre scurte. Exact cand incepe vocea, montajul Cadou Video continua EXACT ca
 // inainte de aceasta modificare.
 //
-// MECANISM (reutilizat, nu reimplementat): "vocal onset" = startS al primului cuvant real din
-// alignedWords (acelasi concept deja folosit de getPreviewStartFromLyrics() pentru pozitionarea
-// preview-ului gratuit — extras acum in findFirstRealWordStartS(), server.js, si reutilizat
-// identic). applyVideoGiftIntro() (lib/media-analysis.js) transforma POST-HOC planul de cadre
+// MECANISM (reutilizat, nu reimplementat): applyVideoGiftIntro() primeste o limita in secunde
+// (testata mai jos direct, ca numar) si NU cunoaste/nu ii pasa cum a fost calculata acea limita —
+// findFirstRealWordStartS() (server.js, testata izolat mai jos) e conceptul original ("primul
+// cuvant real", inca folosit de getPreviewStartFromLyrics() pentru preview); findFirstVerseStartS()
+// (server.js, 2026-09-14 — testata separat in test/video-gift-first-verse-boundary.test.js) e
+// limita REALA folosita acum pentru intro-ul Cadou Video ("prima strofa reala", nu primul cuvant).
+// applyVideoGiftIntro() (lib/media-analysis.js) transforma POST-HOC planul de cadre
 // DEJA construit de buildShotPlan() (apelat NESCHIMBAT) — inlocuieste STRICT cadrele dinaintea
 // limitei cu UN SINGUR cadru nou, pastrand restul planului BYTE-IDENTIC (aceleasi obiecte
 // start/end/duration/transitionOut/transitionDuration/kenBurns/itemIndex/occurrence) —
@@ -230,7 +233,7 @@ test('server.js: generateLyricVideo() NU modifica fisierul audio (tempFullMp3Pat
   // (durata/mux) — niciodata rescris/suprascris in aceasta functie.
   assert.ok(!/fs\.writeFileSync\([^)]*tempFullMp3Path/.test(fn), 'tempFullMp3Path nu trebuie scris/suprascris niciodata');
   assert.ok(!/fs\.unlinkSync\([^)]*tempFullMp3Path/.test(fn), 'tempFullMp3Path nu trebuie sters de aceasta functie');
-  assert.ok(fn.includes('const vocalOnsetSeconds = findFirstRealWordStartS(body.data.alignedWords);'), 'vocal onset trebuie derivat STRICT din alignedWords deja obtinut, fara nicio cerere suplimentara');
+  assert.ok(fn.includes('const vocalOnsetSeconds = findFirstVerseStartS(sectionTimings, body.data.alignedWords);'), 'limita intro-ului trebuie derivata STRICT din sectionTimings/alignedWords deja obtinute, fara nicio cerere suplimentara (2026-09-14: prima strofa reala, nu primul cuvant)');
 });
 
 test('server.js: durationSeconds (durata finala a videoclipului) e derivata STRICT din variant.durationSeconds/audio real — neatinsa de logica de vocal onset', () => {
