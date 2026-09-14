@@ -77,6 +77,7 @@ test.before(() => {
     extractConst('CONCAT_BATCH_CONCURRENCY'),
     extractFn('wrapVideoRenderStageError'),
     extractFn('computeVideoSegmentStartOffset'),
+    extractFn('computeVideoStartOffsetFromProgress'),
     extractFn('getVideoSourceDurationSeconds'),
     extractConst('HDR_COLOR_TRANSFER_VALUES'),
     extractFn('detectHdrVideo'),
@@ -304,12 +305,16 @@ test('RANDARE REALA: video sursa mai scurt decat slotul foloseste bucla (-stream
   ffmpeg([...bandArgs, '-filter_complex', `${filterInputs}concat=n=${bandColors.length}:v=1:a=0[outv]`, '-map', '[outv]', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', longVideo]);
 
   const order = { id: 'test-video-lengths' };
-  const shotShort = { itemIndex: 0, occurrence: 0, duration: 2.5, kenBurns: null };
+  const shotShort = { itemIndex: 0, duration: 2.5, kenBurns: null, videoProgressSeconds: 0 };
   const outShort = await mod.renderShot({ type: 'video', localPath: shortVideo }, shotShort, 0, order);
   assert.ok(Math.abs(ffprobeDuration(outShort) - 2.5) < 0.2, 'segmentul trebuie sa aiba durata alocata (2.5s), chiar daca sursa e mai scurta (bucla)');
 
-  const shotLongA = { itemIndex: 1, occurrence: 0, duration: 3, kenBurns: null };
-  const shotLongB = { itemIndex: 1, occurrence: 1, duration: 3, kenBurns: null };
+  // CORECȚIE (2026-09-14): shot.occurrence -> videoProgressSeconds (suma REALA a duratelor
+  // aparitiilor anterioare ale ACELUIASI material) — shotLongB continua STRICT de unde a ramas
+  // shotLongA (3s deja consumate), nu doar "occurrence 1" — vezi
+  // test/video-source-progressive-reuse.test.js pentru testele dedicate noii logici.
+  const shotLongA = { itemIndex: 1, duration: 3, kenBurns: null, videoProgressSeconds: 0 };
+  const shotLongB = { itemIndex: 1, duration: 3, kenBurns: null, videoProgressSeconds: 3 };
   const outLongA = await mod.renderShot({ type: 'video', localPath: longVideo }, shotLongA, 1, order);
   const outLongB = await mod.renderShot({ type: 'video', localPath: longVideo }, shotLongB, 2, order);
   const colorA = sampleColor(outLongA, 1.5);

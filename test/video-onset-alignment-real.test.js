@@ -102,6 +102,7 @@ test.before(() => {
     onsetSnippet,
     extractFn('wrapVideoRenderStageError'),
     extractFn('computeVideoSegmentStartOffset'),
+    extractFn('computeVideoStartOffsetFromProgress'),
     extractFn('getVideoSourceDurationSeconds'),
     extractConst('HDR_COLOR_TRANSFER_VALUES'),
     extractFn('detectHdrVideo'),

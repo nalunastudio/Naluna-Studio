@@ -241,7 +241,12 @@ test('server.js: renderShot() foloseste computeVideoSegmentStartOffset() pentru 
     else if (server[i] === '}') { depth--; if (depth === 0) break; }
   }
   const snippet = server.slice(startIdx, i + 1);
-  assert.ok(snippet.includes('computeVideoSegmentStartOffset(shot.itemIndex, shot.occurrence, sourceDuration, segDurationSeconds)'));
+  // CORECȚIE (2026-09-14, "nu vreau sa fie afisata repetat aceeasi portiune dintr-un video
+  // reutilizat"): renderShot() foloseste acum computeVideoStartOffsetFromProgress(), cu suma
+  // REALA (secunde) a duratelor tuturor aparitiilor anterioare ale materialului
+  // (shot.videoProgressSeconds, calculata in buildMemoryBackground) — vezi
+  // test/video-source-progressive-reuse.test.js pentru testele dedicate noii logici.
+  assert.ok(snippet.includes('computeVideoStartOffsetFromProgress(shot.videoProgressSeconds || 0, sourceDuration, segDurationSeconds)'));
   // CORECȚIE (2026-08-29, "calitate video clara"): scalarea foloseste acum explicit Lanczos
   // (flags=lanczos) — scalare de calitate, nu bilinear implicit — dincolo de asta, crop-ul
   // fara deformare ramane exact acelasi.

@@ -126,6 +126,8 @@ test.before(() => {
     "function perfLog() {}",
     extractFn('wrapVideoRenderStageError'),
     extractFn('computeVideoSegmentStartOffset'),
+    extractFn('computeVideoProgressByShot'),
+    extractFn('computeVideoStartOffsetFromProgress'),
     extractFn('getVideoSourceDurationSeconds'),
     extractConst('HDR_COLOR_TRANSFER_VALUES'),
     extractFn('detectHdrVideo'),
@@ -134,7 +136,7 @@ test.before(() => {
     extractConst('WIDE_PHOTO_ASPECT_RATIO_THRESHOLD'),
     extractFn('getPhotoDimensions'),
     extractFn('renderShot'),
-    'return { renderShot, computeVideoSegmentStartOffset, getVideoSourceDurationSeconds };'
+    'return { renderShot, computeVideoSegmentStartOffset, computeVideoProgressByShot, computeVideoStartOffsetFromProgress, getVideoSourceDurationSeconds };'
   ].join('\n\n');
   mod = new Function('execFileAsync', 'require', src)(execFileAsync, require);
 });
@@ -182,6 +184,13 @@ test('RANDARE REALA (3 videoclipuri cu marcaj vizual distinct pe timp): fiecare 
     { type: 'video', localPath: sourceVideos[2] }
   ];
   const shots = buildShotPlan(mediaItems, DURATION_SECONDS, [], 0.6, [], CONCAT_BATCH_SIZE);
+  // CORECȚIE (2026-09-14, "nu vreau sa fie afisata repetat aceeasi portiune dintr-un video
+  // reutilizat"): renderShot() citeste acum shot.videoProgressSeconds (suma REALA a duratelor
+  // aparitiilor anterioare ale ACELUIASI material), calculata de computeVideoProgressByShot() in
+  // buildMemoryBackground — reprodusa AICI identic, pe ACELASI plan static, ca testul sa verifice
+  // exact mecanismul real de productie.
+  const progressByShot = mod.computeVideoProgressByShot(shots);
+  shots.forEach((s, i) => { s.videoProgressSeconds = progressByShot[i]; });
 
   // Grupam, per material, aparitiile care au primit ACEEASI durata de cadru (fallback calm
   // uniform, sectionTimings=[]) — luam grupul DOMINANT (cel mai numeros) pentru fiecare
@@ -214,7 +223,7 @@ test('RANDARE REALA (3 videoclipuri cu marcaj vizual distinct pe timp): fiecare 
     const predictedTimes = [];
     for (let k = 0; k < occurrences.length; k++) {
       const { shot } = occurrences[k];
-      const predicted = mod.computeVideoSegmentStartOffset(shot.itemIndex, shot.occurrence, sourceDuration, shot.duration);
+      const predicted = mod.computeVideoStartOffsetFromProgress(shot.videoProgressSeconds, sourceDuration, shot.duration);
       assert.equal(predicted.useLoop, false, 'sursa (90s) e mult mai lunga decat segmentul — nu trebuie sa foloseasca bucla');
       // predictia foloseste ACELASI punct din timeline pe care il esantionam mai jos din
       // fisierul randat (mijlocul segmentului) — timpul REAL in sursa, la acel punct, e
@@ -277,22 +286,27 @@ test('fallback gratios pentru un clip PREA SCURT: repetarea unei ferestre apare 
   assert.equal(o3.startOffset.toFixed(2), o0.startOffset.toFixed(2), 'a 4-a aparitie trebuie sa repete STRICT fereastra primei aparitii — fallback gratios prin ciclu, dupa epuizarea reala');
   void o2;
 
-  // Confirmare REALA (nu doar aritmetica): randam occurrence 0 si occurrence 3 (care trebuie sa
-  // repete fereastra lui 0) si verificam ca fisierele randate au continut identic ca pozitie de
-  // start in sursa — deci NU o buclă identică fals declanșată inainte de epuizare, ci un ciclu
-  // real, dupa ce toate ferestrele au fost folosite o data.
-  const shot0 = { itemIndex: 0, occurrence: 0, duration: segDuration };
-  const shot3 = { itemIndex: 0, occurrence: 3, duration: segDuration };
+  // Confirmare REALA (nu doar aritmetica) a mecanismului NOU (2026-09-14, progres cumulativ):
+  // shot0 (nimic consumat inca) si shot3 (progres cumulat mult peste safeSpan-ul acestui clip
+  // scurt — echivalentul "epuizarii" testate mai sus, exprimat acum in secunde REALE, nu in
+  // numar de ferestre) trebuie amandoua sa produca un fisier randat valid, fara eroare — reutilizarea
+  // gratioasa dupa epuizare, verificata REAL, nu doar aritmetic.
+  const shot0 = { itemIndex: 0, duration: segDuration, videoProgressSeconds: 0 };
+  const shot3 = { itemIndex: 0, duration: segDuration, videoProgressSeconds: segDuration * 3 };
   const out0 = await mod.renderShot(item, shot0, 'shortfallback-0', { id: 'test-order-shortfallback' });
   const out3 = await mod.renderShot(item, shot3, 'shortfallback-3', { id: 'test-order-shortfallback' });
   assert.ok(fs.existsSync(out0) && fs.existsSync(out3));
 });
 
-test('server.js: renderShot() ramane STRICT bazat pe shot.itemIndex/shot.occurrence transmise separat catre computeVideoSegmentStartOffset() (nu mai combina intr-un index sintetic opac)', () => {
+test('server.js: renderShot() ramane STRICT bazat pe shot.videoProgressSeconds (suma REALA a duratelor aparitiilor anterioare), nu pe un index sintetic opac', () => {
   // CORECȚIE (2026-08-31, clasa recurenta de fragilitate — fereastra fixa de caractere devine
   // prea ingusta dupa ce cod nou e adaugat mai devreme in functie, ex. letterbox pentru poze
   // late): extragerea foloseste acum potrivire REALA de acolade (brace-depth), nu un offset fix.
+  // CORECȚIE (2026-09-14): shot.itemIndex/shot.occurrence -> computeVideoSegmentStartOffset()
+  // (bazat pe "ferestre" recalculate per apel) inlocuita cu shot.videoProgressSeconds ->
+  // computeVideoStartOffsetFromProgress() (suma REALA, cumulativa, a duratelor anterioare) —
+  // vezi test/video-source-progressive-reuse.test.js pentru cauza exacta si testele dedicate.
   const snippet = extractFn('renderShot');
-  assert.ok(snippet.includes('computeVideoSegmentStartOffset(shot.itemIndex, shot.occurrence, sourceDuration, segDurationSeconds)'));
+  assert.ok(snippet.includes('computeVideoStartOffsetFromProgress(shot.videoProgressSeconds || 0, sourceDuration, segDurationSeconds)'));
   assert.ok(!snippet.includes('syntheticIndex'), 'vechiul index sintetic combinat nu mai trebuie sa existe');
 });

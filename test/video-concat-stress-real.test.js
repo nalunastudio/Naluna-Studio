@@ -82,6 +82,7 @@ test.before(() => {
     "async function execFfmpeg(args, options = {}) { const inputCount = args.filter(a => a === '-i').length; __recordFfmpegCall(inputCount, args); return realExecFileAsync('ffmpeg', ['-hide_banner','-loglevel','error','-nostats',...args], { maxBuffer: 20*1024*1024, ...options }); }",
     extractFn('wrapVideoRenderStageError'),
     extractFn('computeVideoSegmentStartOffset'),
+    extractFn('computeVideoStartOffsetFromProgress'),
     extractFn('getVideoSourceDurationSeconds'),
     extractConst('HDR_COLOR_TRANSFER_VALUES'),
     extractFn('detectHdrVideo'),

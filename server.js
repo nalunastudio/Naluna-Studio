@@ -6639,17 +6639,71 @@ function computeVideoSegmentStartOffset(itemIndex, occurrence, sourceDurationSec
   return { useLoop: false, startOffset };
 }
 
+// CORECȚIE (2026-09-14, "nu vreau sa fie afisata repetat aceeasi portiune dintr-un video
+// reutilizat"): computeVideoSegmentStartOffset() de mai sus (NESCHIMBATA, pastrata pentru
+// compatibilitate cu testele ei dedicate) presupune implicit ca toate aparitiile ACELUIASI
+// material folosesc segmente de ACEEASI durata — `numWindows` se recalculeaza din
+// segDurationSeconds la FIECARE apel, deci doua aparitii cu durate de cadru diferite (ex. 2.2s
+// in fereastra de previzualizare, 3.9s mai tarziu — cazul REAL, obisnuit, in shot-plan) folosesc
+// grile de ferestre DIFERITE, care nu se aliniaza — pot produce start-uri identice sau
+// suprapuse, desi exista inca portiuni nefolosite din sursa. CAUZA EXACTA, confirmata prin
+// citirea codului (nu presupusa): functia nu are memorie a CAT anume s-a folosit deja din sursa,
+// doar a NUMARULUI de aparitii (occurrence).
+//
+// REPARATIE: `computeVideoProgressByShot()` calculeaza, DINTR-O SINGURA TRECERE peste planul de
+// cadre FINAL (shotPlan, dupa eventuala inserare a intro-ului Cadou Video — vezi
+// applyVideoGiftIntro, lib/media-analysis.js — deci intro-ul e tratat ca "deja consumat" pentru
+// urmatoarea aparitie a ACELUIASI video, FARA nicio modificare a applyVideoGiftIntro insasi),
+// pentru fiecare cadru, SUMA REALA a duratelor tuturor cadrelor ANTERIOARE care au folosit
+// ACELASI material — o valoare in SECUNDE, nu un numar de "ferestre". `computeVideoStartOffsetFromProgress()`
+// foloseste apoi aceasta suma REALA (nu occurrence) ca sa avanseze secvential prin sursa,
+// pastrand ACEEASI logica de marje (8% inceput / 5% final) — abia cand suma depaseste
+// continutul util disponibil, se reia (modulo), exact cerinta "abia atunci poate reveni/
+// reutiliza continut". Complet determinist (nicio randomizare) — calculat STRICT din duratele
+// deja fixate ale cadrelor, cunoscute INTEGRAL inainte de orice randare/descarcare (acelasi plan
+// static folosit si de buildMemoryBackground pentru descarcarea leneșa — vezi comentariul de
+// acolo). Ordinea/frecventa materialelor, duratele cadrelor, tranzitiile, numarul de cadre si
+// logica pentru fotografii raman COMPLET NEATINSE — se schimba STRICT ce portiune temporala a
+// sursei video e extrasa la randare.
+function computeVideoProgressByShot(shots) {
+  const consumedByItem = new Map();
+  return shots.map(shot => {
+    const consumedSoFar = consumedByItem.get(shot.itemIndex) || 0;
+    consumedByItem.set(shot.itemIndex, consumedSoFar + shot.duration);
+    return consumedSoFar;
+  });
+}
+
+function computeVideoStartOffsetFromProgress(consumedSecondsSoFar, sourceDurationSeconds, segDurationSeconds) {
+  if (!sourceDurationSeconds || sourceDurationSeconds <= segDurationSeconds) {
+    return { useLoop: true, startOffset: 0 };
+  }
+  const usableSpan = sourceDurationSeconds - segDurationSeconds;
+  const marginStart = sourceDurationSeconds * 0.08;
+  const marginEnd = sourceDurationSeconds * 0.05;
+  const safeSpan = Math.max(0, usableSpan - marginStart - marginEnd);
+  if (!(segDurationSeconds > 0) || safeSpan <= 0) {
+    return { useLoop: false, startOffset: Math.max(0, Math.min(marginStart, usableSpan)) };
+  }
+  const wrapped = Math.max(0, consumedSecondsSoFar || 0) % safeSpan;
+  const startOffset = Math.max(0, Math.min(marginStart + wrapped, usableSpan));
+  return { useLoop: false, startOffset };
+}
+
 // CORECȚIE (2026-08-24, "montajul video e monoton — o singura fotografie poate ramane foarte
 // mult timp"): inlocuieste vechiul renderMemorySegment (UN segment lung per material) —
 // randeaza acum UN SINGUR CADRU (shot) din planul construit de buildShotPlan() (vezi
 // lib/media-analysis.js), la rezolutia finala. Pentru poze, foloseste varianta Ken Burns
 // atribuita ACESTEI aparitii a materialului (shot.kenBurns — aparitii succesive ale aceluiasi
 // material primesc miscari diferite, niciodata aceeasi miscare de doua ori la rand). Pentru
-// videoclipuri, foloseste computeVideoSegmentStartOffset() de mai sus, cu shot.itemIndex si
-// shot.occurrence transmise SEPARAT (2026-08-30 — vezi comentariul functiei: combinarea lor
-// intr-un singur "index sintetic" era exact cauza repetarii/suprapunerii secventelor video),
-// ca aparitii diferite ale ACELUIASI clip sa avanseze STRICT secvential prin ferestre
-// nefolosite ale sursei.
+// videoclipuri, foloseste computeVideoStartOffsetFromProgress() de mai sus, cu
+// shot.videoProgressSeconds (suma REALA a duratelor tuturor aparitiilor anterioare ale ACELUIASI
+// material, calculata de computeVideoProgressByShot in buildMemoryBackground — vezi comentariul
+// detaliat de acolo) — CORECȚIE (2026-09-14), inlocuieste vechea combinatie (shot.itemIndex,
+// shot.occurrence) trimisa catre computeVideoSegmentStartOffset(), care nu tinea cont de faptul
+// ca aparitii succesive ale ACELUIASI material pot avea durate de cadru DIFERITE (vezi
+// comentariul de la computeVideoProgressByShot pentru cauza exacta). `|| 0` — fallback sigur
+// pentru orice apel care nu trece prin buildMemoryBackground (teste, cod vechi).
 async function renderShot(item, shot, shotIndex, order) {
   const outPath = path.join(TEMP_DIR, `${order.id}-memory-shot-${shotIndex}.mp4`);
   const segDurationSeconds = shot.duration;
@@ -6709,7 +6763,7 @@ async function renderShot(item, shot, shotIndex, order) {
     }
   } else {
     const sourceDuration = await getVideoSourceDurationSeconds(item.localPath, probeCache.duration);
-    const { useLoop, startOffset } = computeVideoSegmentStartOffset(shot.itemIndex, shot.occurrence, sourceDuration, segDurationSeconds);
+    const { useLoop, startOffset } = computeVideoStartOffsetFromProgress(shot.videoProgressSeconds || 0, sourceDuration, segDurationSeconds);
     const inputArgs = useLoop
       ? ['-stream_loop', '-1', '-i', item.localPath]
       : ['-ss', startOffset.toFixed(2), '-i', item.localPath];
@@ -7244,6 +7298,14 @@ async function buildMemoryBackground(order, mediaItems, durationSeconds, section
     // niciodata un fallback nou/degradat.
     const shotPlanBeforeIntro = shotPlan;
     shotPlan = applyVideoGiftIntro(shotPlan, ordered, vocalOnsetSeconds);
+    // REUTILIZARE PROGRESIVA A VIDEO-URILOR (2026-09-14, "nu vreau sa fie afisata repetat aceeasi
+    // portiune dintr-un video reutilizat"): o singura trecere, sincrona, peste planul FINAL (dupa
+    // eventualul intro de mai sus) — vezi comentariul detaliat de la computeVideoProgressByShot()
+    // pentru cauza exacta si garantia ca timeline-ul/ordinea/duratele/tranzitiile raman complet
+    // neatinse. `videoProgressSeconds` e citit STRICT de renderShot(), pentru materiale video —
+    // ignorat complet pentru poze.
+    const videoProgressByShot = computeVideoProgressByShot(shotPlan);
+    shotPlan.forEach((s, i) => { s.videoProgressSeconds = videoProgressByShot[i]; });
     perfLog(order.id, 'memory_shot_plan', `materiale=${ordered.length}, cadre=${shotPlan.length}, sectiuni=${(sectionTimings || []).length}, onset-uri=${onsetTimes.length}, intro_video_gift=${shotPlan !== shotPlanBeforeIntro}`);
     // DIAGNOSTIC (2026-09-08, cerut explicit: "distributia tipurilor/duratelor de tranzitie"):
     // STRICT tipuri de tranzitie (enumerare fixa) + durate rotunjite — niciodata continut media.
