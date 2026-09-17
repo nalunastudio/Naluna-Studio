@@ -7,7 +7,7 @@ const {
   shouldRefresh, isDangerouslyCloseToExpiry, shouldSendAlert, checkInstagramTokenLifecycle,
   REFRESH_MARGIN_DAYS, ALERT_THRESHOLD_DAYS, ALERT_RESEND_COOLDOWN_HOURS
 } = require('../lib/social/instagram-token-lifecycle');
-const { REFRESH_LOCK_MINUTES } = require('../lib/social/instagram-token-store');
+const { REFRESH_LOCK_MINUTES, getCurrentInstagramAccessToken } = require('../lib/social/instagram-token-store');
 
 function jsonResponse(status, body) {
   return { ok: status >= 200 && status < 300, status, json: async () => body };
@@ -19,9 +19,9 @@ function daysFromNow(days) {
 
 // ---------------- functii pure ----------------
 
-test('shouldRefresh: fara expiresAt cunoscuta -> true (incearca, Meta decide)', () => {
-  assert.equal(shouldRefresh({ expiresAt: null }), true);
-  assert.equal(shouldRefresh(null), true);
+test('shouldRefresh: fara expiresAt cunoscuta (lifecycle NEINITIALIZAT) -> false, NICIODATA nu incearca automat', () => {
+  assert.equal(shouldRefresh({ expiresAt: null }), false);
+  assert.equal(shouldRefresh(null), false);
 });
 
 test(`shouldRefresh: expira in mai putin de ${REFRESH_MARGIN_DAYS} zile -> true`, () => {
@@ -137,4 +137,87 @@ test('checkInstagramTokenLifecycle: alerta NU se retrimite la fiecare tick cat t
   await checkInstagramTokenLifecycle({ db, sendAlertEmail }); // al doilea tick, imediat dupa — cooldown inca activ
 
   assert.equal(alertCalls, 1, 'a doua verificare, imediat dupa prima, nu trebuie sa retrimita alerta');
+});
+
+// ============================================================================
+// SIGURANTA LA BOOT (audit pre-deploy, varianta B aprobata explicit) — un worker care porneste
+// singur in productie NU are voie sa faca un apel LIVE catre Meta doar pentru ca inca nu stim
+// cand expira tokenul curent. Toate testele de mai jos folosesc primul boot REALIST: DB fara
+// niciun token_state populat inca (echivalentul exact al randului creat de initDb() la primul
+// deploy — access_token si expires_at ambele NULL).
+// ============================================================================
+
+test('BOOT: primul boot, DB fara token state populat (echivalent initDb() la prima rulare) -> shouldRefresh false', async () => {
+  const db = makeFakeSocialDb();
+  const state = await db.getInstagramTokenState();
+  assert.equal(state.expiresAt, null, 'fixtura trebuie sa reproduca EXACT starea de la primul boot');
+  assert.equal(shouldRefresh(state), false);
+});
+
+test('BOOT: checkInstagramTokenLifecycle la primul boot -> ZERO cereri fetch catre Meta, indiferent de tokenul bootstrap din env', async (t) => {
+  const db = makeFakeSocialDb();
+  const fetchMock = t.mock.method(globalThis, 'fetch', async () => { throw new Error('NU TREBUIE APELAT — lifecycle neinitializat inca'); });
+  const sendAlertEmail = async () => { throw new Error('NU TREBUIE APELAT'); };
+
+  const result = await checkInstagramTokenLifecycle({ db, sendAlertEmail });
+
+  assert.equal(result.refreshed, false);
+  assert.equal(result.reason, 'not_due');
+  assert.equal(fetchMock.mock.callCount(), 0);
+});
+
+test('BOOT: tick-uri REPETATE (simuleaza minute/ore de functionare continua) NU provoaca niciun refresh cat timp expiresAt ramane necunoscut', async (t) => {
+  const db = makeFakeSocialDb();
+  const fetchMock = t.mock.method(globalThis, 'fetch', async () => { throw new Error('NU TREBUIE APELAT'); });
+  const sendAlertEmail = async () => {};
+
+  for (let i = 0; i < 20; i++) {
+    const result = await checkInstagramTokenLifecycle({ db, sendAlertEmail });
+    assert.equal(result.refreshed, false);
+  }
+
+  assert.equal(fetchMock.mock.callCount(), 0, 'niciun tick, oricat de multe, nu trebuie sa declanseze vreodata un refresh cat lifecycle-ul e neinitializat');
+});
+
+test('BOOT: tokenul bootstrap din env ramane utilizabil pentru PUBLICARE, independent de decizia de refresh', async () => {
+  const prevEnv = process.env.META_INSTAGRAM_ACCESS_TOKEN;
+  process.env.META_INSTAGRAM_ACCESS_TOKEN = 'bootstrap-token-din-railway';
+  try {
+    const db = makeFakeSocialDb();
+    // lifecycle-ul NU a fost initializat (expiresAt inca null) — dar publicarea foloseste
+    // getCurrentInstagramAccessToken(), STRICT independent de shouldRefresh()/checkInstagramTokenLifecycle.
+    const state = await db.getInstagramTokenState();
+    assert.equal(shouldRefresh(state), false);
+    const token = await getCurrentInstagramAccessToken(db);
+    assert.equal(token, 'bootstrap-token-din-railway', 'publicarea trebuie sa poata folosi in continuare tokenul bootstrap, chiar daca lifecycle-ul de refresh e neinitializat');
+  } finally {
+    if (prevEnv === undefined) delete process.env.META_INSTAGRAM_ACCESS_TOKEN;
+    else process.env.META_INSTAGRAM_ACCESS_TOKEN = prevEnv;
+  }
+});
+
+test('BOOT -> INITIALIZAT: odata ce expiresAt devine cunoscut (simuleaza o initializare separata, viitoare), mecanismul normal de refresh intra in functiune corect', async (t) => {
+  const db = makeFakeSocialDb();
+
+  // inainte de initializare: neatins
+  assert.equal(shouldRefresh(await db.getInstagramTokenState()), false);
+
+  // simuleaza REZULTATUL unei initializari separate (nu construita acum — vezi raportul de
+  // audit) care a stabilit STRICT expiresAt-ul, prin exact acelasi mecanism de persistenta
+  // folosit si de un refresh normal (recordInstagramTokenRefreshSuccess).
+  await db.claimInstagramTokenRefresh(REFRESH_LOCK_MINUTES);
+  await db.recordInstagramTokenRefreshSuccess('token-dupa-initializare', daysFromNow(REFRESH_MARGIN_DAYS - 1)); // deja in fereastra de refresh
+
+  const stateAfterInit = await db.getInstagramTokenState();
+  assert.equal(shouldRefresh(stateAfterInit), true, 'odata expiresAt cunoscut, logica normala de marja trebuie sa functioneze neschimbat');
+
+  // si checkInstagramTokenLifecycle chiar incearca refresh-ul acum (fetch APELAT, spre
+  // deosebire de toate testele BOOT de mai sus)
+  const fetchMock = t.mock.method(globalThis, 'fetch', async () => jsonResponse(200, { access_token: 'refreshed-after-init', token_type: 'bearer', expires_in: 5184000 }));
+  const result = await checkInstagramTokenLifecycle({ db, sendAlertEmail: async () => {} });
+
+  assert.equal(fetchMock.mock.callCount(), 1);
+  assert.equal(result.ok, true);
+  const finalState = await db.getInstagramTokenState();
+  assert.equal(finalState.accessToken, 'refreshed-after-init');
 });
