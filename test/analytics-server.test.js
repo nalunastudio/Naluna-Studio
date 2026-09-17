@@ -28,9 +28,13 @@ function sliceFunctionBody(src, fnSignature, fromIdx) {
 // ===============================================================================================
 function loadSendGa4PurchaseEvent(mocks) {
   const snippet = sliceFunctionBody(server, 'async function sendGa4PurchaseEvent({ orderId, plan, value, currency, gaClientId, gaSessionId }) {');
-  const fetchWithTimeoutSnippet = sliceFunctionBody(server, 'async function fetchWithTimeout(url, options = {}, timeoutMs = FETCH_TIMEOUT_MS) {');
+  // fetchWithTimeout traieste acum in lib/fetch-with-timeout.js (extras din server.js separat,
+  // ca sa poata fi reutilizat si de adaptoarele Facebook/Instagram din lib/social/ — vezi
+  // acel fisier) — server.js il importa cu require(), nu mai il defineste inline, deci extragerea
+  // textuala trebuie sa citeasca din locatia lui reala, nu din server.js.
+  const fetchWithTimeoutSnippet = sliceFunctionBody(read('lib/fetch-with-timeout.js'), 'async function fetchWithTimeout(url, options = {}, timeoutMs = DEFAULT_TIMEOUT_MS) {');
   const sandboxSrc = `
-    const FETCH_TIMEOUT_MS = 30000;
+    const DEFAULT_TIMEOUT_MS = 30000;
     ${fetchWithTimeoutSnippet}
     ${snippet}
     return sendGa4PurchaseEvent;
