@@ -441,16 +441,25 @@
           </div>
           <span class="t-status-badge ${t.published ? 't-status-published' : 't-status-hidden'}">${t.published ? 'Publicată' : 'Ascunsă'}</span>
           <div class="t-card-actions">
-            <button class="t-icon-btn" title="Mută în sus" ${i === 0 ? 'disabled' : ''} onclick="moveTestimonial('${t.id}','up')">↑</button>
-            <button class="t-icon-btn" title="Mută în jos" ${i === items.length - 1 ? 'disabled' : ''} onclick="moveTestimonial('${t.id}','down')">↓</button>
-            <button class="t-icon-btn" title="Editează" onclick="editTestimonial('${t.id}')">✎</button>
-            <button class="t-icon-btn" title="Șterge" onclick="deleteTestimonial('${t.id}')">✕</button>
+            <button class="t-icon-btn" title="Mută în sus" ${i === 0 ? 'disabled' : ''} data-t-action="move-up" data-t-id="${escapeHtml(t.id)}">↑</button>
+            <button class="t-icon-btn" title="Mută în jos" ${i === items.length - 1 ? 'disabled' : ''} data-t-action="move-down" data-t-id="${escapeHtml(t.id)}">↓</button>
+            <button class="t-icon-btn" title="Editează" data-t-action="edit" data-t-id="${escapeHtml(t.id)}">✎</button>
+            <button class="t-icon-btn" title="Șterge" data-t-action="delete" data-t-id="${escapeHtml(t.id)}">✕</button>
           </div>
         </div>
       `;
     }).join('');
   }
 
+  // REGRESIE REPARATA (audit pre-deploy): aceste 3 actiuni foloseau onclick="" pana acum si
+  // erau STRICT nefunctionale sub politica CSP live (script-src fara 'unsafe-inline') — click-ul
+  // era blocat silentios de browser, fara nicio eroare vizibila in UI. Interactivitatea
+  // foloseste acum delegare de evenimente (addEventListener pe containerul stabil #t-list +
+  // data-atribute), exact tiparul deja folosit pentru Social Media mai jos — DAR functiile
+  // raman atasate pe obiectul global (neschimbat fata de inainte), pentru ca un test existent
+  // (protectia CSRF, adaugata separat) le localizeaza explicit dupa acele nume complete ca sa
+  // verifice header-ul trimis — redenumirea lor ar fi stricat acel test fara niciun beneficiu
+  // real (CSP blocheaza atributul onclick="" din HTML, nu existenta unei proprietati globale).
   window.editTestimonial = function(id) {
     const t = testimonialsCache.find(x => x.id === id);
     if (!t) return;
@@ -484,6 +493,17 @@
     });
     loadTestimonials();
   };
+
+  tList.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-t-action]');
+    if (!btn || btn.disabled) return;
+    const id = btn.dataset.tId;
+    const action = btn.dataset.tAction;
+    if (action === 'move-up') moveTestimonial(id, 'up');
+    else if (action === 'move-down') moveTestimonial(id, 'down');
+    else if (action === 'edit') editTestimonial(id);
+    else if (action === 'delete') deleteTestimonial(id);
+  });
 
   tForm.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -784,7 +804,9 @@
 
       // NICIUN retry automat aici — o singura cerere. Backend-ul gestioneaza deja retry-ul
       // (Etapa 3, workerul de fundal) pentru esecurile reale de platforma.
-      const res = await fetch(url, { method: 'POST', body: fd });
+      // X-Requested-With: protectia CSRF existenta pentru /api/admin/* (vezi server.js) — un
+      // formular HTML simplu cross-origin NU poate seta acest header custom.
+      const res = await fetch(url, { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' }, body: fd });
       const data = await res.json();
 
       if (!res.ok) {
@@ -956,7 +978,7 @@
     if (actionId === 'cancel') {
       if (!confirm('Anulezi programarea acestei postări? Nu va mai fi publicată automat.')) return;
       try {
-        const res = await fetch(`/api/admin/social/posts/${postId}/cancel`, { method: 'POST' });
+        const res = await fetch(`/api/admin/social/posts/${postId}/cancel`, { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
         const data = await res.json();
         if (!res.ok) { alert(data.error || 'Nu am putut anula programarea.'); return; }
         await loadSocialPosts();
@@ -975,7 +997,7 @@
       try {
         const res = await fetch(`/api/admin/social/posts/${postId}/retry`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
           body: JSON.stringify({ platform })
         });
         const data = await res.json();

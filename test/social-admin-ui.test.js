@@ -438,7 +438,70 @@ test('REGRESIE CSP: sectiunea Social Media nu foloseste niciun atribut onclick="
   assert.ok(!/\bonclick\s*=\s*"/.test(codeOnly), 'interactivitatea trebuie sa foloseasca STRICT delegare de evenimente (addEventListener), nu onclick="" inline');
 });
 
+test('REGRESIE CSP (audit pre-deploy): admin.html INTREG — inclusiv testimonialele preexistente — nu mai are niciun onclick="" inline', () => {
+  const codeOnly = html
+    .split('\n')
+    .filter((line) => !line.trim().startsWith('//'))
+    .join('\n');
+  assert.ok(!/\bonclick\s*=\s*"/.test(codeOnly), 'admin.html nu mai trebuie sa contina onclick="" inline nicaieri, testimoniale incluse');
+});
+
+test('testimoniale: move up/down, edit, delete folosesc delegare de evenimente pe #t-list, cu payload din data-atribute', () => {
+  assert.match(html, /data-t-action="move-up"/);
+  assert.match(html, /data-t-action="move-down"/);
+  assert.match(html, /data-t-action="edit"/);
+  assert.match(html, /data-t-action="delete"/);
+  assert.match(html, /tList\.addEventListener\('click'/);
+});
+
+test('testimoniale: fix-ul CSP nu schimba comportamentul functional (aceleasi 3 functii, acelasi efect: edit populeaza formularul, delete confirma+sterge, move trimite directia)', () => {
+  const start = html.indexOf('window.editTestimonial = function(id)');
+  assert.notEqual(start, -1);
+  const end = html.indexOf('tList.addEventListener', start);
+  const block = html.slice(start, end);
+  assert.match(block, /tEditId\.value = t\.id/);
+  assert.match(block, /confirm\('Ștergi definitiv această reacție\?'\)/);
+  assert.match(block, /body: JSON\.stringify\(\{ direction \}\)/);
+});
+
 test('interactivitatea din carduri/modal foloseste delegare de evenimente pe containere stabile', () => {
   assert.match(html, /document\.getElementById\('sm-list'\)\.addEventListener\('click'/);
   assert.match(html, /document\.getElementById\('sm-modal-root'\)\.addEventListener\('click'/);
+});
+
+// ============================================================================
+// CSRF (audit pre-deploy): protectia existenta in server.js (middleware /api/admin/*, cere
+// header X-Requested-With pe orice request mutativ) trebuie respectata de TOATE cele 4
+// actiuni mutative Social Media — publish, schedule, cancel, retry. Fara acest header,
+// serverul respinge cererea cu 403, indiferent cat de corecta e restul cererii.
+// ============================================================================
+test('CSRF: Post Now / Schedule (fetch(url, ...)) trimite X-Requested-With: XMLHttpRequest', () => {
+  const start = html.indexOf("document.getElementById('sm-form').addEventListener('submit'");
+  const handler = extractFn(html, "addEventListener('submit', async (e) => {", start).text;
+  assert.match(handler, /fetch\(url,\s*\{\s*method:\s*'POST',\s*headers:\s*\{\s*'X-Requested-With':\s*'XMLHttpRequest'\s*\},\s*body:\s*fd\s*\}\)/);
+});
+
+test('CSRF: Cancel Schedule trimite X-Requested-With: XMLHttpRequest', () => {
+  const start = html.indexOf('async function handleSmAction(postId, actionId) {');
+  const fn = extractFn(html, 'async function handleSmAction(postId, actionId) {', start).text;
+  const cancelBranch = fn.slice(0, fn.indexOf("actionId.startsWith('retry:')"));
+  assert.match(cancelBranch, /fetch\(`\/api\/admin\/social\/posts\/\$\{postId\}\/cancel`,\s*\{\s*method:\s*'POST',\s*headers:\s*\{\s*'X-Requested-With':\s*'XMLHttpRequest'\s*\}\s*\}\)/);
+});
+
+test('CSRF: Retry manual trimite X-Requested-With: XMLHttpRequest (alaturi de Content-Type existent)', () => {
+  const start = html.indexOf('async function handleSmAction(postId, actionId) {');
+  const fn = extractFn(html, 'async function handleSmAction(postId, actionId) {', start).text;
+  const retryBranch = fn.slice(fn.indexOf("actionId.startsWith('retry:')"));
+  assert.match(retryBranch, /headers:\s*\{\s*'Content-Type':\s*'application\/json',\s*'X-Requested-With':\s*'XMLHttpRequest'\s*\}/);
+});
+
+test('CSRF: GET-urile Social Media (lista postarilor) NU au fost modificate inutil — fara header CSRF pe cereri de citire', () => {
+  assert.match(html, /await fetch\('\/api\/admin\/social\/posts\?limit=100'\);/);
+});
+
+test('CSRF: middleware-ul din server.js chiar exista si se aplica inaintea rutelor social (nu doar presupus)', () => {
+  const csrfIdx = server.indexOf("if (req.get('X-Requested-With') !== 'XMLHttpRequest')");
+  const routeIdx = server.indexOf("app.post('/api/admin/social/publish'");
+  assert.notEqual(csrfIdx, -1, 'middleware-ul CSRF trebuie sa existe in server.js');
+  assert.ok(csrfIdx < routeIdx, 'middleware-ul CSRF trebuie inregistrat INAINTE de rutele social, ca sa li se aplice');
 });
