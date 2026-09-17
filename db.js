@@ -402,6 +402,124 @@ async function initDb() {
   `);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_testimonials_published_order ON testimonials(published, display_order);`);
 
+  // ==================================================================================
+  // SOCIAL_POSTS (2026-09-16, Etapa 2 — integrare Meta social publishing) — persistenta
+  // pentru publicarea manuala SI, ulterior, automata/programata pe Facebook si Instagram.
+  // Manual si scheduler vor scrie/citi AMBELE aceasta tabela, prin acelasi strat de acces
+  // (functiile de mai jos) — nu exista o tabela separata pentru fiecare flux.
+  //
+  // status: 'draft' | 'scheduled' | 'publishing' | 'published' | 'partially_failed' | 'failed'.
+  // Publicarea manuala (Etapa 2) creeaza randul direct in 'publishing' (nu exista inca UI de
+  // salvare ca draft) si il finalizeaza imediat la 'published'/'partially_failed'/'failed'.
+  // 'draft' si 'scheduled' raman pregatite pentru scheduler (Etapa 3+), neatinse acum.
+  //
+  // facebook_status/instagram_status: rezultatul per platforma, complet separat —
+  // NULL daca acea platforma nu a fost selectata pentru aceasta postare, altfel
+  // 'success' sau 'error'. Impreuna cu status general, permit distinctia clara ceruta
+  // intre "a mers pe ambele", "a mers doar pe una" (partially_failed) si "a picat total".
+  //
+  // media_key: cheia din storage.js (bucket PUBLIC — vezi saveSocialMediaFile in server.js),
+  // NICIODATA URL-ul complet salvat direct — URL-ul public se deriva la citire, prin
+  // storage.getPublicUrl(media_key), exact ca la testimonials.mediaPath. Asta inseamna ca
+  // daca S3_PUBLIC_BASE_URL se schimba vreodata, toate postarile raman corecte automat.
+  //
+  // idempotency_key: mecanismul anti-duplicat pentru publicarea manuala — vezi
+  // db.createSocialPostIfNew() mai jos si POST /api/admin/social/publish din server.js.
+  // UNIQUE + NOT NULL: o retrimitere accidentala a ACELUIASI request (acelasi
+  // idempotencyKey, generat o singura data de UI la momentul actiunii) gaseste randul deja
+  // creat si NU mai declanseaza o a doua publicare reala.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS social_posts (
+      id UUID PRIMARY KEY,
+      idempotency_key TEXT UNIQUE NOT NULL,
+      status TEXT NOT NULL DEFAULT 'draft',
+      platforms JSONB NOT NULL,
+      media_type TEXT NOT NULL,
+      media_key TEXT NOT NULL,
+      caption TEXT,
+      facebook_status TEXT,
+      facebook_post_id TEXT,
+      facebook_error TEXT,
+      instagram_status TEXT,
+      instagram_post_id TEXT,
+      instagram_container_id TEXT,
+      instagram_error TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      published_at TIMESTAMPTZ,
+      scheduled_at TIMESTAMPTZ
+    );
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_social_posts_created_at ON social_posts(created_at DESC);`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_social_posts_status ON social_posts(status);`);
+
+  // ==================================================================================
+  // SOCIAL_POSTS — Etapa 3 (2026-09-16): scheduling + retry per-platforma + recuperare la
+  // restart. Coloane aditive, sigure pentru randurile deja create in Etapa 2 (toate NULL/
+  // DEFAULT pentru ele — o postare deja publicata manual, instant, ramane valida neschimbata).
+  //
+  // next_attempt_at: momentul la care ACEASTA postare trebuie reconsiderata de worker —
+  // singura coloana pe care se bazeaza interogarea de claim (db.claimDueSocialPost mai jos).
+  // NULL inseamna "nu e eligibila pentru preluare automata" (draft, publicata complet,
+  // anulata, sau retry-uri epuizate pe toate platformele ramase esuate).
+  //
+  // publishing_claimed_at: setat ATOMIC quand workerul preia randul (status -> 'publishing').
+  // Folosit STRICT pentru recuperare dupa crash/restart (vezi recoverStalePublishingSocialPosts)
+  // — acelasi rol ca video_render_claimed_at (orders), dar cu o fereastra de expirare mult mai
+  // scurta: publicarea pe Meta dureaza cateva secunde, nu minute intregi ca o randare video.
+  //
+  // cancelled_at: setat STRICT de cancelScheduledSocialPost — o postare poate fi anulata DOAR
+  // cat timp status='scheduled' (nu a inceput inca publicarea; vezi garda WHERE acolo).
+  //
+  // facebook_attempt_count/instagram_attempt_count, *_last_attempt_at, *_next_attempt_at:
+  // starea de retry COMPLET SEPARATA per platforma — cerinta explicita ("Retry trebuie sa
+  // incerce numai platforma care a esuat"). O platforma cu status 'success' nu mai e
+  // reincercata NICIODATA, indiferent ce se intampla cu cealalta.
+  await pool.query(`ALTER TABLE social_posts ADD COLUMN IF NOT EXISTS next_attempt_at TIMESTAMPTZ;`);
+  await pool.query(`ALTER TABLE social_posts ADD COLUMN IF NOT EXISTS publishing_claimed_at TIMESTAMPTZ;`);
+  await pool.query(`ALTER TABLE social_posts ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ;`);
+  await pool.query(`ALTER TABLE social_posts ADD COLUMN IF NOT EXISTS facebook_attempt_count INTEGER NOT NULL DEFAULT 0;`);
+  await pool.query(`ALTER TABLE social_posts ADD COLUMN IF NOT EXISTS facebook_last_attempt_at TIMESTAMPTZ;`);
+  await pool.query(`ALTER TABLE social_posts ADD COLUMN IF NOT EXISTS facebook_next_attempt_at TIMESTAMPTZ;`);
+  await pool.query(`ALTER TABLE social_posts ADD COLUMN IF NOT EXISTS instagram_attempt_count INTEGER NOT NULL DEFAULT 0;`);
+  await pool.query(`ALTER TABLE social_posts ADD COLUMN IF NOT EXISTS instagram_last_attempt_at TIMESTAMPTZ;`);
+  await pool.query(`ALTER TABLE social_posts ADD COLUMN IF NOT EXISTS instagram_next_attempt_at TIMESTAMPTZ;`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_social_posts_next_attempt_at ON social_posts(next_attempt_at) WHERE next_attempt_at IS NOT NULL;`);
+
+  // ==================================================================================
+  // INSTAGRAM_TOKEN_STATE (Etapa 3) — persistenta SEPARATA a tokenului Instagram long-lived
+  // curent, ca refresh-ul automat sa supravietuiasca restarturilor Railway. Randul singleton
+  // (id=1), acelasi tipar ca credit_alert_state mai jos.
+  //
+  // access_token: DOAR aici, NICIODATA in social_posts si NICIODATA intors de vreun API —
+  // vezi lib/social/instagram-token-store.js. Poate fi NULL (inca nereinnoit niciodata) —
+  // in acel caz, aplicatia foloseste META_INSTAGRAM_ACCESS_TOKEN din variabilele de mediu
+  // ca bootstrap/fallback (vezi getCurrentInstagramAccessToken), NICIODATA scris aici automat
+  // — doar un refresh REUSIT scrie in aceasta coloana.
+  //
+  // refresh_claimed_at: lock cu expirare pentru protectie impotriva a doua reinnoiri
+  // concurente (mai multe instante Railway, sau workerul + un refresh manual viitor) —
+  // acelasi tipar exact ca video_render_claimed_at (orders).
+  //
+  // consecutive_refresh_failures/last_refresh_error: informatii NON-SECRETE (STRICT mesajul
+  // de eroare Meta, niciodata tokenul) — folosite pentru alerta prin email cand ne apropiem
+  // periculos de expirare si reinnoirea tot esueaza.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS instagram_token_state (
+      id INTEGER PRIMARY KEY DEFAULT 1,
+      access_token TEXT,
+      refreshed_at TIMESTAMPTZ,
+      expires_at TIMESTAMPTZ,
+      refresh_claimed_at TIMESTAMPTZ,
+      last_refresh_error TEXT,
+      last_refresh_attempt_at TIMESTAMPTZ,
+      consecutive_refresh_failures INTEGER NOT NULL DEFAULT 0,
+      last_alert_sent_at TIMESTAMPTZ,
+      CONSTRAINT instagram_token_state_singleton CHECK (id = 1)
+    );
+  `);
+  await pool.query(`INSERT INTO instagram_token_state (id) VALUES (1) ON CONFLICT (id) DO NOTHING;`);
+
   // generation_attempts: contor DUR, NICIODATA restituit (spre deosebire de edits_used,
   // care are semantica de "editare gratuita" cu refund la esec) — protejeaza impotriva
   // consumului nelimitat de credite Suno prin reincercari repetate ale unei generari care
@@ -1730,6 +1848,284 @@ async function moveTestimonial(id, direction) {
   });
 }
 
+// ==================================================================================
+// SOCIAL_POSTS — vezi comentariul complet al schemei in initDb() mai sus.
+// ==================================================================================
+
+function rowToSocialPost(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    idempotencyKey: row.idempotency_key,
+    status: row.status,
+    platforms: row.platforms || [],
+    mediaType: row.media_type,
+    mediaKey: row.media_key,
+    caption: row.caption || null,
+    facebookStatus: row.facebook_status || null,
+    facebookPostId: row.facebook_post_id || null,
+    facebookError: row.facebook_error || null,
+    facebookAttemptCount: row.facebook_attempt_count || 0,
+    facebookLastAttemptAt: row.facebook_last_attempt_at || null,
+    facebookNextAttemptAt: row.facebook_next_attempt_at || null,
+    instagramStatus: row.instagram_status || null,
+    instagramPostId: row.instagram_post_id || null,
+    instagramContainerId: row.instagram_container_id || null,
+    instagramError: row.instagram_error || null,
+    instagramAttemptCount: row.instagram_attempt_count || 0,
+    instagramLastAttemptAt: row.instagram_last_attempt_at || null,
+    instagramNextAttemptAt: row.instagram_next_attempt_at || null,
+    nextAttemptAt: row.next_attempt_at || null,
+    publishingClaimedAt: row.publishing_claimed_at || null,
+    cancelledAt: row.cancelled_at || null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    publishedAt: row.published_at,
+    scheduledAt: row.scheduled_at
+  };
+}
+
+// Creeaza randul STRICT daca idempotency_key e nou. ON CONFLICT DO NOTHING + RETURNING * e
+// acelasi tipar atomic deja verificat pentru dedup-ul webhook-urilor Stripe/Resend (vezi
+// recordStripeEventIfNew/recordResendEventIfNew mai sus) — o singura instructiune SQL,
+// fara fereastra de citire-apoi-scriere intre doua cereri "simultane" cu aceeasi cheie.
+// Returneaza null daca cheia exista deja (apelantul trebuie sa citeasca randul existent
+// prin getSocialPostByIdempotencyKey, NU sa trateze null ca eroare).
+//
+// Folosita ATAT pentru publicarea manuala instant (Etapa 2: status='publishing', scheduledAt/
+// nextAttemptAt omise) CAT SI pentru programare (Etapa 3: status='scheduled', scheduledAt SI
+// nextAttemptAt = acelasi moment viitor — vezi POST /api/admin/social/schedule).
+async function createSocialPostIfNew(post) {
+  const result = await pool.query(
+    `INSERT INTO social_posts (id, idempotency_key, status, platforms, media_type, media_key, caption, scheduled_at, next_attempt_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+     ON CONFLICT (idempotency_key) DO NOTHING
+     RETURNING *`,
+    [
+      post.id, post.idempotencyKey, post.status || 'draft', JSON.stringify(post.platforms), post.mediaType, post.mediaKey, post.caption || null,
+      post.scheduledAt || null, post.nextAttemptAt || null
+    ]
+  );
+  return rowToSocialPost(result.rows[0]);
+}
+
+async function getSocialPostByIdempotencyKey(key) {
+  const result = await pool.query(`SELECT * FROM social_posts WHERE idempotency_key = $1`, [key]);
+  return rowToSocialPost(result.rows[0]);
+}
+
+async function getSocialPostById(id) {
+  const result = await pool.query(`SELECT * FROM social_posts WHERE id = $1`, [id]);
+  return rowToSocialPost(result.rows[0]);
+}
+
+async function listSocialPosts({ limit = 50, offset = 0 } = {}) {
+  const result = await pool.query(
+    `SELECT * FROM social_posts ORDER BY created_at DESC LIMIT $1 OFFSET $2`,
+    [limit, offset]
+  );
+  return result.rows.map(rowToSocialPost);
+}
+
+// Scrie rezultatul unei incercari de publicare (initiala SAU retry) — statusul general SI,
+// complet separat, statusul/ID-ul/eroarea/contorul de incercari per platforma. Apelantul
+// (lib/social/social-retry.js, computeAttemptPatch) calculeaza patch-ul din rezultatul
+// publishPost() — aceasta functie doar persista ce i se da, fara nicio logica de decizie.
+// publishing_claimed_at se elibereaza NECONDITIONAT aici — o incercare care tocmai s-a
+// terminat (succes sau esec) nu mai e "in curs de procesare".
+async function finalizeSocialPost(id, patch) {
+  const result = await pool.query(
+    `UPDATE social_posts SET
+      status = $2,
+      facebook_status = $3, facebook_post_id = $4, facebook_error = $5,
+      facebook_attempt_count = $6, facebook_last_attempt_at = $7, facebook_next_attempt_at = $8,
+      instagram_status = $9, instagram_post_id = $10, instagram_container_id = $11, instagram_error = $12,
+      instagram_attempt_count = $13, instagram_last_attempt_at = $14, instagram_next_attempt_at = $15,
+      next_attempt_at = $16,
+      published_at = $17,
+      publishing_claimed_at = NULL,
+      updated_at = now()
+     WHERE id = $1
+     RETURNING *`,
+    [
+      id, patch.status,
+      patch.facebookStatus || null, patch.facebookPostId || null, patch.facebookError || null,
+      patch.facebookAttemptCount || 0, patch.facebookLastAttemptAt || null, patch.facebookNextAttemptAt || null,
+      patch.instagramStatus || null, patch.instagramPostId || null, patch.instagramContainerId || null, patch.instagramError || null,
+      patch.instagramAttemptCount || 0, patch.instagramLastAttemptAt || null, patch.instagramNextAttemptAt || null,
+      patch.nextAttemptAt || null,
+      patch.publishedAt || null
+    ]
+  );
+  return rowToSocialPost(result.rows[0]);
+}
+
+// ==================================================================================
+// CLAIM ATOMIC pentru worker-ul de scheduling/retry (Etapa 3) — gaseste UN SINGUR rand
+// scadent (status intr-o stare reincercabila SI next_attempt_at <= acum) si il muta ATOMIC
+// la 'publishing', intr-o SINGURA instructiune SQL. FOR UPDATE SKIP LOCKED in subquery e
+// idiomul standard Postgres pentru cozi de job-uri: daca doua instante ale aplicatiei (sau
+// doua tick-uri suprapuse) ruleaza aceasta interogare "simultan", a doua NU asteapta dupa
+// randul deja blocat de prima — pur si simplu il SARE si incearca urmatorul, deci nu exista
+// nicio fereastra in care ambele ar putea prelua ACELASI rand. Apelantul repeta acest apel
+// intr-o bucla pana intoarce null (niciun job scadent ramas).
+async function claimDueSocialPost() {
+  const result = await pool.query(`
+    UPDATE social_posts
+    SET status = 'publishing', publishing_claimed_at = now()
+    WHERE id = (
+      SELECT id FROM social_posts
+      WHERE status IN ('scheduled', 'partially_failed', 'failed')
+        AND next_attempt_at IS NOT NULL AND next_attempt_at <= now()
+      ORDER BY next_attempt_at ASC
+      FOR UPDATE SKIP LOCKED
+      LIMIT 1
+    )
+    RETURNING *
+  `);
+  return rowToSocialPost(result.rows[0]);
+}
+
+// RECUPERARE dupa crash/restart — un rand ramas 'publishing' mai mult decat e realist posibil
+// (cateva apeluri HTTP catre Meta, niciodata minute intregi) inseamna ca procesul care il
+// preluase a picat inainte sa apuce sa scrie rezultatul (finalizeSocialPost eliberase deja
+// publishing_claimed_at in orice caz normal). Il intoarcem la starea coerenta cu ce se stie
+// DEJA sigur (statusurile per-platforma NEATINSE de acest apel — o platforma marcata deja
+// 'success' intr-o incercare anterioara ramane asa) si il facem din nou eligibil IMEDIAT
+// (next_attempt_at = now()). Apelata la fiecare tick al worker-ului (vezi
+// lib/social/social-worker.js) — idempotenta si ieftina cand nu exista randuri stale.
+//
+// LIMITARE CUNOSCUTA (vezi raportul de etapa): daca procesul chiar a picat DUPA ce Meta a
+// primit si procesat cererea, dar INAINTE sa apucam sa scriem rezultatul, reincercarea de aici
+// poate produce o publicare reala dubla pe acea platforma — Graph API-ul Meta nu ofera un
+// mecanism de idempotenta la nivel de continut pentru a preveni asta. E un risc rezidual,
+// inerent oricarui worker "at-least-once" fara suport de idempotenta din partea API-ului extern.
+async function recoverStalePublishingSocialPosts(staleMinutes) {
+  const result = await pool.query(
+    `UPDATE social_posts
+     SET status = CASE
+           WHEN facebook_status IS NULL AND instagram_status IS NULL THEN 'scheduled'
+           WHEN facebook_status = 'success' OR instagram_status = 'success' THEN 'partially_failed'
+           ELSE 'failed'
+         END,
+         next_attempt_at = now(),
+         publishing_claimed_at = NULL
+     WHERE status = 'publishing'
+       AND publishing_claimed_at IS NOT NULL
+       AND publishing_claimed_at < now() - ($1 || ' minutes')::interval
+     RETURNING *`,
+    [staleMinutes]
+  );
+  return result.rows.map(rowToSocialPost);
+}
+
+// Anuleaza o postare programata — STRICT cat timp inca nu a inceput publicarea
+// (status='scheduled' in clauza WHERE, verificat ATOMIC). O postare deja 'publishing' sau
+// finalizata nu mai poate fi anulata pe aceasta cale — intoarce null, apelantul (server.js)
+// raspunde 404/409 dupa cum interpreteaza asta.
+async function cancelScheduledSocialPost(id) {
+  const result = await pool.query(
+    `UPDATE social_posts
+     SET status = 'cancelled', cancelled_at = now(), next_attempt_at = NULL
+     WHERE id = $1 AND status = 'scheduled'
+     RETURNING *`,
+    [id]
+  );
+  return rowToSocialPost(result.rows[0]);
+}
+
+// Rearmeaza MANUAL o singura platforma esuata pentru reincercare IMEDIATA — ocoleste
+// intentionat backoff-ul si plafonul MAX_PLATFORM_ATTEMPTS (o actiune umana explicita, spre
+// deosebire de retry-ul automat), dar NU reseteaza attempt_count (istoricul ramane corect).
+// Guard atomic in WHERE: functioneaza STRICT daca postarea e intr-o stare reincercabila SI
+// platforma ceruta chiar are status='error' — o cerere pentru o platforma deja reusita sau
+// nesolicitata pentru aceasta postare nu se potriveste cu nimic si intoarce null.
+async function retrySocialPostPlatform(id, platform) {
+  if (platform !== 'facebook' && platform !== 'instagram') return null;
+  const result = await pool.query(
+    `UPDATE social_posts
+     SET facebook_next_attempt_at = CASE WHEN $2 = 'facebook' THEN now() ELSE facebook_next_attempt_at END,
+         instagram_next_attempt_at = CASE WHEN $2 = 'instagram' THEN now() ELSE instagram_next_attempt_at END,
+         next_attempt_at = now()
+     WHERE id = $1
+       AND status IN ('partially_failed', 'failed')
+       AND ( ($2 = 'facebook' AND facebook_status = 'error') OR ($2 = 'instagram' AND instagram_status = 'error') )
+     RETURNING *`,
+    [id, platform]
+  );
+  return rowToSocialPost(result.rows[0]);
+}
+
+// ==================================================================================
+// INSTAGRAM_TOKEN_STATE — vezi comentariul complet al schemei in initDb() mai sus. Randul
+// singleton e creat la initDb() (INSERT ... ON CONFLICT DO NOTHING), deci exista intotdeauna.
+// ==================================================================================
+
+function rowToInstagramTokenState(row) {
+  if (!row) return null;
+  return {
+    accessToken: row.access_token || null,
+    refreshedAt: row.refreshed_at || null,
+    expiresAt: row.expires_at || null,
+    refreshClaimedAt: row.refresh_claimed_at || null,
+    lastRefreshError: row.last_refresh_error || null,
+    lastRefreshAttemptAt: row.last_refresh_attempt_at || null,
+    consecutiveRefreshFailures: row.consecutive_refresh_failures || 0,
+    lastAlertSentAt: row.last_alert_sent_at || null
+  };
+}
+
+async function getInstagramTokenState() {
+  const result = await pool.query(`SELECT * FROM instagram_token_state WHERE id = 1`);
+  return rowToInstagramTokenState(result.rows[0]);
+}
+
+// Claim atomic, cu expirare — acelasi tipar exact ca db.claimVideoRender (orders), aplicat
+// aici pentru a preveni doua reinnoiri concurente ale tokenului Instagram (ex. doua instante
+// Railway al caror worker intra in fereastra de refresh aproape simultan). Intoarce starea
+// CURENTA (inclusiv access_token, pentru ca apelantul stie ce token sa trimita la Meta pentru
+// reinnoire) daca a castigat lock-ul, sau null daca alt refresh e deja in curs.
+async function claimInstagramTokenRefresh(lockMinutes) {
+  const result = await pool.query(
+    `UPDATE instagram_token_state
+     SET refresh_claimed_at = now(), last_refresh_attempt_at = now()
+     WHERE id = 1
+       AND (refresh_claimed_at IS NULL OR refresh_claimed_at < now() - ($1 || ' minutes')::interval)
+     RETURNING *`,
+    [lockMinutes]
+  );
+  return rowToInstagramTokenState(result.rows[0]);
+}
+
+// Reinnoire REUSITA — scrie noul token + noua expirare, elibereaza lock-ul, reseteaza
+// contorul de esecuri consecutive. access_token NICIODATA logat/afisat de aceasta functie.
+async function recordInstagramTokenRefreshSuccess(accessToken, expiresAt) {
+  await pool.query(
+    `UPDATE instagram_token_state SET
+      access_token = $1, refreshed_at = now(), expires_at = $2,
+      refresh_claimed_at = NULL, last_refresh_error = NULL, consecutive_refresh_failures = 0
+     WHERE id = 1`,
+    [accessToken, expiresAt]
+  );
+}
+
+// Reinnoire ESUATA — pastreaza NESCHIMBAT tokenul valid existent (nu-l sterge, nu-l atinge),
+// inregistreaza STRICT mesajul de eroare (niciodata tokenul), elibereaza lock-ul (permite o
+// reincercare ulterioara, nu bloca refresh-urile viitoare) si incrementeaza contorul de
+// esecuri consecutive (folosit pentru decizia de alerta — vezi lib/social/instagram-token-lifecycle.js).
+async function recordInstagramTokenRefreshFailure(errorMessage) {
+  await pool.query(
+    `UPDATE instagram_token_state SET
+      refresh_claimed_at = NULL, last_refresh_error = $1, consecutive_refresh_failures = consecutive_refresh_failures + 1
+     WHERE id = 1`,
+    [errorMessage]
+  );
+}
+
+async function markInstagramTokenAlertSent() {
+  await pool.query(`UPDATE instagram_token_state SET last_alert_sent_at = now() WHERE id = 1`);
+}
+
 module.exports = {
   pool, initDb, createOrder, getOrderById, getOrderByToken, getOrderByMusicTaskId, getOrderByAnyMusicTaskId,
   getStuckInFlightOrders,
@@ -1754,5 +2150,9 @@ module.exports = {
   logCreditEvent, getCreditEventsSince, getSetting, setSetting,
   claimCreditAlertTransition, getCreditAlertState, getCompletedOrdersSince, getAverageCreditsPerCompletedOrder,
   createTestimonial, getTestimonialById, updateTestimonial, deleteTestimonial,
-  listAllTestimonials, listPublishedTestimonials, moveTestimonial
+  listAllTestimonials, listPublishedTestimonials, moveTestimonial,
+  createSocialPostIfNew, getSocialPostByIdempotencyKey, getSocialPostById, listSocialPosts, finalizeSocialPost,
+  claimDueSocialPost, recoverStalePublishingSocialPosts, cancelScheduledSocialPost, retrySocialPostPlatform,
+  getInstagramTokenState, claimInstagramTokenRefresh, recordInstagramTokenRefreshSuccess,
+  recordInstagramTokenRefreshFailure, markInstagramTokenAlertSent
 };

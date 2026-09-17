@@ -89,6 +89,17 @@ const { getGiftVariant, getPremiumBonusVariant } = require('./lib/entitlements')
 const { DICTION_INSTRUCTIONS, getDictionInstruction, normalizeSingingText } = require('./lib/diction');
 const { htmlToPlainText } = require('./lib/email-text');
 const { buildCspDirectives } = require('./lib/csp');
+const { fetchWithTimeout } = require('./lib/fetch-with-timeout');
+const { publishPost: publishSocialPost } = require('./lib/social/social-publisher');
+const {
+  validatePublishRequest: validateSocialPublishRequest,
+  validateScheduleRequest: validateSocialScheduleRequest,
+  executeSocialPublish,
+  createScheduledPost: createScheduledSocialPost
+} = require('./lib/social/social-post-service');
+const { startSocialWorker } = require('./lib/social/social-worker');
+const { getCurrentInstagramAccessToken } = require('./lib/social/instagram-token-store');
+const { checkInstagramTokenLifecycle } = require('./lib/social/instagram-token-lifecycle');
 
 // -------- Validare stricta a variabilelor de mediu obligatorii, la pornire --------
 // Mai bine esueaza clar la boot decat sa porneasca "pe jumatate" si sa pice abia la prima comanda.
@@ -127,7 +138,6 @@ const VIDEO_PREVIEW_SECONDS = 25;
 const FREE_EDITS = 1; // prima melodie generata NU consuma nicio editare (vezi /generate, care
                        // nu atinge editsUsed) — clientul are apoi exact O SINGURA regenerare
                        // gratuita; a doua tentativa e blocata
-const FETCH_TIMEOUT_MS = 25000;
 
 // Preturile NU vin niciodata de la client. Un client care modifica payload-ul (curl/devtools)
 // nu poate plati mai putin decat pretul real al pachetului ales.
@@ -619,6 +629,17 @@ const TESTIMONIAL_MIME_TYPES = {
 };
 const TESTIMONIAL_MAX_BYTES = 60 * 1024 * 1024; // 60MB — suficient pentru un video scurt de telefon
 
+// Media pentru postari sociale (Facebook/Instagram, Etapa 2) — acceptam formate uzuale aici;
+// restrictiile SPECIFICE unei platforme (ex. Instagram accepta STRICT JPEG pentru imagini, nu
+// PNG/WebP) nu sunt impuse la upload, ca sa nu blocam o postare valida doar-pentru-Facebook —
+// Meta insusi raporteaza eroarea per platforma daca formatul nu e acceptat acolo (vezi
+// facebook_error/instagram_error in social_posts).
+const SOCIAL_MEDIA_MIME_TYPES = {
+  image: ['image/jpeg', 'image/png', 'image/webp'],
+  video: ['video/mp4', 'video/webm', 'video/quicktime']
+};
+const SOCIAL_MEDIA_MAX_BYTES = 60 * 1024 * 1024; // 60MB, acelasi plafon ca testimonials
+
 // -------- incarcare fotografii/videoclipuri client, pentru pachetul "video" (memorii) --------
 const ORDER_MEDIA_MIME_TYPES = {
   photo: ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'image/x-adobe-dng'],
@@ -936,16 +957,15 @@ const testimonialUpload = multer({
   }
 });
 
-// -------- fetch cu timeout — un serviciu extern blocat nu trebuie sa blocheze cererea la nesfarsit --------
-async function fetchWithTimeout(url, options = {}, timeoutMs = FETCH_TIMEOUT_MS) {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, { ...options, signal: controller.signal });
-  } finally {
-    clearTimeout(timeoutId);
+const socialMediaUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: SOCIAL_MEDIA_MAX_BYTES },
+  fileFilter: (req, file, cb) => {
+    const allAllowed = [...SOCIAL_MEDIA_MIME_TYPES.image, ...SOCIAL_MEDIA_MIME_TYPES.video];
+    if (allAllowed.includes(file.mimetype)) return cb(null, true);
+    cb(new Error(`Tip de fisier neacceptat: ${file.mimetype}`));
   }
-}
+});
 
 // ==========================================================================================
 // LOGGING DE PERFORMANTA — masoara UNDE se duce timpul intr-o generare (Suno vs. descarcare
@@ -2094,6 +2114,196 @@ app.post('/api/admin/testimonials/:id/move', express.json(), async (req, res, ne
     const testimonial = await db.moveTestimonial(req.params.id, direction);
     if (!testimonial) return res.status(404).json({ error: 'Reacția nu există.' });
     res.json({ testimonial: { ...testimonial, mediaPath: resolveTestimonialMediaUrl(testimonial.mediaPath) } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ==========================================================================================
+// SOCIAL PUBLISHING (Facebook/Instagram) — Etapa 2 (2026-09-16). Publicare MANUALA, imediata,
+// din Naluna Admin. Foloseste STRICT publishSocialPost() (lib/social/social-publisher.js) —
+// scheduler-ul (Etapa 3+) va apela ACEEASI functie, cu acelasi rezultat per platforma, in loc
+// sa reimplementeze fluxul de publicare separat.
+//
+// Media urca in bucket-ul PUBLIC (aceeasi infrastructura storage.js folosita de testimonials
+// mai sus) — necesar in special pentru Instagram, care cere un URL HTTPS deja public la
+// momentul cererii. Nu exista un al doilea sistem de storage pentru social.
+// ==========================================================================================
+
+// urca fisierul unei postari sociale — mereu in bucket-ul PUBLIC (continut de marketing,
+// menit sa fie vazut de oricine, exact ca testimonials — vezi saveTestimonialFile mai sus)
+async function saveSocialMediaFile(file) {
+  const ext = path.extname(file.originalname).toLowerCase() || '';
+  const key = `social/${randomUUID()}${ext}`;
+  await storage.uploadPublicBuffer(file.buffer, key, file.mimetype);
+  return key;
+}
+
+// adauga mediaUrl (derivat din storage, niciodata stocat direct — vezi comentariul coloanei
+// media_key in db.js) la reprezentarea trimisa catre admin; nu exista niciun token/secret
+// in acest obiect, deci e sigur de intors ca atare in orice raspuns.
+function toSocialPostResponse(post) {
+  if (!post) return null;
+  return { ...post, mediaUrl: storage.getPublicUrl(post.mediaKey) };
+}
+
+// Cerere multipart/form-data (exact ca /api/admin/testimonials mai sus): fie un fisier nou
+// (camp "media"), fie un mediaKey deja existent (ex. reutilizarea unui preview deja urcat).
+// platforms ajunge ca string (JSON sau nume unic de platforma) — form-data nu poate trimite
+// array-uri native.
+//
+// ANTI-DUPLICAT: idempotencyKey e OBLIGATORIU — viitorul Admin UI trebuie sa genereze o
+// singura valoare (UUID) in momentul actiunii de publicare si sa o refoloseasca la orice
+// reincercare a ACELUIASI request (dublu-click, retry de retea). db.createSocialPostIfNew()
+// insereaza ATOMIC (INSERT ... ON CONFLICT DO NOTHING) — o retrimitere cu aceeasi cheie NU
+// creeaza un rand nou si NU mai apeleaza publishSocialPost() a doua oara; intoarce direct
+// rezultatul deja salvat al primei incercari (`duplicate: true`).
+app.post('/api/admin/social/publish', (req, res, next) => {
+  socialMediaUpload.single('media')(req, res, async (uploadErr) => {
+    try {
+      if (uploadErr) return res.status(400).json({ error: uploadErr.message });
+
+      let platforms = req.body.platforms;
+      if (typeof platforms === 'string') {
+        try { platforms = JSON.parse(platforms); } catch (e) { platforms = [platforms]; }
+      }
+      const { mediaType, caption, idempotencyKey } = req.body;
+      const providedMediaKey = req.body.mediaKey;
+
+      const validationError = validateSocialPublishRequest({
+        platforms, mediaType, caption, idempotencyKey, hasFile: !!req.file, mediaKey: providedMediaKey
+      });
+      if (validationError) return res.status(400).json({ error: validationError });
+
+      if (req.file) {
+        const expected = SOCIAL_MEDIA_MIME_TYPES[mediaType] || [];
+        if (!expected.includes(req.file.mimetype)) {
+          return res.status(400).json({ error: `Fișierul încărcat nu corespunde tipului "${mediaType}".` });
+        }
+        if (!bufferMatchesDeclaredType(req.file.buffer, req.file.mimetype)) {
+          return res.status(400).json({ error: 'Conținutul fișierului nu corespunde tipului declarat.' });
+        }
+      }
+
+      const mediaKey = req.file ? await saveSocialMediaFile(req.file) : providedMediaKey;
+
+      const { duplicate, post } = await executeSocialPublish({
+        platforms, mediaType, mediaKey, caption: caption || null, idempotencyKey,
+        db, publishPost: publishSocialPost, getPublicUrl: storage.getPublicUrl
+      });
+
+      res.json({ post: toSocialPostResponse(post), ...(duplicate ? { duplicate: true } : {}) });
+    } catch (err) {
+      next(err);
+    }
+  });
+});
+
+// Programare (Etapa 3) — creeaza postarea cu status='scheduled', NU publica nimic acum.
+// Workerul de fundal (startSocialWorker, pornit la boot mai jos) o preia automat la momentul
+// potrivit — vezi db.claimDueSocialPost. Aceleasi reguli de validare/upload/idempotenta ca la
+// publicarea instant, plus scheduledAt (ISO 8601, STRICT in viitor).
+app.post('/api/admin/social/schedule', (req, res, next) => {
+  socialMediaUpload.single('media')(req, res, async (uploadErr) => {
+    try {
+      if (uploadErr) return res.status(400).json({ error: uploadErr.message });
+
+      let platforms = req.body.platforms;
+      if (typeof platforms === 'string') {
+        try { platforms = JSON.parse(platforms); } catch (e) { platforms = [platforms]; }
+      }
+      const { mediaType, caption, idempotencyKey, scheduledAt: scheduledAtRaw } = req.body;
+      const providedMediaKey = req.body.mediaKey;
+      const scheduledAt = scheduledAtRaw ? new Date(scheduledAtRaw) : null;
+
+      const validationError = validateSocialScheduleRequest({
+        platforms, mediaType, caption, idempotencyKey, hasFile: !!req.file, mediaKey: providedMediaKey, scheduledAt
+      });
+      if (validationError) return res.status(400).json({ error: validationError });
+
+      if (req.file) {
+        const expected = SOCIAL_MEDIA_MIME_TYPES[mediaType] || [];
+        if (!expected.includes(req.file.mimetype)) {
+          return res.status(400).json({ error: `Fișierul încărcat nu corespunde tipului "${mediaType}".` });
+        }
+        if (!bufferMatchesDeclaredType(req.file.buffer, req.file.mimetype)) {
+          return res.status(400).json({ error: 'Conținutul fișierului nu corespunde tipului declarat.' });
+        }
+      }
+
+      const mediaKey = req.file ? await saveSocialMediaFile(req.file) : providedMediaKey;
+
+      const { duplicate, post } = await createScheduledSocialPost({
+        platforms, mediaType, mediaKey, caption: caption || null, idempotencyKey, scheduledAt, db
+      });
+
+      res.json({ post: toSocialPostResponse(post), ...(duplicate ? { duplicate: true } : {}) });
+    } catch (err) {
+      next(err);
+    }
+  });
+});
+
+// -------- Listare/detaliu postari sociale, pentru viitorul Admin UI --------
+app.get('/api/admin/social/posts', async (req, res, next) => {
+  try {
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200);
+    const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
+    const posts = await db.listSocialPosts({ limit, offset });
+    res.json({ posts: posts.map(toSocialPostResponse) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.get('/api/admin/social/posts/:id', async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.status(400).json({ error: 'ID invalid.' });
+    const post = await db.getSocialPostById(req.params.id);
+    if (!post) return res.status(404).json({ error: 'Postarea nu există.' });
+    res.json({ post: toSocialPostResponse(post) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Anuleaza o postare programata — STRICT cat timp inca nu a inceput publicarea
+// (db.cancelScheduledSocialPost verifica atomic status='scheduled'). O postare deja
+// 'publishing' sau finalizata NU mai poate fi anulata pe aceasta cale.
+app.post('/api/admin/social/posts/:id/cancel', express.json(), async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.status(400).json({ error: 'ID invalid.' });
+    const cancelled = await db.cancelScheduledSocialPost(req.params.id);
+    if (!cancelled) {
+      const existing = await db.getSocialPostById(req.params.id);
+      if (!existing) return res.status(404).json({ error: 'Postarea nu există.' });
+      return res.status(409).json({ error: `Postarea nu mai poate fi anulata (status curent: "${existing.status}") — publicarea a inceput deja sau s-a incheiat.` });
+    }
+    res.json({ post: toSocialPostResponse(cancelled) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Retry MANUAL pentru o singura platforma esuata — rearmeaza acea platforma pentru reincercare
+// IMEDIATA (db.retrySocialPostPlatform), ocolind intentionat backoff-ul si plafonul automat de
+// incercari (actiune umana explicita). Executia reala se intampla la urmatorul tick al
+// worker-ului de fundal (in cateva zeci de secunde, vezi SOCIAL_WORKER_INTERVAL_MS), NU
+// sincron in acest raspuns — ruta doar marcheaza postarea drept scadenta din nou.
+app.post('/api/admin/social/posts/:id/retry', express.json(), async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.status(400).json({ error: 'ID invalid.' });
+    const { platform } = req.body || {};
+    if (platform !== 'facebook' && platform !== 'instagram') {
+      return res.status(400).json({ error: 'platform trebuie sa fie "facebook" sau "instagram".' });
+    }
+    const rearmed = await db.retrySocialPostPlatform(req.params.id, platform);
+    if (!rearmed) {
+      const existing = await db.getSocialPostById(req.params.id);
+      if (!existing) return res.status(404).json({ error: 'Postarea nu există.' });
+      return res.status(409).json({ error: `Platforma "${platform}" nu poate fi reincercata acum (nu are status "error", sau postarea nu e intr-o stare reincercabila).` });
+    }
+    res.json({ post: toSocialPostResponse(rearmed) });
   } catch (err) {
     next(err);
   }
@@ -9901,6 +10111,51 @@ async function resumeStuckGenerationsOnBoot() {
   }
 }
 
+// ==========================================================================================
+// SOCIAL WORKER (Etapa 3) — alerta prin email cand tokenul Instagram se apropie periculos de
+// expirare SI reinnoirea automata tot esueaza. Acelasi tipar exact ca sendThresholdAlertEmail
+// din credits.js (ADMIN_ALERT_EMAIL + RESEND_API_KEY, text generat din html via
+// htmlToPlainText) — NICIODATA tokenul insusi, STRICT starea (data expirarii, ultima eroare
+// NON-SECRETA inregistrata de db.recordInstagramTokenRefreshFailure).
+// ==========================================================================================
+async function sendInstagramTokenAlertEmail(state) {
+  const adminEmail = process.env.ADMIN_ALERT_EMAIL;
+  if (!adminEmail || !process.env.RESEND_API_KEY) {
+    console.warn('[social-worker] Token Instagram aproape de expirare si reinnoirea esueaza, dar ADMIN_ALERT_EMAIL/RESEND_API_KEY lipsesc — alerta doar logata, nu si trimisa.');
+    return;
+  }
+  const expiresAtLabel = state.expiresAt ? new Date(state.expiresAt).toISOString() : 'necunoscuta';
+  const html = `
+    <p>Tokenul Instagram (META_INSTAGRAM_ACCESS_TOKEN) se apropie de expirare si reinnoirea automata a esuat repetat.</p>
+    <ul>
+      <li>Expira la: ${expiresAtLabel}</li>
+      <li>Esecuri consecutive de reinnoire: ${state.consecutiveRefreshFailures}</li>
+      <li>Ultima eroare: ${state.lastRefreshError || 'necunoscuta'}</li>
+    </ul>
+    <p>Actiune necesara: verifica manual configurarea Meta pentru contul Instagram inainte ca tokenul sa expire — publicarea automata se va opri complet la expirare.</p>
+  `;
+  try {
+    const res = await fetchWithTimeout('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev',
+        to: adminEmail,
+        subject: 'Naluna: tokenul Instagram se apropie de expirare',
+        html,
+        text: htmlToPlainText(html)
+      })
+    });
+    if (!res.ok) {
+      console.error('[social-worker] Alerta token Instagram nu a putut fi trimisa:', res.status, await res.text());
+    }
+  } catch (err) {
+    console.error('[social-worker] Alerta token Instagram a esuat:', err.message);
+  }
+}
+
+let socialWorkerHandle = null;
+
 // -------- pornire: verificam intai conexiunea la baza de date --------
 // Garda require.main (vezi comentariul de la primul setInterval de retentie, mai sus): la
 // `node server.js` (singurul mod in care rula pana acum) comportamentul e IDENTIC, byte cu
@@ -9916,6 +10171,17 @@ if (require.main === module) {
       checkHeifConvertAvailability(); // fire-and-forget, acelasi motiv
       checkUploadCorsAtBoot(); // fire-and-forget, acelasi motiv
       resumeStuckGenerationsOnBoot(); // fire-and-forget, acelasi motiv
+      // Worker-ul de social publishing (scheduling + retry + lifecycle token Instagram) — vezi
+      // lib/social/social-worker.js. Ruleaza o data imediat (recupereaza orice a ramas 'publishing'
+      // dintr-o repornire anterioara SI proceseaza orice era deja scadent), apoi la fiecare
+      // SOCIAL_WORKER_INTERVAL_MS (implicit 60s).
+      socialWorkerHandle = startSocialWorker({
+        db,
+        publishPost: publishSocialPost,
+        getPublicUrl: storage.getPublicUrl,
+        getInstagramAccessToken: getCurrentInstagramAccessToken,
+        checkInstagramTokenLifecycle: () => checkInstagramTokenLifecycle({ db, sendAlertEmail: sendInstagramTokenAlertEmail })
+      });
       app.listen(PORT, () => {
         console.log(`NALUNA ruleaza pe ${DOMAIN}`);
       });
