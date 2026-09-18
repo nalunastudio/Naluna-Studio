@@ -327,26 +327,41 @@ function getOrderRowActions(order) {
   return actions;
 }
 
+// Compactare tabel Comenzi (2026-09-18) — sursa (utm_source/utm_campaign) e afisata trunchiata
+// pe ecran ingust in coloana ei (vezi shared.css, td.col-source) — textul COMPLET ramane
+// accesibil oricand prin atributul title (tooltip nativ), niciodata ascuns definitiv.
 function renderSourceCell(o) {
   if (!o.utmSource && !o.utmCampaign) return '<span class="text-muted">—</span>';
-  return `${escapeHtml(o.utmSource || '(unknown)')}${o.utmCampaign ? ' / ' + escapeHtml(o.utmCampaign) : ''}`;
+  const full = `${o.utmSource || '(unknown)'}${o.utmCampaign ? ' / ' + o.utmCampaign : ''}`;
+  return `<span title="${escapeHtml(full)}">${escapeHtml(full)}</span>`;
+}
+
+// Data pe doua randuri (zi + ora, fara secunde) — vezi shared.css, .order-date-time — reduce
+// substantial latimea naturala a coloanei fata de un singur string lung
+// ("18.09.2026, 14:32:07"), fara sa piarda informatie utila pentru o lista (secundele nu ajuta
+// la scanare rapida; data/ora completa ramane oricum in log-urile/evenimentele comenzii).
+function renderDateCell(createdAt) {
+  const d = new Date(createdAt);
+  const dateStr = d.toLocaleDateString('ro-RO');
+  const timeStr = d.toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' });
+  return `${escapeHtml(dateStr)}<span class="order-date-time">${escapeHtml(timeStr)}</span>`;
 }
 
 function renderOrderRow(o) {
   const actions = getOrderRowActions(o);
   return `
     <tr data-order-id="${escapeHtml(o.id)}">
-      <td>${new Date(o.createdAt).toLocaleString('ro-RO')}</td>
-      <td>${escapeHtml(o.recipient)}</td>
-      <td>${escapeHtml(o.email || '—')}${o.isTestOrder ? ' <span class="badge b-draft" title="Exclusa din KPI-urile de conversie (Dashboard)">TEST</span>' : ''}</td>
-      <td>${(o.lang || 'ro').toUpperCase()}</td>
-      <td>${escapeHtml(o.occasion)}</td>
-      <td>${escapeHtml(o.genre)}</td>
-      <td>${escapeHtml(o.plan)}</td>
-      <td>£${o.price}</td>
-      <td><span class="badge b-${o.status}">${statusLabel[o.status] || o.status}</span></td>
-      <td>${renderSourceCell(o)}</td>
-      <td>
+      <td class="col-date">${renderDateCell(o.createdAt)}</td>
+      <td class="col-recipient" title="${escapeHtml(o.recipient)}">${escapeHtml(o.recipient)}</td>
+      <td class="col-email"><span class="cell-truncate" title="${escapeHtml(o.email || '')}">${escapeHtml(o.email || '—')}</span>${o.isTestOrder ? ' <span class="badge b-draft" title="Exclusa din KPI-urile de conversie (Dashboard)">TEST</span>' : ''}</td>
+      <td class="col-lang">${(o.lang || 'ro').toUpperCase()}</td>
+      <td class="col-occasion">${escapeHtml(o.occasion)}</td>
+      <td class="col-genre">${escapeHtml(o.genre)}</td>
+      <td class="col-plan">${escapeHtml(o.plan)}</td>
+      <td class="col-price">£${o.price}</td>
+      <td class="col-status"><span class="badge b-${o.status}">${statusLabel[o.status] || o.status}</span></td>
+      <td class="col-source">${renderSourceCell(o)}</td>
+      <td class="col-actions">
         <div class="orders-row-actions">
           ${actions.map(a => `<button type="button" class="${a.variant}" data-order-action="${a.id}">${a.label}</button>`).join('')}
         </div>

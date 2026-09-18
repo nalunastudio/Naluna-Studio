@@ -1796,26 +1796,10 @@ async function purgeStaleSourceMedia() {
 }
 
 // Rulare zilnica automata, in proces — fara nicio configurare externa (cron Railway etc.).
-// unref() la fel ca celelalte curatari periodice din acest fisier: nu tine procesul viu doar
-// pentru acest timer.
-// Garda require.main: acest timer (si celelalte 3 similare de mai jos, plus secventa de
-// pornire de la finalul fisierului) trebuie sa ruleze STRICT cand server.js e procesul
-// principal (`node server.js`), niciodata cand alt modul (ex. worker.js) il cere doar ca sa
-// refoloseasca generateLyricVideo — altfel joburile de curatare/retentie ar rula DUBLU, in
-// ambele procese. Comportamentul pentru `node server.js` insusi ramane 100% neschimbat.
-if (require.main === module) {
-  // AUDIT PRE-LAUNCH (2026-09-13, Faza A3 — retentie 30 zile): setInterval() singur nu ruleaza
-  // NICIODATA prima curatare decat dupa 24h de la pornirea procesului — daca serverul repornise
-  // mai des decat o data pe zi (deploy-uri dese, exact tiparul din dezvoltare), timer-ul se
-  // reseta la fiecare pornire si continutul eligibil putea ramane necuratat mult peste cele 30 de
-  // zile promise public. Adaugata o rulare IMEDIATA, o singura data la pornire (acelasi tratament
-  // de erori — izolat, niciodata fatal pentru boot-ul serverului), inainte de a porni si timer-ul
-  // periodic — garanteaza ca politica de 30 de zile e verificata real la fiecare pornire, nu doar
-  // presupusa.
-  purgeStaleSourceMedia().catch(() => {});
-  setInterval(() => { purgeStaleSourceMedia().catch(() => {}); }, 24 * 60 * 60 * 1000).unref();
-}
-
+// PORNIREA (apel imediat + setInterval) NU mai e aici — vezi CORECTIE (2026-09-18, ordine de
+// boot) langa initializarea schemei DB (blocul de succes de la finalul fisierului): trebuie sa
+// ruleze STRICT dupa ce schema e garantat creata, nu la evaluarea acestui modul.
+//
 // Declansare manuala (verificare/testare admin) — aceeasi logica, fara sa astepti 24h.
 app.post('/api/admin/retention/purge-source-media', async (req, res, next) => {
   try {
@@ -1882,11 +1866,8 @@ async function expireStaleFinalMedia() {
   return { checked: candidates.length, expired, skipped };
 }
 
-if (require.main === module) {
-  // Vezi comentariul identic de la purgeStaleSourceMedia mai sus.
-  expireStaleFinalMedia().catch(() => {});
-  setInterval(() => { expireStaleFinalMedia().catch(() => {}); }, 24 * 60 * 60 * 1000).unref();
-}
+// Pornirea (apel imediat + setInterval) e langa initializarea schemei DB, la finalul fisierului
+// — vezi comentariul de la purgeStaleSourceMedia mai sus.
 
 app.post('/api/admin/retention/expire-final-media', async (req, res, next) => {
   try {
@@ -1942,11 +1923,8 @@ async function anonymizeStaleStories() {
   return { checked: candidates.length, anonymized };
 }
 
-if (require.main === module) {
-  // Vezi comentariul identic de la purgeStaleSourceMedia mai sus.
-  anonymizeStaleStories().catch(() => {});
-  setInterval(() => { anonymizeStaleStories().catch(() => {}); }, 24 * 60 * 60 * 1000).unref();
-}
+// Pornirea (apel imediat + setInterval) e langa initializarea schemei DB, la finalul fisierului
+// — vezi comentariul de la purgeStaleSourceMedia mai sus.
 
 app.post('/api/admin/retention/anonymize-stale-stories', async (req, res, next) => {
   try {
@@ -1982,13 +1960,12 @@ async function purgeStaleFunnelEvents() {
   }
 }
 
-if (require.main === module) {
-  // Vezi comentariul identic de la purgeStaleSourceMedia/anonymizeStaleStories mai sus — acelasi
-  // tipar EXACT (rulare imediata la boot + zilnic, .unref() ca sa nu tina procesul artificial in
-  // viata), niciun interval/mecanism paralel nou.
-  purgeStaleFunnelEvents().catch(() => {});
-  setInterval(() => { purgeStaleFunnelEvents().catch(() => {}); }, 24 * 60 * 60 * 1000).unref();
-}
+// CORECTIE (2026-09-18, incident productie — ordine de boot): pornirea (apel imediat +
+// setInterval) NU mai e aici — era plasata inaintea initializarii schemei DB in fisier, deci
+// putea ajunge la Postgres INAINTE ca schema (CREATE TABLE funnel_events) sa fie garantat creata
+// (cursa reala intre promisiuni, observata direct in productie: "relation funnel_events does not
+// exist" la primul boot dupa introducerea tabelei). Mutata langa initializarea schemei DB, la
+// finalul fisierului — vezi comentariul de acolo pentru toate cele 4 joburi de retentie.
 
 app.post('/api/admin/retention/purge-funnel-events', async (req, res, next) => {
   try {
@@ -10557,12 +10534,12 @@ async function sendInstagramTokenAlertEmail(state) {
 let socialWorkerHandle = null;
 
 // -------- pornire: verificam intai conexiunea la baza de date --------
-// Garda require.main (vezi comentariul de la primul setInterval de retentie, mai sus): la
-// `node server.js` (singurul mod in care rula pana acum) comportamentul e IDENTIC, byte cu
-// byte — require.main === module e mereu adevarat in acest caz. Garda exista STRICT pentru
-// ca worker.js (procesul video-worker separat) poate cere acest fisier ca sa refoloseasca
-// generateLyricVideo (vezi module.exports de mai jos) fara sa porneasca al doilea server HTTP
-// si fara sa dubleze recuperarea/curatarea de la pornire.
+// Garda require.main: la `node server.js` (singurul mod in care rula pana acum) comportamentul
+// e IDENTIC, byte cu byte — require.main === module e mereu adevarat in acest caz. Garda exista
+// STRICT pentru ca worker.js (procesul video-worker separat) poate cere acest fisier ca sa
+// refoloseasca generateLyricVideo (vezi module.exports de mai jos) fara sa porneasca al doilea
+// server HTTP si fara sa dubleze recuperarea/curatarea de la pornire (inclusiv cele 4 joburi de
+// retentie pornite mai jos, in interiorul lui db.initDb().then(...)).
 if (require.main === module) {
   db.initDb()
     .then(() => {
@@ -10571,6 +10548,31 @@ if (require.main === module) {
       checkHeifConvertAvailability(); // fire-and-forget, acelasi motiv
       checkUploadCorsAtBoot(); // fire-and-forget, acelasi motiv
       resumeStuckGenerationsOnBoot(); // fire-and-forget, acelasi motiv
+
+      // CORECTIE (2026-09-18, incident productie — ordine de boot): cele 4 joburi de retentie
+      // (purgeStaleSourceMedia/expireStaleFinalMedia/anonymizeStaleStories/purgeStaleFunnelEvents)
+      // porneau INAINTE ca db.initDb() sa fi rulat macar (erau plasate la evaluarea de nivel-modul
+      // a fisierului, langa definitiile lor, mult inaintea acestui bloc) — o cursa reala intre
+      // promisiuni putea trimite interogarea lor catre Postgres INAINTE ca schema sa fi fost
+      // garantat creata. Observat direct in productie la introducerea tabelei funnel_events:
+      // "relation funnel_events does not exist" la primul boot. Aceeasi cursa exista structural
+      // si pentru celelalte 3 (interogheaza orders) — nu s-a manifestat pana acum STRICT pentru ca
+      // acea tabela exista deja dintr-un deploy vechi, nu pentru ca ordinea ar fi fost corecta.
+      // Mutate AICI, in acelasi bloc de succes ca checkFfmpegAvailability/
+      // resumeStuckGenerationsOnBoot de mai sus — comportament IDENTIC (apel imediat +
+      // setInterval zilnic, .unref(), fire-and-forget, niciun await, acelasi tratament de erori),
+      // doar garantat sa ruleze STRICT dupa ce schema DB exista. Daca db.initDb() esueaza complet,
+      // procesul face oricum process.exit(1) mai jos — aceste joburi nu mai pot porni NICIODATA
+      // intr-o stare cu DB inaccesibila, mai sigur decat inainte.
+      purgeStaleSourceMedia().catch(() => {});
+      setInterval(() => { purgeStaleSourceMedia().catch(() => {}); }, 24 * 60 * 60 * 1000).unref();
+      expireStaleFinalMedia().catch(() => {});
+      setInterval(() => { expireStaleFinalMedia().catch(() => {}); }, 24 * 60 * 60 * 1000).unref();
+      anonymizeStaleStories().catch(() => {});
+      setInterval(() => { anonymizeStaleStories().catch(() => {}); }, 24 * 60 * 60 * 1000).unref();
+      purgeStaleFunnelEvents().catch(() => {});
+      setInterval(() => { purgeStaleFunnelEvents().catch(() => {}); }, 24 * 60 * 60 * 1000).unref();
+
       // Worker-ul de social publishing (scheduling + retry + lifecycle token Instagram) — vezi
       // lib/social/social-worker.js. Ruleaza o data imediat (recupereaza orice a ramas 'publishing'
       // dintr-o repornire anterioara SI proceseaza orice era deja scadent), apoi la fiecare

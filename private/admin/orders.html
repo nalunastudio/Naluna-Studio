@@ -20,7 +20,7 @@
       <a href="/admin/system">Sistem</a>
     </div>
   </nav>
-  <main class="admin-main">
+  <main class="admin-main admin-main-wide">
     <div class="admin-header-row">
       <div>
         <h1>Vânzări &amp; Funnel</h1>
@@ -119,10 +119,22 @@
       </label>
     </div>
 
-    <div class="table-scroll">
-      <table id="orders-table">
+    <div class="table-scroll orders-table-scroll">
+      <table id="orders-table" class="orders-table-compact">
         <thead>
-          <tr><th>Data</th><th>Pentru</th><th>Email</th><th>Limba</th><th>Ocazie</th><th>Gen</th><th>Pachet</th><th>Preț</th><th>Status</th><th>Sursă</th><th>Acțiuni</th></tr>
+          <tr>
+            <th class="col-date">Data</th>
+            <th class="col-recipient">Pentru</th>
+            <th class="col-email">Email</th>
+            <th class="col-lang">Limba</th>
+            <th class="col-occasion">Ocazie</th>
+            <th class="col-genre">Gen</th>
+            <th class="col-plan">Pachet</th>
+            <th class="col-price">Preț</th>
+            <th class="col-status">Status</th>
+            <th class="col-source">Sursă</th>
+            <th class="col-actions">Acțiuni</th>
+          </tr>
         </thead>
         <tbody id="orders-body"></tbody>
       </table>
