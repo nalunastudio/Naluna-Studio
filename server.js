@@ -2963,24 +2963,30 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
       });
     }
 
+    // Server-side, direct in insertFunnelEvent — pastreaza acest eveniment in acelasi flux
+    // temporal ca celelalte evenimente funnel ale acestui vizitator, pentru vizualizarea
+    // Conversion Funnel din /admin/orders. Autoritatea pentru KPI-ul "Orders Created" ramane
+    // STRICT tabela orders (created_at) — acest rand din funnel_events e informativ, niciodata
+    // sursa de adevar pentru KPI.
+    // CORECTIE (2026-09-18, incident productie): acest bloc era plasat gresit IN AFARA
+    // handler-ului (dupa "});" de inchidere a rutei), la nivel de modul — executa o singura
+    // data, la incarcarea fisierului, referind variabile locale (safeVisitorId/order/etc.)
+    // inexistente in acel scope -> ReferenceError la boot, server.js nu mai putea porni deloc.
+    // Mutat AICI, in interiorul handler-ului, unde acele variabile chiar exista.
+    db.insertFunnelEvent({
+      eventName: 'order_created',
+      visitorId: safeVisitorId,
+      orderId: order.id,
+      utmSource: safeAttr(utmSource), utmMedium: safeAttr(utmMedium), utmCampaign: safeAttr(utmCampaign),
+      utmContent: safeAttr(utmContent), utmTerm: safeAttr(utmTerm), fbclid: safeAttr(fbclid),
+      meta: {}
+    }).catch((err) => console.error('insertFunnelEvent(order_created) failed (non-fatal):', err.message));
+
     res.json({ orderId: order.id, accessToken: order.accessToken });
   } catch (err) {
     next(err);
   }
 });
-
-// Server-side, direct in insertFunnelEvent — pastreaza acest eveniment in acelasi flux temporal
-// ca celelalte evenimente funnel ale acestui vizitator, pentru vizualizarea Conversion Funnel din
-// /admin/orders. Autoritatea pentru KPI-ul "Orders Created" ramane STRICT tabela orders
-// (created_at) — acest rand din funnel_events e informativ, niciodata sursa de adevar pentru KPI.
-db.insertFunnelEvent({
-  eventName: 'order_created',
-  visitorId: safeVisitorId,
-  orderId: order.id,
-  utmSource: safeAttr(utmSource), utmMedium: safeAttr(utmMedium), utmCampaign: safeAttr(utmCampaign),
-  utmContent: safeAttr(utmContent), utmTerm: safeAttr(utmTerm), fbclid: safeAttr(fbclid),
-  meta: {}
-}).catch((err) => console.error('insertFunnelEvent(order_created) failed (non-fatal):', err.message));
 
 // ==========================================================================================
 // FUNNEL ANALYTICS (2026-09-18) — POST /api/track: singurul punct de intrare prin care clientul

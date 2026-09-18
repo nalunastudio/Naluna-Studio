@@ -12,6 +12,27 @@ function read(relPath) {
   return fs.readFileSync(path.join(__dirname, '..', relPath), 'utf8');
 }
 
+// Extrage corpul REAL al unei functii/handler prin numarare de acolade — spre deosebire de o
+// cautare textuala de tip "indexOf(...) < indexOf('\n});')" (care poate gresi daca exista un
+// "\n});" intermediar, ex. un apel db.updateOrder({...}) inchis inainte de finalul handler-ului
+// real), aceasta metoda gaseste EXACT acolada de inchidere care corespunde celei de deschidere.
+// Regresie directa (2026-09-18, incident productie): un bloc "db.insertFunnelEvent({eventName:
+// 'order_created', ...})" fusese plasat GRESIT in afara handler-ului POST /api/orders (dupa
+// acolada lui de inchidere reala), la nivel de modul — un test bazat STRICT pe indexOf/ordine
+// textuala (varianta veche a testelor de mai jos) NU a putut detecta asta, pentru ca textul
+// tot aparea "intre" cele doua puncte cautate; ReferenceError la boot a scos productia din
+// functiune. extractFn() previne aceasta clasa de bug pe viitor.
+function extractFn(source, signature) {
+  const idx = source.indexOf(signature);
+  assert.ok(idx !== -1, `nu am gasit "${signature}"`);
+  let depth = 1, i = idx + signature.length;
+  for (; i < source.length; i++) {
+    if (source[i] === '{') depth++;
+    else if (source[i] === '}') { depth--; if (depth === 0) break; }
+  }
+  return source.slice(idx, i + 1);
+}
+
 test('server.js: TRACKABLE_EVENTS exista si contine exact cele 9 evenimente permise clientului', () => {
   const server = read('server.js');
   const match = server.match(/const TRACKABLE_EVENTS = new Set\(\[([\s\S]*?)\]\);/);
@@ -88,19 +109,25 @@ test('server.js: orderId trimis de client e acceptat STRICT daca db.getOrderById
   assert.match(routeBody, /if \(existing\) safeOrderId = existing\.id;/);
 });
 
-test('server.js: POST /api/orders insereaza "order_created" server-side DIRECT dupa db.createOrder, niciodata prin ruta publica /api/track', () => {
+test('server.js: POST /api/orders insereaza "order_created" server-side DIRECT dupa db.createOrder, REALMENTE in interiorul handler-ului (verificat prin numarare de acolade, nu doar ordine textuala) — niciodata prin ruta publica /api/track', () => {
   const server = read('server.js');
-  const idxCreate = server.indexOf('const order = await db.createOrder({');
-  const idxOrderCreatedEvent = server.indexOf("eventName: 'order_created'", idxCreate);
-  const idxTrackRoute = server.indexOf("app.post('/api/track'");
-  assert.ok(idxOrderCreatedEvent !== -1 && idxOrderCreatedEvent > idxCreate);
-  assert.ok(idxOrderCreatedEvent < idxTrackRoute, 'insertia de order_created trebuie sa fie in POST /api/orders, inaintea rutei /api/track');
+  const fn = extractFn(server, "app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {");
+  assert.match(fn, /const order = await db\.createOrder\(\{/, 'db.createOrder trebuie sa fie in interiorul handler-ului');
+  assert.match(fn, /eventName: 'order_created'/, 'insertia order_created trebuie sa fie REAL in interiorul handler-ului (in afara lui ar produce ReferenceError la boot — incident real, 2026-09-18)');
+  assert.match(fn, /db\.insertFunnelEvent\(\{[\s\S]*?eventName: 'order_created'/, 'trebuie sa fie chiar apelul db.insertFunnelEvent, nu doar un string coincidental');
+  // ordinea reala in interiorul handler-ului: createOrder -> insertFunnelEvent -> res.json(...)
+  const idxCreate = fn.indexOf('const order = await db.createOrder({');
+  const idxEvent = fn.indexOf("eventName: 'order_created'");
+  const idxResJson = fn.indexOf('res.json({ orderId: order.id, accessToken: order.accessToken });');
+  assert.ok(idxCreate !== -1 && idxEvent !== -1 && idxResJson !== -1);
+  assert.ok(idxCreate < idxEvent && idxEvent < idxResJson, 'ordinea trebuie sa fie: creare comanda -> insertie eveniment -> raspuns catre client');
 });
 
-test('server.js: POST /checkout insereaza "checkout_created" server-side DUPA ce sesiunea Stripe a fost creata cu succes (dupa db.updateOrder cu checkoutCreatedAt)', () => {
+test('server.js: POST /checkout insereaza "checkout_created" server-side DUPA ce sesiunea Stripe a fost creata cu succes (dupa db.updateOrder cu checkoutCreatedAt), REALMENTE in interiorul handler-ului (verificat prin numarare de acolade)', () => {
   const server = read('server.js');
-  const idxCheckoutCreatedAt = server.indexOf('checkoutCreatedAt: new Date(),');
-  const idxCheckoutCreatedEvent = server.indexOf("eventName: 'checkout_created'", idxCheckoutCreatedAt);
+  const fn = extractFn(server, "app.post('/api/orders/:orderId/checkout', requireOrderToken, async (req, res, next) => {");
+  const idxCheckoutCreatedAt = fn.indexOf('checkoutCreatedAt: new Date(),');
+  const idxCheckoutCreatedEvent = fn.indexOf("eventName: 'checkout_created'");
   assert.ok(idxCheckoutCreatedAt !== -1 && idxCheckoutCreatedEvent !== -1 && idxCheckoutCreatedEvent > idxCheckoutCreatedAt);
 });
 
