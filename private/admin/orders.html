@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Comenzi — Admin NALUNA</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500&family=Sora:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/admin/shared.css">
+</head>
+<body>
+<div class="admin-shell">
+  <nav class="admin-sidebar">
+    <div class="admin-logo-row"><img src="/logo.svg" alt="NALUNA"><span>Admin</span></div>
+    <div class="admin-nav">
+      <a href="/admin">Dashboard</a>
+      <a href="/admin/orders" class="active">Comenzi</a>
+      <a href="/admin/social">Social Media</a>
+      <a href="/admin/website">Website</a>
+      <a href="/admin/system">Sistem</a>
+    </div>
+  </nav>
+  <main class="admin-main">
+    <div class="admin-header-row">
+      <div>
+        <h1>Comenzi</h1>
+        <div class="admin-header-sub">Căutare, filtrare și paginare server-side — lista nu încarcă niciodată toate comenzile deodată.</div>
+      </div>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><div class="label">Comenzi totale</div><div class="value" id="stat-count">—</div></div>
+      <div class="stat"><div class="label">Venit (comenzi plătite)</div><div class="value" id="stat-revenue">—</div></div>
+    </div>
+
+    <div class="orders-toolbar">
+      <input type="search" id="orders-search" placeholder="Caută după nume destinatar sau email…">
+      <select id="orders-status-filter">
+        <option value="">Toate statusurile</option>
+        <option value="draft">Neplătită</option>
+        <option value="generating">Se compune</option>
+        <option value="processing_provider_result">Se finalizează</option>
+        <option value="preview_ready">Previzualizare gata</option>
+        <option value="ready">Plătită și livrată</option>
+        <option value="generation_failed">Eroare</option>
+      </select>
+    </div>
+
+    <table id="orders-table">
+      <thead>
+        <tr><th>Data</th><th>Pentru</th><th>Email</th><th>Limba</th><th>Ocazie</th><th>Gen</th><th>Pachet</th><th>Preț</th><th>Status</th><th>Acțiuni</th></tr>
+      </thead>
+      <tbody id="orders-body"></tbody>
+    </table>
+
+    <div class="pagination-row">
+      <div class="pagination-info" id="orders-pagination-info"></div>
+      <div class="pagination-controls">
+        <button type="button" class="btn-secondary btn-small" id="orders-prev-btn">← Anterioare</button>
+        <button type="button" class="btn-secondary btn-small" id="orders-next-btn">Următoare →</button>
+      </div>
+    </div>
+  </main>
+</div>
+<script src="/admin/orders.js"></script>
+</body>
+</html>

@@ -14,7 +14,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const server = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
-const adminHtml = fs.readFileSync(path.join(__dirname, '..', 'private', 'admin.html'), 'utf8');
+// Reorganizare Admin (2026-09-18): testimonialele (fostul admin.html) traiesc acum in
+// private/admin/website.html + website.js (JS extern, nu mai inline) — cele 3 actiuni mutative
+// verificate mai jos (delete/move/create-edit) sunt toate in website.js.
+const websiteJs = fs.readFileSync(path.join(__dirname, '..', 'private', 'admin', 'website.js'), 'utf8');
 
 test('server.js: middleware-ul CSRF pentru /api/admin este inregistrat DUPA requireAdminAuth (autentificare intai) si INAINTE de toate rutele mutabile', () => {
   const authIdx = server.indexOf("app.use('/api/admin', adminAuthLimiter, requireAdminAuth);");
@@ -34,14 +37,14 @@ test('server.js: middleware-ul CSRF respinge (403) metodele mutabile fara X-Requ
   assert.match(body, /res\.status\(403\)/);
 });
 
-test("admin.html: toate cele 3 cereri mutabile (DELETE testimonial, POST move, POST/PUT create-edit) trimit explicit X-Requested-With: XMLHttpRequest", () => {
-  const deleteCall = adminHtml.slice(adminHtml.indexOf('window.deleteTestimonial'), adminHtml.indexOf('window.deleteTestimonial') + 300);
+test("website.js: toate cele 3 cereri mutabile (DELETE testimonial, POST move, POST/PUT create-edit) trimit explicit X-Requested-With: XMLHttpRequest", () => {
+  const deleteCall = websiteJs.slice(websiteJs.indexOf('window.deleteTestimonial'), websiteJs.indexOf('window.deleteTestimonial') + 300);
   assert.match(deleteCall, /'X-Requested-With': 'XMLHttpRequest'/, 'DELETE trebuie sa trimita header-ul');
 
-  const moveCall = adminHtml.slice(adminHtml.indexOf('window.moveTestimonial'), adminHtml.indexOf('window.moveTestimonial') + 300);
+  const moveCall = websiteJs.slice(websiteJs.indexOf('window.moveTestimonial'), websiteJs.indexOf('window.moveTestimonial') + 300);
   assert.match(moveCall, /'X-Requested-With': 'XMLHttpRequest'/, 'POST move trebuie sa trimita header-ul');
 
-  const submitCall = adminHtml.slice(adminHtml.indexOf('const res = await fetch(url, { method,'), adminHtml.indexOf('const res = await fetch(url, { method,') + 200);
+  const submitCall = websiteJs.slice(websiteJs.indexOf('const res = await fetch(url, { method,'), websiteJs.indexOf('const res = await fetch(url, { method,') + 200);
   assert.match(submitCall, /'X-Requested-With': 'XMLHttpRequest'/, 'formularul de creare/editare trebuie sa trimita header-ul');
 });
 

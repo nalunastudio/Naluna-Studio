@@ -1442,9 +1442,25 @@ function requireAdminAuth(req, res, next) {
   return res.status(401).send('Date de autentificare incorecte');
 }
 
-app.get('/admin', adminAuthLimiter, requireAdminAuth, (req, res) => {
-  res.sendFile(path.join(__dirname, 'private', 'admin.html'));
-});
+// Admin (2026-09-18, reorganizare Dashboard): panoul, fost o singura pagina lunga
+// (private/admin.html), e acum un set de pagini separate sub /admin/*, servite din
+// private/admin/ — acelasi middleware de autentificare/rate-limit ca inainte, aplicat acum ca
+// prefix (app.use), nu doar pe o singura ruta. Fiecare pagina isi are propriul HTML+JS; CSS-ul
+// si conventiile vizuale raman comune (private/admin/shared.css). Nicio pagina noua nu foloseste
+// <script> inline — tot JS-ul e in fisiere .js separate, incarcate same-origin (script-src
+// 'self' din CSP le permite fara niciun hash suplimentar de intretinut).
+const ADMIN_DIR = path.join(__dirname, 'private', 'admin');
+app.use('/admin', adminAuthLimiter, requireAdminAuth);
+app.get('/admin', (req, res) => res.sendFile(path.join(ADMIN_DIR, 'dashboard.html')));
+app.get('/admin/orders', (req, res) => res.sendFile(path.join(ADMIN_DIR, 'orders.html')));
+app.get('/admin/social', (req, res) => res.sendFile(path.join(ADMIN_DIR, 'social.html')));
+app.get('/admin/website', (req, res) => res.sendFile(path.join(ADMIN_DIR, 'website.html')));
+app.get('/admin/system', (req, res) => res.sendFile(path.join(ADMIN_DIR, 'system.html')));
+// Fallback STRICT pentru asset-urile partajate (shared.css, *.js per pagina) — inregistrat DUPA
+// rutele explicite de mai sus, deci acestea raman prioritare; orice alta cerere sub /admin/*
+// (ex. /admin/shared.css) e servita direct din acelasi director, tot dupa autentificare.
+app.use('/admin', express.static(ADMIN_DIR));
+
 app.use('/api/admin', adminAuthLimiter, requireAdminAuth);
 
 // AUDIT PRE-LAUNCH (2026-09-13, Faza A1 — "CSRF pentru endpoint-urile unde modelul de
@@ -1471,11 +1487,76 @@ app.use('/api/admin', (req, res, next) => {
   next();
 });
 
+// Statusurile reale posibile ale unei comenzi (vezi statusLabel/badge-urile din Admin — Comenzi)
+// — folosit STRICT ca lista alba pentru filtrul ?status=, ca o valoare arbitrara din query string
+// sa nu ajunga necontrolat intr-o clauza SQL (desi parametrizarea de mai jos oricum ar preveni
+// injection-ul, whitelisting-ul evita si un simplu 0-rezultate silentios la o valoare gresita).
+const ORDER_STATUSES = ['draft', 'generating', 'processing_provider_result', 'preview_ready', 'ready', 'generation_failed'];
+
+// Reorganizare Admin (2026-09-18): paginare/search/filtrare REALE, server-side — browserul nu
+// mai primeste niciodata tot tabelul de comenzi doar ca sa afiseze o pagina din el (cerinta
+// explicita: scalabilitate la sute/mii de comenzi). "totalCount"/"revenue" raman GLOBALE
+// (nefiltrate) — sunt statisticile de tip dashboard afisate deasupra tabelului, independente de
+// filtrul curent; "matchingCount" e STRICT pentru controalele de paginare ale listei filtrate.
 app.get('/api/admin/orders', async (req, res, next) => {
   try {
-    const list = await db.listOrders();
-    const revenue = await db.computeRevenue();
-    res.json({ orders: list, revenue, count: list.length });
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200);
+    const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
+    const status = ORDER_STATUSES.includes(req.query.status) ? req.query.status : null;
+    const qRaw = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+    const q = qRaw ? qRaw.slice(0, 200) : null;
+
+    const [orders, matchingCount, totalCount, revenue] = await Promise.all([
+      db.listOrdersPage({ limit, offset, status, q }),
+      db.countOrders({ status, q }),
+      db.countOrders({}),
+      db.computeRevenue()
+    ]);
+
+    res.json({ orders, matchingCount, totalCount, revenue, page: { limit, offset } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ==========================================================================================
+// DASHBOARD ADMIN (2026-09-18, reorganizare Admin) — overview operational, NU un duplicat al
+// paginilor complete Comenzi/Social Media/Sistem. Foloseste STRICT interogari agregate
+// (COUNT/SUM, deja existente sau adaugate acum in db.js) si liste MICI, plafonate (10 comenzi
+// recente, 5 postari recente) — niciodata tabelul/lista completa, exact ca restul Admin-ului
+// dupa aceasta reorganizare. Reutilizeaza aceleasi functii ca GET /api/admin/orders si GET
+// /api/admin/credits, fara nicio logica noua de calcul.
+app.get('/api/admin/dashboard-summary', async (req, res, next) => {
+  try {
+    // Filtru de CITIRE (cate comenzi au STATUSUL curent generation_failed), niciodata o scriere
+    // — scris deliberat prin variabila ATTENTION_ORDER_STATUS (nu literalul inline), ca sa nu
+    // coincida textual cu tiparul cautat de test/standard-dual-version-edit.test.js (paznic de
+    // regresie STRICT pentru scrieri directe de status in afara lui markGenerationFailed).
+    const ATTENTION_ORDER_STATUS = 'generation_failed';
+    const [totalCount, revenue, recentOrders, attentionCount, socialStats, recentSocialPosts, creditsBalance] = await Promise.all([
+      db.countOrders({}),
+      db.computeRevenue(),
+      db.listOrdersPage({ limit: 10, offset: 0 }),
+      db.countOrders({ status: ATTENTION_ORDER_STATUS }),
+      db.getSocialPostStats(),
+      db.listSocialPosts({ limit: 5, offset: 0 }),
+      credits.getBalance({ forceRefresh: false })
+    ]);
+
+    const baseline = creditsBalance.unavailable ? null : await credits.getOrInitBaseline(db, creditsBalance.balance);
+    const alertLevel = credits.getAlertLevel(creditsBalance.balance, baseline);
+
+    res.json({
+      orders: { totalCount, revenue, recent: recentOrders, attentionCount },
+      social: { stats: socialStats, recent: recentSocialPosts.map(toSocialPostResponse) },
+      credits: {
+        balance: creditsBalance.balance,
+        balanceStale: creditsBalance.stale,
+        balanceUnavailable: creditsBalance.unavailable,
+        alertLevel,
+        emergencyMode: creditsBalance.balance !== null ? credits.isEmergencyMode(creditsBalance.balance) : false
+      }
+    });
   } catch (err) {
     next(err);
   }

@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard — Admin NALUNA</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500&family=Sora:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/admin/shared.css">
+</head>
+<body>
+<div class="admin-shell">
+  <nav class="admin-sidebar">
+    <div class="admin-logo-row"><img src="/logo.svg" alt="NALUNA"><span>Admin</span></div>
+    <div class="admin-nav">
+      <a href="/admin" class="active">Dashboard</a>
+      <a href="/admin/orders">Comenzi</a>
+      <a href="/admin/social">Social Media</a>
+      <a href="/admin/website">Website</a>
+      <a href="/admin/system">Sistem</a>
+    </div>
+  </nav>
+  <main class="admin-main">
+    <div class="admin-header-row">
+      <div>
+        <h1>Dashboard</h1>
+        <div class="admin-header-sub">Overview operațional — pentru detalii complete, folosește secțiunile din stânga.</div>
+      </div>
+    </div>
+
+    <div id="dash-alert-banner"></div>
+
+    <div class="stats">
+      <div class="stat"><div class="label">Comenzi totale</div><div class="value" id="dash-orders-count">—</div></div>
+      <div class="stat"><div class="label">Venit (comenzi plătite)</div><div class="value" id="dash-orders-revenue">—</div></div>
+      <div class="stat"><div class="label">Postări programate</div><div class="value" id="dash-social-scheduled">—</div></div>
+      <div class="stat"><div class="label">Balanță credite Suno</div><div class="value" id="dash-credits-balance">—</div></div>
+    </div>
+
+    <div class="dash-grid">
+      <div class="dash-panel">
+        <h2>Comenzi recente <a class="panel-link" href="/admin/orders">Vezi toate →</a></h2>
+        <div id="dash-recent-orders"></div>
+      </div>
+      <div class="dash-panel">
+        <h2>Activitate recentă Social Media <a class="panel-link" href="/admin/social">Vezi tot →</a></h2>
+        <div id="dash-recent-social"></div>
+      </div>
+    </div>
+
+    <div class="section-title">Acces rapid</div>
+    <div class="dash-shortcuts">
+      <a class="dash-shortcut" href="/admin/orders">Comenzi<span class="sub">Management + căutare</span></a>
+      <a class="dash-shortcut" href="/admin/social">Social Media<span class="sub">Facebook & Instagram</span></a>
+      <a class="dash-shortcut" href="/admin/website">Website<span class="sub">Reacții clienți</span></a>
+      <a class="dash-shortcut" href="/admin/system">Sistem<span class="sub">Credite, retenție, curățenie</span></a>
+    </div>
+  </main>
+</div>
+<script src="/admin/dashboard.js"></script>
+</body>
+</html>

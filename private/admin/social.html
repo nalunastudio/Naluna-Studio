@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Social Media — Admin NALUNA</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500&family=Sora:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/admin/shared.css">
+</head>
+<body>
+<div class="admin-shell">
+  <nav class="admin-sidebar">
+    <div class="admin-logo-row"><img src="/logo.svg" alt="NALUNA"><span>Admin</span></div>
+    <div class="admin-nav">
+      <a href="/admin">Dashboard</a>
+      <a href="/admin/orders">Comenzi</a>
+      <a href="/admin/social" class="active">Social Media</a>
+      <a href="/admin/website">Website</a>
+      <a href="/admin/system">Sistem</a>
+    </div>
+  </nav>
+  <main class="admin-main">
+    <div class="admin-header-row">
+      <div>
+        <h1>Social Media</h1>
+        <div class="admin-header-sub">Publică imediat sau programează postări pe Facebook și Instagram, dintr-un singur loc.</div>
+      </div>
+    </div>
+
+    <div class="sm-stats">
+      <div class="sm-stat" id="sm-stat-scheduled" data-filter="scheduled"><div class="label">Scheduled</div><div class="value">—</div></div>
+      <div class="sm-stat" id="sm-stat-published" data-filter="published"><div class="label">Published</div><div class="value">—</div></div>
+      <div class="sm-stat attention" id="sm-stat-attention" data-filter="attention"><div class="label">Needs Attention</div><div class="value">—</div></div>
+    </div>
+
+    <div class="t-form">
+      <div class="sm-tabs">
+        <button type="button" class="sm-tab active" id="sm-tab-now" data-mode="now">Post Now</button>
+        <button type="button" class="sm-tab" id="sm-tab-schedule" data-mode="schedule">Schedule</button>
+      </div>
+      <form id="sm-form">
+        <div class="t-field">
+          <label>Platforme</label>
+          <div class="sm-platform-row" id="sm-platform-row"></div>
+        </div>
+        <div class="t-form-row">
+          <div class="t-field">
+            <label for="sm-media-type">Tip media</label>
+            <select id="sm-media-type">
+              <option value="image">Imagine</option>
+              <option value="video">Video</option>
+            </select>
+          </div>
+          <div class="t-field">
+            <label for="sm-media-file">Fișier</label>
+            <input type="file" id="sm-media-file">
+          </div>
+        </div>
+        <div class="sm-preview" id="sm-preview" style="display:none;"></div>
+        <div class="t-field">
+          <label for="sm-caption">Caption <span class="sm-caption-note">(folosit pentru Facebook și Instagram deopotrivă)</span></label>
+          <textarea id="sm-caption" maxlength="2200"></textarea>
+          <div class="sm-char-counter" id="sm-char-counter">0 / 2200</div>
+        </div>
+        <div class="sm-schedule-fields" id="sm-schedule-fields" style="display:none;">
+          <div class="t-form-row">
+            <div class="t-field"><label for="sm-schedule-date">Data</label><input type="date" id="sm-schedule-date"></div>
+            <div class="t-field"><label for="sm-schedule-time">Ora</label><input type="time" id="sm-schedule-time"></div>
+          </div>
+          <div class="sm-tz-note" id="sm-tz-note"></div>
+        </div>
+        <div class="t-form-actions">
+          <button type="submit" class="btn-primary" id="sm-submit-btn">Post Now</button>
+        </div>
+        <div class="t-form-msg" id="sm-form-msg"></div>
+      </form>
+    </div>
+
+    <div class="sm-filters" id="sm-filters">
+      <button class="sm-filter-btn active" data-status="all">Toate</button>
+      <button class="sm-filter-btn" data-status="scheduled">Scheduled</button>
+      <button class="sm-filter-btn" data-status="published">Published</button>
+      <button class="sm-filter-btn" data-status="attention">Failed / Needs Attention</button>
+    </div>
+    <div class="sm-list" id="sm-list"></div>
+    <div id="sm-modal-root"></div>
+  </main>
+</div>
+<script src="/admin/social.js"></script>
+</body>
+</html>

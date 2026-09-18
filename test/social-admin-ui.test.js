@@ -1,15 +1,21 @@
-// UI-ul Social Media din Naluna Admin (private/admin.html, Etapa 4) — admin.html nu poate fi
-// executat intr-un DOM real (fara jsdom/puppeteer in acest proiect — vezi restul suitei, care
-// testeaza fisierele HTML fie structural (text/regex), fie prin extragerea unei functii PURE
-// din scriptul inline si evaluarea ei izolat cu new Function(), exact tiparul din
-// test/wizard-step-renumbering.test.js). Functiile de business logic din sectiunea Social Media
-// au fost scrise intentionat PURE (fara acces direct la DOM) tocmai ca sa poata fi testate asa.
+// UI-ul Social Media si Website (reactii clienti) din Naluna Admin — mutate 1:1 in pagini
+// separate (private/admin/social.html+.js, private/admin/website.html+.js) ca parte a
+// reorganizarii Admin-ului in Dashboard/Comenzi/Social Media/Website/Sistem (2026-09-18).
+// Acest fisier testa anterior o singura pagina (private/admin.html) — sursele de mai jos au
+// fost actualizate sa citeasca noile fisiere, dar TOATE asertiile raman identice ca intentie:
+// nicio schimbare de logica nu a insotit mutarea. JS-ul e acum extern (nu mai e inline
+// intr-un <script> din HTML), deci extractFn ruleaza direct pe fisierele .js.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const html = fs.readFileSync(path.join(__dirname, '..', 'private', 'admin.html'), 'utf8');
+const ADMIN_DIR = path.join(__dirname, '..', 'private', 'admin');
+const socialHtml = fs.readFileSync(path.join(ADMIN_DIR, 'social.html'), 'utf8');
+const socialJs = fs.readFileSync(path.join(ADMIN_DIR, 'social.js'), 'utf8');
+const websiteHtml = fs.readFileSync(path.join(ADMIN_DIR, 'website.html'), 'utf8');
+const websiteJs = fs.readFileSync(path.join(ADMIN_DIR, 'website.js'), 'utf8');
+const sharedCss = fs.readFileSync(path.join(ADMIN_DIR, 'shared.css'), 'utf8');
 const server = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
 
 function extractFn(source, signature, fromIndex) {
@@ -25,12 +31,13 @@ function extractFn(source, signature, fromIndex) {
 
 // Incarca TOATE functiile pure ale sectiunii Social Media intr-un sandbox izolat — de la
 // declararea PLATFORM_DEFS pana la finalul lui renderSubmitResultMessage (ultima functie pura
-// din bloc), fara nimic legat de DOM.
+// din bloc), fara nimic legat de DOM. Sursa e acum private/admin/social.js (JS extern, plain
+// text) — inainte era extras dintr-un <script> inline in private/admin.html.
 function loadSocialAdminLogic() {
-  const startIdx = html.indexOf('const PLATFORM_DEFS = [');
-  assert.notEqual(startIdx, -1, 'PLATFORM_DEFS trebuie sa existe in admin.html');
-  const renderSubmitResult = extractFn(html, 'function renderSubmitResultMessage(data) {', startIdx);
-  const snippet = html.slice(startIdx, renderSubmitResult.endIndex);
+  const startIdx = socialJs.indexOf('const PLATFORM_DEFS = [');
+  assert.notEqual(startIdx, -1, 'PLATFORM_DEFS trebuie sa existe in private/admin/social.js');
+  const renderSubmitResult = extractFn(socialJs, 'function renderSubmitResultMessage(data) {', startIdx);
+  const snippet = socialJs.slice(startIdx, renderSubmitResult.endIndex);
   const sandboxSrc = `
     ${snippet}
     return { PLATFORM_DEFS, STATUS_LABELS, SOCIAL_MEDIA_LIMITS, validateSmForm, computeSmStats, matchesSmFilter, getSmContextualActions, redactSecrets, captionFragment, renderSubmitResultMessage };
@@ -42,10 +49,10 @@ const sm = loadSocialAdminLogic();
 // ============================================================================
 // Sincronizare cu limitele REALE ale backend-ului (server.js) — daca cineva schimba
 // SOCIAL_MEDIA_MIME_TYPES/SOCIAL_MEDIA_MAX_BYTES in server.js fara sa actualizeze si
-// SOCIAL_MEDIA_LIMITS din admin.html, validarea client-side ar da un feedback GRESIT
+// SOCIAL_MEDIA_LIMITS din social.js, validarea client-side ar da un feedback GRESIT
 // (accepta/respinge altceva decat accepta/respinge serverul) — acest test prinde divergenta.
 // ============================================================================
-test('SOCIAL_MEDIA_LIMITS (admin.html) e IDENTIC cu SOCIAL_MEDIA_MIME_TYPES/SOCIAL_MEDIA_MAX_BYTES (server.js)', () => {
+test('SOCIAL_MEDIA_LIMITS (private/admin/social.js) e IDENTIC cu SOCIAL_MEDIA_MIME_TYPES/SOCIAL_MEDIA_MAX_BYTES (server.js)', () => {
   const mimeMatch = server.match(/const SOCIAL_MEDIA_MIME_TYPES = \{([\s\S]*?)\};/);
   assert.ok(mimeMatch, 'SOCIAL_MEDIA_MIME_TYPES trebuie sa existe in server.js');
   const imageTypes = [...mimeMatch[1].matchAll(/'([^']+)'/g)].map(m => m[1]).filter(t => t.startsWith('image/'));
@@ -200,9 +207,9 @@ test('STATUS_LABELS acopera toate cele 7 statusuri cerute', () => {
   ].sort());
 });
 
-test('CSS: exista un badge vizual distinct pentru fiecare din cele 7 statusuri', () => {
+test('CSS (shared.css): exista un badge vizual distinct pentru fiecare din cele 7 statusuri', () => {
   for (const status of Object.keys(sm.STATUS_LABELS)) {
-    assert.ok(html.includes(`.sm-s-${status}{`), `lipseste clasa CSS .sm-s-${status}`);
+    assert.ok(sharedCss.includes(`.sm-s-${status}{`), `lipseste clasa CSS .sm-s-${status}`);
   }
 });
 
@@ -275,57 +282,57 @@ test('captionFragment: caption gol -> text placeholder, nu string gol', () => {
 // ============================================================================
 // Structura HTML — Create Post, dashboard, filtre
 // ============================================================================
-test('admin.html: sectiunea Social Media exista, cu dashboard-ul cerut (Scheduled/Published/Needs Attention)', () => {
-  assert.match(html, /Social Media/);
-  assert.match(html, /id="sm-stat-scheduled"/);
-  assert.match(html, /id="sm-stat-published"/);
-  assert.match(html, /id="sm-stat-attention"/);
+test('social.html: sectiunea Social Media exista, cu dashboard-ul cerut (Scheduled/Published/Needs Attention)', () => {
+  assert.match(socialHtml, /Social Media/);
+  assert.match(socialHtml, /id="sm-stat-scheduled"/);
+  assert.match(socialHtml, /id="sm-stat-published"/);
+  assert.match(socialHtml, /id="sm-stat-attention"/);
 });
 
-test('admin.html: formularul Create Post are camp de platforme, media, caption cu limita 2200', () => {
-  assert.match(html, /id="sm-platform-row"/);
-  assert.match(html, /id="sm-media-type"/);
-  assert.match(html, /id="sm-media-file"/);
-  assert.match(html, /id="sm-caption"[^>]*maxlength="2200"/);
+test('social.html: formularul Create Post are camp de platforme, media, caption cu limita 2200', () => {
+  assert.match(socialHtml, /id="sm-platform-row"/);
+  assert.match(socialHtml, /id="sm-media-type"/);
+  assert.match(socialHtml, /id="sm-media-file"/);
+  assert.match(socialHtml, /id="sm-caption"[^>]*maxlength="2200"/);
 });
 
-test('admin.html: campurile de Schedule (data, ora, nota fus orar) exista', () => {
-  assert.match(html, /type="date" id="sm-schedule-date"/);
-  assert.match(html, /type="time" id="sm-schedule-time"/);
-  assert.match(html, /id="sm-tz-note"/);
+test('social.html: campurile de Schedule (data, ora, nota fus orar) exista', () => {
+  assert.match(socialHtml, /type="date" id="sm-schedule-date"/);
+  assert.match(socialHtml, /type="time" id="sm-schedule-time"/);
+  assert.match(socialHtml, /id="sm-tz-note"/);
 });
 
-test('admin.html: filtrele din lista (Toate/Scheduled/Published/Failed) exista', () => {
-  assert.match(html, /data-status="scheduled"/);
-  assert.match(html, /data-status="published"/);
-  assert.match(html, /data-status="attention"/);
+test('social.html: filtrele din lista (Toate/Scheduled/Published/Failed) exista', () => {
+  assert.match(socialHtml, /data-status="scheduled"/);
+  assert.match(socialHtml, /data-status="published"/);
+  assert.match(socialHtml, /data-status="attention"/);
 });
 
 // ============================================================================
 // Endpoint-uri folosite — trebuie sa fie EXACT cele existente din Etapele 2-3, niciun endpoint nou
 // ============================================================================
-test('admin.html foloseste STRICT endpoint-urile existente /api/admin/social/*', () => {
-  assert.match(html, /fetch\('\/api\/admin\/social\/posts\?limit=100'\)/);
-  assert.match(html, /url = '\/api\/admin\/social\/publish'/);
-  assert.match(html, /url = '\/api\/admin\/social\/schedule'/);
-  assert.match(html, /fetch\(`\/api\/admin\/social\/posts\/\$\{postId\}\/cancel`/);
-  assert.match(html, /fetch\(`\/api\/admin\/social\/posts\/\$\{postId\}\/retry`/);
+test('social.js foloseste STRICT endpoint-urile existente /api/admin/social/*', () => {
+  assert.match(socialJs, /fetch\('\/api\/admin\/social\/posts\?limit=100'\)/);
+  assert.match(socialJs, /url = '\/api\/admin\/social\/publish'/);
+  assert.match(socialJs, /url = '\/api\/admin\/social\/schedule'/);
+  assert.match(socialJs, /fetch\(`\/api\/admin\/social\/posts\/\$\{postId\}\/cancel`/);
+  assert.match(socialJs, /fetch\(`\/api\/admin\/social\/posts\/\$\{postId\}\/retry`/);
 });
 
 // ============================================================================
 // IdempotencyKey + prevenirea submit-ului multiplu
 // ============================================================================
 test('submit handler: genereaza idempotencyKey cu crypto.randomUUID() la fiecare trimitere REALA', () => {
-  const start = html.indexOf("document.getElementById('sm-form').addEventListener('submit'");
+  const start = socialJs.indexOf("document.getElementById('sm-form').addEventListener('submit'");
   assert.notEqual(start, -1);
-  const handler = extractFn(html, "addEventListener('submit', async (e) => {", start).text;
+  const handler = extractFn(socialJs, "addEventListener('submit', async (e) => {", start).text;
   assert.match(handler, /crypto\.randomUUID\(\)/);
   assert.match(handler, /idempotencyKey/);
 });
 
 test('submit handler: verifica butonul dezactivat INAINTE de orice alta logica (guard sincron impotriva dublu-click)', () => {
-  const start = html.indexOf("document.getElementById('sm-form').addEventListener('submit'");
-  const handler = extractFn(html, "addEventListener('submit', async (e) => {", start).text;
+  const start = socialJs.indexOf("document.getElementById('sm-form').addEventListener('submit'");
+  const handler = extractFn(socialJs, "addEventListener('submit', async (e) => {", start).text;
   const guardIdx = handler.indexOf('if (smSubmitBtn.disabled) return;');
   const validateIdx = handler.indexOf('validateSmForm(');
   const disableIdx = handler.indexOf('smSubmitBtn.disabled = true;');
@@ -335,8 +342,8 @@ test('submit handler: verifica butonul dezactivat INAINTE de orice alta logica (
 });
 
 test('submit handler: reactiveaza butonul in finally (nu ramane blocat la eroare)', () => {
-  const start = html.indexOf("document.getElementById('sm-form').addEventListener('submit'");
-  const handler = extractFn(html, "addEventListener('submit', async (e) => {", start).text;
+  const start = socialJs.indexOf("document.getElementById('sm-form').addEventListener('submit'");
+  const handler = extractFn(socialJs, "addEventListener('submit', async (e) => {", start).text;
   const finallyIdx = handler.lastIndexOf('finally');
   assert.notEqual(finallyIdx, -1);
   const finallyBlock = handler.slice(finallyIdx);
@@ -344,8 +351,8 @@ test('submit handler: reactiveaza butonul in finally (nu ramane blocat la eroare
 });
 
 test('submit handler: NU face niciun retry automat de fetch (o singura cerere per submit)', () => {
-  const start = html.indexOf("document.getElementById('sm-form').addEventListener('submit'");
-  const handler = extractFn(html, "addEventListener('submit', async (e) => {", start).text;
+  const start = socialJs.indexOf("document.getElementById('sm-form').addEventListener('submit'");
+  const handler = extractFn(socialJs, "addEventListener('submit', async (e) => {", start).text;
   const fetchCalls = handler.match(/await fetch\(/g) || [];
   assert.equal(fetchCalls.length, 1, 'trebuie sa existe STRICT un singur apel fetch in handler-ul de submit');
 });
@@ -354,22 +361,22 @@ test('submit handler: NU face niciun retry automat de fetch (o singura cerere pe
 // Confirmari explicite (Post Now / Cancel Schedule / Retry)
 // ============================================================================
 test('confirmare explicita inainte de Post Now/Schedule, cu platformele mentionate clar', () => {
-  const start = html.indexOf("document.getElementById('sm-form').addEventListener('submit'");
-  const handler = extractFn(html, "addEventListener('submit', async (e) => {", start).text;
+  const start = socialJs.indexOf("document.getElementById('sm-form').addEventListener('submit'");
+  const handler = extractFn(socialJs, "addEventListener('submit', async (e) => {", start).text;
   assert.match(handler, /confirm\(confirmMsg\)/);
   assert.match(handler, /platformLabels/);
 });
 
 test('confirmare explicita inainte de Cancel Schedule', () => {
-  const start = html.indexOf('async function handleSmAction(postId, actionId) {');
-  const fn = extractFn(html, 'async function handleSmAction(postId, actionId) {', start).text;
+  const start = socialJs.indexOf('async function handleSmAction(postId, actionId) {');
+  const fn = extractFn(socialJs, 'async function handleSmAction(postId, actionId) {', start).text;
   const cancelBranch = fn.slice(0, fn.indexOf("actionId.startsWith('retry:')"));
   assert.match(cancelBranch, /confirm\('Anulezi programarea/);
 });
 
 test('confirmare explicita inainte de Retry manual', () => {
-  const start = html.indexOf('async function handleSmAction(postId, actionId) {');
-  const fn = extractFn(html, 'async function handleSmAction(postId, actionId) {', start).text;
+  const start = socialJs.indexOf('async function handleSmAction(postId, actionId) {');
+  const fn = extractFn(socialJs, 'async function handleSmAction(postId, actionId) {', start).text;
   const retryBranch = fn.slice(fn.indexOf("actionId.startsWith('retry:')"));
   assert.match(retryBranch, /confirm\(`Reîncerci publicarea pe/);
 });
@@ -377,96 +384,89 @@ test('confirmare explicita inainte de Retry manual', () => {
 // ============================================================================
 // Nu expune secrete — nicaieri in sectiunea Social Media nu apare vreun camp de tip token
 // ============================================================================
-test('SECURITATE: sectiunea Social Media nu citeste/afiseaza niciodata accessToken/stack/apiError brut', () => {
-  const start = html.indexOf('SOCIAL MEDIA (Etapa 4)');
-  const section = html.slice(start);
-  assert.ok(!/accessToken/i.test(section));
-  assert.ok(!/\.stack\b/.test(section));
-  assert.ok(!/apiError/.test(section), 'trebuie afisat STRICT post.facebookError/instagramError (deja sanitizate de backend), niciodata obiectul brut apiError');
+test('SECURITATE: social.js nu citeste/afiseaza niciodata accessToken/stack/apiError brut', () => {
+  assert.ok(!/accessToken/i.test(socialJs));
+  assert.ok(!/\.stack\b/.test(socialJs));
+  assert.ok(!/apiError/.test(socialJs), 'trebuie afisat STRICT post.facebookError/instagramError (deja sanitizate de backend), niciodata obiectul brut apiError');
 });
 
 // ============================================================================
 // Auto-refresh — interval rezonabil, oprit cand tab-ul nu e activ
 // ============================================================================
 test('auto-refresh: interval rezonabil (>= 5s), verifica document.visibilityState inainte de fiecare reimprospatare', () => {
-  const start = html.indexOf('function startSmPolling()');
-  const fn = extractFn(html, 'function startSmPolling() {', start).text;
+  const start = socialJs.indexOf('function startSmPolling()');
+  const fn = extractFn(socialJs, 'function startSmPolling() {', start).text;
   assert.match(fn, /document\.visibilityState === 'visible'/);
-  const intervalMatch = html.match(/const SM_POLL_INTERVAL_MS = (\d+)/);
+  const intervalMatch = socialJs.match(/const SM_POLL_INTERVAL_MS = (\d+)/);
   assert.ok(intervalMatch);
   assert.ok(Number(intervalMatch[1]) >= 5000, 'polling-ul nu trebuie sa fie mai agresiv de o data la 5 secunde');
 });
 
 test('auto-refresh: reactioneaza la revenirea pe tab (visibilitychange), fara sa astepte urmatorul tick', () => {
-  assert.match(html, /addEventListener\('visibilitychange'/);
+  assert.match(socialJs, /addEventListener\('visibilitychange'/);
 });
 
 // ============================================================================
-// CSP — descoperit in timpul Etapei 4: /admin nu avea NICIUN hash de script inregistrat
-// (loadPageScriptHashes scana STRICT public/, admin.html traieste in private/), ceea ce ar fi
-// blocat COMPLET scriptul inline al admin.html sub politica CSP existenta (server.js aplica
-// helmet cu contentSecurityPolicy: buildCspDirectives() global, inclusiv pe /admin). Corectat
-// in lib/csp.js. Teste de regresie pentru ambele jumatati ale corectiei:
-// (1) /admin primeste acum un hash real pentru blocul <script>;
-// (2) elementele generate dinamic in sectiunea Social Media NU folosesc onclick="" inline —
-//     un hash de <script> NU acopera atribute de eveniment inline, care raman blocate de CSP
-//     fara 'unsafe-inline'; de-aceea interactivitatea foloseste STRICT delegare de evenimente.
+// CSP (reorganizare Admin, 2026-09-18): arhitectura veche avea un <script> inline in
+// private/admin.html, care avea nevoie de un hash SHA-256 inregistrat manual in lib/csp.js
+// (altfel CSP bloca silentios tot scriptul paginii). Noua arhitectura (pagini separate sub
+// private/admin/*.html, JS EXTERN incarcat cu <script src="...">) nu mai are acest bloc, deci
+// nu mai exista niciun hash de intretinut — script-src 'self' permite deja fisierele externe
+// same-origin. Testele de mai jos verifica INVARIANTUL noii arhitecturi.
 // ============================================================================
-test('CSP: scriptHashesForPath("/admin") intoarce un hash real, nu mai e gol', () => {
+test('CSP: paginile Admin (Social Media, Website) nu folosesc niciun <script> inline cu continut real', () => {
+  for (const [name, htmlSrc] of Object.entries({ 'social.html': socialHtml, 'website.html': websiteHtml })) {
+    const inlineScripts = [...htmlSrc.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)]
+      .map(m => m[1].trim())
+      .filter(Boolean);
+    assert.deepEqual(inlineScripts, [], `${name} nu trebuie sa contina niciun <script> inline cu continut`);
+  }
+});
+
+test('CSP: scriptHashesForPath nu mai are nicio inregistrare speciala pentru /admin (arhitectura noua nu are script inline de hash-uit)', () => {
   const { scriptHashesForPath } = require('../lib/csp');
-  const hash = scriptHashesForPath('/admin');
-  assert.notEqual(hash, '');
-  assert.match(hash, /^'sha256-[A-Za-z0-9+/]+=*'$/);
+  assert.equal(scriptHashesForPath('/admin'), '');
 });
 
-test('CSP: hash-ul pentru /admin corespunde EXACT continutului real al blocului <script> din admin.html', () => {
-  const { scriptHashesForPath } = require('../lib/csp');
-  const crypto = require('node:crypto');
-  const scriptMatch = html.match(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/i);
-  assert.ok(scriptMatch);
-  const expectedHash = `'sha256-${crypto.createHash('sha256').update(scriptMatch[1], 'utf8').digest('base64')}'`;
-  assert.equal(scriptHashesForPath('/admin'), expectedHash);
+test('REGRESIE CSP: social.js/social.html nu folosesc niciun atribut onclick="" inline (blocat de CSP fara unsafe-inline)', () => {
+  // Exclude liniile de comentariu — codul sursa MENTIONEAZA in proza faptul ca onclick="" a
+  // fost eliminat, ceea ce ar da un fals-pozitiv daca am cauta substringul brut peste tot.
+  const codeOnlyJs = socialJs.split('\n').filter((line) => !line.trim().startsWith('//')).join('\n');
+  assert.ok(!/\bonclick\s*=\s*"/.test(codeOnlyJs), 'social.js nu trebuie sa genereze onclick="" inline in HTML-ul produs');
+  assert.ok(!/\bonclick\s*=\s*"/.test(socialHtml), 'social.html nu trebuie sa aiba onclick="" inline');
 });
 
-test('REGRESIE CSP: sectiunea Social Media nu foloseste niciun atribut onclick="" inline (blocat de CSP fara unsafe-inline)', () => {
-  const start = html.indexOf('SOCIAL MEDIA (Etapa 4)');
-  const end = html.indexOf('</script>', start);
-  const codeOnly = html.slice(start, end)
-    .split('\n')
-    .filter((line) => !line.trim().startsWith('//')) // exclude comentariile care doar MENTIONEAZA cuvantul, ca in acest fisier de teste
-    .join('\n');
-  assert.ok(!/\bonclick\s*=\s*"/.test(codeOnly), 'interactivitatea trebuie sa foloseasca STRICT delegare de evenimente (addEventListener), nu onclick="" inline');
-});
-
-test('REGRESIE CSP (audit pre-deploy): admin.html INTREG — inclusiv testimonialele preexistente — nu mai are niciun onclick="" inline', () => {
-  const codeOnly = html
-    .split('\n')
-    .filter((line) => !line.trim().startsWith('//'))
-    .join('\n');
-  assert.ok(!/\bonclick\s*=\s*"/.test(codeOnly), 'admin.html nu mai trebuie sa contina onclick="" inline nicaieri, testimoniale incluse');
+test('REGRESIE CSP (audit pre-deploy): toate fisierele Admin din acest test (social + website) nu au niciun onclick="" inline', () => {
+  for (const [name, src] of Object.entries({ 'social.html': socialHtml, 'social.js': socialJs, 'website.html': websiteHtml, 'website.js': websiteJs })) {
+    const codeOnly = src.split('\n').filter((line) => !line.trim().startsWith('//')).join('\n');
+    assert.ok(!/\bonclick\s*=\s*"/.test(codeOnly), `${name} nu mai trebuie sa contina onclick="" inline nicaieri`);
+  }
 });
 
 test('testimoniale: move up/down, edit, delete folosesc delegare de evenimente pe #t-list, cu payload din data-atribute', () => {
-  assert.match(html, /data-t-action="move-up"/);
-  assert.match(html, /data-t-action="move-down"/);
-  assert.match(html, /data-t-action="edit"/);
-  assert.match(html, /data-t-action="delete"/);
-  assert.match(html, /tList\.addEventListener\('click'/);
+  // Butoanele cu data-t-action sunt generate dinamic (loadTestimonials, in website.js), nu
+  // markup static in website.html — vezi #t-list, containerul stabil populat de JS.
+  assert.match(websiteJs, /data-t-action="move-up"/);
+  assert.match(websiteJs, /data-t-action="move-down"/);
+  assert.match(websiteJs, /data-t-action="edit"/);
+  assert.match(websiteJs, /data-t-action="delete"/);
+  assert.match(websiteHtml, /id="t-list"/);
+  assert.match(websiteJs, /tList\.addEventListener\('click'/);
 });
 
 test('testimoniale: fix-ul CSP nu schimba comportamentul functional (aceleasi 3 functii, acelasi efect: edit populeaza formularul, delete confirma+sterge, move trimite directia)', () => {
-  const start = html.indexOf('window.editTestimonial = function(id)');
+  const start = websiteJs.indexOf('window.editTestimonial = function(id)');
   assert.notEqual(start, -1);
-  const end = html.indexOf('tList.addEventListener', start);
-  const block = html.slice(start, end);
+  const end = websiteJs.indexOf('tList.addEventListener', start);
+  const block = websiteJs.slice(start, end);
   assert.match(block, /tEditId\.value = t\.id/);
   assert.match(block, /confirm\('Ștergi definitiv această reacție\?'\)/);
   assert.match(block, /body: JSON\.stringify\(\{ direction \}\)/);
 });
 
 test('interactivitatea din carduri/modal foloseste delegare de evenimente pe containere stabile', () => {
-  assert.match(html, /document\.getElementById\('sm-list'\)\.addEventListener\('click'/);
-  assert.match(html, /document\.getElementById\('sm-modal-root'\)\.addEventListener\('click'/);
+  assert.match(socialJs, /document\.getElementById\('sm-list'\)\.addEventListener\('click'/);
+  assert.match(socialJs, /document\.getElementById\('sm-modal-root'\)\.addEventListener\('click'/);
 });
 
 // ============================================================================
@@ -476,27 +476,27 @@ test('interactivitatea din carduri/modal foloseste delegare de evenimente pe con
 // serverul respinge cererea cu 403, indiferent cat de corecta e restul cererii.
 // ============================================================================
 test('CSRF: Post Now / Schedule (fetch(url, ...)) trimite X-Requested-With: XMLHttpRequest', () => {
-  const start = html.indexOf("document.getElementById('sm-form').addEventListener('submit'");
-  const handler = extractFn(html, "addEventListener('submit', async (e) => {", start).text;
+  const start = socialJs.indexOf("document.getElementById('sm-form').addEventListener('submit'");
+  const handler = extractFn(socialJs, "addEventListener('submit', async (e) => {", start).text;
   assert.match(handler, /fetch\(url,\s*\{\s*method:\s*'POST',\s*headers:\s*\{\s*'X-Requested-With':\s*'XMLHttpRequest'\s*\},\s*body:\s*fd\s*\}\)/);
 });
 
 test('CSRF: Cancel Schedule trimite X-Requested-With: XMLHttpRequest', () => {
-  const start = html.indexOf('async function handleSmAction(postId, actionId) {');
-  const fn = extractFn(html, 'async function handleSmAction(postId, actionId) {', start).text;
+  const start = socialJs.indexOf('async function handleSmAction(postId, actionId) {');
+  const fn = extractFn(socialJs, 'async function handleSmAction(postId, actionId) {', start).text;
   const cancelBranch = fn.slice(0, fn.indexOf("actionId.startsWith('retry:')"));
   assert.match(cancelBranch, /fetch\(`\/api\/admin\/social\/posts\/\$\{postId\}\/cancel`,\s*\{\s*method:\s*'POST',\s*headers:\s*\{\s*'X-Requested-With':\s*'XMLHttpRequest'\s*\}\s*\}\)/);
 });
 
 test('CSRF: Retry manual trimite X-Requested-With: XMLHttpRequest (alaturi de Content-Type existent)', () => {
-  const start = html.indexOf('async function handleSmAction(postId, actionId) {');
-  const fn = extractFn(html, 'async function handleSmAction(postId, actionId) {', start).text;
+  const start = socialJs.indexOf('async function handleSmAction(postId, actionId) {');
+  const fn = extractFn(socialJs, 'async function handleSmAction(postId, actionId) {', start).text;
   const retryBranch = fn.slice(fn.indexOf("actionId.startsWith('retry:')"));
   assert.match(retryBranch, /headers:\s*\{\s*'Content-Type':\s*'application\/json',\s*'X-Requested-With':\s*'XMLHttpRequest'\s*\}/);
 });
 
 test('CSRF: GET-urile Social Media (lista postarilor) NU au fost modificate inutil — fara header CSRF pe cereri de citire', () => {
-  assert.match(html, /await fetch\('\/api\/admin\/social\/posts\?limit=100'\);/);
+  assert.match(socialJs, /await fetch\('\/api\/admin\/social\/posts\?limit=100'\);/);
 });
 
 test('CSRF: middleware-ul din server.js chiar exista si se aplica inaintea rutelor social (nu doar presupus)', () => {

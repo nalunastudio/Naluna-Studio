@@ -1701,6 +1701,39 @@ async function computeRevenue() {
   return Number(result.rows[0].total);
 }
 
+// Construieste STRICT clauza WHERE + valorile ei, comuna intre listOrdersPage si countOrders de
+// mai jos — evita sa se poata desincroniza vreodata (acelasi filtru aplicat listei si numaratorii
+// ei). q cauta STRICT in recipient/email (campurile vizibile in tabelul Admin) prin ILIKE — volum
+// asteptat (sute/mii de comenzi, nu milioane), deci un index dedicat nu e necesar acum.
+function buildOrdersFilter({ status, q }) {
+  const conditions = [];
+  const values = [];
+  if (status) { values.push(status); conditions.push(`status = $${values.length}`); }
+  if (q) { values.push(`%${q}%`); conditions.push(`(recipient ILIKE $${values.length} OR email ILIKE $${values.length})`); }
+  return { where: conditions.length ? `WHERE ${conditions.join(' AND ')}` : '', values };
+}
+
+// Paginare REALA server-side (Admin — Comenzi): spre deosebire de listOrders() de mai sus
+// (pastrata neschimbata, folosita de unelte interne care chiar au nevoie de tot setul, ex.
+// cleanup/abandoned-uploads), aceasta returneaza STRICT o pagina — niciodata tot tabelul catre
+// browser. idx_orders_created_at (deja existent) acopera ORDER BY + LIMIT/OFFSET eficient.
+async function listOrdersPage({ limit = 50, offset = 0, status = null, q = null } = {}) {
+  const { where, values } = buildOrdersFilter({ status, q });
+  const result = await pool.query(
+    `SELECT * FROM orders ${where} ORDER BY created_at DESC LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
+    [...values, limit, offset]
+  );
+  return result.rows.map(rowToOrder);
+}
+
+// Numarul de comenzi ce corespund acelorasi filtre ca listOrdersPage — folosit atat pentru
+// controalele de paginare (cate pagini sunt), cat si pentru statisticile globale (fara filtre).
+async function countOrders({ status = null, q = null } = {}) {
+  const { where, values } = buildOrdersFilter({ status, q });
+  const result = await pool.query(`SELECT COUNT(*) AS total FROM orders ${where}`, values);
+  return Number(result.rows[0].total);
+}
+
 // ==================================================================================
 // TESTIMONIALS — reactii clienti, gestionate exclusiv din panoul de admin
 // ==================================================================================
@@ -1927,6 +1960,20 @@ async function listSocialPosts({ limit = 50, offset = 0 } = {}) {
   return result.rows.map(rowToSocialPost);
 }
 
+// Statistici agregate REALE (COUNT ... GROUP BY status, pe idx_social_posts_status deja
+// existent) — pentru Dashboard/Social Media, in loc sa se calculeze din lista limitata (care ar
+// deveni imprecisa pe masura ce volumul de postari creste peste limita paginii curente).
+async function getSocialPostStats() {
+  const result = await pool.query(`SELECT status, COUNT(*) AS count FROM social_posts GROUP BY status`);
+  const counts = {};
+  for (const row of result.rows) counts[row.status] = Number(row.count);
+  return {
+    scheduled: counts.scheduled || 0,
+    published: counts.published || 0,
+    attention: (counts.failed || 0) + (counts.partially_failed || 0)
+  };
+}
+
 // Scrie rezultatul unei incercari de publicare (initiala SAU retry) — statusul general SI,
 // complet separat, statusul/ID-ul/eroarea/contorul de incercari per platforma. Apelantul
 // (lib/social/social-retry.js, computeAttemptPatch) calculeaza patch-ul din rezultatul
@@ -2146,12 +2193,12 @@ module.exports = {
   enqueueVideoRenderJob, claimNextVideoRenderJob, heartbeatVideoRenderJob,
   completeVideoRenderJob, failVideoRenderJob, getVideoRenderJobById, getLatestVideoRenderJobForOrder,
   countPendingOrActiveVideoRenderJobs,
-  updateOrder, listOrders, computeRevenue,
+  updateOrder, listOrders, computeRevenue, listOrdersPage, countOrders,
   logCreditEvent, getCreditEventsSince, getSetting, setSetting,
   claimCreditAlertTransition, getCreditAlertState, getCompletedOrdersSince, getAverageCreditsPerCompletedOrder,
   createTestimonial, getTestimonialById, updateTestimonial, deleteTestimonial,
   listAllTestimonials, listPublishedTestimonials, moveTestimonial,
-  createSocialPostIfNew, getSocialPostByIdempotencyKey, getSocialPostById, listSocialPosts, finalizeSocialPost,
+  createSocialPostIfNew, getSocialPostByIdempotencyKey, getSocialPostById, listSocialPosts, getSocialPostStats, finalizeSocialPost,
   claimDueSocialPost, recoverStalePublishingSocialPosts, cancelScheduledSocialPost, retrySocialPostPlatform,
   getInstagramTokenState, claimInstagramTokenRefresh, recordInstagramTokenRefreshSuccess,
   recordInstagramTokenRefreshFailure, markInstagramTokenAlertSent
