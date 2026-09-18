@@ -26,6 +26,17 @@
 
   var gaLoadStarted = false;
 
+  // FUNNEL ANALYTICS (2026-09-18) — visitor_id anonim (UUID, crypto.randomUUID()) STRICT dupa
+  // consimtamant, folosit DOAR pentru a lega evenimentele funnel (funnel_events, DB interna) de
+  // un vizitator anonim, niciodata pentru identificare (fara nume/email/IP). Lista de mai jos
+  // trebuie sa ramana IDENTICA cu TRACKABLE_EVENTS din server.js (POST /api/track) — evenimente
+  // in afara ei raman STRICT GA4 (niciun request suplimentar catre server).
+  var VISITOR_ID_KEY = 'naluna_visitor_id';
+  var FUNNEL_TRACKABLE_EVENTS = [
+    'cta_clicked', 'order_page_viewed', 'form_started', 'form_step_viewed', 'form_completed',
+    'generation_completed', 'generation_failed', 'checkout_clicked', 'checkout_returned_unpaid'
+  ];
+
   // ==========================================================================================
   // LOGICA PURA — fara acces DOM/localStorage direct, testabila izolat (vezi
   // test/analytics-client.test.js, care extrage aceste functii textual, exact ca testele
@@ -71,6 +82,21 @@
     try { global.localStorage.setItem(CONSENT_KEY, value); } catch (e) { /* best-effort */ }
   }
 
+  // Anonim, generat DOAR dupa consimtamant, persistat local — refuzul/revocarea consimtamantului
+  // (readConsent() != 'granted') face aceasta functie sa returneze mereu null, fara sa citeasca
+  // sau sa scrie vreo valoare veche ramasa in storage dintr-o eventuala acceptare anterioara.
+  function getOrCreateVisitorId() {
+    try {
+      if (!isConsentGranted(readConsent())) return null;
+      var existing = global.localStorage.getItem(VISITOR_ID_KEY);
+      if (existing) return existing;
+      if (!global.crypto || typeof global.crypto.randomUUID !== 'function') return null;
+      var id = global.crypto.randomUUID();
+      global.localStorage.setItem(VISITOR_ID_KEY, id);
+      return id;
+    } catch (e) { return null; }
+  }
+
   // ==========================================================================================
   // GA4 — incarcare STRICT dupa consimtamant, o singura data per pagina (gaLoadStarted).
   // ==========================================================================================
@@ -96,17 +122,89 @@
     if (isConsentGranted(readConsent())) loadGtagIfNeeded();
   }
 
+  // CORECTIE (2026-09-18, verificare revocare consimtamant): gtag.js, o data INCARCAT, poate
+  // trimite singur catre Google evenimente automate (ex. ping-uri periodice de "user engagement"
+  // cat timp pagina ramane deschisa) care NU trec prin functia noastra track() — a opri STRICT
+  // apelurile track() ulterioare (ce faceam pana acum) nu opreste si aceste ping-uri automate ale
+  // bibliotecii deja incarcate. Google Consent Mode e mecanismul DOCUMENTAT oficial pentru asta:
+  // gtag('consent', 'update', ...) instruieste biblioteca INSASI sa opreasca orice trimitere,
+  // indiferent de sursa apelului. No-op sigur daca gtag nu exista inca (nu a fost niciodata
+  // acordat consimtamant, deci nu s-a incarcat).
+  function updateGtagConsent(granted) {
+    try {
+      if (typeof global.gtag === 'function') {
+        global.gtag('consent', 'update', { analytics_storage: granted ? 'granted' : 'denied' });
+      }
+    } catch (e) { /* niciodata nu blocam pagina */ }
+  }
+
+  // Revocare (2026-09-18): la refuz — fie prima alegere, fie o revocare ulterioara unei acceptari
+  // anterioare (din link-ul "Cookie settings") — STERGE si identificatorul anonim local
+  // (visitor_id) deja creat. getOrCreateVisitorId() oricum nu l-ar mai fi citit/folosit cat timp
+  // consimtamantul ramane refuzat, dar il eliminam explicit din storage: (a) niciun identificator
+  // de urmarire nu ramane "in asteptare" in browser-ul utilizatorului dupa retragere, (b) daca
+  // utilizatorul accepta din nou mai tarziu, primeste un visitor_id NOU, nu il reia pe cel
+  // asociat activitatii dinainte de retragere.
+  function clearVisitorId() {
+    try { global.localStorage.removeItem(VISITOR_ID_KEY); } catch (e) { /* best-effort */ }
+  }
+
   // ==========================================================================================
   // API PUBLIC — folosit de paginile individuale (comanda.html, melodia-mea.html etc.)
   // ==========================================================================================
 
+  // Trimite evenimentul catre POST /api/track (DB interna, funnel_events) — complet SEPARAT de
+  // GA4 (esecul unuia nu afecteaza celalalt), STRICT dupa consimtamant, STRICT pentru evenimentele
+  // din FUNNEL_TRACKABLE_EVENTS (vezi mai sus). Fire-and-forget: raspunsul nu e niciodata asteptat
+  // de codul paginii, un esec de retea nu genereaza nicio eroare vizibila.
+  // extraParams poate contine STRICT o cheie rezervata `orderId` (trimisa separat, cand comanda
+  // deja exista — ex. checkout_clicked) — restul cheilor devin `meta`, filtrate oricum server-side
+  // printr-un allowlist per eveniment (vezi TRACK_META_ALLOWLIST, server.js).
+  function postTrackEvent(eventName, extraParams) {
+    try {
+      var visitorId = getOrCreateVisitorId();
+      if (!visitorId || typeof global.fetch !== 'function') return;
+      var attribution = (global.NalunaAttribution && typeof global.NalunaAttribution.getStoredAttribution === 'function')
+        ? global.NalunaAttribution.getStoredAttribution() : {};
+      var meta = {};
+      var orderId = null;
+      if (extraParams && typeof extraParams === 'object') {
+        for (var key in extraParams) {
+          if (!Object.prototype.hasOwnProperty.call(extraParams, key)) continue;
+          if (key === 'orderId') { orderId = extraParams[key]; continue; }
+          meta[key] = extraParams[key];
+        }
+      }
+      var body = JSON.stringify({
+        eventName: eventName,
+        visitorId: visitorId,
+        orderId: orderId,
+        utmSource: attribution.utm_source || null,
+        utmMedium: attribution.utm_medium || null,
+        utmCampaign: attribution.utm_campaign || null,
+        utmContent: attribution.utm_content || null,
+        utmTerm: attribution.utm_term || null,
+        fbclid: attribution.fbclid || null,
+        meta: meta
+      });
+      global.fetch('/api/track', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body, keepalive: true })
+        .catch(function () { /* best-effort — niciodata nu blocam pagina */ });
+    } catch (e) { /* niciodata nu blocam pagina */ }
+  }
+
   // Trimite un eveniment GA4 — no-op silentios daca: consimtamantul nu e 'granted', gtag nu
-  // exista (blocat/inca neincarcat) sau orice alta eroare neasteptata.
+  // exista (blocat/inca neincarcat) sau orice alta eroare neasteptata. Independent, si tot dupa
+  // consimtamant, poate trimite ACELASI eveniment si catre funnel_events (DB interna) — vezi
+  // postTrackEvent — pentru un KPI operational care nu depinde de posibilitatea de a interoga GA4.
   function track(eventName, extraParams) {
     try {
       if (!isConsentGranted(readConsent())) return;
-      if (typeof global.gtag !== 'function') return;
-      global.gtag('event', eventName, buildEventParams(extraParams));
+      if (typeof global.gtag === 'function') {
+        global.gtag('event', eventName, buildEventParams(extraParams));
+      }
+      if (FUNNEL_TRACKABLE_EVENTS.indexOf(eventName) !== -1) {
+        postTrackEvent(eventName, extraParams);
+      }
     } catch (e) { /* niciodata nu blocam pagina */ }
   }
 
@@ -212,10 +310,19 @@
     acceptBtn.addEventListener('click', function () {
       writeConsent('granted');
       loadGtagIfNeeded();
+      // Acopera si cazul "revocare, apoi re-acceptare, pe aceeasi incarcare de pagina": gtag.js
+      // era deja incarcat (gaLoadStarted=true), deci loadGtagIfNeeded() de mai sus e un no-op —
+      // fara acest apel explicit, biblioteca ar ramane "oprita" din update-ul de la refuz.
+      updateGtagConsent(true);
       hideBanner();
     });
     rejectBtn.addEventListener('click', function () {
       writeConsent('denied');
+      // Opreste orice trimitere ULTERIOARA a bibliotecii gtag.js deja incarcate (inclusiv
+      // ping-uri automate de "user engagement", nu doar apelurile noastre track()) — vezi
+      // comentariul de la updateGtagConsent — si sterge visitor_id-ul local deja creat.
+      updateGtagConsent(false);
+      clearVisitorId();
       hideBanner();
     });
     btnWrap.appendChild(acceptBtn);
@@ -265,9 +372,16 @@
     onFormStarted: onFormStarted,
     getClientId: getClientId,
     getSessionId: getSessionId,
+    // getOrCreateVisitorId — expus public: comanda.html il foloseste ca sa trimita visitorId
+    // in payload-ul POST /api/orders (leaga evenimentele funnel pre-comanda de comanda creata).
+    getOrCreateVisitorId: getOrCreateVisitorId,
     // expuse STRICT pentru teste (logica pura, fara efecte asupra paginii reale)
     _isConsentGranted: isConsentGranted,
     _isConsentDecided: isConsentDecided,
-    _buildEventParams: buildEventParams
+    _buildEventParams: buildEventParams,
+    _postTrackEvent: postTrackEvent,
+    _FUNNEL_TRACKABLE_EVENTS: FUNNEL_TRACKABLE_EVENTS,
+    _updateGtagConsent: updateGtagConsent,
+    _clearVisitorId: clearVisitorId
   };
 })(window);

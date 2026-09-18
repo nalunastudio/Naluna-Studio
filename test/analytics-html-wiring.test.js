@@ -33,14 +33,14 @@ for (const page of PAGES_WITH_ANALYTICS) {
   });
 }
 
-test('comanda.html: start_order + form_started sunt declansate langa initializarea formularului, INAINTE de orice submit', () => {
+test('comanda.html: order_page_viewed (fost "start_order", redenumit 2026-09-18 — vocabular funnel FAZA 2) + form_started sunt declansate langa initializarea formularului, INAINTE de orice submit', () => {
   const html = readHtml('comanda.html');
-  const idx = html.indexOf("window.NalunaAnalytics.track('start_order')");
+  const idx = html.indexOf("window.NalunaAnalytics.track('order_page_viewed'");
   assert.ok(idx !== -1);
-  assert.ok(html.indexOf("window.NalunaAnalytics.onFormStarted('#order-form')") > idx);
+  assert.ok(html.indexOf("window.NalunaAnalytics.onFormStarted('#order-form', 'form_started')") > idx);
   // trebuie sa apara INAINTE de handler-ul de submit (care contine apelul catre POST /api/orders).
   const submitIdx = html.indexOf("fetch('/api/orders'");
-  assert.ok(idx < submitIdx, 'start_order trebuie sa fie langa initializare, inaintea submit-ului');
+  assert.ok(idx < submitIdx, 'order_page_viewed trebuie sa fie langa initializare, inaintea submit-ului');
 });
 
 test('comanda.html: form_completed se trimite STRICT in ramura "!currentOrderId" (comanda noua creata cu succes), NICIODATA inainte de validare sau pentru un retry pe o comanda deja creata', () => {
@@ -56,6 +56,15 @@ test('comanda.html: form_completed se trimite STRICT in ramura "!currentOrderId"
   const idxFailureReturn = branch.indexOf('if (!createData.orderId)');
   const idxFormCompleted = branch.indexOf('form_completed');
   assert.ok(idxFailureReturn !== -1 && idxFailureReturn < idxFormCompleted, 'form_completed trebuie sa fie dupa garda de esec a crearii comenzii, niciodata inainte');
+});
+
+test('melodia-mea.html: checkout_clicked (2026-09-18, Funnel Analytics FAZA 2) se trimite STRICT la apasarea butonului, INAINTE de orice cerere de retea — distinct de begin_checkout (mai jos), care confirma abia ca sesiunea Stripe CHIAR a fost creata', () => {
+  const html = readHtml('melodia-mea.html');
+  const fnStart = html.indexOf('async function goToCheckout() {');
+  const idxTrack = html.indexOf("window.NalunaAnalytics.track('checkout_clicked'", fnStart);
+  const idxFetch = html.indexOf('fetch(`/api/orders/${orderId}/checkout`', fnStart);
+  assert.ok(fnStart !== -1 && idxTrack !== -1 && idxFetch !== -1);
+  assert.ok(idxTrack < idxFetch, 'checkout_clicked trebuie sa fie INAINTE de cererea catre /checkout, niciodata dupa');
 });
 
 test('melodia-mea.html: begin_checkout se trimite STRICT dupa confirmarea "data.url" (sesiune Stripe reala creata), niciodata la simplul click pe buton', () => {

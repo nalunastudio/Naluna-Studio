@@ -6,6 +6,7 @@
 <title>Compune cântecul tău — NALUNA</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <script src="/js/config.js"></script>
+<script src="/js/attribution.js"></script>
 <script src="/js/analytics.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;1,9..144,400&family=Sora:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.19/css/intlTelInput.css">
@@ -2234,6 +2235,12 @@
       localStorage.setItem(WIZARD_STEP_VERSION_KEY, CURRENT_WIZARD_STEP_VERSION);
     } catch (err) { /* ignoram */ }
     window.scrollTo({ top: 0, behavior: 'smooth' });
+    // ANALYTICS (2026-09-18, Funnel Analytics) — form_step_viewed: STRICT pentru pasii 2+ (pasul 1
+    // e deja acoperit de order_page_viewed/form_started, mai sus) — masoara progresia reala prin
+    // formular, indiferent daca pasul a fost atins prin click "Continua" sau restaurare din draft.
+    if (n > 1 && typeof window !== 'undefined' && window.NalunaAnalytics) {
+      window.NalunaAnalytics.track('form_step_viewed', { step: n, occasion: occasionInput.value || undefined });
+    }
   }
 
   function setFieldError(fieldId, message) {
@@ -3362,7 +3369,15 @@
         : null,
       story2: (selectedPlan.id === 'premium' && song2TargetInput.value === 'other')
         ? song2StoryInput.value
-        : null
+        : null,
+      // Atribuire marketing (2026-09-18) — vezi public/js/attribution.js. Optional: pagina
+      // functioneaza identic daca scriptul lipseste/esueaza (window.NalunaAttribution absent).
+      ...(typeof window !== 'undefined' && window.NalunaAttribution ? window.NalunaAttribution.getStoredAttribution() : {}),
+      // visitor_id (2026-09-18, Funnel Analytics) — leaga evenimentele funnel pre-comanda de
+      // aceasta comanda (vezi db.linkFunnelEventsToOrder, server.js). null STRICT daca
+      // consimtamantul analytics nu a fost acordat (getOrCreateVisitorId nu creeaza niciodata
+      // un identificator fara consimtamant) — comanda se creeaza identic in ambele cazuri.
+      visitorId: (typeof window !== 'undefined' && window.NalunaAnalytics) ? window.NalunaAnalytics.getOrCreateVisitorId() : null
     };
   }
 
@@ -3536,14 +3551,15 @@
   const form = document.getElementById('order-form');
   form.addEventListener('input', saveDraft);
 
-  // ANALYTICS (2026-09-14): start_order = utilizatorul a ajuns efectiv pe pagina de comanda
-  // (intentie) — form_started = prima interactie REALA cu formularul (implicare), trimis o
-  // singura data (vezi onFormStarted in analytics.js, care se auto-elimina dupa primul input/
-  // change). Diferenta dintre cele doua evenimente masoara exact abandonul "a ajuns dar nu a
-  // inceput sa completeze".
+  // ANALYTICS (2026-09-14, redenumit 2026-09-18 — vocabular funnel FAZA 2): order_page_viewed
+  // (fost "start_order" — redenumit pentru precizie: masoara STRICT ajungerea pe pagina, nu
+  // "inceperea" comenzii) = utilizatorul a ajuns efectiv pe pagina de comanda (intentie) —
+  // form_started = prima interactie REALA cu formularul (implicare), trimis o singura data (vezi
+  // onFormStarted in analytics.js, care se auto-elimina dupa primul input/change). Diferenta
+  // dintre cele doua evenimente masoara exact abandonul "a ajuns dar nu a inceput sa completeze".
   if (typeof window !== 'undefined' && window.NalunaAnalytics) {
-    window.NalunaAnalytics.track('start_order');
-    window.NalunaAnalytics.onFormStarted('#order-form');
+    window.NalunaAnalytics.track('order_page_viewed', { occasion: (document.getElementById('occasion') || {}).value || undefined });
+    window.NalunaAnalytics.onFormStarted('#order-form', 'form_started');
   }
 
   applyLang(currentLang);
@@ -3753,7 +3769,7 @@
         // mai sus (toate `return`-urile timpurii din acest handler) a trecut SI serverul a
         // acceptat/creat comanda — niciodata pentru un formular invalid sau abandonat.
         if (typeof window !== 'undefined' && window.NalunaAnalytics) {
-          window.NalunaAnalytics.track('form_completed', { package: selectedPlan.id });
+          window.NalunaAnalytics.track('form_completed', { plan: selectedPlan.id, orderId: currentOrderId });
         }
       }
 

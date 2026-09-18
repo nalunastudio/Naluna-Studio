@@ -90,6 +90,7 @@ const { DICTION_INSTRUCTIONS, getDictionInstruction, normalizeSingingText } = re
 const { htmlToPlainText } = require('./lib/email-text');
 const { buildCspDirectives } = require('./lib/csp');
 const { fetchWithTimeout } = require('./lib/fetch-with-timeout');
+const { resolvePeriodBounds, addDays } = require('./lib/funnel-period');
 const { publishPost: publishSocialPost } = require('./lib/social/social-publisher');
 const {
   validatePublishRequest: validateSocialPublishRequest,
@@ -130,6 +131,21 @@ const { Webhook } = require('svix'); // verificare semnatura webhook Resend (Faz
 
 const PORT = process.env.PORT || 3000;
 const DOMAIN = process.env.DOMAIN;
+
+// Meta Ads Funnel (2026-09-18) — comenzi de TEST ale echipei (verificari manuale, plati de
+// test), NICIODATA clienti reali — excluse STRICT din KPI-urile de conversie agregate
+// (Dashboard, viitorul panou de performanta campanii), o SINGURA sursa de adevar server-side
+// (nu hardcodat imprastiat in mai multe locuri, nu filtrat in frontend). Comanda ramane
+// vizibila si gestionabila normal in Comenzi — doar exclusa din statistici, niciodata stearsa/
+// modificata. NU trimitem niciodata aceste adrese catre GA4/Meta pentru filtrare — excluderea
+// se intampla STRICT aici, intern, inainte ca orice cifra sa ajunga in vreun raport.
+const ANALYTICS_EXCLUDED_EMAILS = (process.env.ANALYTICS_EXCLUDED_EMAILS || '')
+  .split(',')
+  .map((e) => e.trim().toLowerCase())
+  .filter(Boolean);
+function isTestCustomerEmail(email) {
+  return ANALYTICS_EXCLUDED_EMAILS.includes(String(email || '').trim().toLowerCase());
+}
 const PREVIEW_SECONDS = 40;
 // Previzualizarea GRATUITĂ a videoclipului cadou (pachetul "video"), disponibilă ÎNAINTE de
 // plată — vezi generateLyricVideo() mai jos, care taie acest fragment (stream copy, fără
@@ -1390,6 +1406,15 @@ const generationLimiter = rateLimit({
   keyGenerator: realClientIp,
   message: { error: 'Prea multe generări solicitate. Încearcă din nou mai târziu' }
 });
+// Funnel Analytics (2026-09-18) — generos (o singura vizita reala poate trimite usor 4-8
+// evenimente: cta, pagina, form_started, mai multi form_step_viewed, form_completed etc.) —
+// scopul limitei e STRICT sa opreasca un abuz clar (spam scriptat), niciodata sa afecteze un
+// vizitator real care navigheaza normal prin formular.
+const trackEventLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, max: 300, standardHeaders: true, legacyHeaders: false,
+  keyGenerator: realClientIp,
+  message: { error: 'Prea multe evenimente. Încearcă din nou mai târziu' }
+});
 const lookupLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false,
   keyGenerator: realClientIp,
@@ -1506,14 +1531,105 @@ app.get('/api/admin/orders', async (req, res, next) => {
     const qRaw = typeof req.query.q === 'string' ? req.query.q.trim() : '';
     const q = qRaw ? qRaw.slice(0, 200) : null;
 
+    // Filtre noi (2026-09-18, Funnel Analytics FAZA 2 — dashboard-ul "Sales & Funnel") — toate
+    // optionale, ADAUGATE peste filtrele existente (status/q), niciodata inlocuindu-le.
+    const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+    const dateFrom = DATE_RE.test(req.query.dateFrom || '') ? req.query.dateFrom : null;
+    // dateTo vine de la client ca ultima zi INCLUSA (ex. "31 august") — transformat aici in
+    // capatul exclusiv folosit de SQL (1 septembrie), aceeasi conventie ca restul motorului KPI.
+    const dateToExclusive = DATE_RE.test(req.query.dateTo || '') ? addDays(req.query.dateTo, 1) : null;
+    const paid = req.query.paid === 'true' ? true : (req.query.paid === 'false' ? false : null);
+    const utmSource = typeof req.query.utmSource === 'string' && req.query.utmSource.trim() ? req.query.utmSource.trim().slice(0, 300) : null;
+    const utmCampaign = typeof req.query.utmCampaign === 'string' && req.query.utmCampaign.trim() ? req.query.utmCampaign.trim().slice(0, 300) : null;
+    const testFilter = ['real', 'test'].includes(req.query.testFilter) ? req.query.testFilter : null;
+
+    const filterArgs = { status, q, dateFrom, dateToExclusive, paid, utmSource, utmCampaign, testFilter, testEmails: ANALYTICS_EXCLUDED_EMAILS };
+
     const [orders, matchingCount, totalCount, revenue] = await Promise.all([
-      db.listOrdersPage({ limit, offset, status, q }),
-      db.countOrders({ status, q }),
+      db.listOrdersPage({ limit, offset, ...filterArgs }),
+      db.countOrders(filterArgs),
       db.countOrders({}),
       db.computeRevenue()
     ]);
 
-    res.json({ orders, matchingCount, totalCount, revenue, page: { limit, offset } });
+    // isTestOrder: STRICT informativ (afisat ca badge in Comenzi) — comanda ramane completa in
+    // aceasta lista, statisticile de mai sus raman GLOBALE (neschimbate) aici; excluderea reala
+    // din KPI-urile de conversie se intampla in /api/admin/dashboard-summary.
+    const ordersWithTestFlag = orders.map((o) => ({ ...o, isTestOrder: isTestCustomerEmail(o.email) }));
+
+    res.json({ orders: ordersWithTestFlag, matchingCount, totalCount, revenue, page: { limit, offset } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Valori distincte utm_source/utm_campaign REAL prezente in comenzi — populeaza dropdown-urile de
+// filtrare din tabelul Comenzi (Sales & Funnel) fara sa hardcodam o lista arbitrara de campanii.
+// Agregare mica (GROUP BY direct pe orders, fara vreun tabel nou) — sigura de rulat des.
+app.get('/api/admin/orders/filter-options', async (req, res, next) => {
+  try {
+    const result = await db.pool.query(`
+      SELECT DISTINCT utm_source, utm_campaign FROM orders
+      WHERE utm_source IS NOT NULL OR utm_campaign IS NOT NULL
+      ORDER BY utm_source, utm_campaign
+    `);
+    res.json({
+      sources: [...new Set(result.rows.map((r) => r.utm_source).filter(Boolean))],
+      campaigns: [...new Set(result.rows.map((r) => r.utm_campaign).filter(Boolean))]
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ==========================================================================================
+// SALES & FUNNEL (2026-09-18, Funnel Analytics FAZA 2) — un singur endpoint agregat pentru toata
+// pagina /admin/orders (Period Selector -> KPI Cards -> Conversion Funnel -> Revenue & Orders
+// Trend -> Traffic & Sales Sources), acelasi principiu ca dashboard-summary de mai jos: STRICT
+// interogari agregate server-side, un singur round-trip HTTP, niciodata tot setul de comenzi/
+// evenimente catre browser. Perioada vine din query params, rezolvata DOAR aici (server-side) prin
+// lib/funnel-period.js#resolvePeriodBounds — un query param invalid produce STRICT 400, niciodata
+// o presupunere silentioasa a perioadei curente.
+app.get('/api/admin/orders/funnel-summary', async (req, res, next) => {
+  try {
+    const periodType = req.query.periodType;
+    let period;
+    if (periodType === 'month') {
+      period = { type: 'month', year: Number(req.query.year), month: Number(req.query.month) };
+    } else if (periodType === 'week') {
+      period = { type: 'week', anchorDate: req.query.anchorDate };
+    } else if (periodType === 'day') {
+      period = { type: 'day', date: req.query.date };
+    } else if (periodType === 'custom') {
+      period = { type: 'custom', startDate: req.query.startDate, endDate: req.query.endDate };
+    } else {
+      return res.status(400).json({ error: 'periodType invalid (asteptat: month/week/day/custom)' });
+    }
+
+    let bounds;
+    try {
+      bounds = resolvePeriodBounds(period);
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
+
+    const args = { startDate: bounds.startDate, endDateExclusive: bounds.endDateExclusive, excludeEmails: ANALYTICS_EXCLUDED_EMAILS };
+    const [kpis, funnel, trend, sources, dataCompleteSince] = await Promise.all([
+      db.getFunnelKpis(args),
+      db.getConversionFunnel(args),
+      db.getRevenueAndOrdersTrend(args),
+      db.getTrafficSources(args),
+      db.getFunnelDataCompleteSince()
+    ]);
+
+    res.json({
+      period: { type: periodType, startDate: bounds.startDate, endDateExclusive: bounds.endDateExclusive },
+      dataCompleteSince,
+      kpis,
+      funnel,
+      trend,
+      sources
+    });
   } catch (err) {
     next(err);
   }
@@ -1533,11 +1649,15 @@ app.get('/api/admin/dashboard-summary', async (req, res, next) => {
     // coincida textual cu tiparul cautat de test/standard-dual-version-edit.test.js (paznic de
     // regresie STRICT pentru scrieri directe de status in afara lui markGenerationFailed).
     const ATTENTION_ORDER_STATUS = 'generation_failed';
+    // KPI-uri de CONVERSIE (totalCount/revenue/attentionCount) exclud comenzile de test ale
+    // echipei (ANALYTICS_EXCLUDED_EMAILS) — vezi comentariul de la acea constanta. Lista
+    // "comenzi recente" ramane NEFILTRATA — e un jurnal operational (ce s-a intamplat), nu un
+    // KPI de business, admin-ul trebuie sa vada acolo si propriile teste.
     const [totalCount, revenue, recentOrders, attentionCount, socialStats, recentSocialPosts, creditsBalance] = await Promise.all([
-      db.countOrders({}),
-      db.computeRevenue(),
+      db.countOrders({ excludeEmails: ANALYTICS_EXCLUDED_EMAILS }),
+      db.computeRevenue({ excludeEmails: ANALYTICS_EXCLUDED_EMAILS }),
       db.listOrdersPage({ limit: 10, offset: 0 }),
-      db.countOrders({ status: ATTENTION_ORDER_STATUS }),
+      db.countOrders({ status: ATTENTION_ORDER_STATUS, excludeEmails: ANALYTICS_EXCLUDED_EMAILS }),
       db.getSocialPostStats(),
       db.listSocialPosts({ limit: 5, offset: 0 }),
       credits.getBalance({ forceRefresh: false })
@@ -1831,6 +1951,48 @@ if (require.main === module) {
 app.post('/api/admin/retention/anonymize-stale-stories', async (req, res, next) => {
   try {
     const result = await anonymizeStaleStories();
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ==========================================================================================
+// RETENTIE funnel_events (2026-09-18, Funnel Analytics FAZA 2, cerinta explicita) — 180 de zile,
+// SEPARATA si complet INDEPENDENTA de CONTENT_RETENTION_DAYS (30 zile, orders — produs/poveste/
+// materiale). funnel_events e analytics la nivel de EVENIMENT (anonim, fara PII), cu propriul
+// ciclu de viata — evenimentele mai vechi de 180 de zile sunt sterse automat, INDIFERENT daca au
+// sau nu order_id (un eveniment deja legat de o comanda nu e "salvat" de acea legatura — comanda
+// insasi, cu atributia ei UTM/fbclid persistata pe orders, NU e atinsa niciodata de acest job).
+// STRICT un DELETE pe funnel_events — niciun cod din functia de mai jos citeste/scrie vreodata
+// tabela orders.
+const FUNNEL_EVENTS_RETENTION_DAYS = 180;
+
+async function purgeStaleFunnelEvents() {
+  const cutoff = new Date(Date.now() - FUNNEL_EVENTS_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+  try {
+    const deleted = await db.deleteFunnelEventsOlderThan(cutoff);
+    if (deleted > 0) {
+      console.warn(`Retentie: ${deleted} evenimente funnel (funnel_events) mai vechi de ${FUNNEL_EVENTS_RETENTION_DAYS} zile sterse.`);
+    }
+    return { deleted };
+  } catch (err) {
+    console.error('Retentie: nu am putut sterge evenimentele funnel expirate:', err.message);
+    return { deleted: 0 };
+  }
+}
+
+if (require.main === module) {
+  // Vezi comentariul identic de la purgeStaleSourceMedia/anonymizeStaleStories mai sus — acelasi
+  // tipar EXACT (rulare imediata la boot + zilnic, .unref() ca sa nu tina procesul artificial in
+  // viata), niciun interval/mecanism paralel nou.
+  purgeStaleFunnelEvents().catch(() => {});
+  setInterval(() => { purgeStaleFunnelEvents().catch(() => {}); }, 24 * 60 * 60 * 1000).unref();
+}
+
+app.post('/api/admin/retention/purge-funnel-events', async (req, res, next) => {
+  try {
+    const result = await purgeStaleFunnelEvents();
     res.json({ ok: true, ...result });
   } catch (err) {
     next(err);
@@ -2445,7 +2607,16 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
       song2Target, occasion2, recipientRole2, senderRole2, recipientMode2, recipientNames2, recipient2, weddingType2,
       // ADAUGAT (2026-08-13) — mini-pagina dedicata datelor persoanei 2 (Premium): expeditorul,
       // relația și povestea PROPRII melodiei 2 — complet separate de senderName/relationship/story.
-      senderName2, relationship2, story2
+      senderName2, relationship2, story2,
+      // Atribuire marketing (2026-09-18) — trimise de public/js/attribution.js, STRICT
+      // identificatori de campanie/click (niciodata PII), best-effort: absenta/invaliditatea lor
+      // NU blocheaza niciodata crearea comenzii, doar lasa atribuirea necunoscuta pentru acel order.
+      utmSource, utmMedium, utmCampaign, utmContent, utmTerm, fbclid, fbp,
+      // visitorId (2026-09-18, Funnel Analytics) — identificatorul anonim generat client-side
+      // (vezi getOrCreateVisitorId, public/js/analytics.js), STRICT dupa consimtamant analytics.
+      // Foloseste EXCLUSIV pentru a lega evenimentele pre-comanda (funnel_events) de acest order
+      // dupa creare (vezi db.linkFunnelEventsToOrder mai jos) — niciodata pentru identificare.
+      visitorId
     } = req.body || {};
     const safeLang = ALLOWED_LANGS.includes(lang) ? lang : 'ro';
 
@@ -2741,6 +2912,17 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
     // ales, indiferent ce a trimis clientul in payload. Asta previne manipularea pretului.
     const price = PLAN_PRICES[plan];
 
+    // Atribuire marketing — best-effort, NICIODATA un motiv de refuz al comenzii: un string
+    // gol/lipsa/prea lung devine STRICT null (atribuire necunoscuta pentru acest order), fara
+    // niciun status 400. safeAttr taie orice valoare la 300 caractere (fbclid-urile reale sunt
+    // mult mai scurte, dar nu riscam sa respingem o comanda pentru o valoare stranie din URL).
+    const safeAttr = (v) => (typeof v === 'string' && v.trim()) ? v.trim().slice(0, 300) : null;
+    // visitor_id trebuie sa fie STRICT un UUID (formatul generat de crypto.randomUUID() in
+    // browser) — orice altceva (lipsa, gol, valoare corupta) devine null, fara nicio eroare:
+    // legarea evenimentelor pre-comanda e best-effort, niciodata un motiv de refuz al comenzii.
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const safeVisitorId = (typeof visitorId === 'string' && UUID_RE.test(visitorId.trim())) ? visitorId.trim() : null;
+
     const order = await db.createOrder({
       id: randomUUID(),
       accessToken: randomBytes(24).toString('hex'),
@@ -2766,10 +2948,121 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
       weddingType2: safeWeddingType2,
       senderName2: safeSenderName2,
       relationship2: safeRelationship2,
-      story2: safeStory2
+      story2: safeStory2,
+      utmSource: safeAttr(utmSource), utmMedium: safeAttr(utmMedium), utmCampaign: safeAttr(utmCampaign),
+      utmContent: safeAttr(utmContent), utmTerm: safeAttr(utmTerm), fbclid: safeAttr(fbclid), fbp: safeAttr(fbp),
+      visitorId: safeVisitorId
     });
 
+    // Leaga evenimentele funnel pre-comanda (cta_clicked, order_page_viewed, form_started etc.,
+    // inregistrate anonim in funnel_events inainte ca acest order sa existe) de order-ul abia
+    // creat — best-effort, nu poate esua comanda (vezi implementarea in db.js).
+    if (safeVisitorId) {
+      db.linkFunnelEventsToOrder(safeVisitorId, order.id).catch((err) => {
+        console.error('linkFunnelEventsToOrder failed (non-fatal):', err.message);
+      });
+    }
+
     res.json({ orderId: order.id, accessToken: order.accessToken });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Server-side, direct in insertFunnelEvent — pastreaza acest eveniment in acelasi flux temporal
+// ca celelalte evenimente funnel ale acestui vizitator, pentru vizualizarea Conversion Funnel din
+// /admin/orders. Autoritatea pentru KPI-ul "Orders Created" ramane STRICT tabela orders
+// (created_at) — acest rand din funnel_events e informativ, niciodata sursa de adevar pentru KPI.
+db.insertFunnelEvent({
+  eventName: 'order_created',
+  visitorId: safeVisitorId,
+  orderId: order.id,
+  utmSource: safeAttr(utmSource), utmMedium: safeAttr(utmMedium), utmCampaign: safeAttr(utmCampaign),
+  utmContent: safeAttr(utmContent), utmTerm: safeAttr(utmTerm), fbclid: safeAttr(fbclid),
+  meta: {}
+}).catch((err) => console.error('insertFunnelEvent(order_created) failed (non-fatal):', err.message));
+
+// ==========================================================================================
+// FUNNEL ANALYTICS (2026-09-18) — POST /api/track: singurul punct de intrare prin care clientul
+// (public/js/analytics.js) poate inregistra evenimente funnel in tabela funnel_events. Evenimente
+// server-autoritare precum "order_created" (mai sus), "checkout_created" (vezi POST /checkout) si
+// "purchase" (vezi webhook-ul Stripe) NU sunt niciodata acceptate aici — clientul nu poate
+// falsifica un order creat, un checkout creat sau o plata reala prin acest endpoint public.
+// Evenimente PERMISE clientului — STRICT semnale pre-comanda/pre-plata, fara nicio autoritate
+// asupra veniturilor sau statusului de plata (acelea vin exclusiv din tabela orders/Stripe).
+const TRACKABLE_EVENTS = new Set([
+  'cta_clicked',
+  'order_page_viewed',
+  'form_started',
+  'form_step_viewed',
+  'form_completed',
+  'generation_completed',
+  'generation_failed',
+  'checkout_clicked',
+  'checkout_returned_unpaid'
+]);
+
+// Allowlist STRICT per eveniment a cheilor acceptate in `meta` — aparare in adancime impotriva
+// oricarui camp neasteptat (PII sau nu) ajuns in coloana JSONB funnel_events.meta. Valorile
+// acceptate sunt DOAR string/number/boolean primitive, taiate la 60 caractere — niciodata obiecte
+// sau array-uri imbricate.
+const TRACK_META_ALLOWLIST = {
+  cta_clicked: ['location'],
+  order_page_viewed: ['occasion'],
+  form_started: ['occasion'],
+  form_step_viewed: ['occasion', 'step'],
+  form_completed: ['occasion', 'plan'],
+  generation_completed: ['plan'],
+  generation_failed: ['reason'],
+  checkout_clicked: ['plan'],
+  checkout_returned_unpaid: ['plan']
+};
+
+function sanitizeTrackMeta(eventName, rawMeta) {
+  const allowedKeys = TRACK_META_ALLOWLIST[eventName] || [];
+  const meta = {};
+  if (!rawMeta || typeof rawMeta !== 'object' || Array.isArray(rawMeta)) return meta;
+  for (const key of allowedKeys) {
+    const v = rawMeta[key];
+    if (typeof v === 'string' && v.trim()) meta[key] = v.trim().slice(0, 60);
+    else if (typeof v === 'number' && Number.isFinite(v)) meta[key] = v;
+    else if (typeof v === 'boolean') meta[key] = v;
+  }
+  return meta;
+}
+
+app.post('/api/track', trackEventLimiter, async (req, res, next) => {
+  try {
+    const { eventName, visitorId, orderId, utmSource, utmMedium, utmCampaign, utmContent, utmTerm, fbclid, meta } = req.body || {};
+
+    if (typeof eventName !== 'string' || !TRACKABLE_EVENTS.has(eventName)) {
+      // 204, nu 400 — un nume de eveniment necunoscut/vechi (ex. de la un client cache-uit
+      // dintr-un deploy anterior) nu trebuie sa apara ca eroare in consola vizitatorului.
+      return res.status(204).end();
+    }
+
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const safeVisitorId = (typeof visitorId === 'string' && UUID_RE.test(visitorId.trim())) ? visitorId.trim() : null;
+    const safeAttr = (v) => (typeof v === 'string' && v.trim()) ? v.trim().slice(0, 300) : null;
+
+    // orderId, DOAR daca ordinul chiar exista — verificare directa, rapida (PK indexat), impiedica
+    // inregistrarea unui orderId inventat/apartinand altei comenzi in funnel_events.
+    let safeOrderId = null;
+    if (typeof orderId === 'string' && UUID_RE.test(orderId.trim())) {
+      const existing = await db.getOrderById(orderId.trim());
+      if (existing) safeOrderId = existing.id;
+    }
+
+    await db.insertFunnelEvent({
+      eventName,
+      visitorId: safeVisitorId,
+      orderId: safeOrderId,
+      utmSource: safeAttr(utmSource), utmMedium: safeAttr(utmMedium), utmCampaign: safeAttr(utmCampaign),
+      utmContent: safeAttr(utmContent), utmTerm: safeAttr(utmTerm), fbclid: safeAttr(fbclid),
+      meta: sanitizeTrackMeta(eventName, meta)
+    });
+
+    res.status(204).end();
   } catch (err) {
     next(err);
   }
@@ -3770,10 +4063,30 @@ app.post('/api/orders/:orderId/checkout', requireOrderToken, async (req, res, ne
     // processConfirmedPayment), pe baza session.consent.terms_of_service confirmat de Stripe.
     await db.updateOrder(order.id, {
       checkoutSessionId: session.id,
+      // checkout_created_at (2026-09-18, Funnel Analytics) — momentul exact in care Stripe a
+      // confirmat crearea sesiunii de checkout (STRICT dupa apelul reusit catre Stripe, mai sus)
+      // — distinct de checkout_clicked (evenimentul client, la apasarea butonului) si de plata
+      // reala (paid_at, scris doar in webhook la confirmare). O sesiune expirata/neplatita tot
+      // are checkout_created_at setat — asta NU inseamna nicio dovada de plata partiala.
+      checkoutCreatedAt: new Date(),
       checkoutVariantId: order.selectedVariantId,
       checkoutVariantId2: order.selectedVariantId2 || null,
       checkoutMediaRevision: order.mediaRevision
     });
+
+    // Server-autoritar, ca "order_created" mai sus (vezi POST /api/orders) — sesiunea Stripe
+    // chiar a fost creata cu succes (apelul catre Stripe, deasupra, deja a reusit). Atributia
+    // provine din order (fixata definitiv la crearea comenzii — vezi comentariul schemei din
+    // db.js), niciodata refacuta din UTM-uri curente ale acestei cereri.
+    db.insertFunnelEvent({
+      eventName: 'checkout_created',
+      visitorId: order.visitorId || null,
+      orderId: order.id,
+      utmSource: order.utmSource || null, utmMedium: order.utmMedium || null,
+      utmCampaign: order.utmCampaign || null, utmContent: order.utmContent || null,
+      utmTerm: order.utmTerm || null, fbclid: order.fbclid || null,
+      meta: {}
+    }).catch((err) => console.error('insertFunnelEvent(checkout_created) failed (non-fatal):', err.message));
 
     res.json({ url: session.url });
   } catch (err) {

@@ -6,6 +6,7 @@
 <title>Melodia mea — NALUNA</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <script src="/js/config.js"></script>
+<script src="/js/attribution.js"></script>
 <script src="/js/analytics.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;1,9..144,400&family=Sora:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -2235,6 +2236,12 @@
         body: JSON.stringify({ variantId: v.id })
       });
       if (!res.ok) throw new Error('select failed');
+      // ANALYTICS (2026-09-18, Meta Ads Funnel): variant_selected — STRICT dupa confirmarea
+      // reala a serverului (nu la simplul click, care doar evidentiaza vizual cardul) — o
+      // selectie esuata/neconfirmata nu trebuie sa apara ca "a ales o varianta".
+      if (typeof window !== 'undefined' && window.NalunaAnalytics) {
+        window.NalunaAnalytics.track('variant_selected', { package: currentOrder.plan, variant_index: index });
+      }
     } catch (e) {
       statusMsgEl.textContent = t.msg_conn_error;
       statusMsgEl.className = 'status-err';
@@ -2465,6 +2472,13 @@
   // garantat de Stripe insusi, nu doar de acest client.
   async function goToCheckout() {
     if (checkoutInFlight) return;
+    // ANALYTICS (2026-09-18, Meta Ads Funnel): checkout_clicked — intentia clientului, STRICT
+    // la apasarea butonului, ÎNAINTE de orice cerere de retea — distinct de begin_checkout de
+    // mai jos (care confirma ca sesiunea Stripe CHIAR a fost creata). Diferenta dintre cele doua
+    // masoara exact cererile de checkout esuate/abandonate intre click si redirect.
+    if (typeof window !== 'undefined' && window.NalunaAnalytics) {
+      window.NalunaAnalytics.track('checkout_clicked', { plan: currentOrder.plan, orderId: orderId });
+    }
     checkoutInFlight = true;
     checkoutBtn.disabled = true;
     if (checkoutBtn2) checkoutBtn2.disabled = true;
@@ -3026,6 +3040,32 @@
   let premiumCompareSelection = [];
   let premiumCompareInitialized = false;
 
+  // ANALYTICS (2026-09-18, Meta Ads Funnel): milestone-ul "a ascultat" — STRICT o singura data
+  // per incarcare de pagina, indiferent cate playere audio exista (variante multiple) sau de
+  // cate ori se remonteaza un player (retry la eroare) — un al doilea/al treilea play NU mai
+  // trimite un eveniment nou, nu ne intereseaza frecventa, doar prima implicare reala.
+  let audioPlayAlreadyTracked = false;
+  function trackAudioPlayOnce() {
+    if (audioPlayAlreadyTracked) return;
+    audioPlayAlreadyTracked = true;
+    if (typeof window !== 'undefined' && window.NalunaAnalytics) {
+      window.NalunaAnalytics.track('audio_play_started');
+    }
+  }
+
+  // ANALYTICS (2026-09-18, Meta Ads Funnel): result_viewed — STRICT o singura data per
+  // incarcare de pagina, prima data cand comanda are STARE preview_ready (melodia chiar exista,
+  // gata de ascultat) — vezi loadOrder() mai jos. Reincarcari/poll-uri ulterioare, cat timp
+  // starea ramane preview_ready, NU retrimit evenimentul.
+  let resultViewedAlreadyTracked = false;
+  function trackResultViewedOnce(order) {
+    if (resultViewedAlreadyTracked) return;
+    resultViewedAlreadyTracked = true;
+    if (typeof window !== 'undefined' && window.NalunaAnalytics) {
+      window.NalunaAnalytics.track('result_viewed', { package: order.plan });
+    }
+  }
+
   // Acelasi tipar robust de montare audio (timeout explicit + reincercare la click) folosit de
   // renderVariants() mai jos (Standard/Video), extras aici ca functie reutilizabila — evita
   // duplicarea unei logici deja subtile (Safari/iOS, vezi comentariile originale din renderVariants).
@@ -3070,6 +3110,10 @@
       audioEl.addEventListener('timeupdate', () => {
         progressEl.textContent = t.listened(formatTime(audioEl.currentTime), formatTime(durationSeconds));
       });
+      // ANALYTICS (2026-09-18, Meta Ads Funnel): audio_play_started — STRICT primul play, pe
+      // ORICARE varianta, o singura data per incarcare de pagina (trackAudioPlayOnce, definit
+      // mai jos) — un milestone de implicare reala ("a ascultat"), nu doar "a vazut rezultatul".
+      audioEl.addEventListener('play', () => { trackAudioPlayOnce(); }, { once: true });
 
       audioWrap.appendChild(audioEl);
       audioEl.src = previewUrl + (previewUrl.includes('?') ? '&' : '?') + 't=' + Date.now();
@@ -3153,6 +3197,12 @@
 
     if (isResumeFlag) {
       document.getElementById('resume-banner').style.display = 'block';
+      // ANALYTICS (2026-09-18, Funnel Analytics) — vezi comentariul identic din ramura Standard/
+      // Video mai jos (syncCheckoutBtn2) — acelasi semnal, demonstrabil STRICT prin ?resume=1
+      // adaugat de Stripe la cancel_url, niciodata presupus.
+      if (typeof window !== 'undefined' && window.NalunaAnalytics) {
+        window.NalunaAnalytics.track('checkout_returned_unpaid', { plan: order.plan, orderId: order.id });
+      }
     }
 
     showState('content-state');
@@ -3812,6 +3862,13 @@
 
     if (isResume) {
       document.getElementById('resume-banner').style.display = 'block';
+      // ANALYTICS (2026-09-18, Funnel Analytics) — checkout_returned_unpaid: STRICT demonstrabil,
+      // niciodata presupus — ?resume=1 e adaugat EXCLUSIV de Stripe la cancel_url (vezi POST
+      // /api/orders/:id/checkout, server.js), deci ajungerea aici DOVEDESTE ca sesiunea de
+      // checkout a fost creata dar plata NU s-a finalizat (Stripe insusi a redirectionat inapoi).
+      if (typeof window !== 'undefined' && window.NalunaAnalytics) {
+        window.NalunaAnalytics.track('checkout_returned_unpaid', { plan: order.plan, orderId: order.id });
+      }
     }
 
     if (order.plan === 'video') {
@@ -3838,6 +3895,7 @@
       applyStaticTexts();
 
       if (order.status === 'preview_ready') {
+        trackResultViewedOnce(order);
         renderContent(order);
       } else if (order.status === 'ready') {
         showState('paid-state');

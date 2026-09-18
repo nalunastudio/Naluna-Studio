@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Comenzi — Admin NALUNA</title>
+<title>Vânzări & Funnel — Admin NALUNA</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500&family=Sora:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/admin/shared.css">
@@ -23,11 +23,64 @@
   <main class="admin-main">
     <div class="admin-header-row">
       <div>
-        <h1>Comenzi</h1>
-        <div class="admin-header-sub">Căutare, filtrare și paginare server-side — lista nu încarcă niciodată toate comenzile deodată.</div>
+        <h1>Vânzări &amp; Funnel</h1>
+        <div class="admin-header-sub">KPI-uri, funnel de conversie și atribuire — toate calculate server-side (COUNT/SUM), niciodată din tot setul de comenzi/evenimente încărcat în browser.</div>
       </div>
     </div>
 
+    <div id="data-complete-banner" class="funnel-info-banner"></div>
+
+    <!-- Period Selector -->
+    <div class="period-selector">
+      <div class="period-type-tabs" id="period-type-tabs">
+        <button type="button" class="period-tab active" data-period-type="month">Lună</button>
+        <button type="button" class="period-tab" data-period-type="week">Săptămână</button>
+        <button type="button" class="period-tab" data-period-type="day">Zi</button>
+        <button type="button" class="period-tab" data-period-type="custom">Interval custom</button>
+      </div>
+      <div class="period-nav" id="period-nav">
+        <button type="button" class="icon-btn" id="period-prev" title="Perioada anterioară">←</button>
+        <div class="period-label" id="period-label">—</div>
+        <button type="button" class="icon-btn" id="period-next" title="Perioada următoare">→</button>
+        <button type="button" class="btn-secondary btn-small" id="period-today">Azi</button>
+      </div>
+      <div class="period-custom-range" id="period-custom-range" style="display:none;">
+        <input type="date" id="period-custom-start">
+        <span>–</span>
+        <input type="date" id="period-custom-end">
+        <button type="button" class="btn-secondary btn-small" id="period-custom-apply">Aplică</button>
+      </div>
+    </div>
+    <div class="period-tz-note">Toate perioadele folosesc fusul orar Europe/London (inclusiv trecerea oră de vară/iarnă). Săptămâna = Luni–Duminică.</div>
+
+    <!-- KPI Cards -->
+    <div class="section-title">KPI-uri principale</div>
+    <div class="stats kpi-grid" id="kpi-cards"><div class="empty">Se încarcă…</div></div>
+
+    <!-- Conversion Funnel -->
+    <div class="section-title">Funnel de conversie</div>
+    <div class="section-sub">Comenzile create în perioada selectată sunt urmărite până la capăt (checkout, plată), indiferent când s-au întâmplat acele etape ulterioare. Etapele fără comandă (vizitatori urmăriți, click-uri CTA, formular început) sunt măsurate strict în fereastra perioadei.</div>
+    <div class="funnel-chart" id="funnel-chart"></div>
+
+    <!-- Revenue & Orders Trend -->
+    <div class="section-title">Evoluție venit &amp; comenzi</div>
+    <div class="section-sub">Comenzi create pe ziua creării · Venit pe ziua plății reale confirmate.</div>
+    <div class="trend-chart" id="trend-chart"></div>
+
+    <!-- Traffic & Sales Sources -->
+    <div class="section-title">Surse de trafic &amp; vânzări</div>
+    <div class="section-sub">Grupat pe sursa/campania comenzii (parametri UTM capturați la aterizare) — comenzi create în perioada selectată. „(unknown)” acoperă atât trafic posibil direct, cât și atribuire pierdută (consimțământ refuzat, link expirat) — nu le putem distinge cu datele capturate acum.</div>
+    <div class="table-scroll">
+      <table id="sources-table">
+        <thead>
+          <tr><th>Sursă</th><th>Campanie</th><th>Vizitatori urmăriți</th><th>Formular început</th><th>Comenzi create</th><th>Checkout</th><th>Plătite</th><th>Venit</th><th>Rată conversie</th></tr>
+        </thead>
+        <tbody id="sources-body"></tbody>
+      </table>
+    </div>
+
+    <!-- Orders Table -->
+    <div class="section-title">Comenzi</div>
     <div class="stats">
       <div class="stat"><div class="label">Comenzi totale</div><div class="value" id="stat-count">—</div></div>
       <div class="stat"><div class="label">Venit (comenzi plătite)</div><div class="value" id="stat-revenue">—</div></div>
@@ -44,14 +97,36 @@
         <option value="ready">Plătită și livrată</option>
         <option value="generation_failed">Eroare</option>
       </select>
+      <select id="orders-paid-filter">
+        <option value="">Plătit/Neplătit — toate</option>
+        <option value="true">Doar plătite</option>
+        <option value="false">Doar neplătite</option>
+      </select>
+      <select id="orders-source-filter">
+        <option value="">Toate sursele</option>
+      </select>
+      <select id="orders-campaign-filter">
+        <option value="">Toate campaniile</option>
+      </select>
+      <select id="orders-test-filter">
+        <option value="">Real + Test</option>
+        <option value="real">Doar reale</option>
+        <option value="test">Doar test (echipă)</option>
+      </select>
+      <label class="orders-period-sync">
+        <input type="checkbox" id="orders-sync-period" checked>
+        Restrânge la perioada selectată mai sus
+      </label>
     </div>
 
-    <table id="orders-table">
-      <thead>
-        <tr><th>Data</th><th>Pentru</th><th>Email</th><th>Limba</th><th>Ocazie</th><th>Gen</th><th>Pachet</th><th>Preț</th><th>Status</th><th>Acțiuni</th></tr>
-      </thead>
-      <tbody id="orders-body"></tbody>
-    </table>
+    <div class="table-scroll">
+      <table id="orders-table">
+        <thead>
+          <tr><th>Data</th><th>Pentru</th><th>Email</th><th>Limba</th><th>Ocazie</th><th>Gen</th><th>Pachet</th><th>Preț</th><th>Status</th><th>Sursă</th><th>Acțiuni</th></tr>
+        </thead>
+        <tbody id="orders-body"></tbody>
+      </table>
+    </div>
 
     <div class="pagination-row">
       <div class="pagination-info" id="orders-pagination-info"></div>

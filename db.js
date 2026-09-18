@@ -13,6 +13,8 @@
 const { Pool } = require('pg');
 const { randomUUID } = require('crypto');
 const { pickPremiumBonusVariantId } = require('./lib/entitlements');
+const { listDaysInRange } = require('./lib/funnel-period');
+const { computeFunnelStages } = require('./lib/funnel-math');
 
 if (!process.env.DATABASE_URL) {
   throw new Error(
@@ -565,6 +567,86 @@ async function initDb() {
   // NULL pentru orice alt pachet, si pentru Premium fara nicio varianta ramasa nealeasa.
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS premium_bonus_variant_id TEXT;`);
 
+  // ==================================================================================
+  // ATRIBUIRE MARKETING (2026-09-18, Funnel Analytics) — MODEL ALES: "last marketing touch"
+  // (NU first-touch, NU multi-touch). public/js/attribution.js captează UTM/fbclid din URL-ul
+  // de aterizare și le persistă local; o vizită NOUĂ cu parametri UTM reali SUPRASCRIE
+  // atribuirea anterioară (ultima campanie care a adus efectiv click-uri câștigă), dar o
+  // navigare internă/revizită FĂRĂ parametri (link direct, refresh) NU șterge atribuirea deja
+  // capturată — vezi `_isStoredValueValid`/comentariile din attribution.js pentru exact această
+  // regulă. Odată ce o COMANDĂ e creată, atribuirea ei rămâne FIXĂ pentru totdeauna (nu se
+  // rescrie niciodată ulterior, indiferent ce vizitează clientul după aceea pe alte pagini).
+  // Absolut NIMIC din acestea nu e PII: identificatori de campanie/click, niciodată nume/
+  // poveste/conținut. fbclid = parametrul de click Meta din URL (?fbclid=...); fbp = cookie-ul
+  // _fbp al unui eventual Meta Pixel — NEinstalat în prezent, coloana rămâne NULL, fără nicio
+  // eroare (pregătită pentru viitor, fără nicio dependință activă acum).
+  // ==================================================================================
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS utm_source TEXT;`);
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS utm_medium TEXT;`);
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS utm_campaign TEXT;`);
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS utm_content TEXT;`);
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS utm_term TEXT;`);
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS fbclid TEXT;`);
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS fbp TEXT;`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_orders_utm_campaign ON orders(utm_campaign);`);
+
+  // visitor_id: identificatorul first-party ANONIM generat client-side (crypto.randomUUID(),
+  // vezi analytics.js — getOrCreateVisitorId), STRICT după consimțământ analytics, NICIODATA
+  // derivat din IP/user-agent/fingerprint. Leagă o comandă de evenimentele ei anterioare din
+  // funnel_events (mai jos) — ex. cate persoane care au dat click pe CTA au ajuns sa creeze o
+  // comanda. NULL pentru orice comanda creata fara consimtamant analytics acordat (nu exista
+  // niciun id de legat) — limitare cunoscuta, documentata, niciodata completata artificial.
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS visitor_id TEXT;`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_orders_visitor_id ON orders(visitor_id);`);
+
+  // checkout_created_at: momentul REAL la care sesiunea Stripe a fost creata (paralel cu
+  // checkout_session_id, care retine STRICT id-ul, nu si cand anume) — necesar ca sa putem
+  // raporta "Reached Checkout" pe propria lui perioada (zi/saptamana/luna), independent de cand
+  // a fost creata comanda insasi. Se suprascrie la fiecare incercare noua de checkout (acelasi
+  // comportament ca checkout_session_id, pastrat consistent — vezi POST /checkout, server.js).
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS checkout_created_at TIMESTAMPTZ;`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_orders_checkout_created_at ON orders(checkout_created_at);`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_orders_paid_at ON orders(paid_at);`);
+
+  // ==================================================================================
+  // FUNNEL_EVENTS (2026-09-18, Funnel Analytics) — jurnal de evenimente ANONIME pentru etapele
+  // funnel-ului care preced existenta unei comenzi (nu au unde sa fie stocate pe orders, pentru
+  // ca inca nu exista niciun rand): cta_clicked, order_page_viewed, form_started,
+  // form_step_viewed. De la order_created incolo, evenimentele raman tot aici (jurnal complet,
+  // o singura sursa), dar capata si order_id, ca sa poata fi reconciliate cu tabelul orders.
+  //
+  // NICIUN PII: STRICT event_name, visitor_id (anonim, vezi mai sus), order_id (UUID opac),
+  // atribuire UTM/fbclid (identice cu cele de pe orders), si `meta` — JSONB MIC, STRICT campuri
+  // non-personale (ex. numarul pasului de formular, planul ales) — NICIODATA nume/email/
+  // poveste/continut, impus prin whitelist-ul de evenimente din server.js (POST /api/track),
+  // nu doar prin conventie aici.
+  //
+  // Proiectat pentru volum mare: PK UUID, index compus (event_name, occurred_at) pentru
+  // agregarile pe perioada (COUNT/GROUP BY, cea mai frecventa interogare), index separat pe
+  // visitor_id (reconciliere per vizitator) si order_id (join cu orders). Fara alte coloane
+  // "de rezerva" — schema minima, extensibila prin `meta` daca apare nevoie reala.
+  // ==================================================================================
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS funnel_events (
+      id UUID PRIMARY KEY,
+      event_name TEXT NOT NULL,
+      visitor_id TEXT NOT NULL,
+      order_id UUID,
+      utm_source TEXT,
+      utm_medium TEXT,
+      utm_campaign TEXT,
+      utm_content TEXT,
+      utm_term TEXT,
+      fbclid TEXT,
+      meta JSONB,
+      occurred_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_funnel_events_name_occurred_at ON funnel_events(event_name, occurred_at);`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_funnel_events_visitor_id ON funnel_events(visitor_id);`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_funnel_events_order_id ON funnel_events(order_id);`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_funnel_events_utm_campaign ON funnel_events(utm_campaign);`);
+
   // credit_events: jurnal complet al fiecarui apel real catre providerul de muzica (Suno),
   // plus fiecare blocare de generare/checkout facuta de sistemul de protectie a creditelor —
   // baza pentru statistici zilnice, estimarea comenzilor ramase si detectarea consumului
@@ -747,15 +829,26 @@ function rowToOrder(row) {
     // 2026-08-10 runda 3).
     regenerateEditVariantIds: row.regenerate_edit_variant_ids || null,
     selectedVariantId2: row.selected_variant_id_2 || null,
-    checkoutVariantId2: row.checkout_variant_id_2 || null
+    checkoutVariantId2: row.checkout_variant_id_2 || null,
+    // Atribuire marketing (2026-09-18) — captate o SINGURA DATA la crearea comenzii, niciodata
+    // rescrise ulterior (vezi createOrder mai jos si comentariul de la ALTER TABLE).
+    utmSource: row.utm_source || null,
+    utmMedium: row.utm_medium || null,
+    utmCampaign: row.utm_campaign || null,
+    utmContent: row.utm_content || null,
+    utmTerm: row.utm_term || null,
+    fbclid: row.fbclid || null,
+    fbp: row.fbp || null,
+    visitorId: row.visitor_id || null,
+    checkoutCreatedAt: row.checkout_created_at || null
   };
 }
 
 async function createOrder(order) {
   const result = await pool.query(
     `INSERT INTO orders
-      (id, access_token, occasion, recipient, email, story, genre, genre2, plan, price, lang, status, edits_used, variants, selected_variant_id, sender_name, relationship, voice_preference, phone, grandparent_type, recipient_role, sender_role, recipient_mode, recipient_names, wedding_type, song2_target, occasion_2, recipient_role_2, sender_role_2, recipient_mode_2, recipient_names_2, recipient_2, wedding_type_2, sender_name_2, relationship_2, story_2)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36)
+      (id, access_token, occasion, recipient, email, story, genre, genre2, plan, price, lang, status, edits_used, variants, selected_variant_id, sender_name, relationship, voice_preference, phone, grandparent_type, recipient_role, sender_role, recipient_mode, recipient_names, wedding_type, song2_target, occasion_2, recipient_role_2, sender_role_2, recipient_mode_2, recipient_names_2, recipient_2, wedding_type_2, sender_name_2, relationship_2, story_2, utm_source, utm_medium, utm_campaign, utm_content, utm_term, fbclid, fbp, visitor_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44)
      RETURNING *`,
     [
       order.id, order.accessToken, order.occasion, order.recipient, order.email,
@@ -770,7 +863,11 @@ async function createOrder(order) {
       order.recipientNames2 ? JSON.stringify(order.recipientNames2) : null,
       order.recipient2 || null, order.weddingType2 || null,
       // ADAUGAT (2026-08-13) — mini-pagina dedicata datelor persoanei 2.
-      order.senderName2 || null, order.relationship2 || null, order.story2 || null
+      order.senderName2 || null, order.relationship2 || null, order.story2 || null,
+      // Atribuire marketing (2026-09-18) — vezi comentariul de la ALTER TABLE/rowToOrder.
+      order.utmSource || null, order.utmMedium || null, order.utmCampaign || null,
+      order.utmContent || null, order.utmTerm || null, order.fbclid || null, order.fbp || null,
+      order.visitorId || null
     ]
   );
   return rowToOrder(result.rows[0]);
@@ -1505,6 +1602,47 @@ async function recordPaidOrderAtomically(eventId, orderId, patch) {
 }
 
 // ==================================================================================
+// FUNNEL_EVENTS (2026-09-18) — scriere. Vezi CREATE TABLE (initDb, mai sus) pentru schema
+// completa si motivatia designului. Aici STRICT persistenta — validarea/whitelist-ul de
+// evenimente traieste in server.js (POST /api/track), nu aici.
+// ==================================================================================
+async function insertFunnelEvent({ eventName, visitorId, orderId, utmSource, utmMedium, utmCampaign, utmContent, utmTerm, fbclid, meta }) {
+  await pool.query(
+    `INSERT INTO funnel_events (id, event_name, visitor_id, order_id, utm_source, utm_medium, utm_campaign, utm_content, utm_term, fbclid, meta)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+    [randomUUID(), eventName, visitorId, orderId || null, utmSource || null, utmMedium || null,
+      utmCampaign || null, utmContent || null, utmTerm || null, fbclid || null,
+      meta ? JSON.stringify(meta) : null]
+  );
+}
+
+// RETENTIE (2026-09-18, cerinta explicita) — sterge STRICT randuri din funnel_events cu
+// occurred_at < cutoff, INDIFERENT daca au order_id sau nu (evenimentele nu sunt "salvate" de
+// legatura cu o comanda — funnel_events e event-level analytics, cu retentie proprie, separata de
+// CONTENT_RETENTION_DAYS/politica de retentie a comenzilor). NU atinge NICIODATA tabela orders —
+// nici randul comenzii, nici atributia UTM/fbclid persistata pe ea (coloane distincte, complet
+// independente de aceasta functie). Returneaza numarul de randuri sterse — apelantul (server.js,
+// purgeStaleFunnelEvents) decide daca logheaza/raporteaza.
+async function deleteFunnelEventsOlderThan(cutoff) {
+  const result = await pool.query(`DELETE FROM funnel_events WHERE occurred_at < $1`, [cutoff]);
+  return result.rowCount;
+}
+
+// Leaga evenimentele deja inregistrate ale unui vizitator (cta_clicked/order_page_viewed/
+// form_started/form_step_viewed, inregistrate INAINTE ca vreo comanda sa existe) de comanda
+// creata ulterior — apelata o singura data, imediat dupa createOrder, cu acelasi visitorId
+// trimis de client. Nu afecteaza evenimentele ALTOR vizitatori (WHERE visitor_id = $1 AND
+// order_id IS NULL — nu suprascrie niciodata un order_id deja setat, de la o comanda anterioara
+// a aceluiasi vizitator).
+async function linkFunnelEventsToOrder(visitorId, orderId) {
+  if (!visitorId) return;
+  await pool.query(
+    `UPDATE funnel_events SET order_id = $2 WHERE visitor_id = $1 AND order_id IS NULL`,
+    [visitorId, orderId]
+  );
+}
+
+// ==================================================================================
 // SISTEM DE PROTECTIE A CREDITELOR — jurnal de evenimente + setari persistente.
 // Vezi credits.js pentru logica de decizie (praguri, alerte, mod de urgenta);
 // functiile de mai jos sunt strict acces la date, fara nicio logica de business.
@@ -1666,6 +1804,7 @@ const COLUMN_MAP = {
   mediaConfirmedAt: 'media_confirmed_at',
   videoStaleReason: 'video_stale_reason',
   checkoutSessionId: 'checkout_session_id',
+  checkoutCreatedAt: 'checkout_created_at',
   consentGivenAt: 'consent_given_at',
   consentPolicyVersion: 'consent_policy_version',
   checkoutVariantId: 'checkout_variant_id',
@@ -1696,8 +1835,29 @@ async function listOrders() {
   return result.rows.map(rowToOrder);
 }
 
-async function computeRevenue() {
-  const result = await pool.query(`SELECT COALESCE(SUM(price), 0) AS total FROM orders WHERE status = 'ready'`);
+// CORECTIE (2026-09-18, Funnel Analytics FAZA 2): SUM(price) -> SUM(COALESCE(amount_total,
+// price)) — price e pretul CALCULAT server-side la crearea comenzii (poate diverge de suma REALA
+// incasata, ex. discount/curs valutar/corectie Stripe), in timp ce amount_total e suma CONFIRMATA
+// de Stripe la plata reala (vezi processConfirmedPayment, server.js) — sursa mai robusta cand
+// exista. price ramane fallback STRICT pentru comenzile platite INAINTE ca amount_total sa fi
+// fost introdus in schema, ca sa nu piarda/subraporteze venitul istoric real. Aceeasi formula ca
+// getFunnelKpis/getRevenueAndOrdersTrend/getTrafficSources (db.js) — un singur mod de a calcula
+// "venit" in tot Admin-ul, niciodata doua cifre diferite pentru acelasi concept.
+//
+// CORECTIE (2026-09-18, runda 2, cerinta EXPLICITA): status = 'ready' -> paid_at IS NOT NULL —
+// "ready" e starea OPERATIONALA a melodiei (generare/livrare finalizata), nu dovada platii. Desi
+// in codul actual paid_at si status='ready' se scriu ATOMIC, in ACELASI loc (processConfirmedPayment),
+// sunt concepte diferite care s-ar putea desincroniza in viitor (ex. o corectie manuala de status,
+// un refund care schimba statusul dar nu si paid_at) — sursa de adevar pentru "a platit cineva?"
+// trebuie sa fie STRICT dovada platii (paid_at), niciodata starea operationala a produsului.
+async function computeRevenue({ excludeEmails = null } = {}) {
+  const values = [];
+  let where = `paid_at IS NOT NULL`;
+  if (excludeEmails && excludeEmails.length > 0) {
+    values.push(excludeEmails.map((e) => e.toLowerCase()));
+    where += ` AND lower(email) != ALL($${values.length})`;
+  }
+  const result = await pool.query(`SELECT COALESCE(SUM(COALESCE(amount_total, price)), 0) AS total FROM orders WHERE ${where}`, values);
   return Number(result.rows[0].total);
 }
 
@@ -1705,11 +1865,54 @@ async function computeRevenue() {
 // mai jos — evita sa se poata desincroniza vreodata (acelasi filtru aplicat listei si numaratorii
 // ei). q cauta STRICT in recipient/email (campurile vizibile in tabelul Admin) prin ILIKE — volum
 // asteptat (sute/mii de comenzi, nu milioane), deci un index dedicat nu e necesar acum.
-function buildOrdersFilter({ status, q }) {
+// excludeEmails: comenzi de TEST ale echipei (vezi ANALYTICS_EXCLUDED_EMAILS, server.js) —
+// filtrate STRICT la nivel SQL (email NOT IN (...), case-insensitive prin lower()), niciodata
+// prin filtrare in JS dupa ce datele au fost deja incarcate — asta ar strica exact statisticile
+// agregate (COUNT/SUM) pe care le protejam. Optional peste tot: apelantul care NU trimite
+// excludeEmails (ex. Comenzi — admin trebuie sa vada/gestioneze SI comenzile de test) primeste
+// comportamentul complet neschimbat.
+// EXTINS (2026-09-18, Funnel Analytics FAZA 2) — filtrele noi cerute pentru tabelul Comenzi
+// (interval de date, platit/neplatit, sursa/campanie UTM, real/test), TOATE optionale si
+// independente de excludeEmails (care ramane exclusiv mecanismul folosit de statisticile
+// agregate — Dashboard/KPI-uri — neschimbat). testFilter foloseste testEmails SEPARAT de
+// excludeEmails ca sa nu se poata combina accidental cele doua concepte (un apelant care exclude
+// STRICT prin excludeEmails, ca inainte, ramane complet neafectat de acest bloc nou).
+function buildOrdersFilter({ status, q, excludeEmails, dateFrom, dateToExclusive, paid, utmSource, utmCampaign, testFilter, testEmails }) {
   const conditions = [];
   const values = [];
   if (status) { values.push(status); conditions.push(`status = $${values.length}`); }
   if (q) { values.push(`%${q}%`); conditions.push(`(recipient ILIKE $${values.length} OR email ILIKE $${values.length})`); }
+  if (excludeEmails && excludeEmails.length > 0) {
+    values.push(excludeEmails.map((e) => e.toLowerCase()));
+    conditions.push(`lower(email) != ALL($${values.length})`);
+  }
+  // dateFrom/dateToExclusive: date calendaristice YYYY-MM-DD (Europe/London) — vezi
+  // lib/funnel-period.js, resolvePeriodBounds — capatul din urma e STRICT exclusiv, aceeasi
+  // conventie ca restul motorului de agregare KPI, ca sa nu existe doua reguli diferite de
+  // granita a zilei in acelasi ecran Admin.
+  if (dateFrom) { values.push(dateFrom); conditions.push(`created_at >= ($${values.length}::date AT TIME ZONE 'Europe/London')`); }
+  if (dateToExclusive) { values.push(dateToExclusive); conditions.push(`created_at < ($${values.length}::date AT TIME ZONE 'Europe/London')`); }
+  // paid: STRICT pe dovada platii (paid_at), niciodata pe status='ready' (stare operationala a
+  // melodiei) — vezi comentariul din computeRevenue pentru motivatia completa.
+  if (paid === true) { conditions.push(`paid_at IS NOT NULL`); }
+  else if (paid === false) { conditions.push(`paid_at IS NULL`); }
+  if (utmSource) { values.push(utmSource); conditions.push(`lower(utm_source) = lower($${values.length})`); }
+  if (utmCampaign) { values.push(utmCampaign); conditions.push(`lower(utm_campaign) = lower($${values.length})`); }
+  if (testFilter === 'real') {
+    if (testEmails && testEmails.length > 0) {
+      values.push(testEmails.map((e) => e.toLowerCase()));
+      conditions.push(`lower(email) != ALL($${values.length})`);
+    }
+  } else if (testFilter === 'test') {
+    // Fara nicio adresa de test configurata (ANALYTICS_EXCLUDED_EMAILS lipsa) — filtrul "Test"
+    // returneaza STRICT niciun rezultat, niciodata o eroare si niciodata tot tabelul.
+    if (testEmails && testEmails.length > 0) {
+      values.push(testEmails.map((e) => e.toLowerCase()));
+      conditions.push(`lower(email) = ANY($${values.length})`);
+    } else {
+      conditions.push(`FALSE`);
+    }
+  }
   return { where: conditions.length ? `WHERE ${conditions.join(' AND ')}` : '', values };
 }
 
@@ -1717,8 +1920,10 @@ function buildOrdersFilter({ status, q }) {
 // (pastrata neschimbata, folosita de unelte interne care chiar au nevoie de tot setul, ex.
 // cleanup/abandoned-uploads), aceasta returneaza STRICT o pagina — niciodata tot tabelul catre
 // browser. idx_orders_created_at (deja existent) acopera ORDER BY + LIMIT/OFFSET eficient.
-async function listOrdersPage({ limit = 50, offset = 0, status = null, q = null } = {}) {
-  const { where, values } = buildOrdersFilter({ status, q });
+async function listOrdersPage({ limit = 50, offset = 0, status = null, q = null, excludeEmails = null,
+  dateFrom = null, dateToExclusive = null, paid = null, utmSource = null, utmCampaign = null,
+  testFilter = null, testEmails = null } = {}) {
+  const { where, values } = buildOrdersFilter({ status, q, excludeEmails, dateFrom, dateToExclusive, paid, utmSource, utmCampaign, testFilter, testEmails });
   const result = await pool.query(
     `SELECT * FROM orders ${where} ORDER BY created_at DESC LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
     [...values, limit, offset]
@@ -1728,10 +1933,275 @@ async function listOrdersPage({ limit = 50, offset = 0, status = null, q = null 
 
 // Numarul de comenzi ce corespund acelorasi filtre ca listOrdersPage — folosit atat pentru
 // controalele de paginare (cate pagini sunt), cat si pentru statisticile globale (fara filtre).
-async function countOrders({ status = null, q = null } = {}) {
-  const { where, values } = buildOrdersFilter({ status, q });
+async function countOrders({ status = null, q = null, excludeEmails = null,
+  dateFrom = null, dateToExclusive = null, paid = null, utmSource = null, utmCampaign = null,
+  testFilter = null, testEmails = null } = {}) {
+  const { where, values } = buildOrdersFilter({ status, q, excludeEmails, dateFrom, dateToExclusive, paid, utmSource, utmCampaign, testFilter, testEmails });
   const result = await pool.query(`SELECT COUNT(*) AS total FROM orders ${where}`, values);
   return Number(result.rows[0].total);
+}
+
+// ==================================================================================
+// FUNNEL ANALYTICS (2026-09-18, FAZA 2) — motor de agregare pentru dashboard-ul "Sales & Funnel"
+// (/admin/orders). Toate functiile de mai jos fac STRICT agregari server-side (COUNT/SUM/GROUP
+// BY/FILTER) — niciun set de comenzi/evenimente brute nu paraseste vreodata baza de date catre
+// browser. Perioada (startDate/endDateExclusive) vine deja rezolvata din
+// lib/funnel-period.js#resolvePeriodBounds — date calendaristice YYYY-MM-DD (Europe/London),
+// capatul din urma exclusiv; conversia reala in instante UTC (unde conteaza DST-ul) se intampla
+// AICI, o singura data pe query, prin `$n::date AT TIME ZONE 'Europe/London'` (foloseste baza de
+// date IANA reala a Postgres).
+//
+// SURSA DE ADEVAR PENTRU VENIT: COALESCE(amount_total, price) — amount_total (suma REALA
+// confirmata de Stripe, in lire, deja convertita din bani/cents la crearea comenzii platite —
+// vezi processConfirmedPayment, server.js) e preferat cand exista; price (pretul calculat
+// server-side la crearea comenzii) ramane fallback-ul STRICT pentru comenzile platite INAINTE ca
+// amount_total sa fie introdus in schema — pastreaza veniturile istorice reale, nu le sterge/
+// subraporteaza. "Comanda platita" = STRICT paid_at IS NOT NULL (dovada platii), NICIODATA
+// status='ready' (CORECTIE 2026-09-18, runda 2, cerinta explicita) — desi in codul actual
+// paid_at si status='ready' se scriu atomic, in acelasi loc (processConfirmedPayment, server.js),
+// sunt concepte diferite: status='ready' descrie starea OPERATIONALA a melodiei (generare/livrare
+// finalizata), nu dovada platii. O desincronizare viitoare (corectie manuala de status, refund
+// care schimba statusul dar nu paid_at) nu trebuie sa poata schimba silentios cifra de venit.
+//
+// LIMITA STRUCTURALA, documentata explicit (nu un defect de reparat): funnel_events e ANONIM prin
+// design (fara email/PII — cerinta explicita de confidentialitate). O comanda de test a echipei
+// (ANALYTICS_EXCLUDED_EMAILS) poate fi exclusa din etapele CU comanda (Orders Created/Reached
+// Checkout/Paid Orders/Revenue) prin email — dar din etapele FARA comanda inca (Tracked Visitors/
+// CTA Clicks/Form Started) DOAR daca evenimentul a fost ulterior legat de acea comanda de test
+// (order_id -> orders.email, vezi linkFunnelEventsToOrder). O vizita anonima a echipei care nu a
+// dus niciodata la o comanda nu poate fi exclusa din aceste 3 KPI-uri — consecinta directa a
+// faptului ca aceste evenimente nu identifica niciodata vizitatorul, nu o eroare de calcul.
+function timeWindowClause(column, paramIndex1, paramIndex2) {
+  return `${column} >= ($${paramIndex1}::date AT TIME ZONE 'Europe/London') AND ${column} < ($${paramIndex2}::date AT TIME ZONE 'Europe/London')`;
+}
+
+async function getFunnelKpis({ startDate, endDateExclusive, excludeEmails = [] } = {}) {
+  const excl = (excludeEmails || []).map((e) => e.toLowerCase());
+  const hasExcl = excl.length > 0;
+  const params = hasExcl ? [startDate, endDateExclusive, excl] : [startDate, endDateExclusive];
+
+  const preOrderSql = `
+    SELECT
+      COUNT(DISTINCT fe.visitor_id) FILTER (WHERE fe.visitor_id IS NOT NULL) AS tracked_visitors,
+      COUNT(*) FILTER (WHERE fe.event_name = 'cta_clicked') AS cta_clicks,
+      COUNT(*) FILTER (WHERE fe.event_name = 'form_started') AS form_started
+    FROM funnel_events fe
+    LEFT JOIN orders o ON o.id = fe.order_id
+    WHERE ${timeWindowClause('fe.occurred_at', 1, 2)}
+      ${hasExcl ? `AND (o.email IS NULL OR lower(o.email) != ALL($3))` : ''}
+  `;
+  const ordersCreatedSql = `
+    SELECT COUNT(*) AS n FROM orders
+    WHERE ${timeWindowClause('created_at', 1, 2)}
+      ${hasExcl ? `AND lower(email) != ALL($3)` : ''}
+  `;
+  const reachedCheckoutSql = `
+    SELECT COUNT(*) AS n FROM orders
+    WHERE checkout_created_at IS NOT NULL AND ${timeWindowClause('checkout_created_at', 1, 2)}
+      ${hasExcl ? `AND lower(email) != ALL($3)` : ''}
+  `;
+  // Paid Orders/Customers/Revenue: STRICT pe paid_at (dovada platii), NICIODATA pe status='ready'
+  // (stare operationala a melodiei — concepte diferite, cerinta explicita 2026-09-18 runda 2).
+  // timeWindowClause('paid_at', ...) deja garanteaza paid_at IS NOT NULL (o valoare NULL nu poate
+  // satisface niciodata >= $1), dar il scriem explicit mai jos pentru claritate.
+  const paidSql = `
+    SELECT
+      COUNT(*) AS paid_orders,
+      COUNT(DISTINCT lower(email)) AS paid_customers,
+      COALESCE(SUM(COALESCE(amount_total, price)), 0) AS revenue
+    FROM orders
+    WHERE paid_at IS NOT NULL AND ${timeWindowClause('paid_at', 1, 2)}
+      ${hasExcl ? `AND lower(email) != ALL($3)` : ''}
+  `;
+
+  const [preOrderRes, ordersCreatedRes, reachedCheckoutRes, paidRes] = await Promise.all([
+    pool.query(preOrderSql, params),
+    pool.query(ordersCreatedSql, params),
+    pool.query(reachedCheckoutSql, params),
+    pool.query(paidSql, params)
+  ]);
+
+  return {
+    trackedVisitors: Number(preOrderRes.rows[0].tracked_visitors),
+    ctaClicks: Number(preOrderRes.rows[0].cta_clicks),
+    formStarted: Number(preOrderRes.rows[0].form_started),
+    ordersCreated: Number(ordersCreatedRes.rows[0].n),
+    reachedCheckout: Number(reachedCheckoutRes.rows[0].n),
+    paidOrders: Number(paidRes.rows[0].paid_orders),
+    paidCustomers: Number(paidRes.rows[0].paid_customers),
+    revenue: Number(paidRes.rows[0].revenue)
+  };
+}
+
+// Conversion Funnel — SPRE DEOSEBIRE de getFunnelKpis (fiecare KPI pe propriul timestamp natural,
+// in fereastra perioadei), etapele CU comanda (Orders Created/Reached Checkout/Paid Orders) sunt
+// COHORTATE: "comanda" = orice comanda CREATA in perioada, iar Reached Checkout/Paid Orders
+// masoara evolutia EVENTUALA a ACELEIASI cohorte, indiferent daca checkout-ul/plata s-au intamplat
+// in aceeasi perioada sau mai tarziu. Alegere deliberata (documentata in raportul FAZA 2): un
+// funnel de conversie coerent raspunde la "din cei care au inceput in aceasta perioada, cati au
+// ajuns pana la capat" — nu la trei ferestre de timp independente, care nu s-ar mai putea citi ca
+// un singur parcurs. Etapele FARA comanda (Tracked Visitors/CTA Clicks/Form Started) raman
+// ferestruite pe propriul lor timestamp (occurred_at) — nu exista inca nicio comanda de care sa
+// le legam la acel moment.
+async function getConversionFunnel({ startDate, endDateExclusive, excludeEmails = [] } = {}) {
+  const excl = (excludeEmails || []).map((e) => e.toLowerCase());
+  const hasExcl = excl.length > 0;
+  const params = hasExcl ? [startDate, endDateExclusive, excl] : [startDate, endDateExclusive];
+
+  const preOrderSql = `
+    SELECT
+      COUNT(DISTINCT fe.visitor_id) FILTER (WHERE fe.visitor_id IS NOT NULL) AS tracked_visitors,
+      COUNT(*) FILTER (WHERE fe.event_name = 'cta_clicked') AS cta_clicks,
+      COUNT(*) FILTER (WHERE fe.event_name = 'form_started') AS form_started
+    FROM funnel_events fe
+    LEFT JOIN orders o ON o.id = fe.order_id
+    WHERE ${timeWindowClause('fe.occurred_at', 1, 2)}
+      ${hasExcl ? `AND (o.email IS NULL OR lower(o.email) != ALL($3))` : ''}
+  `;
+  const cohortSql = `
+    SELECT
+      COUNT(*) AS orders_created,
+      COUNT(*) FILTER (WHERE checkout_created_at IS NOT NULL) AS reached_checkout,
+      COUNT(*) FILTER (WHERE paid_at IS NOT NULL) AS paid_orders
+    FROM orders
+    WHERE ${timeWindowClause('created_at', 1, 2)}
+      ${hasExcl ? `AND lower(email) != ALL($3)` : ''}
+  `;
+
+  const [preOrderRes, cohortRes] = await Promise.all([
+    pool.query(preOrderSql, params),
+    pool.query(cohortSql, params)
+  ]);
+
+  const counts = {
+    trackedVisitors: Number(preOrderRes.rows[0].tracked_visitors),
+    ctaClicks: Number(preOrderRes.rows[0].cta_clicks),
+    formStarted: Number(preOrderRes.rows[0].form_started),
+    ordersCreated: Number(cohortRes.rows[0].orders_created),
+    reachedCheckout: Number(cohortRes.rows[0].reached_checkout),
+    paidOrders: Number(cohortRes.rows[0].paid_orders)
+  };
+
+  // Formula de conversie/pierdere e logica PURA, testata izolat — vezi lib/funnel-math.js si
+  // test/funnel-math.test.js (inclusiv cazul explicit "numitor 0 -> null, niciodata 0%/Infinity%").
+  return computeFunnelStages(counts);
+}
+
+// Revenue & Orders Trend — serie zilnica, Orders Created pe created_at, Revenue pe paid_at (data
+// PLATII reale, nu a crearii comenzii — un order creat pe 30 si platit pe 2 ale lunii urmatoare
+// apare cu venit in ziua 2, nu in ziua 30). Zilele fara nicio comanda/plata apar explicit cu 0
+// (listDaysInRange umple golurile) — niciodata lipsa din serie, ca sa nu creeze un gol vizual
+// ambiguu intr-un grafic.
+async function getRevenueAndOrdersTrend({ startDate, endDateExclusive, excludeEmails = [] } = {}) {
+  const excl = (excludeEmails || []).map((e) => e.toLowerCase());
+  const hasExcl = excl.length > 0;
+  const params = hasExcl ? [startDate, endDateExclusive, excl] : [startDate, endDateExclusive];
+
+  const ordersByDaySql = `
+    SELECT to_char(date_trunc('day', created_at AT TIME ZONE 'Europe/London'), 'YYYY-MM-DD') AS day, COUNT(*) AS n
+    FROM orders
+    WHERE ${timeWindowClause('created_at', 1, 2)}
+      ${hasExcl ? `AND lower(email) != ALL($3)` : ''}
+    GROUP BY 1
+  `;
+  const revenueByDaySql = `
+    SELECT to_char(date_trunc('day', paid_at AT TIME ZONE 'Europe/London'), 'YYYY-MM-DD') AS day,
+      COALESCE(SUM(COALESCE(amount_total, price)), 0) AS revenue
+    FROM orders
+    WHERE paid_at IS NOT NULL AND ${timeWindowClause('paid_at', 1, 2)}
+      ${hasExcl ? `AND lower(email) != ALL($3)` : ''}
+    GROUP BY 1
+  `;
+
+  const [ordersRes, revenueRes] = await Promise.all([
+    pool.query(ordersByDaySql, params),
+    pool.query(revenueByDaySql, params)
+  ]);
+  const ordersByDay = new Map(ordersRes.rows.map((r) => [r.day, Number(r.n)]));
+  const revenueByDay = new Map(revenueRes.rows.map((r) => [r.day, Number(r.revenue)]));
+
+  return listDaysInRange(startDate, endDateExclusive).map((day) => ({
+    date: day,
+    ordersCreated: ordersByDay.get(day) || 0,
+    revenue: revenueByDay.get(day) || 0
+  }));
+}
+
+// Traffic & Sales Sources — cohortat identic cu getConversionFunnel (comenzi CREATE in perioada),
+// pentru ca cifrele din acest tabel sa fie consistente cu funnel-ul de mai sus (acelasi numitor).
+// "(unknown)" acopera ATAT vizite fara niciun parametru UTM (posibil trafic direct netaguit),
+// CAT SI orice atribuire pierduta (consimtamant refuzat, link vechi peste 30 de zile, localStorage
+// golit) — nu le putem distinge cu datele capturate acum (fara captura de referrer), deci NU
+// inventam o categorie separata "Direct" pe care nu o putem demonstra (vezi raportul FAZA 2).
+async function getTrafficSources({ startDate, endDateExclusive, excludeEmails = [] } = {}) {
+  const excl = (excludeEmails || []).map((e) => e.toLowerCase());
+  const hasExcl = excl.length > 0;
+  const params = hasExcl ? [startDate, endDateExclusive, excl] : [startDate, endDateExclusive];
+
+  const ordersSql = `
+    SELECT
+      COALESCE(utm_source, '(unknown)') AS source,
+      COALESCE(utm_campaign, '(unknown)') AS campaign,
+      COUNT(*) AS orders_created,
+      COUNT(*) FILTER (WHERE checkout_created_at IS NOT NULL) AS reached_checkout,
+      COUNT(*) FILTER (WHERE paid_at IS NOT NULL) AS paid_orders,
+      COALESCE(SUM(COALESCE(amount_total, price)) FILTER (WHERE paid_at IS NOT NULL), 0) AS revenue
+    FROM orders
+    WHERE ${timeWindowClause('created_at', 1, 2)}
+      ${hasExcl ? `AND lower(email) != ALL($3)` : ''}
+    GROUP BY 1, 2
+  `;
+  const preOrderSql = `
+    SELECT
+      COALESCE(fe.utm_source, '(unknown)') AS source,
+      COALESCE(fe.utm_campaign, '(unknown)') AS campaign,
+      COUNT(DISTINCT fe.visitor_id) FILTER (WHERE fe.visitor_id IS NOT NULL) AS tracked_visitors,
+      COUNT(*) FILTER (WHERE fe.event_name = 'form_started') AS form_started
+    FROM funnel_events fe
+    LEFT JOIN orders o ON o.id = fe.order_id
+    WHERE ${timeWindowClause('fe.occurred_at', 1, 2)}
+      ${hasExcl ? `AND (o.email IS NULL OR lower(o.email) != ALL($3))` : ''}
+    GROUP BY 1, 2
+  `;
+
+  const [ordersRes, preOrderRes] = await Promise.all([
+    pool.query(ordersSql, params),
+    pool.query(preOrderSql, params)
+  ]);
+
+  const key = (s, c) => `${s} ${c}`;
+  const rows = new Map();
+  for (const r of ordersRes.rows) {
+    rows.set(key(r.source, r.campaign), {
+      source: r.source, campaign: r.campaign,
+      trackedVisitors: 0, formStarted: 0,
+      ordersCreated: Number(r.orders_created), reachedCheckout: Number(r.reached_checkout),
+      paidOrders: Number(r.paid_orders), revenue: Number(r.revenue)
+    });
+  }
+  for (const r of preOrderRes.rows) {
+    const k = key(r.source, r.campaign);
+    const existing = rows.get(k) || {
+      source: r.source, campaign: r.campaign,
+      trackedVisitors: 0, formStarted: 0, ordersCreated: 0, reachedCheckout: 0, paidOrders: 0, revenue: 0
+    };
+    existing.trackedVisitors = Number(r.tracked_visitors);
+    existing.formStarted = Number(r.form_started);
+    rows.set(k, existing);
+  }
+
+  return Array.from(rows.values())
+    .map((r) => ({ ...r, conversionRatePct: r.ordersCreated > 0 ? (r.paidOrders / r.ordersCreated) * 100 : null }))
+    .sort((a, b) => b.ordersCreated - a.ordersCreated);
+}
+
+// Data exacta de la care analiza funnel-ului e COMPLETA (funnel_events a inceput sa existe) —
+// null daca inca nu exista niciun eveniment (nedeployat inca/DB proaspata). Afisata explicit in
+// Admin — nicio cifra din perioadele DINAINTE de aceasta data pentru Tracked Visitors/CTA Clicks/
+// Form Started nu trebuie interpretata ca "zero real", ci ca "nemasurat inca".
+async function getFunnelDataCompleteSince() {
+  const result = await pool.query(`SELECT MIN(occurred_at) AS min_at FROM funnel_events`);
+  return result.rows[0].min_at || null;
 }
 
 // ==================================================================================
@@ -2175,6 +2645,9 @@ async function markInstagramTokenAlertSent() {
 
 module.exports = {
   pool, initDb, createOrder, getOrderById, getOrderByToken, getOrderByMusicTaskId, getOrderByAnyMusicTaskId,
+  insertFunnelEvent, linkFunnelEventsToOrder, deleteFunnelEventsOlderThan,
+  getFunnelKpis, getConversionFunnel, getRevenueAndOrdersTrend, getTrafficSources, getFunnelDataCompleteSince,
+  buildOrdersFilter,
   getStuckInFlightOrders,
   anonymizeOrder,
   findOrdersEligibleForSourceMediaPurge,

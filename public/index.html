@@ -9,6 +9,7 @@
 <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <script src="/js/config.js"></script>
+<script src="/js/attribution.js"></script>
 <script src="/js/analytics.js"></script>
 <meta property="og:title" content="NALUNA — songs made from memories">
 <meta property="og:description" content="Un cântec personalizat, compus după povestea ta.">
@@ -299,7 +300,7 @@
   <div style="text-align:center; margin-bottom:8px;">
     <a href="/comanda-mea.html" data-i18n="nav_myorder" style="font-size:13px; color:var(--text-secondary); text-decoration:underline; text-underline-offset:2px;">Comanda mea</a>
   </div>
-  <a href="/comanda.html" class="btn btn-primary" data-i18n="order_now_btn">Comandă acum</a>
+  <a href="/comanda.html" class="btn btn-primary" data-i18n="order_now_btn" data-cta-location="mobile_sticky">Comandă acum</a>
 </div>
 
 <div class="wrap">
@@ -310,7 +311,7 @@
     </div>
     <div class="nav-links">
       <a href="#cum-functioneaza" data-i18n="nav_how">Cum funcționează</a>
-      <a href="/comanda.html" data-i18n="nav_order">Comanda</a>
+      <a href="/comanda.html" data-i18n="nav_order" data-cta-location="nav_link">Comanda</a>
       <a href="/comanda-mea.html" data-i18n="nav_myorder">Comanda mea</a>
     </div>
     <div class="lang-switch" style="margin-right:12px;">
@@ -325,7 +326,7 @@
         <option value="tr">🇹🇷 TR</option>
       </select>
     </div>
-    <a href="/comanda.html" class="btn btn-ghost" data-i18n="nav_cta">Compune acum</a>
+    <a href="/comanda.html" class="btn btn-ghost" data-i18n="nav_cta" data-cta-location="nav">Compune acum</a>
   </nav>
 
   <section class="hero" style="border:none; padding-top:24px;">
@@ -334,7 +335,7 @@
       <h1 data-i18n="hero_title">Un cântec cu <em>numele lui</em>, nu o piesă generică</h1>
       <p class="sub" data-i18n="hero_sub">Spui povestea. Noi scriem versurile și compunem melodia, cu voce, în stilul muzical pe care îl alegi. Livrare în cont, gata de trimis sau descărcat.</p>
       <div class="hero-cta-row">
-        <a href="/comanda.html" class="btn btn-primary" data-i18n="hero_cta">Comandă acum</a>
+        <a href="/comanda.html" class="btn btn-primary" data-i18n="hero_cta" data-cta-location="hero">Comandă acum</a>
         <span class="price-note" data-i18n="hero_note">Plată securizată · fără abonament</span>
         <span class="price-note" data-i18n="intl_note" style="display:block; margin-top:4px;">Livrare internațională, prin email</span>
       </div>
@@ -385,7 +386,7 @@
       </div>
     </div>
     <div style="text-align:center; margin-top:44px;">
-      <a href="/comanda.html" class="btn btn-primary" data-i18n="order_now_btn">Comandă acum</a>
+      <a href="/comanda.html" class="btn btn-primary" data-i18n="order_now_btn" data-cta-location="how_it_works">Comandă acum</a>
     </div>
   </section>
 
@@ -416,7 +417,7 @@
       </div>
     </div>
     <div style="text-align:center; margin-top:44px;">
-      <a href="/comanda.html" class="btn btn-primary" data-i18n="order_now_btn">Comandă acum</a>
+      <a href="/comanda.html" class="btn btn-primary" data-i18n="order_now_btn" data-cta-location="pricing">Comandă acum</a>
     </div>
   </section>
 
@@ -824,6 +825,15 @@
   }
 
   loadTestimonialsSection();
+
+  // Funnel Analytics (2026-09-18) — cta_clicked: fiecare link "Comandă acum"/"Compune acum" catre
+  // /comanda.html, cu locatia lui exacta pe pagina (data-cta-location) ca meta — best-effort, STRICT
+  // dupa consimtamant (vezi NalunaAnalytics.track), NU intarzie niciodata navigarea catre pagina.
+  document.querySelectorAll('a[href="/comanda.html"][data-cta-location]').forEach((el) => {
+    el.addEventListener('click', () => {
+      try { window.NalunaAnalytics && window.NalunaAnalytics.track('cta_clicked', { location: el.getAttribute('data-cta-location') }); } catch (e) {}
+    });
+  });
 </script>
 
 </body>
