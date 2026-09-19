@@ -28,11 +28,6 @@ h1{ font-family:'Fraunces', serif; font-weight:400; font-size:26px; margin:0; }
 .admin-nav a:hover{ background:var(--bg-secondary); color:var(--text); }
 .admin-nav a.active{ background:var(--text); color:var(--bg); }
 .admin-main{ flex:1; min-width:0; padding:36px 32px; max-width:1180px; }
-/* Modificator OPTIONAL (2026-09-18) — STRICT pentru pagini cu continut lat (tabelul Comenzi),
-   NU schimba latimea implicita 1180px a restului Admin-ului (Dashboard/Social/Website/Sistem,
-   neatinse). Pe ecrane late (1920px+), 1180px lasa ~500px complet nefolositi langa sidebar —
-   1600px foloseste acel spatiu mult mai eficient, fara sa intinda continutul pe toata latimea. */
-.admin-main.admin-main-wide{ max-width:1600px; }
 .admin-header-row{ display:flex; align-items:center; justify-content:space-between; gap:14px; margin-bottom:28px; flex-wrap:wrap; }
 .admin-header-sub{ color:var(--text-secondary); font-size:13px; margin-top:4px; }
 
@@ -59,11 +54,7 @@ h1{ font-family:'Fraunces', serif; font-weight:400; font-size:26px; margin:0; }
 .stat.clickable:hover{ border-color:var(--gold); }
 
 table{ width:100%; border-collapse:collapse; background:var(--bg-secondary); border-radius:14px; overflow:hidden; }
-/* Padding orizontal redus (2026-09-18, compactare tabel Comenzi): 16px -> 10px pe fiecare parte —
-   la 11 coloane, cele 6px economisite per parte insumeaza ~132px latime recuperata, fara sa
-   afecteze lizibilitatea (fontul ramane 13px, neschimbat). Singurele tabele din Admin (Comenzi,
-   Surse de trafic) — regula globala, efect STRICT pe aceasta pagina. */
-th, td{ text-align:left; padding:9px 10px; font-size:13px; border-bottom:1px solid var(--line); }
+th, td{ text-align:left; padding:12px 16px; font-size:13px; border-bottom:1px solid var(--line); }
 th{ color:var(--text-secondary); font-weight:600; text-transform:uppercase; font-size:11px; letter-spacing:.06em; }
 tr:last-child td{ border-bottom:none; }
 .empty{ color:var(--text-secondary); padding:24px; text-align:center; }
@@ -273,63 +264,15 @@ tr:last-child td{ border-bottom:none; }
 .trend-swatch-revenue{ background:var(--gold-deep); }
 
 .table-scroll{ overflow-x:auto; }
-/* Tabelul Comenzi (2026-09-18) — problema semnalata explicit: cu multe randuri, bara de scroll
-   orizontala a unui simplu overflow-x:auto ajunge la capatul de JOS al unei liste lungi, la sute
-   de pixeli sub ecranul vizibil — practic inaccesibila fara sa derulezi intai toata pagina.
-   max-height + overflow:auto transforma containerul intr-un viewport propriu, marginit: bara
-   orizontala ramane mereu langa randurile vizibile, niciodata sub o lista intreaga — si primeste
-   bonus si scroll vertical propriu, cu antetul (thead) fixat (sticky), util la fel cand sunt
-   multe comenzi pe pagina curenta (pana la 50, cu paginarea existenta, neschimbata).*/
-.orders-table-scroll{ max-height:65vh; overflow:auto; border-radius:14px; }
-.orders-table-scroll thead th{ position:sticky; top:0; background:var(--bg-secondary); z-index:1; }
+/* Bara de scroll orizontal de SUS (2026-09-19) — vezi orders.js pentru sincronizarea
+   bidirectionala cu bara de JOS (.table-scroll, mai sus). STRICT o banda subtire cu scroll
+   orizontal real (nativ al browserului) — nu sageti/butoane, nu un al doilea tabel: spacer-ul
+   din interior nu are continut vizibil, doar latimea reala scrollabila a tabelului (actualizata
+   in JS la incarcare/resize/filtrare/paginare), ca sa produca un scrollbar cu aceleasi proportii
+   ca cel de jos. */
+.table-scroll-top{ overflow-x:auto; overflow-y:hidden; height:18px; margin-bottom:4px; }
+.table-scroll-top-spacer{ height:1px; }
 .text-muted{ color:var(--text-secondary); }
-
-/* -------- Compactare tabel Comenzi (2026-09-18) --------
-   Scop: la ~1366px (laptop), coloanele esentiale vizibile fara scroll orizontal pentru randurile
-   TIPICE. Onest: pentru cea mai lunga combinatie posibila (status "Plătită și livrată" + email
-   lung + ambele butoane de actiune pe acelasi rand), scroll-ul orizontal tot poate aparea la
-   1366px — inerent continutului (nu scurtam un status real ca sa "castigam" pixeli), acoperit
-   explicit de containerul cu scroll de mai sus (bara mereu accesibila, niciodata la capatul unei
-   liste lungi). Valorile lungi (email/destinatar/sursa) raman complet accesibile prin title
-   (tooltip nativ) la hover, niciodata ascunse definitiv. Coloanele cu valori scurte (limba/pachet/
-   pret/status/data) sunt fortate la latimea lor minima de continut (white-space:nowrap, fara
-   max-width) — browserul redistribuie automat spatiul economisit catre coloanele variabile. */
-#orders-table.orders-table-compact td.col-date{ white-space:nowrap; }
-#orders-table.orders-table-compact .order-date-time{ display:block; font-size:11px; color:var(--text-secondary); margin-top:1px; }
-#orders-table.orders-table-compact td.col-lang,
-#orders-table.orders-table-compact td.col-plan,
-#orders-table.orders-table-compact td.col-price,
-#orders-table.orders-table-compact td.col-status{ white-space:nowrap; }
-#orders-table.orders-table-compact td.col-recipient,
-#orders-table.orders-table-compact td.col-source{
-  max-width:110px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
-}
-#orders-table.orders-table-compact td.col-email{ white-space:nowrap; }
-#orders-table.orders-table-compact td.col-email .cell-truncate{
-  display:inline-block; max-width:150px; overflow:hidden; text-overflow:ellipsis;
-  white-space:nowrap; vertical-align:middle;
-}
-#orders-table.orders-table-compact td.col-occasion,
-#orders-table.orders-table-compact td.col-genre{
-  max-width:92px; overflow-wrap:anywhere;
-}
-/* Actiuni: max-width fortat + flex-wrap (deja existent pe .orders-row-actions) — cand ambele
-   butoane apar pe acelasi rand (Premium/Video, gata), se aseaza unul sub altul, in loc sa
-   largeasca toata coloana ca sa le incapa unul langa altul. */
-#orders-table.orders-table-compact td.col-actions{ max-width:118px; }
-
-@media (max-width: 900px){
-  /* Sub laptop/desktop, scroll orizontal e ACCEPTAT explicit (cerinta) — pe ecrane inguste,
-     trunchierea agresiva ar face coloanele ilizibile inainte sa ajute cu ceva; le lasam sa-si
-     ceara latimea naturala, in interiorul containerului cu scroll (deja tratat mai sus, cu bara
-     mereu accesibila langa randurile vizibile, niciodata la capatul unei liste lungi). */
-  #orders-table.orders-table-compact td.col-recipient,
-  #orders-table.orders-table-compact td.col-source{ max-width:none; overflow:visible; text-overflow:clip; white-space:normal; }
-  #orders-table.orders-table-compact td.col-email .cell-truncate{ max-width:220px; }
-  #orders-table.orders-table-compact td.col-occasion,
-  #orders-table.orders-table-compact td.col-genre,
-  #orders-table.orders-table-compact td.col-actions{ max-width:none; }
-}
 
 /* -------- Comenzi: filtre + paginare -------- */
 .orders-toolbar{ display:flex; gap:10px; margin-bottom:18px; flex-wrap:wrap; align-items:center; }
