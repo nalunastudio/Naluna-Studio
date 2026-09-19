@@ -608,7 +608,11 @@ test('server.js: markGenerationFailed curata regenerateEditVariantIds la o edita
 // sus: "variants = [...existing, ...edited]").
 // ---------------------------------------------------------------------------------------------
 test('server.js: buildVariantFromTrack aloca un ID PROPRIU fiecarei variante noi (randomUUID, niciodata id-ul variantei sursa)', () => {
-  const idx = server.indexOf('async function buildVariantFromTrack(orderId, variantId, track, taskId)');
+  // ACTUALIZAT (2026-09-19, exceptie durata preview manele_suflet/manele_jale): buildVariantFromTrack
+  // a capatat un al 5-lea parametru, `genre` (STRICT pentru decizia de durata a preview-ului —
+  // vezi test/preview-duration-manele.test.js) — restul semnaturii (variantId generat de apelant,
+  // niciodata derivat din varianta sursa) ramane identic, verificat mai jos neschimbat.
+  const idx = server.indexOf('async function buildVariantFromTrack(orderId, variantId, track, taskId, genre)');
   assert.ok(idx !== -1);
   const body = server.slice(idx, idx + 200);
   assert.ok(body.includes('variantId, track, taskId'), 'variantId e primit ca parametru, generat de apelant (randomUUID), niciodata derivat din varianta sursa');
@@ -616,7 +620,7 @@ test('server.js: buildVariantFromTrack aloca un ID PROPRIU fiecarei variante noi
   // validarea"): apelul a fost mutat in obtainAcceptableVariant() (helper folosit de
   // finalizeVariantsIfNeeded), care ramane singurul loc ce construieste variante noi — id-ul
   // ramane generat identic, randomUUID().slice(0, 8), niciodata reutilizat.
-  const callerIdx = server.indexOf('candidate = await buildVariantFromTrack(orderId, randomUUID().slice(0, 8), track, candidateTaskId);');
+  const callerIdx = server.indexOf('candidate = await buildVariantFromTrack(orderId, randomUUID().slice(0, 8), track, candidateTaskId, genre);');
   assert.ok(callerIdx !== -1, 'obtainAcceptableVariant() trebuie sa genereze un ID nou, aleator, pentru fiecare varianta construita');
 });
 
@@ -742,7 +746,7 @@ test('buildPrompt: numele destinatarului si expeditorului raman COMPLETE chiar s
 // finalizare. Verificarile de mai jos confirma static aceste garantii structurale.
 // ---------------------------------------------------------------------------------------------
 test('server.js: buildVariantFromTrack foloseste audioUrl SI lyrics din ACELASI parametru `track` — niciodata surse diferite pentru audio si versuri', () => {
-  const idx = server.indexOf('async function buildVariantFromTrack(orderId, variantId, track, taskId) {');
+  const idx = server.indexOf('async function buildVariantFromTrack(orderId, variantId, track, taskId, genre) {');
   const end = server.indexOf('async function ', idx + 10);
   assert.ok(idx !== -1);
   const body = server.slice(idx, end);

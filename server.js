@@ -147,6 +147,23 @@ function isTestCustomerEmail(email) {
   return ANALYTICS_EXCLUDED_EMAILS.includes(String(email || '').trim().toLowerCase());
 }
 const PREVIEW_SECONDS = 40;
+// EXCEPTIE (2026-09-19, cerinta explicita, observatie productie reala): manele_suflet/
+// manele_jale au de regula un instrumental initial mai lung decat celelalte genuri — cele 40 de
+// secunde standard se pot termina exact cand partea vocala/povestea devine relevanta. STRICT
+// aceste 2 genuri (genre keys REALE, verificate direct in cod — vezi GENRE_STYLE_TAGS mai jos)
+// primesc o fereastra maxima de preview mai mare; toate celelalte raman la PREVIEW_SECONDS (40),
+// neschimbat. NU afecteaza punctul de START al preview-ului (previewStart / vocal onset —
+// getPreviewStartFromLyrics, neatinsa) — doar durata maxima permisa DUPA acel punct. Daca
+// materialul disponibil dupa previewStart e mai scurt decat aceasta fereastra, trimAudio() (mai
+// jos, `-t` in ffmpeg) se opreste natural la finalul materialului real — nu exista nicaieri
+// padding/loop artificial, la niciun gen.
+const EXTENDED_PREVIEW_GENRES = ['manele_suflet', 'manele_jale'];
+const EXTENDED_PREVIEW_SECONDS = 50;
+// Functie PURA, izolata STRICT ca sa fie usor testabila direct (vezi test/preview-duration-manele.test.js)
+// — niciun efect secundar, niciun acces la retea/fisiere/ffmpeg, doar decizia "cate secunde".
+function resolvePreviewMaxSeconds(genre) {
+  return EXTENDED_PREVIEW_GENRES.includes(genre) ? EXTENDED_PREVIEW_SECONDS : PREVIEW_SECONDS;
+}
 // Previzualizarea GRATUITĂ a videoclipului cadou (pachetul "video"), disponibilă ÎNAINTE de
 // plată — vezi generateLyricVideo() mai jos, care taie acest fragment (stream copy, fără
 // reencodare) din videoclipul complet deja randat, exact ca la începutul lui.
@@ -6067,7 +6084,7 @@ async function obtainAcceptableVariant(orderId, tracks, taskId, genre, order, re
     for (const track of ordered) {
       let candidate;
       try {
-        candidate = await buildVariantFromTrack(orderId, randomUUID().slice(0, 8), track, candidateTaskId);
+        candidate = await buildVariantFromTrack(orderId, randomUUID().slice(0, 8), track, candidateTaskId, genre);
       } catch (err) {
         lastErr = err;
         trackIndex++;
@@ -6642,7 +6659,7 @@ async function verifyPreviewReachable(orderId, variantId, previewUrl) {
   }
 }
 
-async function buildVariantFromTrack(orderId, variantId, track, taskId) {
+async function buildVariantFromTrack(orderId, variantId, track, taskId, genre) {
   if (!track.audioUrl) {
     throw new Error(`Piesa primita de la Suno (id: ${track.id || 'necunoscut'}) nu are audioUrl/audio_url.`);
   }
@@ -6676,8 +6693,12 @@ async function buildVariantFromTrack(orderId, variantId, track, taskId) {
   // rulam de asemenea in paralel.
   const ffmpegStart = Date.now();
   perfLog(orderId, 'ffmpeg_start', vTag);
+  // Fereastra maxima de preview: STRICT manele_suflet/manele_jale primesc EXTENDED_PREVIEW_SECONDS
+  // (50) — orice alt gen (inclusiv genre lipsa/necunoscut) ramane la PREVIEW_SECONDS (40),
+  // neschimbat. previewStart (vocal onset) e neatins — doar durata maxima DUPA acel punct.
+  const previewMaxSeconds = resolvePreviewMaxSeconds(genre);
   const [, durationSeconds] = await Promise.all([
-    trimAudio(tempFull, tempPreview, PREVIEW_SECONDS, previewStart).then(() => {
+    trimAudio(tempFull, tempPreview, previewMaxSeconds, previewStart).then(() => {
       perfLog(orderId, 'ffmpeg_done', `${vTag}, ${Date.now() - ffmpegStart}ms`);
     }),
     getAudioDuration(tempFull)
