@@ -9066,7 +9066,19 @@ const GENRE_STYLE_MAP = {
   // (143 vs 146 caractere) — imbunatateste, nu inrautateste, bugetul de 600 caractere.
   hiphop: '2000s street hip-hop, hard drums, punchy kick, dry snare, deep heavy bass, sparse dark gritty beat from the first beat, rap verses, street hook',
   edm_dance: 'EDM dance, four-on-the-floor kick, synth-driven, powerful bass, build-up into drop, danceable groove, festival energy',
-  manele_suflet: 'Romanian manele de suflet, violin accordion or clarinet, warm melismatic vocal, hopeful devoted mood',
+  // CORECȚIE (2026-09-19, "intro-ul melodiei generate e prea lung chiar si in fereastra de
+  // 50s" — cerinta explicita, scop STRICT limitat la aceasta valoare): ADAOS minimal, la finalul
+  // descrierii existente, altfel neatinsa — restul caracterului genului (instrumentatie, tehnica
+  // vocala, mood) ramane identic. manele_jale ("perfecta" in productie, raportat explicit) NU e
+  // atins. NICIODATA cuvantul "instrumental" (vezi REGRESIE CRITICA 2026-08-13, documentata in
+  // test/lyrics-exact-story-premium-sequential.test.js: acel cuvant literal in prompt a corelat,
+  // verificat pe comenzi reale de productie, cu Suno generand piese fara voce deloc) — formulare
+  // echivalenta, deja folosita in codebase pentru acelasi motiv ("Short intro"/"Verse intro" in
+  // clauza de continuitate vocala). Lungimea rezultata (133 caractere) ramane sub cea a altor
+  // genuri deja verificate sigure in productie (ex. hiphop, 143 caractere) — vezi
+  // test/manele-suflet-short-intro.test.js pentru verificarea explicita a bugetului de 600
+  // caractere (SUNO_PROMPT_MAX_LEN) in cel mai incarcat scenariu real pentru acest gen.
+  manele_suflet: 'Romanian manele de suflet, violin accordion or clarinet, warm melismatic vocal, hopeful devoted mood, short intro, vocals enter early',
   manele_jale: 'Romanian manele de jale, minor-key oriental colour, mournful violin and clarinet, melismatic lament vocal, heavier longing mood',
   // CORECȚIE (2026-09-13): "unornamented vocal"/"no autotune" eliminate — ornamentatia vocala
   // e autentica si legitima in muzica populara romaneasca; diferentierea reala fata de Manele

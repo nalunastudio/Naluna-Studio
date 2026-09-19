@@ -206,7 +206,10 @@ test('TEST 7/9: GENRE_STYLE_MAP ramane BYTE-IDENTIC pentru 15 din cele 16 genuri
   const idx = yesterdaySrc.indexOf('const GENRE_STYLE_MAP = {');
   const end = yesterdaySrc.indexOf('};', idx);
   const body = yesterdaySrc.slice(idx, end);
-  for (const g of NEW_GENRES.filter(g => g !== 'hiphop')) {
+  // manele_suflet EXCLUS aici (2026-09-19, corectie separata si ulterioara — "intro scurt",
+  // aprobata explicit, scop STRICT limitat la acea valoare) — vezi
+  // test/manele-suflet-short-intro.test.js pentru verificarea dedicata a acelei modificari.
+  for (const g of NEW_GENRES.filter(g => g !== 'hiphop' && g !== 'manele_suflet')) {
     const m = body.match(new RegExp(`\\b${g}: '([^']+)'`));
     assert.ok(m, `nu am gasit "${g}" in versiunea de referinta`);
     assert.equal(GENRE_STYLE_MAP[g], m[1], `genul "${g}" trebuie sa ramana byte-identic`);
