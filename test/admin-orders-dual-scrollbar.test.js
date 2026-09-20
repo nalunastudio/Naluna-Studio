@@ -83,9 +83,33 @@ test('orders.js: recalcularea latimii se declanseaza la resize (fereastra) SI la
 });
 
 test('shared.css: bara de sus foloseste scroll orizontal REAL (overflow-x:auto), fara sageti/butoane custom — inaltime mica, STRICT cat sa afiseze scrollbar-ul', () => {
-  assert.match(css, /\.table-scroll-top\{ overflow-x:auto; overflow-y:hidden;[^}]*\}/);
+  assert.match(css, /\.table-scroll-top\{[\s\S]*?overflow-x:auto; overflow-y:hidden;[^}]*\}/);
   assert.match(css, /\.table-scroll-top-spacer\{ height:1px; \}/);
   assert.doesNotMatch(css, /table-scroll-top[\s\S]{0,200}(arrow|chevron|◀|▶|←|→)/i, 'nu trebuie introduse sageti/butoane vizuale pentru scroll');
+});
+
+test('shared.css: bara de sus e STICKY pe verticala (2026-09-20) — ramane vizibila din orice pozitie verticala in interiorul tabelului, cu fundal opac (randurile care scroleaza pe sub ea nu se vad prin ea)', () => {
+  const ruleMatch = css.match(/\.table-scroll-top\{([\s\S]*?)\}/);
+  assert.ok(ruleMatch, '.table-scroll-top trebuie sa existe');
+  assert.match(ruleMatch[1], /position:sticky/);
+  assert.match(ruleMatch[1], /top:0/);
+  assert.match(ruleMatch[1], /background:var\(--bg\)/, 'fundal opac necesar cand bara e fixata peste randurile care scroleaza');
+});
+
+test('orders.html: bara de sus + tabelul de jos sunt INCADRATE intr-un wrapper (.orders-table-scroll-wrap) — asta delimiteaza zona in care bara ramane sticky, ca sa nu pluteasca peste alte sectiuni odata ce tabelul iese din vizor', () => {
+  const wrapStart = html.indexOf('<div class="orders-table-scroll-wrap">');
+  assert.ok(wrapStart !== -1, 'wrapper-ul trebuie sa existe');
+  const topIdx = html.indexOf('id="orders-table-scroll-top"');
+  const bottomIdx = html.indexOf('id="orders-table-scroll"');
+  const paginationIdx = html.indexOf('<div class="pagination-row">');
+  assert.ok(topIdx > wrapStart, 'bara de sus trebuie sa fie in interiorul wrapper-ului');
+  assert.ok(bottomIdx > wrapStart, 'tabelul de jos trebuie sa fie in interiorul wrapper-ului');
+  assert.ok(paginationIdx !== -1 && paginationIdx > bottomIdx, 'paginarea trebuie sa existe dupa tabel');
+  // wrapper-ul se inchide ("</div>" de doua ori la rand, cu indentare descrescatoare) STRICT
+  // inainte de pagination-row — bara sticky nu trebuie sa ramana "activa" peste sectiunea de
+  // paginare (cerinta explicita: nu pluteste peste alte sectiuni odata ce tabelul iese din vizor).
+  const betweenTableAndPagination = html.slice(bottomIdx, paginationIdx);
+  assert.match(betweenTableAndPagination, /<\/table>[\s\S]*<\/div>\s*<\/div>\s*$/, 'wrapper-ul (.orders-table-scroll-wrap) trebuie sa se inchida imediat dupa tabel, inainte de pagination-row');
 });
 
 test('shared.css: NICIUNA dintre regulile compactarii vechi nu mai exista (admin-main-wide, orders-table-compact, col-*, max-height/sticky pe scroll)', () => {

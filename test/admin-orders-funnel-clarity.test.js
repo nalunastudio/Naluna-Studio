@@ -180,11 +180,49 @@ test('6c) orders.js: renderFunnelCohort afiseaza STATIC "Bază" pentru "Comenzi 
   assert.match(fn, /pct\(s\.pctOfBase\)/);
 });
 
-test('6d) orders.js: renderFunnelTraffic afiseaza procentul Vizitatori->Formular STRICT cand trackedVisitors > 0 — altfel nu afiseaza niciun procent (nu N/A fortat langa o valoare Nemasurata)', () => {
+// CORECȚIE (2026-09-20, cerinta explicita): procentul Vizitatori -> Formular a fost ELIMINAT din
+// sectiunea TRAFIC — "Formular început" e event-based (acelasi vizitator poate genera mai multe
+// evenimente form_started), deci raportul putea depasi 100% (ex. 3 vizitatori / 4 formulare ->
+// "133.3%"), ceea ce nu e o rata de conversie valida. Testul 6d de mai jos inlocuieste vechea
+// asertiune (care verifica PREZENTA procentului) cu asertiuni care confirma ABSENTA lui.
+test('6d) orders.js: renderFunnelTraffic NU mai calculeaza/afiseaza niciun procent Vizitatori->Formular — randul "Formular început" are STRICT valoarea absoluta, meta gol', () => {
   const fnStart = js.indexOf('function renderFunnelTraffic(');
   const fnEnd = js.indexOf('\n}', fnStart);
   const fn = js.slice(fnStart, fnEnd);
-  assert.match(fn, /traffic\.trackedVisitors > 0 \? `<span[^`]*>\$\{pct\(traffic\.conversionPct\)\}<\/span>` : ''/);
+  assert.doesNotMatch(fn, /conversionPct/, 'traffic.conversionPct nu trebuie folosit deloc in randare');
+  assert.doesNotMatch(fn, /pct\(/, 'pct() nu trebuie apelat deloc in aceasta functie — nu se afiseaza niciun procent in sectiunea Trafic');
+  // ambele randuri (Vizitatori/Formular) trebuie sa aiba STRICT `<div class="funnel-row-meta"></div>`
+  // gol — nu un procent inlocuitor, cerinta explicita "nu il inlocui cu alt procent".
+  const metaOccurrences = (fn.match(/<div class="funnel-row-meta"><\/div>/g) || []).length;
+  assert.equal(metaOccurrences, 2, 'ambele randuri (Vizitatori urmăriți si Formular început) trebuie sa aiba meta gol');
+});
+
+test('6f) orders.js: cazul concret 3 vizitatori / 4 formulare NU mai produce "133.3%" (nici alt procent) in HTML-ul randat — randarea reala verificata printr-un sandbox minimal DOM', () => {
+  const fnStart = js.indexOf('function renderFunnelTraffic(');
+  const fnEnd = js.indexOf('\n}', fnStart);
+  const fnSrc = js.slice(fnStart, fnEnd + 2);
+  // sandbox minimal: STRICT elementul #funnel-traffic (nu e nevoie de tot DOM-ul paginii)
+  const sandbox = `
+    const document = {
+      getElementById: (id) => (id === 'funnel-traffic' ? el : null)
+    };
+    const el = { innerHTML: '' };
+    function escapeHtml(s) { return String(s); }
+    ${fnSrc}
+    renderFunnelTraffic({ trackedVisitors: 3, formStarted: 4, conversionPct: (4 / 3) * 100 }, 'complete', null);
+    return el.innerHTML;
+  `;
+  const html = new Function(sandbox)();
+  assert.doesNotMatch(html, /133\.3%/, 'procentul imposibil "133.3%" nu trebuie sa mai apara');
+  // "%" apare legitim in style="width:...%" (latimea barei vizuale, neschimbata) — verificam STRICT
+  // ca celulele funnel-row-meta (unde aparea procentul de conversie) raman goale, fara niciun %.
+  const metaCells = html.match(/<div class="funnel-row-meta">[\s\S]*?<\/div>/g) || [];
+  assert.equal(metaCells.length, 2, 'trebuie sa existe exact 2 celule funnel-row-meta (Vizitatori + Formular)');
+  for (const cell of metaCells) {
+    assert.equal(cell, '<div class="funnel-row-meta"></div>', `celula meta trebuie sa fie goala, nu: ${cell}`);
+  }
+  assert.match(html, />3</, 'valoarea absoluta a vizitatorilor (3) trebuie sa ramana afisata');
+  assert.match(html, />4</, 'valoarea absoluta a formularelor incepute (4) trebuie sa ramana afisata');
 });
 
 test('6e) lib/funnel-math.js: computeCheckoutToPaidPct expus si folosit — "Conversie checkout -> plata" opționala, afisata STRICT cand reachedCheckout > 0', () => {

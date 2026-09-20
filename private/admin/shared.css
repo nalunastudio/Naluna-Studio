@@ -276,13 +276,26 @@ tr:last-child td{ border-bottom:none; }
 .trend-swatch-revenue{ background:var(--gold-deep); }
 
 .table-scroll{ overflow-x:auto; }
-/* Bara de scroll orizontal de SUS (2026-09-19) — vezi orders.js pentru sincronizarea
-   bidirectionala cu bara de JOS (.table-scroll, mai sus). STRICT o banda subtire cu scroll
-   orizontal real (nativ al browserului) — nu sageti/butoane, nu un al doilea tabel: spacer-ul
-   din interior nu are continut vizibil, doar latimea reala scrollabila a tabelului (actualizata
-   in JS la incarcare/resize/filtrare/paginare), ca sa produca un scrollbar cu aceleasi proportii
-   ca cel de jos. */
-.table-scroll-top{ overflow-x:auto; overflow-y:hidden; height:18px; margin-bottom:4px; }
+/* Wrapper STRICT pentru a delimita zona in care bara de sus (mai jos) ramane sticky — vezi
+   .table-scroll-top. Fara alt efect vizual/de layout (nu schimba latimile coloanelor sau aspectul
+   tabelului). */
+.orders-table-scroll-wrap{ position:relative; }
+/* Bara de scroll orizontal de SUS (2026-09-19, sticky pe verticala din 2026-09-20 — cerinta
+   explicita: ramane accesibila din orice pozitie verticala in interiorul tabelului, fara sa
+   pluteasca peste alte sectiuni odata ce tabelul iese din vizor) — vezi orders.js pentru
+   sincronizarea bidirectionala cu bara de JOS (.table-scroll, mai sus). STRICT o banda subtire cu
+   scroll orizontal real (nativ al browserului) — nu sageti/butoane, nu un al doilea tabel:
+   spacer-ul din interior nu are continut vizibil, doar latimea reala scrollabila a tabelului
+   (actualizata in JS la incarcare/resize/filtrare/paginare), ca sa produca un scrollbar cu
+   aceleasi proportii ca cel de jos. position:sticky (nu fixed) + wrapper-ul .orders-table-scroll-
+   wrap de mai sus: bara ramane vizibila STRICT cat timp tabelul (parintele ei direct) e in vizor —
+   nu se transforma niciodata intr-o bara plutitoare peste alte sectiuni ale paginii. background
+   opac + z-index: randurile tabelului care scroleaza pe sub ea, odata fixata, nu trebuie sa se
+   vada prin ea. */
+.table-scroll-top{
+  position:sticky; top:0; z-index:2; background:var(--bg);
+  overflow-x:auto; overflow-y:hidden; height:18px; margin-bottom:4px;
+}
 .table-scroll-top-spacer{ height:1px; }
 .text-muted{ color:var(--text-secondary); }
 

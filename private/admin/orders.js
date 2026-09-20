@@ -195,6 +195,11 @@ function pct(v) { return v === null || v === undefined ? 'N/A' : `${v.toFixed(1)
 // randurile SE AFISEAZA cu valorile reale (exista date pentru partea acoperita a perioadei),
 // insotite de un mesaj compact — NICIODATA ascunse ca "Nemăsurat" (ar sterge date reale existente,
 // cerinta explicita 2026-09-19).
+// CORECȚIE (2026-09-20, cerinta explicita): NU se mai afiseaza niciun procent Vizitatori ->
+// Formular in aceasta sectiune — "Formular început" e event-based (acelasi vizitator poate genera
+// mai multe evenimente form_started), deci raportul formStarted/trackedVisitors poate depasi 100%
+// (ex. 3 vizitatori / 4 formulare -> 133.3%), ceea ce nu e o rata de conversie valida si induce in
+// eroare. Randurile arata STRICT valorile absolute — niciun procent inlocuitor.
 function renderFunnelTraffic(traffic, trafficDataAvailability, dataCompleteSince) {
   const el = document.getElementById('funnel-traffic');
   if (trafficDataAvailability === 'unmeasured') {
@@ -216,7 +221,7 @@ function renderFunnelTraffic(traffic, trafficDataAvailability, dataCompleteSince
       <div class="funnel-row-label">Formular început</div>
       <div class="funnel-row-bar-wrap"><div class="funnel-row-bar" style="width:${Math.max(2, (traffic.formStarted / maxCount) * 100)}%"></div></div>
       <div class="funnel-row-count">${traffic.formStarted}</div>
-      <div class="funnel-row-meta">${traffic.trackedVisitors > 0 ? `<span title="Din vizitatorii urmăriți, câți au început formularul">${pct(traffic.conversionPct)}</span>` : ''}</div>
+      <div class="funnel-row-meta"></div>
     </div>
   `;
 }
