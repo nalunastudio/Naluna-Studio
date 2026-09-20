@@ -133,33 +133,110 @@ document.getElementById('period-custom-apply').addEventListener('click', () => {
 // ==========================================================================================
 // KPI CARDS + FUNNEL + TREND + SOURCES (un singur fetch, GET /api/admin/orders/funnel-summary)
 // ==========================================================================================
+// KPI_DEFS (2026-09-19, FAZA 1 clarificare) — traffic:true marcheaza cele 3 KPI event-based
+// (Vizitatori/CTA/Formular), care nu au nicio sursa alta decat funnel_events si deci depind de
+// trafficDataAvailability ('complete'/'partial'/'unmeasured', calculat server-side de
+// db.getTrafficDataAvailability — vezi si formatDataCompleteSince mai jos). Etichetele
+// "...în perioadă" pentru Comenzi create/Checkout-uri/Comenzi plătite/Venit clarifica explicit ca
+// aceste KPI sunt event-time (ferestruite STRICT pe propriul lor timestamp), spre deosebire de
+// Funnel-ul de conversie (cohortat — vezi renderFunnelCohort mai jos) care poate afisa cifre
+// DIFERITE pentru "aceleasi" etape, din motive documentate in raportul de audit (sectiunea 11).
 const KPI_DEFS = [
-  { key: 'trackedVisitors', label: 'Vizitatori urmăriți' },
-  { key: 'ctaClicks', label: 'Click-uri CTA' },
-  { key: 'formStarted', label: 'Formular început' },
-  { key: 'ordersCreated', label: 'Comenzi create' },
-  { key: 'reachedCheckout', label: 'Checkout atins' },
-  { key: 'paidOrders', label: 'Comenzi plătite' },
-  { key: 'paidCustomers', label: 'Clienți plătitori' },
-  { key: 'revenue', label: 'Venit', money: true }
+  { key: 'trackedVisitors', label: 'Vizitatori urmăriți', traffic: true },
+  { key: 'ctaClicks', label: 'Click-uri CTA homepage', traffic: true },
+  { key: 'formStarted', label: 'Formular început', traffic: true },
+  { key: 'ordersCreated', label: 'Comenzi create în perioadă' },
+  { key: 'reachedCheckout', label: 'Checkout-uri create în perioadă' },
+  { key: 'paidOrders', label: 'Comenzi plătite în perioadă' },
+  { key: 'paidCustomers', label: 'Clienți plătitori în perioadă' },
+  { key: 'revenue', label: 'Venit încasat în perioadă', money: true }
 ];
 
-function renderKpiCards(kpis) {
-  const el = document.getElementById('kpi-cards');
-  el.innerHTML = KPI_DEFS.map((d) => `
-    <div class="stat">
-      <div class="label">${d.label}</div>
-      <div class="value">${d.money ? '£' + Number(kpis[d.key]).toFixed(2) : Number(kpis[d.key])}</div>
-    </div>
-  `).join('');
+// "Date parțiale — tracking disponibil din <data>" (2026-09-19, FAZA 1 corectie, cerinta
+// explicita) — data vine STRICT din dataCompleteSince (sursa autoritativa server-side, MIN(occurred_at)
+// din funnel_events — vezi db.js#getFunnelDataCompleteSince/getTrafficDataAvailability), niciodata
+// hardcodata aici.
+function formatPartialNote(dataCompleteSince) {
+  if (!dataCompleteSince) return '';
+  return `Date parțiale — tracking disponibil din ${new Date(dataCompleteSince).toLocaleDateString('ro-RO')}`;
 }
 
+function renderKpiCards(kpis, trafficDataAvailability, dataCompleteSince) {
+  const el = document.getElementById('kpi-cards');
+  const partialNote = formatPartialNote(dataCompleteSince);
+  el.innerHTML = KPI_DEFS.map((d) => {
+    const isTraffic = Boolean(d.traffic);
+    const unmeasured = isTraffic && trafficDataAvailability === 'unmeasured';
+    const partial = isTraffic && trafficDataAvailability === 'partial';
+    const value = unmeasured ? 'Nemăsurat' : (d.money ? '£' + Number(kpis[d.key]).toFixed(2) : Number(kpis[d.key]));
+    const statClass = unmeasured ? ' stat-unmeasured' : (partial ? ' stat-partial' : '');
+    const note = partial ? `<div class="stat-note" title="${escapeHtml(partialNote)}">Date parțiale</div>` : '';
+    return `
+    <div class="stat${statClass}">
+      <div class="label">${d.label}</div>
+      <div class="value">${value}</div>
+      ${note}
+    </div>
+  `;
+  }).join('');
+}
+
+// N/A (2026-09-19, neschimbat) = masuratoare VALIDA, dar numitorul e 0 — nu exista inca ce sa
+// impartim. Distinct de "Nemăsurat" (renderFunnelTraffic/renderKpiCards) = perioada e dinaintea
+// inceputului real al tracking-ului, deci nici numaratorul nici numitorul nu sunt masuratori
+// valide — cele doua NU trebuie amestecate sub aceeasi eticheta.
 function pct(v) { return v === null || v === undefined ? 'N/A' : `${v.toFixed(1)}%`; }
 
-function renderFunnel(stages) {
-  const el = document.getElementById('funnel-chart');
-  const maxCount = stages.length ? Math.max(1, ...stages.map((s) => s.count)) : 1;
-  el.innerHTML = stages.map((s) => `
+// TRAFIC — Vizitatori urmăriți -> Formular început (2026-09-19, FAZA 1 clarificare + corectie
+// 3-stari). Pas SEPARAT de funnel-ul cohortat de mai jos (vezi renderFunnelCohort) — ambele sunt
+// event-time (fereastra perioadei), NU o cohorta legata de comenzi, deci NU trebuie prezentate ca
+// acelasi grup continuu de persoane cu etapele de comenzi (vezi raportul de audit, sectiunea 11).
+// trafficDataAvailability 'unmeasured' -> mesaj, fara randuri (nicio cifra reala). 'partial' ->
+// randurile SE AFISEAZA cu valorile reale (exista date pentru partea acoperita a perioadei),
+// insotite de un mesaj compact — NICIODATA ascunse ca "Nemăsurat" (ar sterge date reale existente,
+// cerinta explicita 2026-09-19).
+function renderFunnelTraffic(traffic, trafficDataAvailability, dataCompleteSince) {
+  const el = document.getElementById('funnel-traffic');
+  if (trafficDataAvailability === 'unmeasured') {
+    el.innerHTML = '<div class="empty">Date indisponibile — tracking-ul de trafic nu acoperă această perioadă.</div>';
+    return;
+  }
+  const partialNote = (trafficDataAvailability === 'partial')
+    ? `<div class="funnel-partial-note">${escapeHtml(formatPartialNote(dataCompleteSince))}</div>`
+    : '';
+  const maxCount = Math.max(1, traffic.trackedVisitors, traffic.formStarted);
+  el.innerHTML = partialNote + `
+    <div class="funnel-row">
+      <div class="funnel-row-label">Vizitatori urmăriți</div>
+      <div class="funnel-row-bar-wrap"><div class="funnel-row-bar" style="width:${Math.max(2, (traffic.trackedVisitors / maxCount) * 100)}%"></div></div>
+      <div class="funnel-row-count">${traffic.trackedVisitors}</div>
+      <div class="funnel-row-meta"></div>
+    </div>
+    <div class="funnel-row">
+      <div class="funnel-row-label">Formular început</div>
+      <div class="funnel-row-bar-wrap"><div class="funnel-row-bar" style="width:${Math.max(2, (traffic.formStarted / maxCount) * 100)}%"></div></div>
+      <div class="funnel-row-count">${traffic.formStarted}</div>
+      <div class="funnel-row-meta">${traffic.trackedVisitors > 0 ? `<span title="Din vizitatorii urmăriți, câți au început formularul">${pct(traffic.conversionPct)}</span>` : ''}</div>
+    </div>
+  `;
+}
+
+// CONVERSIE COMENZI — cohortat (2026-09-19, FAZA 1 clarificare): comenzile CREATE în perioada
+// selectată formează baza (100%, fara procent afisat pe randul ei — vezi lib/funnel-math.js,
+// computeCohortFunnel), Checkout/Plătite raportează procentul fata de ACEASTA baza, niciodata fata
+// de etapa anterioara — cere explicita: "din cei care au pornit o comanda in aceasta perioada,
+// cati au ajuns la checkout / cati au platit", indiferent CAND s-au intamplat acele etape
+// ulterioare. CTA nu apare aici deloc (ramane STRICT KPI separat, vezi renderKpiCards) — un
+// vizitator poate ajunge direct pe /comanda.html, fara niciun CTA instrumentat.
+function renderFunnelCohort(cohort, checkoutToPaidPct) {
+  const el = document.getElementById('funnel-cohort');
+  const maxCount = Math.max(1, ...cohort.map((s) => s.count));
+  el.innerHTML = cohort.map((s) => {
+    const pctText = (s.key === 'ordersCreated') ? 'Bază' : pct(s.pctOfBase);
+    const extra = (s.key === 'paidOrders' && checkoutToPaidPct !== null)
+      ? `<span class="funnel-row-extra" title="Din comenzile care au ajuns la checkout, câte au și plătit">· ${pct(checkoutToPaidPct)} checkout→plată</span>`
+      : '';
+    return `
     <div class="funnel-row">
       <div class="funnel-row-label">${escapeHtml(s.label)}</div>
       <div class="funnel-row-bar-wrap">
@@ -167,11 +244,12 @@ function renderFunnel(stages) {
       </div>
       <div class="funnel-row-count">${s.count}</div>
       <div class="funnel-row-meta">
-        <span title="Conversie față de etapa anterioară">${pct(s.conversionFromPrevPct)}</span>
-        <span class="funnel-row-dropoff" title="Pierdere față de etapa anterioară">${s.dropOffCount === null ? '' : `−${s.dropOffCount} (${pct(s.dropOffPct)})`}</span>
+        <span title="Procent din Comenzi create (baza cohortei)">${pctText}</span>
+        ${extra}
       </div>
     </div>
-  `).join('');
+  `;
+  }).join('');
 }
 
 function renderTrend(trend) {
@@ -227,8 +305,9 @@ async function loadFunnelSummary() {
     const data = await res.json();
     if (!res.ok) { console.error('funnel-summary error:', data.error); return; }
     lastResolvedBounds = data.period;
-    renderKpiCards(data.kpis);
-    renderFunnel(data.funnel);
+    renderKpiCards(data.kpis, data.trafficDataAvailability, data.dataCompleteSince);
+    renderFunnelTraffic(data.funnel.traffic, data.trafficDataAvailability, data.dataCompleteSince);
+    renderFunnelCohort(data.funnel.cohort, data.funnel.checkoutToPaidPct);
     renderTrend(data.trend);
     renderSources(data.sources);
     renderDataCompleteBanner(data.dataCompleteSince);

@@ -14,7 +14,7 @@ const { Pool } = require('pg');
 const { randomUUID } = require('crypto');
 const { pickPremiumBonusVariantId } = require('./lib/entitlements');
 const { listDaysInRange } = require('./lib/funnel-period');
-const { computeFunnelStages } = require('./lib/funnel-math');
+const { computeCohortFunnel, computeCheckoutToPaidPct, computeTrafficStep } = require('./lib/funnel-math');
 
 if (!process.env.DATABASE_URL) {
   throw new Error(
@@ -2073,18 +2073,28 @@ async function getConversionFunnel({ startDate, endDateExclusive, excludeEmails 
     pool.query(cohortSql, params)
   ]);
 
+  // NOTA (2026-09-19, FAZA 1 clarificare): cta_clicks e tot selectat de preOrderSql (interogare
+  // IDENTICA cu getFunnelKpis, deliberat neschimbata) dar NU mai e folosit aici — CTA nu mai e o
+  // etapa a funnel-ului cohortat (vezi lib/funnel-math.js pentru motiv). Ramane un KPI separat,
+  // calculat STRICT de getFunnelKpis.
   const counts = {
     trackedVisitors: Number(preOrderRes.rows[0].tracked_visitors),
-    ctaClicks: Number(preOrderRes.rows[0].cta_clicks),
     formStarted: Number(preOrderRes.rows[0].form_started),
     ordersCreated: Number(cohortRes.rows[0].orders_created),
     reachedCheckout: Number(cohortRes.rows[0].reached_checkout),
     paidOrders: Number(cohortRes.rows[0].paid_orders)
   };
 
-  // Formula de conversie/pierdere e logica PURA, testata izolat — vezi lib/funnel-math.js si
-  // test/funnel-math.test.js (inclusiv cazul explicit "numitor 0 -> null, niciodata 0%/Infinity%").
-  return computeFunnelStages(counts);
+  // Formula e logica PURA, testata izolat — vezi lib/funnel-math.js si test/funnel-math.test.js
+  // (inclusiv cazul explicit "numitor 0 -> null, niciodata 0%/Infinity%"). Doua grupuri distincte,
+  // NICIODATA amestecate intr-un singur lant (vezi raportul de audit, sectiunea 11): "traffic"
+  // (event-time, fereastra perioadei) si "cohort" (comenzi create in perioada, urmarite pana la
+  // capat indiferent cand s-au intamplat checkout-ul/plata).
+  return {
+    traffic: computeTrafficStep(counts),
+    cohort: computeCohortFunnel(counts),
+    checkoutToPaidPct: computeCheckoutToPaidPct(counts)
+  };
 }
 
 // Revenue & Orders Trend — serie zilnica, Orders Created pe created_at, Revenue pe paid_at (data
@@ -2202,6 +2212,38 @@ async function getTrafficSources({ startDate, endDateExclusive, excludeEmails = 
 async function getFunnelDataCompleteSince() {
   const result = await pool.query(`SELECT MIN(occurred_at) AS min_at FROM funnel_events`);
   return result.rows[0].min_at || null;
+}
+
+// TRAFFIC DATA AVAILABILITY (2026-09-19, FAZA 1 — corectie, cerinta explicita: 3 stari, nu 2) —
+// determina STRICT din sursa autoritativa (MIN(occurred_at) din funnel_events — ACEEASI sursa ca
+// getFunnelDataCompleteSince(), nicio data hardcodata) daca perioada ceruta e:
+//   'complete'   — tracking-ul acoperea DEJA intreaga perioada (inceputul real al tracking-ului e
+//                  la sau inainte de inceputul perioadei) — KPI-urile event-based (Vizitatori
+//                  urmariti/Click-uri CTA/Formular inceput) sunt cifre reale, complete.
+//   'partial'    — inceputul real al tracking-ului CADE in interiorul perioadei — exista cifre
+//                  reale, dar STRICT pentru partea din perioada de dupa acel inceput; interfata
+//                  (private/admin/orders.js) afiseaza valorile reale, insotite de un mesaj compact
+//                  ("Date parțiale — tracking disponibil din <data>"), NICIODATA "Nemăsurat" (ar
+//                  ascunde date reale existente).
+//   'unmeasured' — intreaga perioada e ANTERIOARA inceputului real al tracking-ului (sau nu exista
+//                  inca niciun eveniment) — nicio cifra reala disponibila, interfata afiseaza
+//                  explicit "Nemăsurat"/"Date indisponibile".
+// Comparatiile folosesc ACELASI idiom AT TIME ZONE 'Europe/London' ca restul motorului (vezi
+// timeWindowClause) — nicio aproximare proprie in JS. Neatinse, ca intotdeauna: Comenzi create/
+// Checkout/Platite/Venit (sursa lor, tabela orders, e mereu reala, indiferent de tracking).
+async function getTrafficDataAvailability(startDate, endDateExclusive) {
+  const result = await pool.query(
+    `SELECT
+       CASE
+         WHEN MIN(occurred_at) IS NULL THEN 'unmeasured'
+         WHEN MIN(occurred_at) <= ($1::date AT TIME ZONE 'Europe/London') THEN 'complete'
+         WHEN MIN(occurred_at) < ($2::date AT TIME ZONE 'Europe/London') THEN 'partial'
+         ELSE 'unmeasured'
+       END AS status
+     FROM funnel_events`,
+    [startDate, endDateExclusive]
+  );
+  return result.rows[0].status;
 }
 
 // ==================================================================================
@@ -2647,6 +2689,7 @@ module.exports = {
   pool, initDb, createOrder, getOrderById, getOrderByToken, getOrderByMusicTaskId, getOrderByAnyMusicTaskId,
   insertFunnelEvent, linkFunnelEventsToOrder, deleteFunnelEventsOlderThan,
   getFunnelKpis, getConversionFunnel, getRevenueAndOrdersTrend, getTrafficSources, getFunnelDataCompleteSince,
+  getTrafficDataAvailability,
   buildOrdersFilter,
   getStuckInFlightOrders,
   anonymizeOrder,

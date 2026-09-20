@@ -109,7 +109,11 @@ test('orders.js: filtrele/paginarea raman IDENTICE (stare, PAGE_SIZE, buildQuery
 test('orders.html/orders.js: sectiunile de analytics/funnel (Period Selector, KPI Cards, Conversion Funnel, Trend, Traffic Sources) raman complet neatinse de aceasta corectie', () => {
   assert.match(html, /id="period-type-tabs"/);
   assert.match(html, /id="kpi-cards"/);
-  assert.match(html, /id="funnel-chart"/);
+  // id="funnel-chart" (container unic) a fost inlocuit pe 2026-09-19 (FAZA 1, clarificare funnel)
+  // de doua containere separate, Trafic si Conversie comenzi — vezi
+  // test/admin-orders-funnel-clarity.test.js pentru verificarea dedicata a acelei schimbari.
+  assert.match(html, /id="funnel-traffic"/);
+  assert.match(html, /id="funnel-cohort"/);
   assert.match(html, /id="trend-chart"/);
   assert.match(html, /id="sources-table"/);
   assert.match(js, /async function loadFunnelSummary\(\) \{/);

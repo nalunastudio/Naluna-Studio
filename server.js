@@ -1631,17 +1631,25 @@ app.get('/api/admin/orders/funnel-summary', async (req, res, next) => {
     }
 
     const args = { startDate: bounds.startDate, endDateExclusive: bounds.endDateExclusive, excludeEmails: ANALYTICS_EXCLUDED_EMAILS };
-    const [kpis, funnel, trend, sources, dataCompleteSince] = await Promise.all([
+    const [kpis, funnel, trend, sources, dataCompleteSince, trafficDataAvailability] = await Promise.all([
       db.getFunnelKpis(args),
       db.getConversionFunnel(args),
       db.getRevenueAndOrdersTrend(args),
       db.getTrafficSources(args),
-      db.getFunnelDataCompleteSince()
+      db.getFunnelDataCompleteSince(),
+      db.getTrafficDataAvailability(bounds.startDate, bounds.endDateExclusive)
     ]);
 
     res.json({
       period: { type: periodType, startDate: bounds.startDate, endDateExclusive: bounds.endDateExclusive },
       dataCompleteSince,
+      // trafficDataAvailability (2026-09-19, FAZA 1 — corectie, 3 stari): 'complete'/'partial'/
+      // 'unmeasured', folosit de Admin STRICT pentru cele 3 KPI-uri event-based (Vizitatori/CTA/
+      // Formular) — 'partial' arata cifrele reale existente insotite de un mesaj compact, NU le
+      // ascunde ca "Nemăsurat" (asta ar sterge date reale, ex. Septembrie 2026, tracking pornit pe
+      // 19.09). Comenzi create/Checkout/Platite/Venit raman NEATINSE (sursa lor, tabela orders, e
+      // mereu reala, indiferent de tracking).
+      trafficDataAvailability,
       kpis,
       funnel,
       trend,

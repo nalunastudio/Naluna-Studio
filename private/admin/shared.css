@@ -233,9 +233,20 @@ tr:last-child td{ border-bottom:none; }
 .period-tz-note{ color:var(--text-secondary); font-size:12px; margin:8px 0 24px; }
 
 .kpi-grid .stat{ min-width:130px; }
+/* Nemasurat (2026-09-19, FAZA 1 clarificare) — perioada cere date dinaintea inceputului real al
+   tracking-ului; distinct vizual de o cifra reala 0, ca sa nu fie citit gresit ca "zero real". */
+.stat-unmeasured .value{ color:var(--text-secondary); font-size:20px; font-style:italic; }
+/* Date parțiale (2026-09-19, FAZA 1 corectie, 3 stari) — valoarea ramane cea REALA (nu se schimba
+   stilul valorii, doar se adauga o nota compacta sub ea) — distinct de .stat-unmeasured, care
+   ascunde valoarea complet. */
+.stat-note{ font-size:10px; color:var(--text-secondary); margin-top:4px; cursor:help; }
+.funnel-partial-note{ font-size:12px; color:var(--text-secondary); margin-bottom:8px; }
 
 /* -------- Conversion Funnel -------- */
-.funnel-chart{ display:flex; flex-direction:column; gap:10px; margin-bottom:32px; }
+.funnel-group-title{ font-family:'Sora', sans-serif; font-weight:600; font-size:13px; text-transform:uppercase; letter-spacing:.06em; margin:18px 0 10px; color:var(--text); }
+.funnel-group-title:first-of-type{ margin-top:0; }
+.funnel-group-hint{ font-weight:400; text-transform:none; letter-spacing:normal; color:var(--text-secondary); font-size:12px; }
+.funnel-chart{ display:flex; flex-direction:column; gap:10px; margin-bottom:28px; }
 .funnel-row{ display:grid; grid-template-columns:150px 1fr 60px 150px; align-items:center; gap:14px; }
 .funnel-row-label{ font-size:13px; color:var(--text-secondary); }
 .funnel-row-bar-wrap{ background:var(--bg-secondary); border-radius:8px; height:22px; overflow:hidden; }
@@ -243,6 +254,7 @@ tr:last-child td{ border-bottom:none; }
 .funnel-row-count{ font-family:'Fraunces', serif; font-size:16px; text-align:right; }
 .funnel-row-meta{ display:flex; gap:8px; font-size:12px; color:var(--text-secondary); justify-content:flex-end; white-space:nowrap; }
 .funnel-row-dropoff{ color:var(--error); }
+.funnel-row-extra{ color:var(--text-secondary); }
 @media (max-width: 700px){
   .funnel-row{ grid-template-columns:110px 1fr 44px; grid-template-areas:"label bar count" "meta meta meta"; }
   .funnel-row-label{ grid-area:label; } .funnel-row-bar-wrap{ grid-area:bar; } .funnel-row-count{ grid-area:count; } .funnel-row-meta{ grid-area:meta; justify-content:flex-start; }
