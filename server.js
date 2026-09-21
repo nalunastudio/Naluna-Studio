@@ -3915,6 +3915,19 @@ app.post('/api/orders/:orderId/checkout', requireOrderToken, async (req, res, ne
     const gaSessionId = (typeof rawGaSessionId === 'string' && /^[0-9]{1,20}$/.test(rawGaSessionId))
       ? rawGaSessionId
       : '';
+    // MARKETING CONSENT — infrastructura pregatitoare (2026-09-21, faza "Consent + Privacy pentru
+    // Meta Ads"; NICIUN Meta Pixel/CAPI implementat inca). Acelasi tipar STRICT ca gaClientId/
+    // gaSessionId de mai sus: o valoare capturata client-side chiar inainte de plata (vezi
+    // window.NalunaAnalytics.isMarketingConsentGranted(), public/js/analytics.js), transportata
+    // prin metadata Stripe deja existenta, pana la webhook — NIMIC nu o citeste inca acolo. Cand
+    // Meta CAPI va fi implementat, evenimentul "Purchase" server-side va putea verifica
+    // session.metadata.marketingConsent === 'granted' inainte de a trimite orice date catre Meta,
+    // exact cum sendGa4PurchaseEvent foloseste azi gaClientId/gaSessionId. STRICT boolean primit
+    // de la client — orice altceva (lipsa, tip gresit) inseamna implicit 'denied', niciodata
+    // 'granted' presupus.
+    const marketingConsent = (typeof req.body === 'object' && req.body && req.body.marketingConsent === true)
+      ? 'granted'
+      : 'denied';
     if (order.status === 'ready') {
       return res.status(400).json({ error: 'Comanda a fost deja plătită.' });
     }
@@ -4051,7 +4064,8 @@ app.post('/api/orders/:orderId/checkout', requireOrderToken, async (req, res, ne
         expectedAmount: String(Math.round(order.price * 100)),
         expectedCurrency: 'gbp',
         gaClientId,
-        gaSessionId
+        gaSessionId,
+        marketingConsent
       },
       success_url: `${DOMAIN}/succes.html?order=${order.id}&token=${order.accessToken}`,
       // plata abandonata sau esuata -> revine la pagina dedicata melodiei (nu la formular),

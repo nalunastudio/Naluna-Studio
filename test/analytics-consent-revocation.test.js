@@ -1,9 +1,10 @@
-// CONSENT REVOCATION (2026-09-18, corectie ceruta explicit) — verifica exact scenariul: un
-// vizitator ACCEPTA analytics (primeste visitor_id, gtag.js se incarca), apoi REVOCA din link-ul
-// "Cookie settings" (butonul "Refuz" al bannerului, redeschis). Acelasi tipar de sandbox ca
-// test/analytics-client.test.js, dar cu un DOM fake mai complet (elemente cu addEventListener/
-// click() REALE) — necesar ca sa putem declansa efectiv butoanele bannerului, nu doar sa citim
-// textul lor.
+// CONSENT REVOCATION (2026-09-18, corectie ceruta explicit; extins 2026-09-21 pentru bannerul cu
+// trei categorii — Necessary/Analytics/Marketing, Consent + Privacy pentru Meta Ads) — verifica
+// exact scenariul: un vizitator ACCEPTA totul (Accept all: gtag.js se incarca, primeste
+// visitor_id), apoi REVOCA din link-ul "Cookie settings" (redeschide bannerul, apasa "Reject
+// optional"). Acelasi tipar de sandbox ca test/analytics-client.test.js, dar cu un DOM fake mai
+// complet (elemente cu addEventListener/click()/checked REALE) — necesar ca sa putem declansa
+// efectiv controalele bannerului (butoane + checkbox-uri), nu doar sa citim textul lor.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -13,10 +14,13 @@ const analyticsSrc = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 
 
 function makeFakeElement() {
   const listeners = {};
-  return {
+  const el = {
     style: {},
     children: [],
+    checked: false,
+    disabled: false,
     _listeners: listeners,
+    _idsMap: null, // injectat de loadWithCapturedBannerControls, pentru auto-inregistrare pe id
     addEventListener(type, handler) { (listeners[type] = listeners[type] || []).push(handler); },
     removeEventListener(type, handler) {
       if (!listeners[type]) return;
@@ -24,10 +28,11 @@ function makeFakeElement() {
     },
     click() { (listeners.click || []).forEach((h) => h({ preventDefault() {} })); },
     setAttribute() {},
-    appendChild(child) { this.children.push(child); },
+    appendChild(child) { this.children.push(child); return child; },
     get textContent() { return this._text || ''; },
     set textContent(v) { this._text = v; }
   };
+  return el;
 }
 
 function makeFakeWindow(overrides) {
@@ -47,7 +52,6 @@ function makeFakeWindow(overrides) {
 }
 
 function loadAnalyticsIntoSandbox(fakeWindow) {
-  const elementsById = {};
   const doc = {
     readyState: 'complete',
     addEventListener: () => {},
@@ -55,62 +59,65 @@ function loadAnalyticsIntoSandbox(fakeWindow) {
     head: { appendChild: () => {} },
     body: { appendChild: () => {} },
     getElementById: (id) => elementsById[id] || null,
-    createElement: () => {
-      const el = makeFakeElement();
-      const origAppend = el.appendChild.bind(el);
-      return el;
-    },
+    createElement: () => makeFakeElement(),
     querySelector: () => null
   };
-  // renderBanner() foloseste document.getElementById(BANNER_ID) DOAR ca sa verifice daca deja
-  // exista (evita dubla injectare) — nu are nevoie sa gaseasca elementul creat, deci nu simulam
-  // inregistrarea in elementsById; testele apeleaza direct butoanele returnate mai jos.
+  const elementsById = {};
   const wrapperSrc = `(function (window, document) {\n${analyticsSrc}\n})`;
   const factory = new Function('return ' + wrapperSrc)();
   factory(fakeWindow, doc);
   return fakeWindow.NalunaAnalytics;
 }
 
-// Acceseaza direct butoanele bannerului declansand renderBanner() prin banner-ul deja randat la
-// incarcarea sandbox-ului (initConsentUi ruleaza automat, doc.readyState='complete') — extragem
-// referintele reale la accept/reject simuland document.body.appendChild ca sa le capturam.
-function loadWithCapturedBannerButtons(fakeWindow) {
-  const captured = { accept: null, reject: null };
+// Randeaza bannerul real (renderBanner()) si captureaza controalele reale prin id — createElement
+// atribuie fiecarui element un setter pe `.id` care se auto-inregistreaza intr-un registru,
+// exact ca document.getElementById intr-un browser real. Robust la orice reordonare interna a
+// DOM-ului bannerului (nu depinde de pozitii/indici de copii, spre deosebire de varianta veche).
+function loadWithCapturedBannerControls(fakeWindow) {
+  const elementsById = {};
+  function createElement() {
+    const el = makeFakeElement();
+    let _id = '';
+    Object.defineProperty(el, 'id', {
+      get() { return _id; },
+      set(v) { _id = v; if (v) elementsById[v] = el; }
+    });
+    return el;
+  }
   const doc = {
     readyState: 'complete',
     addEventListener: () => {},
     documentElement: { getAttribute: () => 'en' },
     head: { appendChild: () => {} },
-    body: {
-      appendChild: (el) => {
-        // bannerul e un <div> cu doi copii: [textEl, btnWrap]; btnWrap are [acceptBtn, rejectBtn]
-        if (el.children && el.children.length === 2 && el.children[1].children && el.children[1].children.length === 2) {
-          captured.accept = el.children[1].children[0];
-          captured.reject = el.children[1].children[1];
-        }
-      }
-    },
-    getElementById: () => null, // banner-ul "nu exista inca" -> renderBanner() ruleaza mereu
-    createElement: makeFakeElement,
+    body: { appendChild: () => {} },
+    getElementById: (id) => elementsById[id] || null,
+    createElement: createElement,
     querySelector: () => null
   };
   const wrapperSrc = `(function (window, document) {\n${analyticsSrc}\n})`;
   const factory = new Function('return ' + wrapperSrc)();
   factory(fakeWindow, doc);
-  return { api: fakeWindow.NalunaAnalytics, buttons: captured };
+  return {
+    api: fakeWindow.NalunaAnalytics,
+    controls: {
+      acceptAll: elementsById['naluna-consent-accept-all'],
+      rejectOptional: elementsById['naluna-consent-reject-optional'],
+      manage: elementsById['naluna-consent-manage'],
+      analyticsToggle: elementsById['naluna-consent-analytics-toggle'],
+      marketingToggle: elementsById['naluna-consent-marketing-toggle'],
+      save: elementsById['naluna-consent-save']
+    }
+  };
 }
 
-test('flux complet: accept -> visitor_id creat + gtag incarcat -> revocare (Refuz) -> gtag consent update DENIED + visitor_id sters din storage', () => {
+test('flux complet: Accept all -> visitor_id creat + gtag incarcat -> revocare (Reject optional) -> gtag consent update DENIED + visitor_id sters din storage', () => {
   const win = makeFakeWindow();
-  const gtagCalls = [];
-  // gtag e propriul stub intern (loadGtagIfNeeded il suprascrie) — interceptam prin dataLayer.push,
-  // care e ce foloseste stub-ul intern INAINTE ca scriptul real gtag.js sa se incarce (nu se
-  // incarca niciodata cu adevarat in acest test, fetch-ul de script e doar un <script> fake).
-  const { api, buttons } = loadWithCapturedBannerButtons(win);
-  assert.ok(buttons.accept && buttons.reject, 'butoanele Accept/Refuz trebuie sa fi fost create la randarea initiala a bannerului');
+  const { api, controls } = loadWithCapturedBannerControls(win);
+  assert.ok(controls.acceptAll && controls.rejectOptional && controls.manage, 'butoanele Accept all/Reject optional/Manage preferences trebuie sa fi fost create la randarea initiala a bannerului');
 
-  buttons.accept.click();
-  assert.equal(win.localStorage.getItem('naluna_consent'), 'granted');
+  controls.acceptAll.click();
+  const stateAfterAccept = JSON.parse(win.localStorage.getItem('naluna_consent'));
+  assert.deepEqual(stateAfterAccept, { analytics: true, marketing: true }, 'Accept all trebuie sa acorde AMBELE categorii');
   const visitorIdAfterAccept = api.getOrCreateVisitorId();
   assert.equal(visitorIdAfterAccept, 'visitor-uuid-1', 'visitor_id trebuie creat dupa acceptare');
   assert.equal(win.localStorage.getItem('naluna_visitor_id'), 'visitor-uuid-1');
@@ -124,26 +131,27 @@ test('flux complet: accept -> visitor_id creat + gtag incarcat -> revocare (Refu
     return realGtag.apply(this, arguments);
   };
 
-  buttons.reject.click();
-  assert.equal(win.localStorage.getItem('naluna_consent'), 'denied', 'revocarea trebuie sa scrie "denied"');
+  controls.rejectOptional.click();
+  const stateAfterReject = JSON.parse(win.localStorage.getItem('naluna_consent'));
+  assert.deepEqual(stateAfterReject, { analytics: false, marketing: false }, 'Reject optional trebuie sa refuze AMBELE categorii');
   assert.equal(consentUpdateCalls.length, 1, 'gtag("consent","update",...) trebuie trimis catre biblioteca DEJA incarcata la revocare');
   assert.deepEqual(consentUpdateCalls[0], ['consent', 'update', { analytics_storage: 'denied' }]);
 
   assert.equal(win.localStorage.getItem('naluna_visitor_id'), null, 'visitor_id local trebuie sters la revocare');
 });
 
-test('dupa revocare: track() nu mai apeleaza gtag SI nu mai trimite /api/track, pentru NICIUN eveniment', () => {
+test('dupa revocare (Reject optional): track() nu mai apeleaza gtag SI nu mai trimite /api/track, pentru NICIUN eveniment', () => {
   const win = makeFakeWindow();
   let fetchCalled = false;
   win.fetch = () => { fetchCalled = true; return Promise.resolve({}); };
-  const { api, buttons } = loadWithCapturedBannerButtons(win);
-  buttons.accept.click();
+  const { api, controls } = loadWithCapturedBannerControls(win);
+  controls.acceptAll.click();
 
   let gtagEventCalls = 0;
   const realGtag = win.gtag;
   win.gtag = function () { if (arguments[0] === 'event') gtagEventCalls += 1; return realGtag.apply(this, arguments); };
 
-  buttons.reject.click();
+  controls.rejectOptional.click();
   fetchCalled = false; // resetam — orice apel de dupa acest punct e din track(), nu din setup
 
   api.track('cta_clicked', { location: 'hero' });
@@ -151,37 +159,76 @@ test('dupa revocare: track() nu mai apeleaza gtag SI nu mai trimite /api/track, 
   assert.equal(fetchCalled, false, 'niciun apel /api/track nu trebuie trimis dupa revocare');
 });
 
-test('getOrCreateVisitorId dupa revocare: returneaza null, NU mai citeste id-ul (oricum sters) din storage', () => {
+test('getOrCreateVisitorId dupa revocare (Reject optional): returneaza null, NU mai citeste id-ul (oricum sters) din storage', () => {
   const win = makeFakeWindow();
-  const { api, buttons } = loadWithCapturedBannerButtons(win);
-  buttons.accept.click();
+  const { api, controls } = loadWithCapturedBannerControls(win);
+  controls.acceptAll.click();
   api.getOrCreateVisitorId();
-  buttons.reject.click();
+  controls.rejectOptional.click();
   assert.equal(api.getOrCreateVisitorId(), null);
 });
 
-test('re-acceptare DUPA o revocare, pe aceeasi incarcare de pagina: gtag primeste update GRANTED (nu ramane blocat de revocarea anterioara) SI un visitor_id NOU e creat (nu se reia cel vechi, deja sters)', () => {
+test('re-acceptare (Accept all) DUPA o revocare, pe aceeasi incarcare de pagina: gtag primeste update GRANTED (nu ramane blocat de revocarea anterioara) SI un visitor_id NOU e creat (nu se reia cel vechi, deja sters)', () => {
   const win = makeFakeWindow();
   let uuidCounter = 0;
   win.crypto = { randomUUID: () => `visitor-${++uuidCounter}` };
-  const { api, buttons } = loadWithCapturedBannerButtons(win);
+  const { api, controls } = loadWithCapturedBannerControls(win);
 
-  buttons.accept.click();
+  controls.acceptAll.click();
   const firstId = api.getOrCreateVisitorId();
   assert.equal(firstId, 'visitor-1');
 
-  buttons.reject.click();
+  controls.rejectOptional.click();
 
   const consentUpdateCalls = [];
   const realGtag = win.gtag;
   win.gtag = function () { if (arguments[0] === 'consent') consentUpdateCalls.push(Array.from(arguments)); return realGtag.apply(this, arguments); };
 
-  buttons.accept.click();
-  assert.equal(win.localStorage.getItem('naluna_consent'), 'granted');
+  controls.acceptAll.click();
+  assert.deepEqual(JSON.parse(win.localStorage.getItem('naluna_consent')), { analytics: true, marketing: true });
   assert.deepEqual(consentUpdateCalls[0], ['consent', 'update', { analytics_storage: 'granted' }]);
 
   const secondId = api.getOrCreateVisitorId();
   assert.equal(secondId, 'visitor-2', 'un id NOU trebuie creat, diferit de cel sters la revocare');
+});
+
+// ================================================================================================
+// "Manage preferences" — Analytics si Marketing sunt independente (2026-09-21).
+// ================================================================================================
+test('Manage preferences: Analytics ON / Marketing OFF -> salvat exact asa, GA4 functioneaza, isMarketingConsentGranted() ramane fals', () => {
+  const win = makeFakeWindow();
+  const { api, controls } = loadWithCapturedBannerControls(win);
+  controls.manage.click();
+  controls.analyticsToggle.checked = true;
+  controls.marketingToggle.checked = false;
+  controls.save.click();
+
+  assert.deepEqual(JSON.parse(win.localStorage.getItem('naluna_consent')), { analytics: true, marketing: false });
+  assert.equal(api.isAnalyticsConsentGranted(), true);
+  assert.equal(api.isMarketingConsentGranted(), false);
+  assert.equal(api.getOrCreateVisitorId(), 'visitor-uuid-1', 'Analytics acordat -> visitor_id creat');
+});
+
+test('Manage preferences: Analytics OFF / Marketing ON -> salvat exact asa (categorii independente), GA4/visitor_id raman oprite', () => {
+  const win = makeFakeWindow();
+  const { api, controls } = loadWithCapturedBannerControls(win);
+  controls.manage.click();
+  controls.analyticsToggle.checked = false;
+  controls.marketingToggle.checked = true;
+  controls.save.click();
+
+  assert.deepEqual(JSON.parse(win.localStorage.getItem('naluna_consent')), { analytics: false, marketing: true });
+  assert.equal(api.isAnalyticsConsentGranted(), false);
+  assert.equal(api.isMarketingConsentGranted(), true);
+  assert.equal(api.getOrCreateVisitorId(), null, 'Analytics refuzat -> niciun visitor_id, indiferent de Marketing');
+});
+
+test('Manage preferences: Marketing NU e niciodata prebifat implicit pentru un vizitator nou (toggle-ul porneste neselectat)', () => {
+  const win = makeFakeWindow();
+  const { controls } = loadWithCapturedBannerControls(win);
+  controls.manage.click();
+  assert.equal(controls.marketingToggle.checked, false, 'Marketing nu trebuie preselectat niciodata');
+  assert.equal(controls.analyticsToggle.checked, false, 'Analytics nu trebuie preselectat niciodata pentru un vizitator nou');
 });
 
 test('_updateGtagConsent: no-op sigur cand gtag nu a fost niciodata incarcat (consimtamant niciodata acordat)', () => {

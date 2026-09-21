@@ -406,15 +406,20 @@ test('melodia-mea.html: textul #file-access-note e setat corect per PLAN REAL (n
 
 // CORECȚIE (2026-09-14, analytics GA4): goToCheckout() trimite acum un body — STRICT
 // gaClientId/gaSessionId (analytics, vezi test/analytics-html-wiring.test.js), NICIODATA vreo
-// bifa de consimtamant proprie. Verificarea originala ("fara body deloc") era specifica
-// motivului de atunci (Stripe respinge singur plata fara bifa, nu mai era nevoie de niciun
-// camp trimis de noi) — actualizata sa reflecte noul motiv, pastrand intacta cerinta esentiala:
-// niciun checkbox de consimtamant propriu, Stripe ramane singura sursa care cere bifa.
-test('melodia-mea.html: goToCheckout() nu mai verifica niciun checkbox propriu — Stripe respinge singur plata fara bifa — iar body-ul trimis contine STRICT campuri de analytics (gaClientId/gaSessionId), niciodata un camp de consimtamant', () => {
+// bifa de consimtamant proprie PENTRU TERMENI (checkbox-ul vechi, inlocuit de Stripe nativ).
+// CORECȚIE (2026-09-21, Consent + Privacy pentru Meta Ads): body-ul capata acum SI
+// marketingConsent — un camp NOU, FARA legatura cu vechiul checkbox de Termeni si Conditii
+// eliminat mai jos — STRICT o instantanee a consimtamantului de marketing (cookie-uri),
+// citita din window.NalunaAnalytics.isMarketingConsentGranted(), pregatita pentru viitorul
+// Meta CAPI (vezi test/analytics-consent-model.test.js). Cerinta ORIGINALA a acestui test
+// (niciun checkbox de Termeni propriu, Stripe ramane singura sursa care cere bifa de ToS)
+// ramane intacta si verificata separat mai jos.
+test('melodia-mea.html: goToCheckout() nu mai verifica niciun checkbox propriu de Termeni — Stripe respinge singur plata fara bifa — iar body-ul trimis contine gaClientId/gaSessionId/marketingConsent, niciodata vechiul camp consentGiven', () => {
   const fn = extractFn(melodia, 'async function goToCheckout() {');
   assert.ok(!fn.includes('checkoutConsentCheckbox'));
-  assert.match(fn, /body:\s*JSON\.stringify\(\{\s*gaClientId:[^,]*,\s*gaSessionId:[^}]*\}\)/, 'body-ul trebuie sa contina STRICT gaClientId/gaSessionId');
-  assert.ok(!/consent/i.test(fn.slice(fn.indexOf('body: JSON.stringify'))), 'niciun camp de consimtamant nu trebuie sa apara in body-ul trimis catre /checkout');
+  assert.match(fn, /body:\s*JSON\.stringify\(\{\s*gaClientId:[^,]*,\s*gaSessionId:[^,]*,\s*marketingConsent:[^}]*\}\)/, 'body-ul trebuie sa contina gaClientId/gaSessionId/marketingConsent');
+  assert.match(fn, /isMarketingConsentGranted\(\)/, 'marketingConsent trebuie citit din sursa unica de adevar (NalunaAnalytics.isMarketingConsentGranted), niciodata dintr-un camp propriu');
+  assert.ok(!/consentGiven/i.test(fn), 'vechiul camp de consimtamant pentru Termeni (consentGiven) nu mai trebuie sa existe');
 });
 
 // ---------------------------------------------------------------------------------------------

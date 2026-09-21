@@ -2498,10 +2498,16 @@
       const [gaClientId, gaSessionId] = (typeof window !== 'undefined' && window.NalunaAnalytics)
         ? await Promise.all([window.NalunaAnalytics.getClientId(), window.NalunaAnalytics.getSessionId()])
         : [null, null];
+      // MARKETING CONSENT (2026-09-21, infrastructura Meta Ads — niciun Meta Pixel/CAPI inca):
+      // instantaneu STRICT chiar inainte de plata, ca sa reflecte alegerea curenta din "Cookie
+      // settings", nu una veche capturata la incarcarea paginii — vezi server.js#POST /checkout.
+      const marketingConsent = (typeof window !== 'undefined' && window.NalunaAnalytics)
+        ? window.NalunaAnalytics.isMarketingConsentGranted()
+        : false;
       const res = await fetch(`/api/orders/${orderId}/checkout`, {
         method: 'POST',
         headers: { 'X-Access-Token': accessToken, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gaClientId: gaClientId || undefined, gaSessionId: gaSessionId || undefined })
+        body: JSON.stringify({ gaClientId: gaClientId || undefined, gaSessionId: gaSessionId || undefined, marketingConsent: marketingConsent })
       });
       const data = await res.json();
 
