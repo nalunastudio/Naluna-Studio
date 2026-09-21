@@ -736,6 +736,50 @@ async function initDb() {
     WHERE status IN ('pending', 'claimed');
   `);
 
+  // ==================================================================================
+  // META_CAPI_EVENTS (2026-09-21, Meta Conversions API — Purchase server-side) — outbox
+  // persistent, ACELASI tipar exact ca social_posts/video_render_jobs: un esec temporar catre
+  // Meta dupa ce webhook-ul Stripe a fost deja procesat NU trebuie sa piarda definitiv
+  // evenimentul de Purchase — randul ramane 'pending' cu next_attempt_at, reluat de
+  // lib/meta-capi/capi-worker.js (FOR UPDATE SKIP LOCKED, vezi claimDueMetaCapiEvent mai jos).
+  //
+  // order_id UNIQUE: enqueueMetaCapiEvent() foloseste ON CONFLICT (order_id) DO NOTHING —
+  // Purchase se trimite CEL MULT o data per comanda, indiferent cate ori ajunge aici (retry
+  // real de webhook Stripe e oricum oprit mai devreme, la recordPaidOrderAtomically, dar acest
+  // UNIQUE ramane o a doua plasa de siguranta independenta).
+  // event_id: identificatorul determinist trimis catre Meta (vezi lib/meta-capi/capi-payload.js,
+  // buildEventId) — derivat STRICT din order_id (`purchase_<orderId>`), niciodata aleator, ca
+  // sa fie stabil intre incercari (idempotenta la nivel Meta, desi fara Pixel activ acum nu
+  // exista inca deduplicare de facut acolo — pregatire pentru cazul in care Pixel s-ar adauga
+  // vreodata).
+  // payload JSONB: evenimentul COMPLET, deja construit (fara access_token), pregatit de
+  // retrimis identic la fiecare incercare — nu se recalculeaza value/currency/email hash la
+  // fiecare retry (order-ul ar putea teoretic fi modificat intre timp de alt job, ex. anonimizare
+  // GDPR — payload-ul ramane STRICT starea de la momentul platii confirmate).
+  // status: 'pending' (asteapta trimitere/retrimitere) | 'sending' (preluat ATOMIC de un
+  // worker, in curs) | 'sent' (confirmat de Meta) | 'abandoned' (max_attempts epuizat — NU mai
+  // e reincercat automat, ramane vizibil in DB pentru audit manual).
+  // claimed_at: recuperare dupa crash (vezi recoverStaleMetaCapiEvents), acelasi rol ca
+  // publishing_claimed_at (social_posts).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS meta_capi_events (
+      id UUID PRIMARY KEY,
+      order_id UUID NOT NULL UNIQUE REFERENCES orders(id),
+      event_id TEXT NOT NULL UNIQUE,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'sending', 'sent', 'abandoned')),
+      payload JSONB NOT NULL,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      max_attempts INTEGER NOT NULL DEFAULT 8,
+      next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      claimed_at TIMESTAMPTZ,
+      last_attempt_at TIMESTAMPTZ,
+      last_error TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      sent_at TIMESTAMPTZ
+    );
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_meta_capi_events_status_next_attempt ON meta_capi_events(status, next_attempt_at);`);
+
   console.log('Postgres: schema orders verificata/creata.');
 }
 
@@ -2681,6 +2725,115 @@ async function recordInstagramTokenRefreshFailure(errorMessage) {
   );
 }
 
+// ==================================================================================
+// META_CAPI_EVENTS (2026-09-21) — vezi CREATE TABLE (initDb, mai sus) pentru schema completa
+// si motivatia designului. Acelasi tipar exact ca social_posts (createSocialPostIfNew/
+// claimDueSocialPost/finalizeSocialPost/recoverStalePublishingSocialPosts mai sus), adaptat la
+// un singur "job" per rand (trimiterea unui singur eveniment Purchase), nu doua platforme.
+// ==================================================================================
+function rowToMetaCapiEvent(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    orderId: row.order_id,
+    eventId: row.event_id,
+    status: row.status,
+    payload: row.payload,
+    attempts: row.attempts,
+    maxAttempts: row.max_attempts,
+    nextAttemptAt: row.next_attempt_at,
+    claimedAt: row.claimed_at || null,
+    lastAttemptAt: row.last_attempt_at || null,
+    lastError: row.last_error || null,
+    createdAt: row.created_at,
+    sentAt: row.sent_at || null
+  };
+}
+
+// ON CONFLICT (order_id) DO NOTHING — vezi comentariul UNIQUE de la CREATE TABLE: Purchase se
+// enqueueaza CEL MULT o data per comanda. Returneaza null daca randul exista deja (apelantul
+// stie astfel ca NU mai trebuie sa declanseze o incercare imediata — worker-ul periodic va
+// gasi oricum randul existent daca mai are nevoie de o reincercare).
+async function enqueueMetaCapiEvent({ orderId, eventId, payload }) {
+  const result = await pool.query(
+    `INSERT INTO meta_capi_events (id, order_id, event_id, payload)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (order_id) DO NOTHING
+     RETURNING *`,
+    [randomUUID(), orderId, eventId, JSON.stringify(payload)]
+  );
+  return rowToMetaCapiEvent(result.rows[0]);
+}
+
+// CLAIM ATOMIC — identic ca structura cu claimDueSocialPost (FOR UPDATE SKIP LOCKED): muta UN
+// SINGUR rand scadent la 'sending', intr-o singura instructiune SQL, sigur sub oricate tick-uri/
+// instante concurente. Apelantul (lib/meta-capi/capi-worker.js) NU e neaparat proprietarul
+// randului preluat aici — orice trigger (tick periodic SAU incercarea imediata de dupa un nou
+// webhook Stripe confirmat) poate prelua orice eveniment scadent, indiferent care comanda l-a
+// declansat; tot ce conteaza e ca fiecare rand scadent ajunge sa fie procesat, o singura data.
+async function claimDueMetaCapiEvent() {
+  const result = await pool.query(`
+    UPDATE meta_capi_events
+    SET status = 'sending', claimed_at = now()
+    WHERE id = (
+      SELECT id FROM meta_capi_events
+      WHERE status = 'pending' AND next_attempt_at <= now()
+      ORDER BY next_attempt_at ASC
+      FOR UPDATE SKIP LOCKED
+      LIMIT 1
+    )
+    RETURNING *
+  `);
+  return rowToMetaCapiEvent(result.rows[0]);
+}
+
+// Scrie rezultatul unei incercari (succes sau esec) — apelantul (lib/meta-capi/capi-worker.js)
+// calculeaza patch-ul (status/attempts/nextAttemptAt/lastError), aceasta functie STRICT
+// persista. claimed_at eliberat NECONDITIONAT — o incercare terminata (succes sau esec) nu mai
+// e "in curs de procesare".
+async function finalizeMetaCapiEvent(id, patch) {
+  const result = await pool.query(
+    `UPDATE meta_capi_events SET
+      status = $2,
+      attempts = $3,
+      next_attempt_at = $4,
+      last_attempt_at = $5,
+      last_error = $6,
+      sent_at = $7,
+      claimed_at = NULL
+     WHERE id = $1
+     RETURNING *`,
+    [
+      id, patch.status, patch.attempts, patch.nextAttemptAt || null,
+      patch.lastAttemptAt || null, patch.lastError || null, patch.sentAt || null
+    ]
+  );
+  return rowToMetaCapiEvent(result.rows[0]);
+}
+
+// RECUPERARE dupa crash/restart — acelasi rol ca recoverStalePublishingSocialPosts: un rand
+// ramas 'sending' mai mult decat e realist posibil (o singura cerere HTTP catre Meta, niciodata
+// minute intregi) inseamna ca procesul care il preluase a picat inainte sa apuce sa scrie
+// rezultatul. Il intoarce la 'pending', reincercabil imediat — attempts NEATINS (nu conteaza ca
+// o incercare esuata reala, doar recuperare de proces).
+async function recoverStaleMetaCapiEvents(staleMinutes) {
+  const result = await pool.query(
+    `UPDATE meta_capi_events
+     SET status = 'pending', next_attempt_at = now(), claimed_at = NULL
+     WHERE status = 'sending'
+       AND claimed_at IS NOT NULL
+       AND claimed_at < now() - ($1 || ' minutes')::interval
+     RETURNING *`,
+    [staleMinutes]
+  );
+  return result.rows.map(rowToMetaCapiEvent);
+}
+
+async function getMetaCapiEventByOrderId(orderId) {
+  const result = await pool.query(`SELECT * FROM meta_capi_events WHERE order_id = $1`, [orderId]);
+  return rowToMetaCapiEvent(result.rows[0]);
+}
+
 async function markInstagramTokenAlertSent() {
   await pool.query(`UPDATE instagram_token_state SET last_alert_sent_at = now() WHERE id = 1`);
 }
@@ -2717,5 +2870,7 @@ module.exports = {
   createSocialPostIfNew, getSocialPostByIdempotencyKey, getSocialPostById, listSocialPosts, getSocialPostStats, finalizeSocialPost,
   claimDueSocialPost, recoverStalePublishingSocialPosts, cancelScheduledSocialPost, retrySocialPostPlatform,
   getInstagramTokenState, claimInstagramTokenRefresh, recordInstagramTokenRefreshSuccess,
-  recordInstagramTokenRefreshFailure, markInstagramTokenAlertSent
+  recordInstagramTokenRefreshFailure, markInstagramTokenAlertSent,
+  enqueueMetaCapiEvent, claimDueMetaCapiEvent, finalizeMetaCapiEvent, recoverStaleMetaCapiEvents,
+  getMetaCapiEventByOrderId
 };

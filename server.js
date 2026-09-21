@@ -101,6 +101,17 @@ const {
 const { startSocialWorker } = require('./lib/social/social-worker');
 const { getCurrentInstagramAccessToken } = require('./lib/social/instagram-token-store');
 const { checkInstagramTokenLifecycle } = require('./lib/social/instagram-token-lifecycle');
+const { buildEventId: buildMetaCapiEventId, buildPurchaseEvent: buildMetaCapiPurchaseEvent } = require('./lib/meta-capi/capi-payload');
+const { startMetaCapiWorker } = require('./lib/meta-capi/capi-worker');
+
+// META CAPI (2026-09-21) — handle-ul worker-ului de retry (vezi lib/meta-capi/capi-worker.js),
+// pornit STRICT dupa initDb() (langa socialWorkerHandle, vezi finalul fisierului). Declarat AICI
+// (nivel de modul, inaintea oricarui apelant) ca enqueueMetaCapiPurchase() de mai jos — definita
+// mult mai devreme in fisier, dar EXECUTATA abia la un webhook Stripe real, mult dupa boot — sa
+// poata declansa o incercare imediata, optionala, de trimitere (fire-and-forget, in completarea
+// tick-ului periodic de fond). Null inainte de boot/in teste — verificat explicit inainte de
+// folosire, niciodata presupus non-null.
+let metaCapiWorkerHandle = null;
 
 // -------- Validare stricta a variabilelor de mediu obligatorii, la pornire --------
 // Mai bine esueaza clar la boot decat sa porneasca "pe jumatate" si sa pice abia la prima comanda.
@@ -1251,6 +1262,54 @@ async function sendGa4PurchaseEvent({ orderId, plan, value, currency, gaClientId
   }
 }
 
+// META CAPI (2026-09-21) — enqueueaza (persistent, in meta_capi_events) evenimentul "Purchase"
+// pentru Meta Conversions API si declanseaza o incercare imediata, optionala, de trimitere.
+// ACELASI tipar de gate strict ca sendGa4PurchaseEvent de mai sus, PLUS un gate suplimentar
+// obligatoriu, specific Meta Ads: consimtamant explicit de marketing (session.metadata.
+// marketingConsent === 'granted', capturat la checkout — vezi POST /api/orders/:orderId/checkout
+// mai jos, NICIODATA presupus). Fara el (denied, lipsa, sau orice comanda istorica dinainte de
+// aceasta faza, care nu are deloc acest camp in metadata) — ZERO date trimise catre Meta, fara
+// nicio exceptie.
+//
+// STRICT best-effort la nivelul ACESTUI apel: enqueue-ul in DB e un INSERT simplu (nu poate
+// esua din motive legate de Meta), iar declansarea incercarii imediate e fire-and-forget — orice
+// eroare/timeout REAL catre Meta se intampla STRICT in worker (lib/meta-capi/capi-worker.js,
+// deja izolat acolo) si NU poate ajunge niciodata inapoi la acest apelant (processConfirmedPayment),
+// deci nici la procesarea webhook-ului Stripe.
+//
+// Persistenta + retry (cerinta explicita): un esec temporar Meta DUPA acest punct nu pierde
+// Purchase-ul — randul ramane 'pending' in meta_capi_events, reluat automat de worker-ul de
+// fond (pornit la boot, langa socialWorkerHandle) pana la succes sau pana la epuizarea
+// MAX_ATTEMPTS (vezi lib/meta-capi/capi-retry.js).
+async function enqueueMetaCapiPurchase({ orderId, email, value, currency, fbp, marketingConsent, paidAt }) {
+  if (marketingConsent !== 'granted') return; // denied/lipsa (inclusiv comenzi istorice) -> zero CAPI, fara nicio exceptie
+  const accessToken = (process.env.META_CAPI_ACCESS_TOKEN || '').trim();
+  const datasetId = (process.env.META_DATASET_ID || '').trim();
+  if (!accessToken || !datasetId) return; // Meta CAPI neconfigurat — no-op silentios, niciodata o eroare
+  try {
+    const eventTimeSeconds = Math.floor(new Date(paidAt).getTime() / 1000);
+    const event = buildMetaCapiPurchaseEvent({
+      orderId,
+      eventTimeSeconds,
+      value,
+      currency,
+      email,
+      fbp: fbp || null, // NICIODATA inventat — trecut mai departe STRICT daca a fost deja capturat (orders.fbp)
+      eventSourceUrl: `${DOMAIN}/succes.html?order=${orderId}`
+    });
+    const enqueued = await db.enqueueMetaCapiEvent({ orderId, eventId: buildMetaCapiEventId(orderId), payload: event });
+    // enqueued === null inseamna ca randul exista deja (retry improbabil al ACELUIASI orderId,
+    // vezi UNIQUE(order_id) — gate-ul isNewEvent/alreadyPaid de mai sus il face practic imposibil
+    // de atins in productie, dar ramane o a doua plasa de siguranta independenta) — worker-ul de
+    // fond reia oricum orice ramane 'pending', deci nu mai e nevoie de o incercare imediata aici.
+    if (enqueued && metaCapiWorkerHandle) {
+      metaCapiWorkerHandle.tick().catch(() => {});
+    }
+  } catch (err) {
+    console.error(`Comanda ${orderId}: enqueue Meta CAPI Purchase a esuat (${err.message}) — livrarea comenzii NU e afectata.`);
+  }
+}
+
 async function processConfirmedPayment(event, session) {
   const orderId = session.metadata && session.metadata.orderId;
   if (!orderId) return { httpStatus: 200, body: { received: true, noOrderId: true } };
@@ -1383,6 +1442,22 @@ async function processConfirmedPayment(event, session) {
     gaClientId: (session.metadata && session.metadata.gaClientId) || null,
     gaSessionId: (session.metadata && session.metadata.gaSessionId) || null
   }).catch(() => { /* sendGa4PurchaseEvent isi prinde deja toate erorile — plasa suplimentara */ });
+
+  // META CAPI (2026-09-21) — Purchase server-side, STRICT daca session.metadata.marketingConsent
+  // === 'granted' (verificat DIN NOU, in interiorul enqueueMetaCapiPurchase — gate-ul e acolo,
+  // nu doar la checkout, ca sa functioneze corect si pentru comenzi istorice/fara acest camp).
+  // value/currency/email vin STRICT din `updated`/amountTotal/paymentCurrency — ACELASI sursa de
+  // adevar (Stripe, deja verificata mai sus) ca sendGa4PurchaseEvent, niciodata recalculate
+  // separat. fbp vine STRICT din order (orders.fbp, capturat la creare, NICIODATA inventat aici).
+  enqueueMetaCapiPurchase({
+    orderId,
+    email: updated.email,
+    value: amountTotal,
+    currency: paymentCurrency,
+    fbp: updated.fbp || null,
+    marketingConsent: (session.metadata && session.metadata.marketingConsent) || null,
+    paidAt: updated.paidAt
+  }).catch(() => { /* enqueueMetaCapiPurchase isi prinde deja toate erorile — plasa suplimentara */ });
 
   return { httpStatus: 200, body: { received: true } };
 }
@@ -10639,6 +10714,21 @@ if (require.main === module) {
         getInstagramAccessToken: getCurrentInstagramAccessToken,
         checkInstagramTokenLifecycle: () => checkInstagramTokenLifecycle({ db, sendAlertEmail: sendInstagramTokenAlertEmail })
       });
+
+      // Worker-ul de retry Meta CAPI Purchase (vezi lib/meta-capi/capi-worker.js si
+      // enqueueMetaCapiPurchase mai sus) — ACELASI tipar de pornire ca socialWorkerHandle:
+      // rulare imediata (recuperare + orice e deja scadent) apoi tick periodic. getConfig()
+      // citeste variabilele de mediu PROASPAT la fiecare tick (nu doar o data la boot), ca o
+      // schimbare de configurare pe Railway sa fie respectata fara alt restart al worker-ului.
+      metaCapiWorkerHandle = startMetaCapiWorker({
+        db,
+        getConfig: () => ({
+          accessToken: (process.env.META_CAPI_ACCESS_TOKEN || '').trim(),
+          datasetId: (process.env.META_DATASET_ID || '').trim(),
+          testEventCode: (process.env.META_CAPI_TEST_EVENT_CODE || '').trim() || null
+        })
+      });
+
       app.listen(PORT, () => {
         console.log(`NALUNA ruleaza pe ${DOMAIN}`);
       });
