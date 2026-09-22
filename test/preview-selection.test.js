@@ -112,25 +112,41 @@ test('findFirstRealVocalStart: fara niciun cuvant real -> null', () => {
 });
 
 // ================================================================================================
-// FALLBACK — lantul exact cerut: first_vocal_word -> vocal_onset_fallback -> start_zero_fallback
+// FALLBACK — lantul exact cerut: first_vocal_word -> vocal_onset_fallback -> start_zero_fallback.
+// RUNDA 4 (2026-09-22, cerinta explicita: "nu mai vreau NICAIERI regula -9 secunde pentru
+// preview"): fallback-ul B primeste acum un `vocalOnsetStartSeconds` BRUT (neajustat de apelant)
+// si aplica EL INSUSI acelasi VOCAL_LEAD_IN_SECONDS (2s) ca fallback-ul A — NICIODATA -9s.
 // ================================================================================================
-test('fallback B: lipsa alignedWords (undefined) -> vocal_onset_fallback, foloseste vocalOnsetStartSeconds', () => {
+test('vocal onset fallback la 30s -> previewStart = 28, NU 21 (vechea formula -9s eliminata complet)', () => {
+  const result = selectPreviewStart(baseInputs({ alignedWords: undefined, vocalOnsetStartSeconds: 30 }));
+  assert.equal(result.selectionReason, 'vocal_onset_fallback');
+  assert.equal(result.previewStartSeconds, 28);
+  assert.notEqual(result.previewStartSeconds, 21, 'previewStartSeconds nu trebuie sa corespunda formulei vechi (30 - 9 = 21)');
+});
+
+test('vocal onset la 1s -> previewStart = 0 (max(0, 1-2) = 0, niciodata negativ)', () => {
+  const result = selectPreviewStart(baseInputs({ alignedWords: undefined, vocalOnsetStartSeconds: 1 }));
+  assert.equal(result.selectionReason, 'vocal_onset_fallback');
+  assert.equal(result.previewStartSeconds, 0);
+});
+
+test('fallback B: lipsa alignedWords (undefined) -> vocal_onset_fallback, aplica VOCAL_LEAD_IN_SECONDS peste vocalOnsetStartSeconds BRUT', () => {
   const result = selectPreviewStart(baseInputs({ alignedWords: undefined, vocalOnsetStartSeconds: 12.5 }));
   assert.equal(result.selectionReason, 'vocal_onset_fallback');
-  assert.equal(result.previewStartSeconds, 12.5);
+  assert.equal(result.previewStartSeconds, 10.5); // 12.5 - 2, NU 12.5 folosit ca atare
 });
 
-test('fallback B: alignedWords GOL ([]) -> vocal_onset_fallback', () => {
+test('fallback B: alignedWords GOL ([]) -> vocal_onset_fallback, aceeasi ajustare de 2s', () => {
   const result = selectPreviewStart(baseInputs({ alignedWords: [], vocalOnsetStartSeconds: 7 }));
   assert.equal(result.selectionReason, 'vocal_onset_fallback');
-  assert.equal(result.previewStartSeconds, 7);
+  assert.equal(result.previewStartSeconds, 5); // 7 - 2
 });
 
-test('fallback B: alignedWords prezente dar FARA niciun cuvant real (STRICT marcaje structurale) -> vocal_onset_fallback', () => {
+test('fallback B: alignedWords prezente dar FARA niciun cuvant real (STRICT marcaje structurale) -> vocal_onset_fallback, aceeasi ajustare de 2s', () => {
   const alignedWords = [w('[Intro]', 0, true), w('[Verse]', 5, true), w('[Chorus]', 10, false)];
   const result = selectPreviewStart(baseInputs({ alignedWords, vocalOnsetStartSeconds: 3 }));
   assert.equal(result.selectionReason, 'vocal_onset_fallback');
-  assert.equal(result.previewStartSeconds, 3);
+  assert.equal(result.previewStartSeconds, 1); // 3 - 2
 });
 
 test('fallback C: nicio informatie utila (alignedWords lipsa SI vocal-onset lipsa) -> previewStart = 0', () => {
@@ -139,6 +155,13 @@ test('fallback C: nicio informatie utila (alignedWords lipsa SI vocal-onset lips
     assert.equal(result.selectionReason, 'start_zero_fallback');
     assert.equal(result.previewStartSeconds, 0);
   }
+});
+
+test('fallback A si fallback B folosesc STRICT aceeasi constanta (VOCAL_LEAD_IN_SECONDS) — nu doua valori diferite pentru acelasi obiectiv comercial', () => {
+  const resultA = selectPreviewStart(baseInputs({ alignedWords: [w('Hello', 30)] }));
+  const resultB = selectPreviewStart(baseInputs({ alignedWords: undefined, vocalOnsetStartSeconds: 30 }));
+  assert.equal(resultA.previewStartSeconds, resultB.previewStartSeconds, 'ambele cai trebuie sa produca acelasi previewStart pentru acelasi timestamp brut (30s)');
+  assert.equal(resultA.previewStartSeconds, 28);
 });
 
 test('durationSeconds invalid -> tot foloseste first_vocal_word (fara clamp la durata, care nu poate fi calculat), previewStart necolapsat', () => {

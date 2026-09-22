@@ -6794,18 +6794,19 @@ async function fetchAlignedWordsForSmartPreview(taskId, audioId, orderId) {
   return body.data.alignedWords;
 }
 
-// Vocal onset — ACEEASI formula ca in getPreviewStartFromLyrics (findFirstRealWordStartS +
-// TARGET_VOICE_POSITION_S/PREVIEW_START_MAX_S, toate NEATINSE) — extrasa aici STRICT ca sa poata
-// fi refolosita pe alignedWords deja obtinute (evita al doilea apel HTTP). null daca niciun
-// cuvant cu success:true nu exista.
-function computeVocalOnsetPreviewStart(alignedWords) {
-  const firstRealStartS = findFirstRealWordStartS(alignedWords);
-  if (firstRealStartS === null) return null;
-  let previewStart = firstRealStartS - TARGET_VOICE_POSITION_S;
-  previewStart = Math.max(0, previewStart);
-  previewStart = Math.min(previewStart, PREVIEW_START_MAX_S);
-  return previewStart;
-}
+// ELIMINATA (2026-09-22, runda 4 — "nu mai vreau NICAIERI regula -9 secunde pentru preview",
+// cerinta explicita): computeVocalOnsetPreviewStart() aplica formula veche
+// (firstRealStartS - TARGET_VOICE_POSITION_S(9), cap la PREVIEW_START_MAX_S(25)) — folosita STRICT
+// ca baza pentru fallback-ul B (vocal_onset_fallback) in buildVariantFromTrack de mai jos. Runda 4
+// a eliminat complet acest -9s din LOGICA EFECTIVA de creare a preview-ului: fallback-ul B foloseste
+// acum ACEEASI constanta ca fallback-ul A (VOCAL_LEAD_IN_SECONDS=2, lib/preview-selection.js),
+// aplicata pe timestamp-ul BRUT al primului cuvant real (findFirstRealWordStartS, NEATINSA, apelata
+// direct mai jos) — nu mai exista niciun cod intermediar cu formula -9s. Functia era apelata
+// STRICT dintr-un singur loc (buildVariantFromTrack) — fara alta utilizare legitima, a fost
+// stearsa complet (nu doar dezactivata). getPreviewStartFromLyrics() (mai jos) ramane NEATINSA —
+// contine INCA formula -9s originala, dar NU mai are niciun apelant in server.js (verificat direct,
+// cod complet inert) — pastrata STRICT pentru cele 5+ fisiere de test care ii pineaza formula
+// istoric, fara nicio legatura cu Smart Preview.
 
 // Verifica DUPA upload ca preview-ul e chiar accesibil public la URL-ul construit din
 // S3_PUBLIC_BASE_URL. Un raspuns 200/206 de la PutObjectCommand catre R2/S3 NU garanteaza
@@ -6888,13 +6889,13 @@ async function buildVariantFromTrack(orderId, variantId, track, taskId) {
   perfLog(orderId, 'ffmpeg_start', vTag);
   const durationSeconds = await getAudioDuration(tempFull);
 
-  // Vocal onset — ACELASI mecanism/formula folosita dintotdeauna (findFirstRealWordStartS +
-  // TARGET_VOICE_POSITION_S/PREVIEW_START_MAX_S, neatinse), calculat aici pe alignedWords deja
-  // obtinute — serveste STRICT drept ultima plasa de siguranta (vocal_onset_fallback) daca
-  // selectPreviewStart nu poate gasi niciun cuvant real direct in alignedWords (vezi
-  // lib/preview-selection.js) — calea PRINCIPALA (runda 3) nu mai foloseste formula -9s/cap25s de
-  // aici, STRICT lead-in-ul de 2s cerut explicit.
-  const vocalOnsetStartSeconds = alignedWords ? computeVocalOnsetPreviewStart(alignedWords) : null;
+  // Vocal onset BRUT (2026-09-22, runda 4) — findFirstRealWordStartS() NEATINSA, apelata direct,
+  // FARA nicio ajustare aici (nici -9s, nici cap 25s) — timestamp-ul neprocesat al primului cuvant
+  // real cantat, transmis ca atare catre selectPreviewStart(). Serveste STRICT drept baza pentru
+  // fallback-ul B (vocal_onset_fallback), daca alignedWords nu permite calea principala (A) — acel
+  // fallback aplica EL INSUSI acelasi lead-in de 2 secunde (VOCAL_LEAD_IN_SECONDS,
+  // lib/preview-selection.js), niciodata -9s.
+  const vocalOnsetStartSeconds = alignedWords ? findFirstRealWordStartS(alignedWords) : null;
   const previewDecision = selectPreviewStart({
     alignedWords,
     durationSeconds,

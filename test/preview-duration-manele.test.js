@@ -1,14 +1,18 @@
-// DURATA PREVIEW — reincarcata din nou (2026-09-22, runda 3, SMART PREVIEW "VOCEA REALA", dupa un
-// test audio real in productie: runda 2 — ancorare pe inceputul sectiunii Verse — a produs ~30s de
-// instrumental intr-un preview real; respinsa). Acest fisier verifica acum: (1) durata uniforma de
-// 40s pentru toate genurile (neschimbata fata de rundele anterioare); (2) previewStart e calculat
-// prin Smart Preview (lib/preview-selection.js — scaneaza direct alignedWords pentru primul cuvant
-// real cantat, fara nicio notiune de sectiune/linie), NU printr-un apel direct la
-// getPreviewStartFromLyrics() din buildVariantFromTrack; (3) trimAudio() ramane structural corect
-// (fara loop/padding), cu fade-in SI fade-out (neschimbate fata de rundele anterioare);
-// (4) buildVariantFromTrack are semnatura SIMPLA (orderId, variantId, track, taskId) — neschimbata
-// din runda 2; (5) apelul catre selectPreviewStart() nu mai transmite captionLines (runda 2, nu mai
-// e nevoie de linii de caption — scanarea e directa pe alignedWords).
+// DURATA PREVIEW — reincarcata din nou (2026-09-22, runda 4, SMART PREVIEW "O SINGURA CONSTANTA
+// DE LEAD-IN", cerinta explicita: "nu mai vreau NICAIERI regula -9 secunde pentru preview"). Acest
+// fisier verifica acum: (1) durata uniforma de 40s pentru toate genurile (neschimbata fata de
+// rundele anterioare); (2) previewStart e calculat prin Smart Preview (lib/preview-selection.js —
+// scaneaza direct alignedWords pentru primul cuvant real cantat, fara nicio notiune de
+// sectiune/linie), NU printr-un apel direct la getPreviewStartFromLyrics() din buildVariantFromTrack;
+// (3) trimAudio() ramane structural corect (fara loop/padding), cu fade-in SI fade-out (neschimbate
+// fata de rundele anterioare); (4) buildVariantFromTrack are semnatura SIMPLA (orderId, variantId,
+// track, taskId) — neschimbata din runda 2; (5) apelul catre selectPreviewStart() nu mai transmite
+// captionLines (runda 2, nu mai e nevoie de linii de caption — scanarea e directa pe alignedWords);
+// (6) RUNDA 4: computeVocalOnsetPreviewStart() (formula -9s/cap25s) a fost STEARSA din server.js —
+// buildVariantFromTrack foloseste acum findFirstRealWordStartS() DIRECT, BRUT, fara nicio ajustare
+// — lead-in-ul de 2 secunde se aplica STRICT in lib/preview-selection.js, identic pentru fallback-ul
+// A (first_vocal_word) si B (vocal_onset_fallback). getPreviewStartFromLyrics() (formula -9s
+// originala) ramane in cod, dar confirmat FARA niciun apelant real — cod complet inert.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -91,18 +95,55 @@ test('buildVariantFromTrack: STRICT UN SINGUR apel de retea catre timestamped-ly
   assert.equal(matches.length, 1, `trebuie sa existe STRICT un singur apel de fetch de date temporale in buildVariantFromTrack, gasit: ${JSON.stringify(matches)}`);
 });
 
-test('getPreviewStartFromLyrics() (functia insasi) ramane byte-identica — implementarea vocal-onset veche nu a fost modificata, doar orchestrarea apelului s-a mutat', () => {
+// RUNDA 4 (2026-09-22, cerinta explicita: "nu mai vreau NICAIERI regula -9 secunde pentru
+// preview"): getPreviewStartFromLyrics() (formula -9s originala) ramane byte-identica ca
+// implementare, dar acum are ZERO apelanti reali in server.js — cod complet inert, pastrat STRICT
+// pentru cele 5+ fisiere de test care ii pineaza formula istoric (video-gift boundary tests, fara
+// nicio legatura cu Smart Preview). Verificat mai jos ca nu are niciun apelant real.
+test('getPreviewStartFromLyrics() (functia insasi) ramane byte-identica — pastrata STRICT pentru testele istorice care ii pineaza formula, dar NU mai are niciun apelant real', () => {
   const fn = extractFn(server, 'async function getPreviewStartFromLyrics(taskId, audioId, orderId) {');
   assert.match(fn, /findFirstRealWordStartS\(words\)/);
   assert.match(fn, /firstRealStartS - TARGET_VOICE_POSITION_S/);
   assert.match(fn, /Math\.min\(previewStart, PREVIEW_START_MAX_S\)/);
 });
 
-test('computeVocalOnsetPreviewStart() (folosita STRICT ca ultima plasa de siguranta, vocal_onset_fallback) foloseste ACEEASI formula veche (findFirstRealWordStartS + TARGET_VOICE_POSITION_S/PREVIEW_START_MAX_S) — calea PRINCIPALA (runda 3) nu mai foloseste aceasta formula', () => {
-  const fn = extractFn(server, 'function computeVocalOnsetPreviewStart(alignedWords) {');
-  assert.match(fn, /findFirstRealWordStartS\(alignedWords\)/);
-  assert.match(fn, /firstRealStartS - TARGET_VOICE_POSITION_S/);
-  assert.match(fn, /Math\.min\(previewStart, PREVIEW_START_MAX_S\)/);
+test('CRITIC — getPreviewStartFromLyrics() NU mai e apelata de nicaieri in server.js (cod inert, nu poate afecta niciun preview real)', () => {
+  // Exclude liniile de comentariu (mentiuni descriptive legitime, ex. "getPreviewStartFromLyrics()
+  // ramane neschimbata") SI linia declaratiei functiei insasi — orice aparitie RAMASA ar fi un
+  // apel real.
+  const realCodeLines = server.split('\n').filter((line) => {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('//')) return false;
+    if (trimmed.startsWith('async function getPreviewStartFromLyrics(')) return false;
+    return true;
+  });
+  const callSites = realCodeLines.filter((line) => line.includes('getPreviewStartFromLyrics('));
+  assert.equal(callSites.length, 0, `getPreviewStartFromLyrics nu trebuie apelata efectiv nicaieri, gasit in: ${JSON.stringify(callSites)}`);
+});
+
+// ELIMINATA (2026-09-22, runda 4): computeVocalOnsetPreviewStart() (formula -9s/cap25s) a fost
+// STEARSA complet din server.js — avea un singur apelant (buildVariantFromTrack), inlocuit acum cu
+// findFirstRealWordStartS() apelata DIRECT, FARA nicio ajustare (vezi lib/preview-selection.js
+// pentru unde se aplica acum lead-in-ul de 2s, identic pentru fallback-ul A si B).
+test('computeVocalOnsetPreviewStart() NU mai exista in server.js — stearsa complet, fara alta utilizare legitima', () => {
+  assert.ok(!server.includes('function computeVocalOnsetPreviewStart'), 'functia nu mai trebuie sa existe in server.js');
+});
+
+test('buildVariantFromTrack: vocalOnsetStartSeconds vine STRICT din findFirstRealWordStartS(alignedWords) apelata DIRECT — BRUT, fara nicio ajustare (-9s sau alta) aplicata in server.js', () => {
+  const fn = extractFn(server, 'async function buildVariantFromTrack(orderId, variantId, track, taskId) {');
+  assert.match(fn, /const vocalOnsetStartSeconds = alignedWords \? findFirstRealWordStartS\(alignedWords\) : null;/);
+  assert.ok(!fn.includes('computeVocalOnsetPreviewStart'), 'buildVariantFromTrack nu mai trebuie sa refere computeVocalOnsetPreviewStart (stearsa)');
+  assert.ok(!fn.includes('TARGET_VOICE_POSITION_S'), 'buildVariantFromTrack nu mai trebuie sa refere TARGET_VOICE_POSITION_S (formula -9s) — nicio ajustare nu se mai aplica in server.js');
+  assert.ok(!fn.includes('PREVIEW_START_MAX_S'), 'buildVariantFromTrack nu mai trebuie sa refere PREVIEW_START_MAX_S (cap 25s din vechea formula)');
+});
+
+test('CRITIC — nicio cale EFECTIVA de creare a preview-ului nu mai foloseste lead-in de 9 secunde: STRICT VOCAL_LEAD_IN_SECONDS (2s, lib/preview-selection.js) e folosit, in ambele fallback-uri cu semnal real', () => {
+  const { VOCAL_LEAD_IN_SECONDS } = require('../lib/preview-selection');
+  assert.equal(VOCAL_LEAD_IN_SECONDS, 2);
+  // TARGET_VOICE_POSITION_S (9) mai exista STRICT ca sursa a formulei vechi, folosita DOAR de
+  // getPreviewStartFromLyrics() (confirmat mai sus ca inert, fara apelanti reali) — nu de
+  // buildVariantFromTrack (confirmat mai sus).
+  assert.match(server, /const TARGET_VOICE_POSITION_S = 9;/, 'constanta veche poate ramane declarata (folosita de codul inert), dar niciun preview real nu trebuie sa o mai foloseasca');
 });
 
 test('CRITIC — trimAudio() ramane structural corect: fara loop/concat/padding, STRICT "-t <secunde>" ca durata maxima', () => {
