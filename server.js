@@ -162,8 +162,8 @@ function isTestCustomerEmail(email) {
 // inclusiv manele_suflet/manele_jale — exceptia EXTENDED_PREVIEW_SECONDS=50 (2026-09-19) a fost
 // eliminata. Motivul original (instrumental initial mai lung la aceste doua genuri, care putea
 // consuma o parte mare din fereastra fixa de 40s) e rezolvat acum altfel — Smart Preview
-// (lib/preview-selection.js) muta punctul de START catre o parte relevanta a melodiei, in loc sa
-// mareasca DURATA ferestrei — nu mai e nevoie de o exceptie per-gen. `resolvePreviewMaxSeconds`/
+// (lib/preview-selection.js) muta punctul de START catre prima strofa cantata a melodiei, in loc
+// sa mareasca DURATA ferestrei — nu mai e nevoie de o exceptie per-gen. `resolvePreviewMaxSeconds`/
 // `EXTENDED_PREVIEW_GENRES`/`EXTENDED_PREVIEW_SECONDS` au fost eliminate complet (nu doar dezactivate)
 // — nicio ramura de cod ramasa neatinsa care ar putea reintroduce accidental exceptia.
 const PREVIEW_SECONDS = 40;
@@ -3853,11 +3853,11 @@ app.get('/api/orders/:orderId', async (req, res, next) => {
       // separata de hasVideo (videoclipul COMPLET, deblocat STRICT dupa plata, vezi /media/video).
       hasVideoPreview: !!v.videoPreviewKey,
       videoFailedReason: v.videoFailedReason || null,
-      // SMART PREVIEW (2026-09-22) — STRICT punctul de start (secunde) si eticheta enum a
-      // motivului selectiei ('smart_score'/'vocal_onset_fallback'/'start_zero_fallback'),
-      // necesare client-side pentru analytics-ul preview-ului (vezi melodia-mea.html). NICIODATA
-      // previewSignals (rezumatul de scor detaliat) — nu e nevoie de el in UI, ramane STRICT
-      // server-side/admin.
+      // SMART PREVIEW (2026-09-22, runda 2 — PRIMA STROFA) — STRICT punctul de start (secunde) si
+      // eticheta enum a motivului selectiei ('first_verse'/'first_vocal_line_fallback'/
+      // 'vocal_onset_fallback'/'start_zero_fallback'), necesare client-side pentru analytics-ul
+      // preview-ului (vezi melodia-mea.html). NICIODATA previewSignals (rezumatul de debug) — nu
+      // e nevoie de el in UI, ramane STRICT server-side/admin.
       previewStartSeconds: typeof v.previewStartSeconds === 'number' ? v.previewStartSeconds : null,
       previewSelectionReason: v.previewSelectionReason || null,
       // Standard, fluxul de editare cu alegere (Partea 2, hotfix 2026-08-08) — fara acest
@@ -6208,14 +6208,6 @@ function orderTracksByCoherence(tracks, order, recipientSnapshot) {
 // declara cererea esuata.
 const MAX_COHERENCE_RETRIES = 2;
 async function obtainAcceptableVariant(orderId, tracks, taskId, genre, order, recipientSnapshot, canonicalLyrics) {
-  // SMART PREVIEW (2026-09-22) — datele EFECTIVE (recipient/story/lang) pentru ACEASTA melodie
-  // specifica, nu neaparat cele ale comenzii principale: pentru Premium melodia 2 "Pentru altă
-  // persoană", recipientSnapshot contine un recipient/story COMPLET DIFERIT (vezi
-  // getSong2EffectiveData mai sus) — acelasi tipar de suprascriere deja folosit pentru
-  // retryOrder/buildPrompt mai jos in aceasta functie, aplicat acum si pentru selectia
-  // preview-ului, ca fiecare varianta Premium sa primeasca semnale de personalizare pentru
-  // PERSOANA ei reala, niciodata pentru cealalta.
-  const effectiveOrderForPreview = recipientSnapshot ? { ...order, ...recipientSnapshot } : order;
   async function attempt(candidateTracks, candidateTaskId, phase) {
     const ordered = canonicalLyrics ? (candidateTracks || []).slice(0, 2) : orderTracksByCoherence(candidateTracks, order, recipientSnapshot);
     let lastErr = null;
@@ -6223,7 +6215,7 @@ async function obtainAcceptableVariant(orderId, tracks, taskId, genre, order, re
     for (const track of ordered) {
       let candidate;
       try {
-        candidate = await buildVariantFromTrack(orderId, randomUUID().slice(0, 8), track, candidateTaskId, effectiveOrderForPreview.recipient, effectiveOrderForPreview.story, effectiveOrderForPreview.lang);
+        candidate = await buildVariantFromTrack(orderId, randomUUID().slice(0, 8), track, candidateTaskId);
       } catch (err) {
         lastErr = err;
         trackIndex++;
@@ -6856,7 +6848,7 @@ async function verifyPreviewReachable(orderId, variantId, previewUrl) {
   }
 }
 
-async function buildVariantFromTrack(orderId, variantId, track, taskId, recipient, story, lang) {
+async function buildVariantFromTrack(orderId, variantId, track, taskId) {
   if (!track.audioUrl) {
     throw new Error(`Piesa primita de la Suno (id: ${track.id || 'necunoscut'}) nu are audioUrl/audio_url.`);
   }
@@ -6883,27 +6875,21 @@ async function buildVariantFromTrack(orderId, variantId, track, taskId, recipien
     })
   ]);
 
-  // SMART PREVIEW (2026-09-22): durata (ffprobe) si analiza de energie audio locala
-  // (extractAudioOnsets — functie EXISTENTA, neatinsa, folosita pana acum STRICT post-plata
-  // pentru pachetul video) NU depind una de cealalta — ambele au nevoie doar de tempFull, deja
-  // descarcat. extractAudioOnsets isi prinde singura toate erorile (timeout/fisier corupt) si
-  // returneaza [] — un esec acolo NU poate bloca preview-ul, doar dezactiveaza STRICT semnalul
-  // de energie (secundar, niciodata decisiv) in selectPreviewStart de mai jos.
+  // SMART PREVIEW (2026-09-22, runda 2 — DECIZIE FINALA CLIENT: previewul incepe STRICT de la
+  // prima strofa, nu mai exista scoring): durata (ffprobe) e STRICT ce mai are nevoie de tempFull
+  // aici. Analiza de energie audio locala (extractAudioOnsets) NU mai ruleaza in acest flux
+  // pre-plata — servea DOAR semnalului de energie al scoring-ului vechi, eliminat complet (vezi
+  // lib/preview-selection.js). extractAudioOnsets ramane NEATINSA si continua sa ruleze normal
+  // POST-plata, pentru pachetul video (buildShotPlan) — consum CPU inutil eliminat STRICT aici.
   const ffmpegStart = Date.now();
   perfLog(orderId, 'ffmpeg_start', vTag);
-  perfLog(orderId, 'smart_preview_analysis_start', vTag);
-  const analysisStart = Date.now();
-  const [durationSeconds, onsets] = await Promise.all([
-    getAudioDuration(tempFull),
-    extractAudioOnsets(tempFull, orderId)
-  ]);
-  perfLog(orderId, 'smart_preview_analysis_done', `${vTag}, ${Date.now() - analysisStart}ms, onsets=${onsets.length}`);
+  const durationSeconds = await getAudioDuration(tempFull);
 
-  // Vocal onset — ACELASI mecanism/formula folosita pana acum (findFirstRealWordStartS +
+  // Vocal onset — ACELASI mecanism/formula folosita dintotdeauna (findFirstRealWordStartS +
   // TARGET_VOICE_POSITION_S/PREVIEW_START_MAX_S, neatinse), calculat aici pe alignedWords deja
-  // obtinute — serveste ATAT drept candidat de start pentru Smart Preview CAT SI drept fallback
-  // sigur, garantat identic cu comportamentul de dinainte de aceasta faza, daca scorarea nu
-  // poate rula (vezi selectPreviewStart, lib/preview-selection.js).
+  // obtinute — serveste ATAT drept ultim fallback (vocal_onset_fallback) CAT SI drept baza pentru
+  // start_zero_fallback, daca selectPreviewStart nu poate identifica nicio strofa/linie reala
+  // (vezi lib/preview-selection.js).
   const vocalOnsetStartSeconds = alignedWords ? computeVocalOnsetPreviewStart(alignedWords) : null;
   // captionLines — ACEEASI functie folosita pentru caption-urile video (buildCaptionLines,
   // neatinsa), trecuta ca date STRICT catre selectPreviewStart (modul pur, lib/), niciodata
@@ -6915,11 +6901,7 @@ async function buildVariantFromTrack(orderId, variantId, track, taskId, recipien
     captionLines,
     durationSeconds,
     previewMaxSeconds: PREVIEW_SECONDS,
-    vocalOnsetStartSeconds,
-    onsets,
-    recipient,
-    story,
-    lang
+    vocalOnsetStartSeconds
   });
   perfLog(orderId, 'smart_preview_selected', `${vTag}, reason=${previewDecision.selectionReason}, start=${previewDecision.previewStartSeconds.toFixed(2)}s`);
 
@@ -6993,12 +6975,13 @@ async function buildVariantFromTrack(orderId, variantId, track, taskId, recipien
     originalLyrics: track.lyrics || null,
     editedLyrics: null,
     lyricsUpdatedAt: null,
-    // SMART PREVIEW (2026-09-22) — persistenta MINIMALA a deciziei, pe variantul JSONB deja
-    // existent (nicio migrare de schema): previewStartSeconds (secunda EXACTA de start a
-    // fisierului preview, deja fixata la taierea ffmpeg de mai sus — niciodata recalculata dupa
-    // aceea), previewSelectionReason (enum, vezi lib/preview-selection.js — 'smart_score' |
-    // 'vocal_onset_fallback' | 'start_zero_fallback'), previewSignals (rezumat MIC, STRICT
-    // numere/booleene/enum-uri — niciodata poveste/versuri/nume brute, vezi scoreCandidate()).
+    // SMART PREVIEW (2026-09-22, runda 2 — PRIMA STROFA) — persistenta MINIMALA a deciziei, pe
+    // variantul JSONB deja existent (nicio migrare de schema): previewStartSeconds (secunda
+    // EXACTA de start a fisierului preview, deja fixata la taierea ffmpeg de mai sus — niciodata
+    // recalculata dupa aceea), previewSelectionReason (enum, vezi lib/preview-selection.js —
+    // 'first_verse' | 'first_vocal_line_fallback' | 'vocal_onset_fallback' | 'start_zero_fallback'),
+    // previewSignals (rezumat MIC, STRICT numere/enum-uri — niciodata poveste/versuri/nume brute,
+    // vezi selectPreviewStart()).
     previewStartSeconds: previewDecision.previewStartSeconds,
     previewSelectionReason: previewDecision.selectionReason,
     previewSignals: previewDecision.signals
@@ -9311,19 +9294,39 @@ const GENRE_STYLE_MAP = {
   // (143 vs 146 caractere) — imbunatateste, nu inrautateste, bugetul de 600 caractere.
   hiphop: '2000s street hip-hop, hard drums, punchy kick, dry snare, deep heavy bass, sparse dark gritty beat from the first beat, rap verses, street hook',
   edm_dance: 'EDM dance, four-on-the-floor kick, synth-driven, powerful bass, build-up into drop, danceable groove, festival energy',
-  // CORECȚIE (2026-09-19, "intro-ul melodiei generate e prea lung chiar si in fereastra de
-  // 50s" — cerinta explicita, scop STRICT limitat la aceasta valoare): ADAOS minimal, la finalul
-  // descrierii existente, altfel neatinsa — restul caracterului genului (instrumentatie, tehnica
-  // vocala, mood) ramane identic. manele_jale ("perfecta" in productie, raportat explicit) NU e
-  // atins. NICIODATA cuvantul "instrumental" (vezi REGRESIE CRITICA 2026-08-13, documentata in
-  // test/lyrics-exact-story-premium-sequential.test.js: acel cuvant literal in prompt a corelat,
-  // verificat pe comenzi reale de productie, cu Suno generand piese fara voce deloc) — formulare
-  // echivalenta, deja folosita in codebase pentru acelasi motiv ("Short intro"/"Verse intro" in
-  // clauza de continuitate vocala). Lungimea rezultata (133 caractere) ramane sub cea a altor
-  // genuri deja verificate sigure in productie (ex. hiphop, 143 caractere) — vezi
-  // test/manele-suflet-short-intro.test.js pentru verificarea explicita a bugetului de 600
-  // caractere (SUNO_PROMPT_MAX_LEN) in cel mai incarcat scenariu real pentru acest gen.
-  manele_suflet: 'Romanian manele de suflet, violin accordion or clarinet, warm melismatic vocal, hopeful devoted mood, short intro, vocals enter early',
+  // CORECȚIE (2026-09-22, runda 2, "sunet mai autentic de manea romaneasca" — cerinta explicita
+  // a clientului, scop STRICT limitat la aceasta valoare): REINLOCUIRE completa a descrierii
+  // (nu doar adaos), directie: manele romanesti autentice, in sensul CARACTERISTICILOR DE GEN —
+  // productie/instrumentatie/interpretare vocala specifica genului (melisme, vibrato, frazare de
+  // manea) — NICIODATA numele/vocea/identitatea vreunui artist real (nu apare niciun nume de
+  // artist in text, verificat direct; artistii mentionati de client au fost STRICT referinte de
+  // directie muzicala pentru mine, niciodata trimisi mai departe catre furnizor).
+  // BUGET (2026-09-22, verificat matematic, nu presupus — vezi
+  // test/manele-suflet-short-intro.test.js, sectiunea 11/11c/11b): SUNO_PROMPT_MAX_LEN=600,
+  // STORY_MIN_RESERVE=190, budgetForFixedPart=410 — dar in scenariul REAL cel mai incarcat
+  // (nunta, nume/relatie maxime PROTEJATE de trunchiere, duet), `head` (care include styleTags
+  // NETRUNCHIAT) ajunge deja la ~564 caractere chiar si cu vechea descriere (133 caractere) —
+  // povestea supravietuia atunci cu STRICT ~9 caractere rezerva. Masurat direct (script dedicat,
+  // binary-search pe lungime): acel scenariu extrem tolereaza STRICT pana la +8 caractere fata de
+  // vechea descriere (141 caractere absolut) inainte ca povestea sa dispara COMPLET (nu doar sa
+  // se scurteze) — un adaos de +9 sau mai mult (ex. formularea lunga sugerata initial, 395
+  // caractere) produce prompt.length=600 CU povestea eliminata in ~toate scenariile, inclusiv
+  // comenzi TIPICE, nu doar extreme. Noua descriere (140 caractere, +7 fata de vechea) a fost
+  // aleasa STRICT sub acel plafon — verificata direct (nu presupusa) impotriva celor 4 scenarii
+  // (tipic, nunta+nume normale, nunta+nume MAXIME protejate, sweep 16 genuri) in toate cele 8
+  // limbi: promptul ramane STRICT <=600 caractere SI povestea (eticheta+continut real) ramane
+  // prezenta in toate. "Authentic" (identitate) a fost sacrificat primul (cuvant nou, mai putin
+  // critic) in favoarea pastrarii distinctiei de mood fata de manele_jale, deja testata/verificata
+  // (test/genre-differentiation-v2.test.js — "de suflet"=caldut/hopeful vs "de jale"=intunecat/
+  // mournful, niciodata amestecate) — "hopeful" reintrodus, fuzionat compact in "hopeful manele
+  // phrasing" (nu costa un cuvant separat). Instrumentatia ramane STRICT genul deja existent
+  // (vioara/acordeon/clarinet) — manele keyboards NU a incaput fara sa depaseasca plafonul de
+  // siguranta de mai sus (prioritate mai mica decat vibrato/frazare/mood, deja testate). manele_jale
+  // ("perfecta" in productie, raportat explicit) NU e atins. NICIODATA cuvantul "instrumental"
+  // (vezi REGRESIE CRITICA 2026-08-13, documentata in test/lyrics-exact-story-premium-sequential.
+  // test.js) — "short intro"/"vocals enter early" (proven fix din 2026-09-19) pastrate neschimbate,
+  // la finalul descrierii.
+  manele_suflet: 'Romanian manele de suflet, violin, accordion, clarinet, melismatic vibrato vocal, hopeful manele phrasing, short intro, vocals enter early',
   manele_jale: 'Romanian manele de jale, minor-key oriental colour, mournful violin and clarinet, melismatic lament vocal, heavier longing mood',
   // CORECȚIE (2026-09-13): "unornamented vocal"/"no autotune" eliminate — ornamentatia vocala
   // e autentica si legitima in muzica populara romaneasca; diferentierea reala fata de Manele

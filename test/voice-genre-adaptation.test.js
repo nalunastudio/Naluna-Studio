@@ -69,7 +69,10 @@ function baseOrder(lang, genre, voicePreference) {
 const CONTRASTING_PAIRS = [
   ['jazz', 'hiphop', /soulful vocal/i, /rap verses/i],
   ['populara', 'rock', /folk ornamentation/i, /strong vocal/i],
-  ['manele_suflet', 'manele_jale', /warm melismatic vocal, hopeful devoted mood/i, /melismatic lament vocal, heavier longing mood/i]
+  // ACTUALIZAT (2026-09-22, runda 2, "sunet autentic de manea romaneasca"): manele_suflet a fost
+  // re-scris (vezi test/manele-suflet-authentic-sound.test.js) — tiparul de mai jos foloseste
+  // fragmentul distinctiv nou, unic fata de manele_jale (neatins).
+  ['manele_suflet', 'manele_jale', /melismatic vibrato vocal, hopeful manele phrasing/i, /melismatic lament vocal, heavier longing mood/i]
 ];
 for (const [genreA, genreB, patternA, patternB] of CONTRASTING_PAIRS) {
   for (const voicePreference of VOICE_PREFS) {

@@ -151,12 +151,12 @@ test('attachPreviewAnalytics: preview_played trimis O SINGURA DATA la primul pla
   const win = makeFakeWindow();
   const { attachPreviewAnalytics } = loadFresh(win);
   const audio = makeFakeAudioEl({ currentTime: 0 });
-  attachPreviewAnalytics(audio, { variantId: 'v1', plan: 'standard', selectionReason: 'smart_score', previewStartSeconds: 12 });
+  attachPreviewAnalytics(audio, { variantId: 'v1', plan: 'standard', selectionReason: 'first_verse', previewStartSeconds: 12 });
   audio._trigger('play');
   audio._trigger('play'); // al doilea play, fara ascultare substantiala intre timp -> nu mai retrimite preview_played, nici replay (currentTime tot 0 dar wasSubstantiallyListened=false)
   const playedCalls = win.calls.filter((c) => c.eventName === 'preview_played');
   assert.equal(playedCalls.length, 1);
-  assert.deepEqual(playedCalls[0].meta, { variantId: 'v1', plan: 'standard', selectionReason: 'smart_score', startBucket: '5-15' });
+  assert.deepEqual(playedCalls[0].meta, { variantId: 'v1', plan: 'standard', selectionReason: 'first_verse', startBucket: '5-15' });
 });
 
 test('attachPreviewAnalytics: pragurile de progres 25/50/75/100 se trimit STRICT o data fiecare, in ordine, prin timeupdate', () => {
