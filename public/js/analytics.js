@@ -49,7 +49,12 @@
   var VISITOR_ID_KEY = 'naluna_visitor_id';
   var FUNNEL_TRACKABLE_EVENTS = [
     'cta_clicked', 'order_page_viewed', 'form_started', 'form_step_viewed', 'form_completed',
-    'generation_completed', 'generation_failed', 'checkout_clicked', 'checkout_returned_unpaid'
+    'generation_completed', 'generation_failed', 'checkout_clicked', 'checkout_returned_unpaid',
+    // SMART PREVIEW (2026-09-22) — comportamentul playerului de preview (melodia-mea.html),
+    // acelasi tipar ca restul: si GA4 (deja acoperit de track(), mai jos), si funnel_events
+    // (DB interna), STRICT dupa consimtamant analytics — vezi comentariul de la track().
+    'preview_played', 'preview_progress_25', 'preview_progress_50', 'preview_progress_75',
+    'preview_progress_100', 'preview_completed', 'preview_replayed'
   ];
 
   // ==========================================================================================

@@ -613,11 +613,11 @@ test('server.js: markGenerationFailed curata regenerateEditVariantIds la o edita
 // sus: "variants = [...existing, ...edited]").
 // ---------------------------------------------------------------------------------------------
 test('server.js: buildVariantFromTrack aloca un ID PROPRIU fiecarei variante noi (randomUUID, niciodata id-ul variantei sursa)', () => {
-  // ACTUALIZAT (2026-09-19, exceptie durata preview manele_suflet/manele_jale): buildVariantFromTrack
-  // a capatat un al 5-lea parametru, `genre` (STRICT pentru decizia de durata a preview-ului —
-  // vezi test/preview-duration-manele.test.js) — restul semnaturii (variantId generat de apelant,
-  // niciodata derivat din varianta sursa) ramane identic, verificat mai jos neschimbat.
-  const idx = server.indexOf('async function buildVariantFromTrack(orderId, variantId, track, taskId, genre)');
+  // ACTUALIZAT (2026-09-22, SMART PREVIEW): buildVariantFromTrack a inlocuit al 5-lea parametru
+  // `genre` cu (recipient, story, lang) — necesare pentru scorarea Smart Preview per varianta (vezi
+  // lib/preview-selection.js, test/preview-duration-manele.test.js) — restul semnaturii (variantId
+  // generat de apelant, niciodata derivat din varianta sursa) ramane identic, verificat mai jos.
+  const idx = server.indexOf('async function buildVariantFromTrack(orderId, variantId, track, taskId, recipient, story, lang)');
   assert.ok(idx !== -1);
   const body = server.slice(idx, idx + 200);
   assert.ok(body.includes('variantId, track, taskId'), 'variantId e primit ca parametru, generat de apelant (randomUUID), niciodata derivat din varianta sursa');
@@ -625,13 +625,16 @@ test('server.js: buildVariantFromTrack aloca un ID PROPRIU fiecarei variante noi
   // validarea"): apelul a fost mutat in obtainAcceptableVariant() (helper folosit de
   // finalizeVariantsIfNeeded), care ramane singurul loc ce construieste variante noi — id-ul
   // ramane generat identic, randomUUID().slice(0, 8), niciodata reutilizat.
-  const callerIdx = server.indexOf('candidate = await buildVariantFromTrack(orderId, randomUUID().slice(0, 8), track, candidateTaskId, genre);');
+  const callerIdx = server.indexOf('buildVariantFromTrack(orderId, randomUUID().slice(0, 8), track, candidateTaskId, effectiveOrderForPreview.recipient, effectiveOrderForPreview.story, effectiveOrderForPreview.lang)');
   assert.ok(callerIdx !== -1, 'obtainAcceptableVariant() trebuie sa genereze un ID nou, aleator, pentru fiecare varianta construita');
 });
 
 test('server.js: fisierele audio ale unei variante noi folosesc o cale de storage DERIVATA din noul ID — niciodata acelasi URL/fisier ca varianta originala', () => {
+  // Fereastra marita (2026-09-22, SMART PREVIEW): functia a crescut (fetch alignedWords + scorare
+  // Smart Preview inainte de constructia cailor de storage) — cheile de storage insele raman
+  // NESCHIMBATE, doar mai departe de inceputul functiei.
   const idx = server.indexOf('async function buildVariantFromTrack');
-  const body = server.slice(idx, idx + 3000);
+  const body = server.slice(idx, idx + 5000);
   assert.ok(body.includes('const fullKey = `orders/full/${orderId}-${variantId}.mp3`;'));
   assert.ok(body.includes('const previewKey = `orders/preview/${orderId}-${variantId}.mp3`;'));
 });
@@ -751,7 +754,10 @@ test('buildPrompt: numele destinatarului si expeditorului raman COMPLETE chiar s
 // finalizare. Verificarile de mai jos confirma static aceste garantii structurale.
 // ---------------------------------------------------------------------------------------------
 test('server.js: buildVariantFromTrack foloseste audioUrl SI lyrics din ACELASI parametru `track` — niciodata surse diferite pentru audio si versuri', () => {
-  const idx = server.indexOf('async function buildVariantFromTrack(orderId, variantId, track, taskId, genre) {');
+  // Semnatura extinsa (2026-09-22, SMART PREVIEW): genre -> recipient, story, lang (necesare pentru
+  // scorarea Smart Preview per varianta) — track.audioUrl/track.lyrics raman ACEEASI sursa unica,
+  // neschimbata de aceasta cerinta; vezi test/preview-duration-manele.test.js pentru semnatura noua.
+  const idx = server.indexOf('async function buildVariantFromTrack(orderId, variantId, track, taskId, recipient, story, lang) {');
   const end = server.indexOf('async function ', idx + 10);
   assert.ok(idx !== -1);
   const body = server.slice(idx, end);

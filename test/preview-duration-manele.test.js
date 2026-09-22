@@ -1,13 +1,17 @@
-// DURATA PREVIEW — exceptie 50s STRICT pentru manele_suflet/manele_jale (2026-09-19, cerinta
-// explicita). Genre keys REALE, verificate direct in cod (NEW_GENRES, server.js): 'manele_suflet'
-// si 'manele_jale' — niciun genre key nou creat pentru aceasta modificare.
+// DURATA PREVIEW — reincarcata complet (2026-09-22, SMART PREVIEW, cerinta explicita): fostul
+// fisier proteja exceptia EXTENDED_PREVIEW_SECONDS=50 pentru manele_suflet/manele_jale
+// (2026-09-19) — eliminata acum intentionat, nu o regresie. Motivul original (intro instrumental
+// mai lung la aceste doua genuri, care putea consuma o parte mare din fereastra fixa) e rezolvat
+// altfel acum: Smart Preview (lib/preview-selection.js) muta START-ul catre o parte relevanta a
+// melodiei, in loc sa mareasca DURATA ferestrei — nu mai e nevoie de nicio exceptie per-gen.
 //
-// resolvePreviewMaxSeconds(genre) e o functie PURA (fara retea/fisiere/ffmpeg) — extrasa
-// TEXTUAL din server.js si rulata intr-un sandbox izolat, acelasi tipar folosit deja in acest
-// repo pentru functii pure din server.js (vezi ex. test/attribution-client.test.js pentru
-// tehnica, aplicata aici pe server.js in loc de un fisier client). Restul (semnatura
-// buildVariantFromTrack, apelul catre trimAudio, punctul de start/vocal onset, ffmpeg fara
-// loop/padding) e verificat STATIC, citind direct sursa.
+// Acest fisier verifica acum: (1) durata uniforma de 40s pentru toate genurile; (2) previewStart
+// e calculat prin Smart Preview (lib/preview-selection.js), NU mai printr-un apel direct la
+// getPreviewStartFromLyrics() din buildVariantFromTrack (acel apel a fost inlocuit — vezi
+// test/preview-selection.test.js pentru acoperirea completa a noii selectii); (3) trimAudio()
+// ramane structural corect (fara loop/padding), cu fade-in SI acum fade-out (nou, cerinta
+// explicita); (4) apelul catre buildVariantFromTrack transmite datele corecte (recipient/story/
+// lang), inclusiv pentru Premium (genre vs genre2, per melodie).
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -26,88 +30,77 @@ function extractFn(source, signature) {
   return source.slice(idx, i + 1);
 }
 
-// Extrage cele doua constante + functia pura, le evalueaza intr-un sandbox minimal.
-function loadResolvePreviewMaxSeconds() {
-  const constGenres = server.match(/const EXTENDED_PREVIEW_GENRES = \[[^\]]*\];/)[0];
-  const constSeconds = server.match(/const EXTENDED_PREVIEW_SECONDS = \d+;/)[0];
-  const constPreview = server.match(/const PREVIEW_SECONDS = \d+;/)[0];
-  const fn = extractFn(server, 'function resolvePreviewMaxSeconds(genre) {');
-  const src = `${constPreview}\n${constGenres}\n${constSeconds}\n${fn}\nreturn resolvePreviewMaxSeconds;`;
-  return new Function(src)();
-}
-
-test('genre keys REALE pentru cele doua manele exista deja in NEW_GENRES (nu s-a inventat niciun genre key nou)', () => {
-  const newGenresMatch = server.match(/const NEW_GENRES = \[([^\]]*)\];/);
-  assert.ok(newGenresMatch);
-  assert.match(newGenresMatch[1], /'manele_suflet'/);
-  assert.match(newGenresMatch[1], /'manele_jale'/);
+test('PREVIEW_SECONDS = 40, unica constanta de durata — nicio exceptie per-gen ramasa', () => {
+  assert.match(server, /const PREVIEW_SECONDS = 40;/);
+  assert.ok(!/const EXTENDED_PREVIEW_GENRES\s*=/.test(server));
+  assert.ok(!/const EXTENDED_PREVIEW_SECONDS\s*=/.test(server));
+  assert.ok(!/function resolvePreviewMaxSeconds/.test(server));
 });
 
-test('CRITIC — "manea de jale" (genre key: manele_jale) -> maximum 50 secunde', () => {
-  const resolvePreviewMaxSeconds = loadResolvePreviewMaxSeconds();
-  assert.equal(resolvePreviewMaxSeconds('manele_jale'), 50);
+test('buildVariantFromTrack: semnatura noua (recipient, story, lang in loc de genre) — genre nu mai e parametru, nu mai e folosit pentru durata', () => {
+  const idx = server.indexOf('async function buildVariantFromTrack(');
+  assert.ok(idx !== -1);
+  const signatureLine = server.slice(idx, server.indexOf('{', idx));
+  assert.match(signatureLine, /async function buildVariantFromTrack\(orderId, variantId, track, taskId, recipient, story, lang\)/);
 });
 
-test('CRITIC — "manea de suflet" (genre key: manele_suflet) -> maximum 50 secunde', () => {
-  const resolvePreviewMaxSeconds = loadResolvePreviewMaxSeconds();
-  assert.equal(resolvePreviewMaxSeconds('manele_suflet'), 50);
+test('buildVariantFromTrack: trimAudio() e apelat cu PREVIEW_SECONDS (constanta fixa, 40) — nicio variabila de durata dependenta de gen', () => {
+  const fn = extractFn(server, 'async function buildVariantFromTrack(orderId, variantId, track, taskId, recipient, story, lang) {');
+  assert.match(fn, /trimAudio\(tempFull, tempPreview, PREVIEW_SECONDS, previewDecision\.previewStartSeconds\)/);
 });
 
-test('CRITIC — fiecare ALT gen ramane la maximum 40 secunde (verificat exhaustiv, toate genurile din NEW_GENRES in afara celor doua manele)', () => {
-  const resolvePreviewMaxSeconds = loadResolvePreviewMaxSeconds();
-  const newGenresMatch = server.match(/const NEW_GENRES = \[([^\]]*)\];/);
-  const allGenres = [...newGenresMatch[1].matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
-  assert.ok(allGenres.length >= 15, 'lista de genuri trebuie sa contina toate genurile reale');
-  const otherGenres = allGenres.filter((g) => g !== 'manele_suflet' && g !== 'manele_jale');
-  assert.ok(otherGenres.length >= 13);
-  for (const g of otherGenres) {
-    assert.equal(resolvePreviewMaxSeconds(g), 40, `genul "${g}" trebuie sa ramana la 40 secunde`);
-  }
+test('buildVariantFromTrack: previewStart provine din selectPreviewStart() (Smart Preview), niciodata direct din getPreviewStartFromLyrics()', () => {
+  const fn = extractFn(server, 'async function buildVariantFromTrack(orderId, variantId, track, taskId, recipient, story, lang) {');
+  assert.match(fn, /selectPreviewStart\(\{/);
+  assert.ok(!fn.includes('getPreviewStartFromLyrics('), 'apelul vechi, direct, nu mai trebuie sa existe in buildVariantFromTrack');
 });
 
-test('gen lipsa/necunoscut (undefined, string gol, gen inventat) -> ramane la 40 secunde (comportamentul implicit, sigur, neschimbat)', () => {
-  const resolvePreviewMaxSeconds = loadResolvePreviewMaxSeconds();
-  assert.equal(resolvePreviewMaxSeconds(undefined), 40);
-  assert.equal(resolvePreviewMaxSeconds(''), 40);
-  assert.equal(resolvePreviewMaxSeconds('gen_inexistent'), 40);
+test('buildVariantFromTrack: STRICT UN SINGUR apel de retea catre timestamped-lyrics (fetchAlignedWordsForSmartPreview), nu doua', () => {
+  const fn = extractFn(server, 'async function buildVariantFromTrack(orderId, variantId, track, taskId, recipient, story, lang) {');
+  const matches = fn.match(/fetchTimestampedLyricsOnce\(|fetchAlignedWordsForSmartPreview\(|getPreviewStartFromLyrics\(/g) || [];
+  assert.equal(matches.length, 1, `trebuie sa existe STRICT un singur apel de fetch de date temporale in buildVariantFromTrack, gasit: ${JSON.stringify(matches)}`);
 });
 
-test('buildVariantFromTrack primeste genre ca parametru NOU, si il transmite catre trimAudio EXCLUSIV prin previewMaxSeconds — restul apelului (previewStart, fisiere) neschimbat', () => {
-  const fn = extractFn(server, 'async function buildVariantFromTrack(orderId, variantId, track, taskId, genre) {');
-  assert.match(fn, /const previewMaxSeconds = resolvePreviewMaxSeconds\(genre\);/);
-  assert.match(fn, /trimAudio\(tempFull, tempPreview, previewMaxSeconds, previewStart\)/, 'trimAudio trebuie apelat cu previewMaxSeconds (variabil) si previewStart (neschimbat)');
-  assert.doesNotMatch(fn, /trimAudio\(tempFull, tempPreview, PREVIEW_SECONDS,/, 'nu mai trebuie sa ramana vreun apel cu constanta fixa PREVIEW_SECONDS');
-});
-
-test('CRITIC — punctul de START al preview-ului (previewStart) e CALCULAT identic, neschimbat: acelasi apel getPreviewStartFromLyrics(taskId, track.id, orderId), inaintea oricarei logici de durata', () => {
-  const fn = extractFn(server, 'async function buildVariantFromTrack(orderId, variantId, track, taskId, genre) {');
-  assert.match(fn, /getPreviewStartFromLyrics\(taskId, track\.id, orderId\)/);
-  const idxPreviewStart = fn.indexOf('getPreviewStartFromLyrics(taskId, track.id, orderId)');
-  const idxPreviewMax = fn.indexOf('const previewMaxSeconds = resolvePreviewMaxSeconds(genre);');
-  assert.ok(idxPreviewStart !== -1 && idxPreviewMax !== -1 && idxPreviewStart < idxPreviewMax, 'previewStart trebuie calculat INAINTE de decizia de durata, complet independent de ea');
-});
-
-test('CRITIC — functia de vocal onset (getPreviewStartFromLyrics) nu a fost modificata de aceasta schimbare — semnatura si continutul raman identice', () => {
+test('getPreviewStartFromLyrics() (functia insasi) ramane byte-identica — implementarea vocal-onset nu a fost modificata, doar orchestrarea apelului s-a mutat', () => {
   const fn = extractFn(server, 'async function getPreviewStartFromLyrics(taskId, audioId, orderId) {');
-  // nu trebuie sa contina absolut nimic legat de genre/manele/preview extins — functia e complet
-  // independenta de genul melodiei.
-  assert.doesNotMatch(fn, /genre/i);
-  assert.doesNotMatch(fn, /manele/i);
-  assert.doesNotMatch(fn, /EXTENDED_PREVIEW/);
+  assert.match(fn, /findFirstRealWordStartS\(words\)/);
+  assert.match(fn, /firstRealStartS - TARGET_VOICE_POSITION_S/);
+  assert.match(fn, /Math\.min\(previewStart, PREVIEW_START_MAX_S\)/);
 });
 
-test('CRITIC — trimAudio() (functia care taie efectiv fisierul, ffmpeg) e complet neschimbata — STRICT "-t <secunde>" (durata maxima), fara loop/concat/padding — un fisier mai scurt decat fereastra se opreste natural la finalul lui real', () => {
+test('computeVocalOnsetPreviewStart() (noua functie, folosita de Smart Preview) foloseste ACEEASI formula (findFirstRealWordStartS + TARGET_VOICE_POSITION_S/PREVIEW_START_MAX_S)', () => {
+  const fn = extractFn(server, 'function computeVocalOnsetPreviewStart(alignedWords) {');
+  assert.match(fn, /findFirstRealWordStartS\(alignedWords\)/);
+  assert.match(fn, /firstRealStartS - TARGET_VOICE_POSITION_S/);
+  assert.match(fn, /Math\.min\(previewStart, PREVIEW_START_MAX_S\)/);
+});
+
+test('CRITIC — trimAudio() ramane structural corect: fara loop/concat/padding, STRICT "-t <secunde>" ca durata maxima', () => {
   const fn = extractFn(server, 'async function trimAudio(srcPath, destPath, seconds, startSeconds = 0) {');
-  assert.match(fn, /args\.push\('-i', srcPath, '-t', String\(seconds\), '-af', 'afade=t=in:st=0:d=0\.015', '-c:a', 'libmp3lame', '-q:a', '0', destPath\);/);
-  assert.doesNotMatch(fn, /loop|concat|apad|-stream_loop/i, 'trimAudio nu trebuie sa contina niciun mecanism de extindere/loop/padding artificial — capatul preview-ului trebuie sa fie STRICT finalul materialului real, daca acesta e mai scurt decat fereastra ceruta');
+  assert.doesNotMatch(fn, /loop|concat|apad|-stream_loop/i, 'trimAudio nu trebuie sa contina niciun mecanism de extindere/loop/padding artificial');
+  assert.match(fn, /'-t', String\(safeSeconds\)/);
 });
 
-test('apelul catre buildVariantFromTrack (din attempt(), in interiorul obtainAcceptableVariant) transmite genre-ul REAL al cererii curente — corect si pentru Premium (genre vs genre2, per melodie)', () => {
+test('NOU — trimAudio() adauga fade-out scurt la final, pastrand fade-in-ul existent', () => {
+  const fn = extractFn(server, 'async function trimAudio(srcPath, destPath, seconds, startSeconds = 0) {');
+  assert.match(fn, /afade=t=in:st=0:d=0\.015/, 'fade-in-ul existent trebuie pastrat neschimbat');
+  assert.match(fn, /afade=t=out:st=\$\{fadeOutStart\.toFixed\(3\)\}:d=\$\{FADE_OUT_SECONDS\}/, 'fade-out-ul nou trebuie adaugat');
+  assert.match(server, /const FADE_OUT_SECONDS = 0\.6;/);
+});
+
+test('fade-out ramane conservator — sub 2 secunde (nu consuma o parte semnificativa din fereastra de 40s)', () => {
+  const m = server.match(/const FADE_OUT_SECONDS = ([\d.]+);/);
+  assert.ok(m);
+  assert.ok(Number(m[1]) > 0 && Number(m[1]) < 2, `FADE_OUT_SECONDS trebuie sa fie conservator, gasit ${m[1]}`);
+});
+
+test('apelul catre buildVariantFromTrack (din attempt(), in interiorul obtainAcceptableVariant) transmite recipient/story/lang EFECTIVE (recipientSnapshot suprascrie order, pentru Premium melodia 2)', () => {
   const fn = extractFn(server, 'async function obtainAcceptableVariant(orderId, tracks, taskId, genre, order, recipientSnapshot, canonicalLyrics) {');
-  assert.match(fn, /buildVariantFromTrack\(orderId, randomUUID\(\)\.slice\(0, 8\), track, candidateTaskId, genre\)/);
+  assert.match(fn, /const effectiveOrderForPreview = recipientSnapshot \? \{ \.\.\.order, \.\.\.recipientSnapshot \} : order;/);
+  assert.match(fn, /buildVariantFromTrack\(orderId, randomUUID\(\)\.slice\(0, 8\), track, candidateTaskId, effectiveOrderForPreview\.recipient, effectiveOrderForPreview\.story, effectiveOrderForPreview\.lang\)/);
 });
 
-test('nicio alta constanta/logica de preview NEATINSA de aceasta cerinta (VIDEO_PREVIEW_SECONDS, pretul pachetelor, PLAN_PRICES) — verificare structurala ca nimic altceva nu a fost modificat din greseala', () => {
+test('nicio alta constanta/logica de preview NEATINSA de aceasta cerinta (VIDEO_PREVIEW_SECONDS, pretul pachetelor, PLAN_PRICES)', () => {
   assert.match(server, /const VIDEO_PREVIEW_SECONDS = 25;/);
   assert.match(server, /const PLAN_PRICES = \{ standard: 15, premium: 25, video: 35 \};/);
 });

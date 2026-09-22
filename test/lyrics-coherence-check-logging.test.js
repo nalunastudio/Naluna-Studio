@@ -40,14 +40,18 @@ test('lyrics_coherence_check: NU include niciodata versurile, povestea sau numel
 
 test('obtainAcceptableVariant: apelurile catre attempt() transmit explicit faza corecta ("initial" la prima incercare, "retry" la reincercare)', () => {
   const fnIdx = server.indexOf('async function obtainAcceptableVariant(orderId, tracks, taskId, genre, order, recipientSnapshot, canonicalLyrics) {');
-  const body = server.slice(fnIdx, fnIdx + 4500);
+  // Fereastra marita (2026-09-22, SMART PREVIEW): attempt() a crescut (effectiveOrderForPreview +
+  // parametrii noi transmisi catre buildVariantFromTrack) — logica de faze/retry ramane neschimbata.
+  const body = server.slice(fnIdx, fnIdx + 5000);
   assert.match(body, /const first = await attempt\(tracks, taskId, 'initial'\);/);
   assert.match(body, /const second = await attempt\(retryResult\.tracks, retryTaskId, 'retry'\);/);
 });
 
 test('REGRESIE: regula de retry NU a fost modificata — o reincercare COMPLETA a intregii generari se declanseaza STRICT daca prima incercare nu a produs nicio piesa acceptabila (first.built e null)', () => {
   const fnIdx = server.indexOf('async function obtainAcceptableVariant(orderId, tracks, taskId, genre, order, recipientSnapshot, canonicalLyrics) {');
-  const body = server.slice(fnIdx, fnIdx + 4500);
+  // Fereastra marita (2026-09-22, SMART PREVIEW): attempt() a crescut (effectiveOrderForPreview +
+  // parametrii noi transmisi catre buildVariantFromTrack) — logica de faze/retry ramane neschimbata.
+  const body = server.slice(fnIdx, fnIdx + 5000);
   assert.match(body, /if \(first\.built \|\| canonicalLyrics\) return first;/, 'o piesa valida obtinuta la prima incercare trebuie pastrata, fara reincercare completa');
   assert.match(body, /const retryTaskId = await callMusicProvider\(orderId, retryPrompt\);/);
   assert.match(body, /const retryResult = await pollForResult\(retryTaskId, orderId\);/);

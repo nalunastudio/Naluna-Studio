@@ -2139,6 +2139,10 @@
         audioEl.addEventListener('timeupdate', () => {
           progressEl.textContent = t.listened(formatTime(audioEl.currentTime), formatTime(v.durationSeconds));
         });
+        // SMART PREVIEW ANALYTICS (2026-09-22) — acopera Standard SI Video (ambele folosesc
+        // renderVariants/mountAudio aici) — Premium foloseste createPremiumAudioPlayer, cu
+        // propriul apel identic, mai jos in fisier.
+        attachPreviewAnalytics(audioEl, { variantId: v.id, plan: order.plan, selectionReason: v.previewSelectionReason, previewStartSeconds: v.previewStartSeconds });
 
         audioWrap.appendChild(audioEl);
         // cache-bust prin proprietate, nu prin markup — evita orice ambiguitate de parsare HTML
@@ -3072,10 +3076,117 @@
     }
   }
 
+  // ==========================================================================================
+  // SMART PREVIEW ANALYTICS (2026-09-22) — comportamentul playerului de preview: preview_played,
+  // preview_progress_25/50/75/100, preview_completed, preview_replayed. NICIODATA PII (STRICT
+  // variantId — id-ul scurt/aleator al variantei, niciodata sunoTrackId — plan, selectionReason,
+  // startBucket) — fara story/versuri/nume/email, la fel ca restul evenimentelor funnel.
+  // Consimtamantul e respectat AUTOMAT: window.NalunaAnalytics.track() (analytics.js) verifica
+  // el insusi isAnalyticsConsentGranted() inainte de orice trimitere — playerul insusi (redare,
+  // Smart Preview) functioneaza identic indiferent de consimtamant, doar aceste apeluri sunt
+  // no-op fara el.
+  //
+  // Functiile PURE de mai jos (fara acces DOM) sunt extrase separat, testabile izolat — vezi
+  // test/melodia-mea-preview-analytics.test.js.
+  var PREVIEW_REPLAY_RESTART_THRESHOLD_SECONDS = 2; // sub aceasta pozitie, un "play" e considerat un RESTART, nu o continuare
+  var PREVIEW_SUBSTANTIAL_LISTEN_FRACTION = 0.75; // procentul de la care o ascultare conteaza drept "substantiala" (necesar pentru un replay real ulterior)
+
+  // Bucket, NICIODATA secunda exacta — evita cardinalitate inutila in analytics, suficient
+  // pentru a corela ulterior "cat de departe a mutat Smart Preview fereastra fata de secunda 0".
+  function previewStartBucket(previewStartSeconds) {
+    if (typeof previewStartSeconds !== 'number' || !isFinite(previewStartSeconds)) return 'unknown';
+    if (previewStartSeconds < 1) return '0';
+    if (previewStartSeconds < 5) return '1-5';
+    if (previewStartSeconds < 15) return '5-15';
+    if (previewStartSeconds < 30) return '15-30';
+    if (previewStartSeconds < 60) return '30-60';
+    return '60+';
+  }
+
+  // Replay REAL: STRICT daca varianta a fost deja ascultata substantial ANTERIOR (>=75% sau
+  // finalizata) SI redarea reincepe de langa inceput (nu de unde a ramas dupa o pauza) — cerinta
+  // explicita: "pause -> play imediat" NU trebuie considerat replay (currentTime ramane oriunde
+  // era la pauza, aproape niciodata sub prag).
+  function isGenuineReplayStart(currentTimeSeconds, wasSubstantiallyListened) {
+    return !!wasSubstantiallyListened && typeof currentTimeSeconds === 'number' && currentTimeSeconds < PREVIEW_REPLAY_RESTART_THRESHOLD_SECONDS;
+  }
+
+  // Pragurile NOI (dintre cele inca netrimise, `alreadyFired.pXX === false`) atinse la acest
+  // currentTime/duration — fiecare prag trimis CEL MULT o data per varianta (apelantul seteaza
+  // alreadyFired.pXX = true imediat ce il trimite).
+  function newlyReachedProgressMilestones(currentTimeSeconds, durationSeconds, alreadyFired) {
+    if (typeof durationSeconds !== 'number' || !isFinite(durationSeconds) || durationSeconds <= 0) return [];
+    if (typeof currentTimeSeconds !== 'number' || !isFinite(currentTimeSeconds)) return [];
+    var pct = currentTimeSeconds / durationSeconds;
+    var milestones = [];
+    if (!alreadyFired.p25 && pct >= 0.25) milestones.push('25');
+    if (!alreadyFired.p50 && pct >= 0.50) milestones.push('50');
+    if (!alreadyFired.p75 && pct >= PREVIEW_SUBSTANTIAL_LISTEN_FRACTION) milestones.push('75');
+    if (!alreadyFired.p100 && pct >= 0.99) milestones.push('100');
+    return milestones;
+  }
+
+  // Stare per-varianta, la nivel de PAGINA (nu per element <audio>) — supravietuieste
+  // remontarilor playerului (retry la eroare) SI re-randarilor complete (poll-ul starii comenzii,
+  // acelasi tipar ca audioPlayAlreadyTracked/resultViewedAlreadyTracked de mai sus).
+  var previewAnalyticsState = {};
+
+  // Ataseaza listenerii de analytics unui element <audio> deja montat — apelata din AMBELE
+  // puncte de montare (renderVariants -> mountAudio, Standard/Video; createPremiumAudioPlayer ->
+  // mountAudio, Premium), o singura implementare, niciodata duplicata.
+  function attachPreviewAnalytics(audioEl, opts) {
+    var variantId = opts && opts.variantId;
+    if (!variantId || typeof window === 'undefined' || !window.NalunaAnalytics) return;
+    var plan = opts.plan;
+    var selectionReason = opts.selectionReason;
+    var previewStartSeconds = opts.previewStartSeconds;
+
+    var state = previewAnalyticsState[variantId] || (previewAnalyticsState[variantId] = {
+      played: false, p25: false, p50: false, p75: false, p100: false, completed: false, substantiallyListened: false
+    });
+
+    function fire(eventName, extra) {
+      var payload = { variantId: variantId, plan: plan };
+      if (extra) { for (var key in extra) payload[key] = extra[key]; }
+      // orderId: cheie rezervata (vezi postTrackEvent, analytics.js) — trimisa SEPARAT de meta,
+      // niciodata prin TRACK_META_ALLOWLIST — necesara STRICT pentru corelarea ulterioara in Admin
+      // ("checkout dupa preview"), prin acelasi order_id deja stocat pe alte evenimente
+      // (checkout_clicked). orderId e o constanta globala de pagina (din query string), nu PII.
+      if (typeof orderId !== 'undefined' && orderId) payload.orderId = orderId;
+      window.NalunaAnalytics.track(eventName, payload);
+    }
+
+    audioEl.addEventListener('play', function () {
+      if (!state.played) {
+        state.played = true;
+        fire('preview_played', { selectionReason: selectionReason || 'unknown', startBucket: previewStartBucket(previewStartSeconds) });
+      } else if (isGenuineReplayStart(audioEl.currentTime, state.substantiallyListened)) {
+        fire('preview_replayed');
+        // permite un nou replay ulterior — cere din nou o ascultare substantiala inainte de
+        // urmatorul, ca un dublu-click accidental pe "restart" sa nu produca replay-uri in lant.
+        state.substantiallyListened = false;
+      }
+    });
+
+    audioEl.addEventListener('timeupdate', function () {
+      var milestones = newlyReachedProgressMilestones(audioEl.currentTime, audioEl.duration, state);
+      milestones.forEach(function (m) {
+        state['p' + m] = true;
+        fire('preview_progress_' + m);
+        if (m === '75') state.substantiallyListened = true;
+      });
+    });
+
+    audioEl.addEventListener('ended', function () {
+      if (!state.completed) { state.completed = true; fire('preview_completed'); }
+      state.substantiallyListened = true;
+    });
+  }
+
   // Acelasi tipar robust de montare audio (timeout explicit + reincercare la click) folosit de
   // renderVariants() mai jos (Standard/Video), extras aici ca functie reutilizabila — evita
   // duplicarea unei logici deja subtile (Safari/iOS, vezi comentariile originale din renderVariants).
-  function createPremiumAudioPlayer(previewUrl, durationSeconds) {
+  function createPremiumAudioPlayer(previewUrl, durationSeconds, variantId, previewStartSeconds, selectionReason) {
     const wrap = document.createElement('div');
     const audioWrap = document.createElement('div');
     const errorEl = document.createElement('p');
@@ -3120,6 +3231,10 @@
       // ORICARE varianta, o singura data per incarcare de pagina (trackAudioPlayOnce, definit
       // mai jos) — un milestone de implicare reala ("a ascultat"), nu doar "a vazut rezultatul".
       audioEl.addEventListener('play', () => { trackAudioPlayOnce(); }, { once: true });
+      // SMART PREVIEW ANALYTICS (2026-09-22) — plan 'premium' hardcodat: aceasta functie e
+      // folosita STRICT in fluxurile Premium (renderPremiumFlow/premium-compare), niciodata
+      // pentru Standard/Video (care folosesc mountAudio() din renderVariants, mai jos).
+      attachPreviewAnalytics(audioEl, { variantId: variantId, plan: 'premium', selectionReason: selectionReason, previewStartSeconds: previewStartSeconds });
 
       audioWrap.appendChild(audioEl);
       audioEl.src = previewUrl + (previewUrl.includes('?') ? '&' : '?') + 't=' + Date.now();
@@ -3233,7 +3348,7 @@
       head.className = 'variant-head';
       head.innerHTML = `<span class="variant-label">${escapeHtml(label)}</span>${genreTag}`;
       card.appendChild(head);
-      card.appendChild(createPremiumAudioPlayer(v.previewUrl, v.durationSeconds));
+      card.appendChild(createPremiumAudioPlayer(v.previewUrl, v.durationSeconds, v.id, v.previewStartSeconds, v.previewSelectionReason));
       const lyricsWrap = document.createElement('div');
       lyricsWrap.innerHTML = lyricsHtml;
       card.appendChild(lyricsWrap.firstElementChild);
@@ -3634,7 +3749,7 @@
         <div class="variant-head"><span class="variant-label">${escapeHtml(songLabel)} — ${escapeHtml(versionLabel)}</span>${genreTag}</div>
         ${recipientLine}
       `;
-      card.appendChild(createPremiumAudioPlayer(v.previewUrl, v.durationSeconds));
+      card.appendChild(createPremiumAudioPlayer(v.previewUrl, v.durationSeconds, v.id, v.previewStartSeconds, v.previewSelectionReason));
       const lyricsWrap = document.createElement('div');
       lyricsWrap.innerHTML = lyricsHtml;
       card.appendChild(lyricsWrap.firstElementChild);

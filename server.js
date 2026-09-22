@@ -103,6 +103,7 @@ const { getCurrentInstagramAccessToken } = require('./lib/social/instagram-token
 const { checkInstagramTokenLifecycle } = require('./lib/social/instagram-token-lifecycle');
 const { buildEventId: buildMetaCapiEventId, buildPurchaseEvent: buildMetaCapiPurchaseEvent } = require('./lib/meta-capi/capi-payload');
 const { startMetaCapiWorker } = require('./lib/meta-capi/capi-worker');
+const { selectPreviewStart } = require('./lib/preview-selection');
 
 // META CAPI (2026-09-21) — handle-ul worker-ului de retry (vezi lib/meta-capi/capi-worker.js),
 // pornit STRICT dupa initDb() (langa socialWorkerHandle, vezi finalul fisierului). Declarat AICI
@@ -157,24 +158,15 @@ const ANALYTICS_EXCLUDED_EMAILS = (process.env.ANALYTICS_EXCLUDED_EMAILS || '')
 function isTestCustomerEmail(email) {
   return ANALYTICS_EXCLUDED_EMAILS.includes(String(email || '').trim().toLowerCase());
 }
+// CORECȚIE (2026-09-22, SMART PREVIEW — cerinta explicita): 40 de secunde pentru TOATE stilurile,
+// inclusiv manele_suflet/manele_jale — exceptia EXTENDED_PREVIEW_SECONDS=50 (2026-09-19) a fost
+// eliminata. Motivul original (instrumental initial mai lung la aceste doua genuri, care putea
+// consuma o parte mare din fereastra fixa de 40s) e rezolvat acum altfel — Smart Preview
+// (lib/preview-selection.js) muta punctul de START catre o parte relevanta a melodiei, in loc sa
+// mareasca DURATA ferestrei — nu mai e nevoie de o exceptie per-gen. `resolvePreviewMaxSeconds`/
+// `EXTENDED_PREVIEW_GENRES`/`EXTENDED_PREVIEW_SECONDS` au fost eliminate complet (nu doar dezactivate)
+// — nicio ramura de cod ramasa neatinsa care ar putea reintroduce accidental exceptia.
 const PREVIEW_SECONDS = 40;
-// EXCEPTIE (2026-09-19, cerinta explicita, observatie productie reala): manele_suflet/
-// manele_jale au de regula un instrumental initial mai lung decat celelalte genuri — cele 40 de
-// secunde standard se pot termina exact cand partea vocala/povestea devine relevanta. STRICT
-// aceste 2 genuri (genre keys REALE, verificate direct in cod — vezi GENRE_STYLE_TAGS mai jos)
-// primesc o fereastra maxima de preview mai mare; toate celelalte raman la PREVIEW_SECONDS (40),
-// neschimbat. NU afecteaza punctul de START al preview-ului (previewStart / vocal onset —
-// getPreviewStartFromLyrics, neatinsa) — doar durata maxima permisa DUPA acel punct. Daca
-// materialul disponibil dupa previewStart e mai scurt decat aceasta fereastra, trimAudio() (mai
-// jos, `-t` in ffmpeg) se opreste natural la finalul materialului real — nu exista nicaieri
-// padding/loop artificial, la niciun gen.
-const EXTENDED_PREVIEW_GENRES = ['manele_suflet', 'manele_jale'];
-const EXTENDED_PREVIEW_SECONDS = 50;
-// Functie PURA, izolata STRICT ca sa fie usor testabila direct (vezi test/preview-duration-manele.test.js)
-// — niciun efect secundar, niciun acces la retea/fisiere/ffmpeg, doar decizia "cate secunde".
-function resolvePreviewMaxSeconds(genre) {
-  return EXTENDED_PREVIEW_GENRES.includes(genre) ? EXTENDED_PREVIEW_SECONDS : PREVIEW_SECONDS;
-}
 // Previzualizarea GRATUITĂ a videoclipului cadou (pachetul "video"), disponibilă ÎNAINTE de
 // plată — vezi generateLyricVideo() mai jos, care taie acest fragment (stream copy, fără
 // reencodare) din videoclipul complet deja randat, exact ca la începutul lui.
@@ -1706,14 +1698,17 @@ app.get('/api/admin/orders/funnel-summary', async (req, res, next) => {
     }
 
     const args = { startDate: bounds.startDate, endDateExclusive: bounds.endDateExclusive, excludeEmails: ANALYTICS_EXCLUDED_EMAILS };
-    const [kpis, funnel, trend, sources, creatives, dataCompleteSince, trafficDataAvailability] = await Promise.all([
+    const [kpis, funnel, trend, sources, creatives, dataCompleteSince, trafficDataAvailability, preview, previewDataCompleteSince, previewDataAvailability] = await Promise.all([
       db.getFunnelKpis(args),
       db.getConversionFunnel(args),
       db.getRevenueAndOrdersTrend(args),
       db.getTrafficSources(args),
       db.getCreativePerformance(args),
       db.getFunnelDataCompleteSince(),
-      db.getTrafficDataAvailability(bounds.startDate, bounds.endDateExclusive)
+      db.getTrafficDataAvailability(bounds.startDate, bounds.endDateExclusive),
+      db.getPreviewFunnel(args),
+      db.getPreviewDataCompleteSince(),
+      db.getPreviewDataAvailability(bounds.startDate, bounds.endDateExclusive)
     ]);
 
     res.json({
@@ -1731,7 +1726,14 @@ app.get('/api/admin/orders/funnel-summary', async (req, res, next) => {
       funnel,
       trend,
       sources,
-      creatives
+      creatives,
+      // SMART PREVIEW (2026-09-22) — comportamentul preview-ului (played/progress/completed/
+      // replayed/checkout dupa preview), MASURABIL STRICT de la previewDataCompleteSince (dupa
+      // deployul acestei functionalitati) — SEPARAT de dataCompleteSince/trafficDataAvailability
+      // de mai sus (care acopera restul funnel-ului, existent cu mult inainte).
+      preview,
+      previewDataCompleteSince,
+      previewDataAvailability
     });
   } catch (err) {
     next(err);
@@ -3085,7 +3087,16 @@ const TRACKABLE_EVENTS = new Set([
   'generation_completed',
   'generation_failed',
   'checkout_clicked',
-  'checkout_returned_unpaid'
+  'checkout_returned_unpaid',
+  // SMART PREVIEW (2026-09-22) — comportamentul playerului de preview (melodia-mea.html), vezi
+  // comentariul detaliat de la TRACK_META_ALLOWLIST mai jos pentru semantica exacta a fiecaruia.
+  'preview_played',
+  'preview_progress_25',
+  'preview_progress_50',
+  'preview_progress_75',
+  'preview_progress_100',
+  'preview_completed',
+  'preview_replayed'
 ]);
 
 // Allowlist STRICT per eveniment a cheilor acceptate in `meta` — aparare in adancime impotriva
@@ -3101,7 +3112,20 @@ const TRACK_META_ALLOWLIST = {
   generation_completed: ['plan'],
   generation_failed: ['reason'],
   checkout_clicked: ['plan'],
-  checkout_returned_unpaid: ['plan']
+  checkout_returned_unpaid: ['plan'],
+  // SMART PREVIEW (2026-09-22) — STRICT identificatori/enum-uri, NICIODATA PII (fara story,
+  // versuri, nume destinatar/expeditor, email). `variantId` = id-ul scurt/aleator al variantei
+  // (vezi buildVariantFromTrack), niciodata sunoTrackId/musicTaskId. `startBucket`/
+  // `selectionReason` transmise STRICT o data, la preview_played (contextul selectiei ramane
+  // valabil pentru toata sesiunea de ascultare a acelei variante — nu are sens sa fie repetat
+  // pe fiecare prag de progres).
+  preview_played: ['variantId', 'plan', 'selectionReason', 'startBucket'],
+  preview_progress_25: ['variantId', 'plan'],
+  preview_progress_50: ['variantId', 'plan'],
+  preview_progress_75: ['variantId', 'plan'],
+  preview_progress_100: ['variantId', 'plan'],
+  preview_completed: ['variantId', 'plan'],
+  preview_replayed: ['variantId', 'plan']
 };
 
 function sanitizeTrackMeta(eventName, rawMeta) {
@@ -3829,6 +3853,13 @@ app.get('/api/orders/:orderId', async (req, res, next) => {
       // separata de hasVideo (videoclipul COMPLET, deblocat STRICT dupa plata, vezi /media/video).
       hasVideoPreview: !!v.videoPreviewKey,
       videoFailedReason: v.videoFailedReason || null,
+      // SMART PREVIEW (2026-09-22) — STRICT punctul de start (secunde) si eticheta enum a
+      // motivului selectiei ('smart_score'/'vocal_onset_fallback'/'start_zero_fallback'),
+      // necesare client-side pentru analytics-ul preview-ului (vezi melodia-mea.html). NICIODATA
+      // previewSignals (rezumatul de scor detaliat) — nu e nevoie de el in UI, ramane STRICT
+      // server-side/admin.
+      previewStartSeconds: typeof v.previewStartSeconds === 'number' ? v.previewStartSeconds : null,
+      previewSelectionReason: v.previewSelectionReason || null,
       // Standard, fluxul de editare cu alegere (Partea 2, hotfix 2026-08-08) — fara acest
       // camp, melodia-mea.html nu poate distinge "Versiunea inițială" de "Versiunea editată"
       // (gasit direct la testarea reala: ambele carduri aparea etichetate "inițială", pentru
@@ -6177,6 +6208,14 @@ function orderTracksByCoherence(tracks, order, recipientSnapshot) {
 // declara cererea esuata.
 const MAX_COHERENCE_RETRIES = 2;
 async function obtainAcceptableVariant(orderId, tracks, taskId, genre, order, recipientSnapshot, canonicalLyrics) {
+  // SMART PREVIEW (2026-09-22) — datele EFECTIVE (recipient/story/lang) pentru ACEASTA melodie
+  // specifica, nu neaparat cele ale comenzii principale: pentru Premium melodia 2 "Pentru altă
+  // persoană", recipientSnapshot contine un recipient/story COMPLET DIFERIT (vezi
+  // getSong2EffectiveData mai sus) — acelasi tipar de suprascriere deja folosit pentru
+  // retryOrder/buildPrompt mai jos in aceasta functie, aplicat acum si pentru selectia
+  // preview-ului, ca fiecare varianta Premium sa primeasca semnale de personalizare pentru
+  // PERSOANA ei reala, niciodata pentru cealalta.
+  const effectiveOrderForPreview = recipientSnapshot ? { ...order, ...recipientSnapshot } : order;
   async function attempt(candidateTracks, candidateTaskId, phase) {
     const ordered = canonicalLyrics ? (candidateTracks || []).slice(0, 2) : orderTracksByCoherence(candidateTracks, order, recipientSnapshot);
     let lastErr = null;
@@ -6184,7 +6223,7 @@ async function obtainAcceptableVariant(orderId, tracks, taskId, genre, order, re
     for (const track of ordered) {
       let candidate;
       try {
-        candidate = await buildVariantFromTrack(orderId, randomUUID().slice(0, 8), track, candidateTaskId, genre);
+        candidate = await buildVariantFromTrack(orderId, randomUUID().slice(0, 8), track, candidateTaskId, effectiveOrderForPreview.recipient, effectiveOrderForPreview.story, effectiveOrderForPreview.lang);
       } catch (err) {
         lastErr = err;
         trackIndex++;
@@ -6718,6 +6757,64 @@ async function getPreviewStartFromLyrics(taskId, audioId, orderId) {
   return previewStart;
 }
 
+// ==========================================================================================
+// SMART PREVIEW (2026-09-22) — fetch-ul brut de alignedWords, reutilizat DOAR pentru selectia
+// inteligenta a fragmentului de preview. STRICT UN SINGUR apel HTTP catre get-timestamped-lyrics
+// per varianta (fetchTimestampedLyricsOnce, functie EXISTENTA, neatinsa) — buildVariantFromTrack
+// nu mai apeleaza si getPreviewStartFromLyrics() separat (care ar fi facut un al doilea apel
+// identic) — foloseste in schimb findFirstRealWordStartS() + constantele TARGET_VOICE_POSITION_S/
+// PREVIEW_START_MAX_S de mai sus (toate NEATINSE) direct pe rezultatul de aici, ca sa obtina
+// EXACT aceeasi valoare de "vocal onset" pe care getPreviewStartFromLyrics ar fi calculat-o —
+// vezi buildVariantFromTrack mai jos. getPreviewStartFromLyrics() ramane in cod, neschimbata,
+// neapelata de acest flux (comportamentul ei, testat separat, ramane sursa de adevar pentru
+// FORMULA vocal-onset, doar orchestrarea apelului HTTP s-a mutat).
+async function fetchAlignedWordsForSmartPreview(taskId, audioId, orderId) {
+  const orderTag = orderId ? String(orderId).slice(0, 8) : '?';
+  const taskTag = taskId ? String(taskId).slice(0, 8) : '?';
+  const logPrefix = `[smart-preview] comanda ${orderTag}, task ${taskTag}`;
+
+  if (!taskId || !audioId) {
+    console.log(`${logPrefix}: fallback (motiv: taskId sau audioId lipsa)`);
+    return null;
+  }
+  let outcome;
+  try {
+    outcome = await fetchTimestampedLyricsOnce(taskId, audioId);
+  } catch (err) {
+    console.log(`${logPrefix}: fallback (motiv: eroare neasteptata: ${err.message})`);
+    return null;
+  }
+  if (!outcome.ok) {
+    console.log(`${logPrefix}: fallback (motiv: ${outcome.reason})`);
+    return null;
+  }
+  let body;
+  try {
+    body = await outcome.res.json();
+  } catch (err) {
+    console.log(`${logPrefix}: fallback (motiv: raspuns invalid, nu e JSON)`);
+    return null;
+  }
+  if (!body || body.code !== 200 || !body.data || !Array.isArray(body.data.alignedWords) || body.data.alignedWords.length === 0) {
+    console.log(`${logPrefix}: fallback (motiv: alignedWords lipsa/gol/structura neasteptata)`);
+    return null;
+  }
+  return body.data.alignedWords;
+}
+
+// Vocal onset — ACEEASI formula ca in getPreviewStartFromLyrics (findFirstRealWordStartS +
+// TARGET_VOICE_POSITION_S/PREVIEW_START_MAX_S, toate NEATINSE) — extrasa aici STRICT ca sa poata
+// fi refolosita pe alignedWords deja obtinute (evita al doilea apel HTTP). null daca niciun
+// cuvant cu success:true nu exista.
+function computeVocalOnsetPreviewStart(alignedWords) {
+  const firstRealStartS = findFirstRealWordStartS(alignedWords);
+  if (firstRealStartS === null) return null;
+  let previewStart = firstRealStartS - TARGET_VOICE_POSITION_S;
+  previewStart = Math.max(0, previewStart);
+  previewStart = Math.min(previewStart, PREVIEW_START_MAX_S);
+  return previewStart;
+}
+
 // Verifica DUPA upload ca preview-ul e chiar accesibil public la URL-ul construit din
 // S3_PUBLIC_BASE_URL. Un raspuns 200/206 de la PutObjectCommand catre R2/S3 NU garanteaza
 // ca fisierul e livrat corect prin domeniul public configurat — Custom Domain-ul Cloudflare
@@ -6759,7 +6856,7 @@ async function verifyPreviewReachable(orderId, variantId, previewUrl) {
   }
 }
 
-async function buildVariantFromTrack(orderId, variantId, track, taskId, genre) {
+async function buildVariantFromTrack(orderId, variantId, track, taskId, recipient, story, lang) {
   if (!track.audioUrl) {
     throw new Error(`Piesa primita de la Suno (id: ${track.id || 'necunoscut'}) nu are audioUrl/audio_url.`);
   }
@@ -6768,41 +6865,66 @@ async function buildVariantFromTrack(orderId, variantId, track, taskId, genre) {
   const tempPreview = path.join(TEMP_DIR, `${orderId}-${variantId}-preview.mp3`);
   const vTag = `varianta=${variantId}`;
 
-  // Descarcarea fisierului si cererea de timestamp-uri NU depind una de cealalta (ambele
-  // au nevoie doar de taskId/track.id, disponibile deja) — le rulam in PARALEL, nu una
-  // dupa alta, ca sa nu adaugam timpul lor unul peste celalalt in "drumul critic" al
-  // generarii. Fisierul COMPLET (tempFull) ramane neschimbat de acest pas — descarcarea e
-  // singura operatie care il atinge.
+  // Descarcarea fisierului si cererea de timestamp-uri (STRICT UN SINGUR apel, reutilizat si
+  // pentru Smart Preview — vezi fetchAlignedWordsForSmartPreview) NU depind una de cealalta —
+  // le rulam in PARALEL. Fisierul COMPLET (tempFull) ramane neschimbat de acest pas —
+  // descarcarea e singura operatie care il atinge.
   const downloadStart = Date.now();
   const timestampStart = Date.now();
   perfLog(orderId, 'download_start', vTag);
   perfLog(orderId, 'timestamp_fetch_start', vTag);
-  const [, previewStart] = await Promise.all([
+  const [, alignedWords] = await Promise.all([
     downloadFile(track.audioUrl, tempFull).then(() => {
       perfLog(orderId, 'download_done', `${vTag}, ${Date.now() - downloadStart}ms`);
     }),
-    getPreviewStartFromLyrics(taskId, track.id, orderId).then(v => {
+    fetchAlignedWordsForSmartPreview(taskId, track.id, orderId).then(v => {
       perfLog(orderId, 'timestamp_fetch_done', `${vTag}, ${Date.now() - timestampStart}ms`);
       return v;
     })
   ]);
 
-  // Taierea preview-ului (FFmpeg, doar copiere de stream — deja cea mai rapida optiune
-  // posibila pentru asta, fara reincodare) si citirea duratei fisierului complet (ffprobe)
-  // NU depind una de cealalta — ambele au nevoie doar de tempFull, deja descarcat. Le
-  // rulam de asemenea in paralel.
+  // SMART PREVIEW (2026-09-22): durata (ffprobe) si analiza de energie audio locala
+  // (extractAudioOnsets — functie EXISTENTA, neatinsa, folosita pana acum STRICT post-plata
+  // pentru pachetul video) NU depind una de cealalta — ambele au nevoie doar de tempFull, deja
+  // descarcat. extractAudioOnsets isi prinde singura toate erorile (timeout/fisier corupt) si
+  // returneaza [] — un esec acolo NU poate bloca preview-ul, doar dezactiveaza STRICT semnalul
+  // de energie (secundar, niciodata decisiv) in selectPreviewStart de mai jos.
   const ffmpegStart = Date.now();
   perfLog(orderId, 'ffmpeg_start', vTag);
-  // Fereastra maxima de preview: STRICT manele_suflet/manele_jale primesc EXTENDED_PREVIEW_SECONDS
-  // (50) — orice alt gen (inclusiv genre lipsa/necunoscut) ramane la PREVIEW_SECONDS (40),
-  // neschimbat. previewStart (vocal onset) e neatins — doar durata maxima DUPA acel punct.
-  const previewMaxSeconds = resolvePreviewMaxSeconds(genre);
-  const [, durationSeconds] = await Promise.all([
-    trimAudio(tempFull, tempPreview, previewMaxSeconds, previewStart).then(() => {
-      perfLog(orderId, 'ffmpeg_done', `${vTag}, ${Date.now() - ffmpegStart}ms`);
-    }),
-    getAudioDuration(tempFull)
+  perfLog(orderId, 'smart_preview_analysis_start', vTag);
+  const analysisStart = Date.now();
+  const [durationSeconds, onsets] = await Promise.all([
+    getAudioDuration(tempFull),
+    extractAudioOnsets(tempFull, orderId)
   ]);
+  perfLog(orderId, 'smart_preview_analysis_done', `${vTag}, ${Date.now() - analysisStart}ms, onsets=${onsets.length}`);
+
+  // Vocal onset — ACELASI mecanism/formula folosita pana acum (findFirstRealWordStartS +
+  // TARGET_VOICE_POSITION_S/PREVIEW_START_MAX_S, neatinse), calculat aici pe alignedWords deja
+  // obtinute — serveste ATAT drept candidat de start pentru Smart Preview CAT SI drept fallback
+  // sigur, garantat identic cu comportamentul de dinainte de aceasta faza, daca scorarea nu
+  // poate rula (vezi selectPreviewStart, lib/preview-selection.js).
+  const vocalOnsetStartSeconds = alignedWords ? computeVocalOnsetPreviewStart(alignedWords) : null;
+  // captionLines — ACEEASI functie folosita pentru caption-urile video (buildCaptionLines,
+  // neatinsa), trecuta ca date STRICT catre selectPreviewStart (modul pur, lib/), niciodata
+  // recalculata separat acolo — o singura sursa de adevar pentru "unde incepe fiecare linie
+  // reala cantata".
+  const captionLines = alignedWords ? buildCaptionLines(alignedWords) : [];
+  const previewDecision = selectPreviewStart({
+    alignedWords,
+    captionLines,
+    durationSeconds,
+    previewMaxSeconds: PREVIEW_SECONDS,
+    vocalOnsetStartSeconds,
+    onsets,
+    recipient,
+    story,
+    lang
+  });
+  perfLog(orderId, 'smart_preview_selected', `${vTag}, reason=${previewDecision.selectionReason}, start=${previewDecision.previewStartSeconds.toFixed(2)}s`);
+
+  await trimAudio(tempFull, tempPreview, PREVIEW_SECONDS, previewDecision.previewStartSeconds);
+  perfLog(orderId, 'ffmpeg_done', `${vTag}, ${Date.now() - ffmpegStart}ms`);
 
   const fullKey = `orders/full/${orderId}-${variantId}.mp3`;
   const previewKey = `orders/preview/${orderId}-${variantId}.mp3`;
@@ -6870,7 +6992,16 @@ async function buildVariantFromTrack(orderId, variantId, track, taskId, genre) {
     // POST /api/orders/:orderId/variants/:variantId/lyrics).
     originalLyrics: track.lyrics || null,
     editedLyrics: null,
-    lyricsUpdatedAt: null
+    lyricsUpdatedAt: null,
+    // SMART PREVIEW (2026-09-22) — persistenta MINIMALA a deciziei, pe variantul JSONB deja
+    // existent (nicio migrare de schema): previewStartSeconds (secunda EXACTA de start a
+    // fisierului preview, deja fixata la taierea ffmpeg de mai sus — niciodata recalculata dupa
+    // aceea), previewSelectionReason (enum, vezi lib/preview-selection.js — 'smart_score' |
+    // 'vocal_onset_fallback' | 'start_zero_fallback'), previewSignals (rezumat MIC, STRICT
+    // numere/booleene/enum-uri — niciodata poveste/versuri/nume brute, vezi scoreCandidate()).
+    previewStartSeconds: previewDecision.previewStartSeconds,
+    previewSelectionReason: previewDecision.selectionReason,
+    previewSignals: previewDecision.signals
   };
 }
 
@@ -8793,11 +8924,25 @@ async function downloadFile(url, destPath) {
 // Suplimentar (NU inlocuieste fixul de mai sus): un fade-in de 15ms — doar atat cat sa elimine
 // un eventual "click" de esantion daca taietura (-ss) nu cade exact pe zero-crossing; 15ms e
 // mult prea scurt ca sa masce vreo distorsiune reala, doar rotunjeste tranzitia bruta silence->sunet.
+// SMART PREVIEW (2026-09-22): fade-out adaugat la finalul preview-ului — auditul a confirmat
+// ca exista deja un fade-IN foarte scurt (15ms, doar impotriva unui "click" de taiere brusca la
+// start), dar NICIUN fade-out, deci preview-ul se oprea STRICT brusc, indiferent de unde pornea
+// fereastra. Cu Smart Preview mutand punctul de start oriunde in melodie (nu doar la inceput),
+// o oprire brusca la final devine mai vizibila/deranjanta. FADE_OUT_SECONDS conservator (0.6s,
+// 1.5% din fereastra de 40s) — "scurt si natural", nu consuma o parte semnificativa din preview.
+// Calculat fata de `seconds` (durata CERUTA) — daca materialul real disponibil e mai scurt (caz
+// rar, vezi comentariul de mai jos), fade-out-ul pur si simplu nu apuca sa declanseze (afade nu
+// are efect dupa finalul real al fluxului) — acelasi comportament de "oprire naturala" ca inainte,
+// niciodata o eroare. Atinge STRICT fisierul preview (tempPreview) — melodia completa (tempFull)
+// nu e citita decat ca sursa needitata pentru acest ffmpeg, niciodata scrisa.
+const FADE_OUT_SECONDS = 0.6;
 async function trimAudio(srcPath, destPath, seconds, startSeconds = 0) {
   const safeStart = Math.max(0, Number(startSeconds) || 0);
+  const safeSeconds = Math.max(0, Number(seconds) || 0);
+  const fadeOutStart = Math.max(0, safeSeconds - FADE_OUT_SECONDS);
   const args = ['-y'];
   if (safeStart > 0) args.push('-ss', String(safeStart));
-  args.push('-i', srcPath, '-t', String(seconds), '-af', 'afade=t=in:st=0:d=0.015', '-c:a', 'libmp3lame', '-q:a', '0', destPath);
+  args.push('-i', srcPath, '-t', String(safeSeconds), '-af', `afade=t=in:st=0:d=0.015,afade=t=out:st=${fadeOutStart.toFixed(3)}:d=${FADE_OUT_SECONDS}`, '-c:a', 'libmp3lame', '-q:a', '0', destPath);
   await execFfmpeg(args);
 }
 

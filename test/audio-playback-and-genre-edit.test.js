@@ -58,8 +58,12 @@ test('server.js: trimAudio foloseste VBR calitate maxima, fara reesantionare for
 
 test('server.js: trimAudio aplica un fade-in de 15ms (doar clickuri de taiere, nu mascheaza distorsiune)', () => {
   const server = read('server.js');
+  // ACTUALIZAT (2026-09-22, SMART PREVIEW): fade-in-ul (neschimbat, 15ms) e acum combinat cu
+  // fade-out-ul nou intr-un singur lant de filtre -af (afade=...,afade=...) — ffmpeg aplica un
+  // singur -af per apel, deci cele doua filtre trebuie sa fie in ACELASI string, nu doua argumente
+  // separate. Vezi test/preview-duration-manele.test.js pentru fade-out.
   assert.ok(
-    server.includes("'afade=t=in:st=0:d=0.015'"),
+    server.includes('afade=t=in:st=0:d=0.015,afade=t=out:st='),
     'trebuie sa existe un fade-in FOARTE scurt (15ms) care elimina doar un eventual click de esantion la taietura, fara sa ascunda o distorsiune mai lunga'
   );
 });

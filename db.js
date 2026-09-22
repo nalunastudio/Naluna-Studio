@@ -2365,6 +2365,100 @@ async function getTrafficDataAvailability(startDate, endDateExclusive) {
 }
 
 // ==================================================================================
+// SMART PREVIEW — FUNNEL (2026-09-22) — ACELASI tipar de agregare server-side ca restul motorului
+// de mai sus (event-time din funnel_events), dar STRICT pentru cele 7 evenimente de comportament
+// al preview-ului (preview_played/progress_25/50/75/100/completed/replayed — vezi
+// attachPreviewAnalytics, public/melodia-mea.html). Smart Preview e o functionalitate NOUA — fara
+// niciun istoric anterior deploy-ului ei (vezi getPreviewDataCompleteSince/getPreviewDataAvailability
+// mai jos, SEPARATE de echivalentele lor generale pentru tot funnel-ul).
+//
+// "Checkout dupa preview": comenzi DISTINCTE cu (a) STRICT un eveniment preview_played legat deja
+// de order_id-ul lor (fe.order_id, trimis explicit de attachPreviewAnalytics — vezi comentariul
+// din melodia-mea.html despre cheia rezervata `orderId`) IN fereastra ceruta, SI (b)
+// checkout_created_at IS NOT NULL (indiferent cand s-a intamplat checkout-ul efectiv, acelasi
+// principiu "cohortat pe evenimentul de start" ca restul acestui fisier) — nu inventam un
+// identificator nou, folosim STRICT order_id/orderId deja existente (cerinta explicita).
+async function getPreviewFunnel({ startDate, endDateExclusive, excludeEmails = [] } = {}) {
+  const excl = (excludeEmails || []).map((e) => e.toLowerCase());
+  const hasExcl = excl.length > 0;
+  const params = hasExcl ? [startDate, endDateExclusive, excl] : [startDate, endDateExclusive];
+  const previewEventNames = `('preview_played','preview_progress_25','preview_progress_50','preview_progress_75','preview_progress_100','preview_completed','preview_replayed')`;
+
+  const eventsSql = `
+    SELECT
+      COUNT(*) FILTER (WHERE fe.event_name = 'preview_played') AS played,
+      COUNT(*) FILTER (WHERE fe.event_name = 'preview_progress_25') AS p25,
+      COUNT(*) FILTER (WHERE fe.event_name = 'preview_progress_50') AS p50,
+      COUNT(*) FILTER (WHERE fe.event_name = 'preview_progress_75') AS p75,
+      COUNT(*) FILTER (WHERE fe.event_name = 'preview_progress_100') AS p100,
+      COUNT(*) FILTER (WHERE fe.event_name = 'preview_completed') AS completed,
+      COUNT(*) FILTER (WHERE fe.event_name = 'preview_replayed') AS replayed
+    FROM funnel_events fe
+    LEFT JOIN orders o ON o.id = fe.order_id
+    WHERE fe.event_name IN ${previewEventNames}
+      AND ${timeWindowClause('fe.occurred_at', 1, 2)}
+      ${hasExcl ? `AND (o.email IS NULL OR lower(o.email) != ALL($3))` : ''}
+  `;
+  const checkoutAfterPreviewSql = `
+    SELECT COUNT(DISTINCT fe.order_id) AS n
+    FROM funnel_events fe
+    JOIN orders o ON o.id = fe.order_id
+    WHERE fe.event_name = 'preview_played'
+      AND o.checkout_created_at IS NOT NULL
+      AND ${timeWindowClause('fe.occurred_at', 1, 2)}
+      ${hasExcl ? `AND lower(o.email) != ALL($3)` : ''}
+  `;
+
+  const [eventsRes, checkoutRes] = await Promise.all([
+    pool.query(eventsSql, params),
+    pool.query(checkoutAfterPreviewSql, params)
+  ]);
+
+  return {
+    played: Number(eventsRes.rows[0].played),
+    progress25: Number(eventsRes.rows[0].p25),
+    progress50: Number(eventsRes.rows[0].p50),
+    progress75: Number(eventsRes.rows[0].p75),
+    progress100: Number(eventsRes.rows[0].p100),
+    completed: Number(eventsRes.rows[0].completed),
+    replayed: Number(eventsRes.rows[0].replayed),
+    checkoutAfterPreview: Number(checkoutRes.rows[0].n)
+  };
+}
+
+// Data exacta de la care Smart Preview analytics e disponibil (primul eveniment de preview
+// inregistrat vreodata) — SEPARAT de getFunnelDataCompleteSince (restul funnel-ului, deployat cu
+// mult inainte) — nicio cifra din perioadele DINAINTE de aceasta data nu trebuie interpretata ca
+// "zero real" pentru metricile de preview.
+async function getPreviewDataCompleteSince() {
+  const result = await pool.query(
+    `SELECT MIN(occurred_at) AS min_at FROM funnel_events WHERE event_name IN
+     ('preview_played','preview_progress_25','preview_progress_50','preview_progress_75','preview_progress_100','preview_completed','preview_replayed')`
+  );
+  return result.rows[0].min_at || null;
+}
+
+// Aceeasi semantica 3-stari ('complete'/'partial'/'unmeasured') ca getTrafficDataAvailability, dar
+// STRICT pentru evenimentele de preview (sursa: MIN(occurred_at) filtrat pe cele 7 evenimente, nu
+// pe tot funnel_events) — Admin foloseste acest semnal ca sa nu afiseze "0" acolo unde inseamna de
+// fapt "inca nemasurat" pentru perioada ceruta.
+async function getPreviewDataAvailability(startDate, endDateExclusive) {
+  const result = await pool.query(
+    `SELECT
+       CASE
+         WHEN MIN(occurred_at) IS NULL THEN 'unmeasured'
+         WHEN MIN(occurred_at) <= ($1::date AT TIME ZONE 'Europe/London') THEN 'complete'
+         WHEN MIN(occurred_at) < ($2::date AT TIME ZONE 'Europe/London') THEN 'partial'
+         ELSE 'unmeasured'
+       END AS status
+     FROM funnel_events
+     WHERE event_name IN ('preview_played','preview_progress_25','preview_progress_50','preview_progress_75','preview_progress_100','preview_completed','preview_replayed')`,
+    [startDate, endDateExclusive]
+  );
+  return result.rows[0].status;
+}
+
+// ==================================================================================
 // TESTIMONIALS — reactii clienti, gestionate exclusiv din panoul de admin
 // ==================================================================================
 
@@ -2917,6 +3011,7 @@ module.exports = {
   insertFunnelEvent, linkFunnelEventsToOrder, deleteFunnelEventsOlderThan,
   getFunnelKpis, getConversionFunnel, getRevenueAndOrdersTrend, getTrafficSources, getCreativePerformance, getFunnelDataCompleteSince,
   getTrafficDataAvailability,
+  getPreviewFunnel, getPreviewDataCompleteSince, getPreviewDataAvailability,
   buildOrdersFilter,
   getStuckInFlightOrders,
   anonymizeOrder,

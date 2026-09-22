@@ -326,6 +326,49 @@ function renderCreatives(creatives, trafficDataAvailability, dataCompleteSince) 
   `).join('');
 }
 
+// SMART PREVIEW — comportament preview (2026-09-22) — ACELASI tipar 3-stari ('complete'/'partial'/
+// 'unmeasured') ca restul paginii, dar cu propria sursa de "masurat de la" (previewDataAvailability/
+// previewDataCompleteSince, vezi db.js#getPreviewDataAvailability) — Smart Preview e o
+// functionalitate NOUA, deployata mult dupa restul tracking-ului, deci nu poate folosi
+// trafficDataAvailability existent (ar afisa gresit perioade vechi ca "masurate").
+// checkoutAfterPreview foloseste ACEEASI sursa de date (funnel_events, evenimentul preview_played
+// legat de order_id) — 'unmeasured'/'partial' se aplica identic si acestei valori, nu doar
+// pragurilor de ascultare.
+const PREVIEW_DEFS = [
+  { key: 'played', label: 'Preview pornit' },
+  { key: 'progress25', label: 'Ascultat ≥25%' },
+  { key: 'progress50', label: 'Ascultat ≥50%' },
+  { key: 'progress75', label: 'Ascultat ≥75%' },
+  { key: 'progress100', label: 'Ascultat 100%' },
+  { key: 'completed', label: 'Finalizat (redare completă)' },
+  { key: 'replayed', label: 'Replay' },
+  { key: 'checkoutAfterPreview', label: 'Checkout după preview' }
+];
+
+function renderPreviewSection(preview, previewDataAvailability, previewDataCompleteSince) {
+  const noteEl = document.getElementById('preview-partial-note');
+  const el = document.getElementById('preview-cards');
+  if (previewDataAvailability === 'unmeasured') {
+    noteEl.innerHTML = '';
+    el.innerHTML = PREVIEW_DEFS.map((d) => `
+      <div class="stat stat-unmeasured">
+        <div class="label">${d.label}</div>
+        <div class="value">Nemăsurat</div>
+      </div>
+    `).join('');
+    return;
+  }
+  noteEl.innerHTML = (previewDataAvailability === 'partial')
+    ? `<div class="funnel-partial-note">${escapeHtml(formatPartialNote(previewDataCompleteSince))}</div>`
+    : '';
+  el.innerHTML = PREVIEW_DEFS.map((d) => `
+    <div class="stat">
+      <div class="label">${d.label}</div>
+      <div class="value">${Number(preview[d.key])}</div>
+    </div>
+  `).join('');
+}
+
 function renderDataCompleteBanner(dataCompleteSince) {
   const el = document.getElementById('data-complete-banner');
   if (!dataCompleteSince) {
@@ -350,6 +393,7 @@ async function loadFunnelSummary() {
     renderTrend(data.trend);
     renderSources(data.sources);
     renderCreatives(data.creatives, data.trafficDataAvailability, data.dataCompleteSince);
+    renderPreviewSection(data.preview, data.previewDataAvailability, data.previewDataCompleteSince);
     renderDataCompleteBanner(data.dataCompleteSince);
     if (syncPeriodCheckbox.checked) applyPeriodSyncToOrdersFilter();
   } catch (err) {
