@@ -292,6 +292,40 @@ function renderSources(sources) {
   `).join('');
 }
 
+// Performanța creativelor (2026-09-22, atribuire reclame/creative prin utm_content) — ACELASI
+// tipar de randare ca renderSources, cu o singura diferenta importanta: trackedVisitors/
+// formStarted sunt event-based (funnel_events), deci supuse ACELUIASI semnal 3-stari
+// trafficDataAvailability deja calculat pentru restul paginii (vezi renderFunnelTraffic) —
+// 'unmeasured' inseamna ca acele doua coloane NU sunt cifre reale pentru NICIUN rand din aceasta
+// perioada (afisate "—", niciodata 0 — 0 ar insemna fals "masurat, zero real"). 'partial' arata
+// cifrele reale (exista date pentru partea acoperita a perioadei), cu o nota compacta deasupra
+// tabelului. Comenzi create/Checkout/Plătite/Venit raman NEATINSE — sursa lor (tabela orders) e
+// mereu reala, indiferent de tracking.
+function renderCreatives(creatives, trafficDataAvailability, dataCompleteSince) {
+  const noteEl = document.getElementById('creatives-partial-note');
+  noteEl.innerHTML = (trafficDataAvailability === 'partial')
+    ? `<div class="funnel-partial-note">${escapeHtml(formatPartialNote(dataCompleteSince))}</div>`
+    : '';
+
+  const body = document.getElementById('creatives-body');
+  if (!creatives.length) { body.innerHTML = '<tr><td colspan="10" class="empty">Nicio comandă în această perioadă.</td></tr>'; return; }
+  const unmeasured = trafficDataAvailability === 'unmeasured';
+  body.innerHTML = creatives.map((c) => `
+    <tr>
+      <td>${escapeHtml(c.content)}</td>
+      <td>${escapeHtml(c.campaigns)}</td>
+      <td>${escapeHtml(c.sources)}</td>
+      <td>${unmeasured ? '—' : c.trackedVisitors}</td>
+      <td>${unmeasured ? '—' : c.formStarted}</td>
+      <td>${c.ordersCreated}</td>
+      <td>${c.reachedCheckout}</td>
+      <td>${c.paidOrders}</td>
+      <td>£${c.revenue.toFixed(2)}</td>
+      <td>${pct(c.conversionRatePct)}</td>
+    </tr>
+  `).join('');
+}
+
 function renderDataCompleteBanner(dataCompleteSince) {
   const el = document.getElementById('data-complete-banner');
   if (!dataCompleteSince) {
@@ -315,6 +349,7 @@ async function loadFunnelSummary() {
     renderFunnelCohort(data.funnel.cohort, data.funnel.checkoutToPaidPct);
     renderTrend(data.trend);
     renderSources(data.sources);
+    renderCreatives(data.creatives, data.trafficDataAvailability, data.dataCompleteSince);
     renderDataCompleteBanner(data.dataCompleteSince);
     if (syncPeriodCheckbox.checked) applyPeriodSyncToOrdersFilter();
   } catch (err) {

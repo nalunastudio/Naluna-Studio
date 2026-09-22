@@ -92,11 +92,26 @@ const LANGS = ['ro', 'en', 'de', 'es', 'it', 'fr', 'bg', 'tr'];
 // demonstram ca reparatia nu a marit bugetul consumat de instructiuni (deci nu a putut fura din
 // spatiul povestii) — cerinta explicita "gaseste cea mai mica reparatie corecta".
 // ===============================================================================================
-test('server.js: instructiunile noi ("throughout") nu depasesc niciodata lungimea celor vechi ("verse 1"/"opening the first verse") — nu a fost furat buget din poveste', () => {
-  assert.ok(server.includes("' Write this as a personal song from the sender to the recipient, weaving several real, specific, never-invented details from the story throughout — never a generic line."), 'instructionWithSenderFull trebuie sa foloseasca noua formulare');
-  assert.ok(server.includes("' Verse intro; story details throughout, not invented; complete words only, no shortening; name recipient early+chorus; mention sender once.'"), 'instructionWithSenderShort trebuie sa foloseasca noua formulare');
-  assert.ok(server.includes("' Weave real, specific, never-invented details from the story throughout — never a generic line."), 'instructionNoSenderFull trebuie sa foloseasca noua formulare');
-  assert.ok(server.includes("' Verse intro; story details throughout, not invented. Address recipient by name naturally, complete words only, no shortening.'"), 'instructionNoSenderShort trebuie sa foloseasca noua formulare');
+// CORECTIE (2026-09-22, TASK naturalete versuri): instructionWithSenderFull/instructionNoSenderFull
+// au fost reformulate DIN NOU (INLOCUIRE, acelasi principiu) — "— never a generic line" ->
+// "— never generic or repeated, natural over forced rhyme" (cerinta noua: anti-repetitie/naturalete
+// peste rima fortata), plus "in the target language"/"several"/"or invented" eliminate (redundante,
+// vezi comentariul din server.js) — masurat direct: forma FULL iese STRICT mai scurta decat
+// inainte (buget ELIBERAT, nu furat).
+//
+// CORECTIE runda 2 (aceeasi zi): masurat empiric ca forma SHORT e, in practica, forma
+// PREDOMINANTA (nu de margine) — chiar cea mai usoara comanda posibila (fara expeditor, poveste
+// de 3 caractere) tot foloseste forma SHORT (GENRE_STYLE_MAP are STRICT stiluri de 90-110+
+// caractere). Din acest motiv, formele SHORT au primit SI ELE cerinta anti-repetitie (cea mai des
+// raportata), STRICT prin INLOCUIRE de lungime egala sau mai mica: "not invented" ->
+// "never invented/repeated", "complete words only" -> "complete words", "mention sender once" ->
+// "sender once" — vezi test/lyrics-naturalness.test.js pentru acoperirea completa a acestei
+// descoperiri si a deciziei rezultate.
+test('server.js: instructiunile noi ("throughout", anti-repetitie/naturalete) nu depasesc niciodata lungimea celor vechi — nu a fost furat buget din poveste', () => {
+  assert.ok(server.includes("' Write this as a personal song from the sender to the recipient, weaving real, specific, never-invented story details throughout — never generic or repeated, natural over forced rhyme. Use only complete, grammatically correct words — never shortened. Start the vocals around 8-10 seconds, like the verse. Name the recipient early and in the chorus; mention the sender once.'"), 'instructionWithSenderFull trebuie sa foloseasca noua formulare');
+  assert.ok(server.includes("' Verse intro; story details throughout, never invented/repeated; complete words, no shortening; name recipient early+chorus; sender once.'"), 'instructionWithSenderShort trebuie sa foloseasca noua formulare (anti-repetitie inclusa)');
+  assert.ok(server.includes("' Weave real, specific, never-invented story details throughout — never generic or repeated, natural over forced rhyme. Use only complete, grammatically correct words — never shortened. Start the vocals around 8-10 seconds, like the verse. Address the recipient by name naturally in the lyrics.'"), 'instructionNoSenderFull trebuie sa foloseasca noua formulare');
+  assert.ok(server.includes("' Verse intro; story details throughout, never invented/repeated. Address by name naturally, complete words, no shortening.'"), 'instructionNoSenderShort trebuie sa foloseasca noua formulare (anti-repetitie inclusa)');
   assert.ok(server.includes("' Use real story details throughout — invent nothing beyond them. Story: '"), 'storyLabelShort trebuie sa foloseasca noua formulare');
   assert.ok(server.includes("' Weave real details from this story throughout, never one generic line;"), 'storyLabelFull trebuie sa foloseasca noua formulare');
   // niciuna dintre formularile vechi, centrate STRICT pe "verse 1"/"opening the first verse", nu
@@ -104,6 +119,21 @@ test('server.js: instructiunile noi ("throughout") nu depasesc niciodata lungime
   assert.ok(!server.includes("opening the first verse with a real, specific, never-invented detail"), 'formularea veche (STRICT verse 1) nu mai trebuie sa existe');
   assert.ok(!server.includes("Verse 1 opens with a real story detail"), 'eticheta veche (STRICT verse 1) nu mai trebuie sa existe');
   assert.ok(!server.includes("First verse must open with a real detail"), 'eticheta completa veche (STRICT verse 1) nu mai trebuie sa existe');
+
+  // Masuram EFECTIV lungimea (nu doar prezenta) — titlul testului promite explicit "nu depasesc
+  // niciodata lungimea celor vechi", vezi raportul fazei (2026-09-22) pentru cifrele exacte.
+  const OLD_WITH_SENDER_FULL = ' Write this as a personal song from the sender to the recipient, weaving several real, specific, never-invented details from the story throughout — never a generic line. Use only complete, grammatically correct words in the target language — never a shortened or invented word form. Start the vocals around 8-10 seconds, like the verse. Name the recipient early and again in the chorus. Mention the sender once.';
+  const OLD_NO_SENDER_FULL = ' Weave real, specific, never-invented details from the story throughout — never a generic line. Use only complete, grammatically correct words in the target language — never a shortened or invented word form. Start the vocals around 8-10 seconds, like the verse. Address the recipient by name naturally in the lyrics.';
+  const OLD_WITH_SENDER_SHORT = ' Verse intro; story details throughout, not invented; complete words only, no shortening; name recipient early+chorus; mention sender once.';
+  const OLD_NO_SENDER_SHORT = ' Verse intro; story details throughout, not invented. Address recipient by name naturally, complete words only, no shortening.';
+  const NEW_WITH_SENDER_FULL = ' Write this as a personal song from the sender to the recipient, weaving real, specific, never-invented story details throughout — never generic or repeated, natural over forced rhyme. Use only complete, grammatically correct words — never shortened. Start the vocals around 8-10 seconds, like the verse. Name the recipient early and in the chorus; mention the sender once.';
+  const NEW_NO_SENDER_FULL = ' Weave real, specific, never-invented story details throughout — never generic or repeated, natural over forced rhyme. Use only complete, grammatically correct words — never shortened. Start the vocals around 8-10 seconds, like the verse. Address the recipient by name naturally in the lyrics.';
+  const NEW_WITH_SENDER_SHORT = ' Verse intro; story details throughout, never invented/repeated; complete words, no shortening; name recipient early+chorus; sender once.';
+  const NEW_NO_SENDER_SHORT = ' Verse intro; story details throughout, never invented/repeated. Address by name naturally, complete words, no shortening.';
+  assert.ok(NEW_WITH_SENDER_FULL.length <= OLD_WITH_SENDER_FULL.length, `withSender FULL trebuie sa fie <= lungimea veche (${OLD_WITH_SENDER_FULL.length}), a iesit ${NEW_WITH_SENDER_FULL.length}`);
+  assert.ok(NEW_NO_SENDER_FULL.length <= OLD_NO_SENDER_FULL.length, `noSender FULL trebuie sa fie <= lungimea veche (${OLD_NO_SENDER_FULL.length}), a iesit ${NEW_NO_SENDER_FULL.length}`);
+  assert.ok(NEW_WITH_SENDER_SHORT.length <= OLD_WITH_SENDER_SHORT.length, `withSender SHORT trebuie sa fie <= lungimea veche (${OLD_WITH_SENDER_SHORT.length}), a iesit ${NEW_WITH_SENDER_SHORT.length}`);
+  assert.ok(NEW_NO_SENDER_SHORT.length <= OLD_NO_SENDER_SHORT.length, `noSender SHORT trebuie sa fie <= lungimea veche (${OLD_NO_SENDER_SHORT.length}), a iesit ${NEW_NO_SENDER_SHORT.length}`);
 });
 
 // ===============================================================================================
@@ -125,7 +155,12 @@ for (const lang of LANGS) {
     assert.ok(prompt.includes(name), `[${lang}] numele locului "${name}" din poveste trebuie sa fie prezent`);
     assert.ok(prompt.includes(year), `[${lang}] anul concret "${year}" din poveste trebuie sa fie prezent`);
     assert.match(prompt, /throughout/i, `[${lang}] instructiunea "throughout" (detalii raspandite in tot textul, nu doar la inceput) trebuie sa fie prezenta, a produs: ${prompt}`);
-    assert.match(prompt, /never-invented|not invented/i, `[${lang}] clauza anti-inventie trebuie sa fie prezenta`);
+    // CORECTIE (2026-09-22, TASK naturalete versuri): forma SHORT (cea REAL folosita in practica
+    // pentru aceasta comanda, vezi test/lyrics-naturalness.test.js) reformuleaza "not invented" ca
+    // "never invented/repeated" (fuzioneaza anti-inventie cu noua cerinta anti-repetitie, aceeasi
+    // lungime sau mai mica) — regex extins sa accepte AMBELE formulari (veche, in forma FULL rar
+    // atinsa, SI noua, in forma SHORT predominanta).
+    assert.match(prompt, /never-invented|not invented|never invented/i, `[${lang}] clauza anti-inventie trebuie sa fie prezenta`);
     assert.ok(prompt.includes(`Write the song lyrics entirely in ${{ ro: 'Romanian', en: 'English', de: 'German', es: 'Spanish', it: 'Italian', fr: 'French', bg: 'Bulgarian', tr: 'Turkish' }[lang]}.`), `[${lang}] limba versurilor trebuie sa fie corect propagata catre provider`);
   });
 

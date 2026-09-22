@@ -3372,7 +3372,27 @@
         : null,
       // Atribuire marketing (2026-09-18) — vezi public/js/attribution.js. Optional: pagina
       // functioneaza identic daca scriptul lipseste/esueaza (window.NalunaAttribution absent).
-      ...(typeof window !== 'undefined' && window.NalunaAttribution ? window.NalunaAttribution.getStoredAttribution() : {}),
+      // CORECTIE (2026-09-22, TASK utm_content — ruptura reala gasita la audit): getStoredAttribution()
+      // intoarce STRICT chei snake_case (utm_source, utm_content etc. — identice cu numele
+      // parametrilor URL reali, vezi UTM_KEYS din attribution.js), dar POST /api/orders (server.js)
+      // asteapta STRICT camelCase (utmSource, utmContent etc., acelasi tipar ca restul body-ului
+      // acestui payload). Un spread direct al obiectului NU traducea niciodata aceste chei — pana la
+      // aceasta corectie, utm_source/utm_medium/utm_campaign/utm_content/utm_term nu ajungeau
+      // NICIODATA la server pentru nicio comanda reala creata prin acest formular (fbclid
+      // functiona "din intamplare", fiind scris identic in ambele conventii). ACELASI tipar de
+      // traducere explicita, deja folosit corect de public/js/analytics.js (postTrackEvent, pentru
+      // funnel_events) — aplicat acum si aici, pentru orders.
+      ...(function () {
+        const attribution = (typeof window !== 'undefined' && window.NalunaAttribution) ? window.NalunaAttribution.getStoredAttribution() : {};
+        return {
+          utmSource: attribution.utm_source || null,
+          utmMedium: attribution.utm_medium || null,
+          utmCampaign: attribution.utm_campaign || null,
+          utmContent: attribution.utm_content || null,
+          utmTerm: attribution.utm_term || null,
+          fbclid: attribution.fbclid || null
+        };
+      })(),
       // visitor_id (2026-09-18, Funnel Analytics) — leaga evenimentele funnel pre-comanda de
       // aceasta comanda (vezi db.linkFunnelEventsToOrder, server.js). null STRICT daca
       // consimtamantul analytics nu a fost acordat (getOrCreateVisitorId nu creeaza niciodata

@@ -123,8 +123,13 @@ test('buildPrompt: instructiunea "detalii reale din poveste, raspandite in tot t
     assert.ok(prompt.length <= 600, `promptul trebuie sa ramana sub 600 caractere, a produs ${prompt.length}`);
     assert.match(prompt, /verse 1:? real,? (not invented,? )?(never-invented )?story detail|opening the first verse with a real,? specific,? (never-invented )?detail|story details throughout|details from the story throughout|weav(e|ing) (real|several)/i,
       `instructiunea de detalii reale din poveste (raspandite in tot textul) trebuie sa fie prezenta, a produs: ${prompt}`);
-    assert.match(prompt, /never-invented|not invented/i, `clauza "niciodata inventat" trebuie sa fie prezenta (echivalentul cerintei vechi "Use only real details — invent nothing"), a produs: ${prompt}`);
-    assert.match(prompt, /complete words only, no shortening|grammatically correct words/i, `instructiunea de cuvinte complete/gramatica corecta trebuie sa fie prezenta, a produs: ${prompt}`);
+    // CORECTIE (2026-09-22, TASK naturalete versuri): forma SHORT (predominanta in practica)
+    // reformuleaza "not invented" ca "never invented/repeated" (fuzionat cu noua cerinta
+    // anti-repetitie) — regex extins sa accepte ambele formulari, vezi test/lyrics-naturalness.test.js
+    assert.match(prompt, /never-invented|not invented|never invented/i, `clauza "niciodata inventat" trebuie sa fie prezenta (echivalentul cerintei vechi "Use only real details — invent nothing"), a produs: ${prompt}`);
+    // CORECTIE (2026-09-22, idem): "complete words only" -> "complete words" ("only" eliminat,
+    // redundant) in forma SHORT — regex extins sa accepte ambele formulari.
+    assert.match(prompt, /complete words,? (only,? )?no shortening|grammatically correct words/i, `instructiunea de cuvinte complete/gramatica corecta trebuie sa fie prezenta, a produs: ${prompt}`);
     const storyIdx = prompt.search(/Story[^:]*:\s*\S/i);
     assert.ok(storyIdx !== -1, `continutul real al povestii trebuie sa fie prezent, a produs: ${prompt}`);
   });

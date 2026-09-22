@@ -337,6 +337,125 @@ test('getTrafficSources: o sursa cu vizitatori/form_started dar ZERO comenzi tot
 });
 
 // ==========================================================================================
+// getCreativePerformance (2026-09-22, atribuire reclame/creative prin utm_content) — ACELASI
+// tipar de test ca getTrafficSources de mai sus, dar grupat pe utm_content.
+// ==========================================================================================
+test('getCreativePerformance: utm_content lipsa -> grupat ca "(unknown)", niciodata NULL afisat direct', async () => {
+  await withMockPool(
+    (sql) => {
+      if (sql.includes('funnel_events')) return { rows: [] };
+      return { rows: [{ content: '(unknown)', campaigns: '(unknown)', sources: '(unknown)', orders_created: '4', reached_checkout: '1', paid_orders: '1', revenue: '15' }] };
+    },
+    async () => {
+      const creatives = await db.getCreativePerformance({ startDate: '2026-09-01', endDateExclusive: '2026-10-01', excludeEmails: [] });
+      assert.equal(creatives[0].content, '(unknown)');
+      assert.equal(creatives[0].ordersCreated, 4);
+    }
+  );
+});
+
+test('getCreativePerformance: video_manea_01 (creative propriu) identificabil explicit, cu campanie/sursa contextuale', async () => {
+  await withMockPool(
+    (sql) => {
+      if (sql.includes('funnel_events')) return { rows: [{ content: 'video_manea_01', tracked_visitors: '20', form_started: '5' }] };
+      return { rows: [{ content: 'video_manea_01', campaigns: 'romanian_launch_01', sources: 'facebook', orders_created: '2', reached_checkout: '1', paid_orders: '1', revenue: '15' }] };
+    },
+    async () => {
+      const creatives = await db.getCreativePerformance({ startDate: '2026-09-01', endDateExclusive: '2026-10-01', excludeEmails: [] });
+      const c = creatives.find((r) => r.content === 'video_manea_01');
+      assert.ok(c, 'randul video_manea_01 trebuie sa existe');
+      assert.equal(c.campaigns, 'romanian_launch_01');
+      assert.equal(c.sources, 'facebook');
+      assert.equal(c.trackedVisitors, 20);
+      assert.equal(c.formStarted, 5);
+      assert.equal(c.ordersCreated, 2);
+      assert.equal(c.paidOrders, 1);
+      assert.equal(c.revenue, 15);
+      assert.equal(c.conversionRatePct, 50);
+    }
+  );
+});
+
+test('getCreativePerformance: un creative cu vizitatori/form_started dar ZERO comenzi tot apare (nu e omis doar pentru ca inca nu a convertit)', async () => {
+  await withMockPool(
+    (sql) => {
+      if (sql.includes('funnel_events')) return { rows: [{ content: 'video_manea_02', tracked_visitors: '8', form_started: '1' }] };
+      return { rows: [] };
+    },
+    async () => {
+      const creatives = await db.getCreativePerformance({ startDate: '2026-09-01', endDateExclusive: '2026-10-01', excludeEmails: [] });
+      const c = creatives.find((r) => r.content === 'video_manea_02');
+      assert.ok(c);
+      assert.equal(c.ordersCreated, 0);
+      assert.equal(c.reachedCheckout, 0);
+      assert.equal(c.paidOrders, 0);
+      assert.equal(c.conversionRatePct, null, 'rata de conversie e null (nu 0%/NaN%) cand nu exista nicio comanda inca');
+    }
+  );
+});
+
+test('getCreativePerformance: revenue foloseste ACEEASI formula COALESCE(amount_total, price), STRICT pe comenzi platite', async () => {
+  await withMockPool(
+    (sql) => {
+      if (sql.includes('funnel_events')) return { rows: [] };
+      assert.match(sql, /COALESCE\(SUM\(COALESCE\(amount_total, price\)\) FILTER \(WHERE paid_at IS NOT NULL\), 0\) AS revenue/);
+      return { rows: [] };
+    },
+    async () => {
+      await db.getCreativePerformance({ startDate: '2026-09-01', endDateExclusive: '2026-10-01', excludeEmails: [] });
+    }
+  );
+});
+
+test('getCreativePerformance: GROUP BY este STRICT pe utm_content (coloana 1), niciodata pe utm_campaign/utm_source', async () => {
+  await withMockPool(
+    (sql) => {
+      if (sql.includes('funnel_events')) {
+        assert.match(sql, /GROUP BY 1\s*$/m);
+        return { rows: [] };
+      }
+      assert.match(sql, /COALESCE\(utm_content, '\(unknown\)'\) AS content/);
+      assert.match(sql, /GROUP BY 1\s*$/m);
+      return { rows: [] };
+    },
+    async () => {
+      await db.getCreativePerformance({ startDate: '2026-09-01', endDateExclusive: '2026-10-01', excludeEmails: [] });
+    }
+  );
+});
+
+test('getCreativePerformance: excludeEmails exclude comenzile de test din agregarea per-creative, la fel ca restul motorului KPI', async () => {
+  await withMockPool(
+    (sql, params) => {
+      if (sql.includes('funnel_events')) {
+        assert.match(sql, /lower\(o\.email\) != ALL\(\$3\)/);
+        assert.deepEqual(params[2], ['test@example.com']);
+        return { rows: [] };
+      }
+      assert.match(sql, /lower\(email\) != ALL\(\$3\)/);
+      assert.deepEqual(params[2], ['test@example.com']);
+      return { rows: [] };
+    },
+    async () => {
+      await db.getCreativePerformance({ startDate: '2026-09-01', endDateExclusive: '2026-10-01', excludeEmails: ['Test@Example.com'] });
+    }
+  );
+});
+
+test('getCreativePerformance: nu contine nicio urma de spend/CPA/ROAS/profit — Marketing API de costuri neimplementat inca', async () => {
+  await withMockPool(
+    () => ({ rows: [] }),
+    async () => {
+      const creatives = await db.getCreativePerformance({ startDate: '2026-09-01', endDateExclusive: '2026-10-01', excludeEmails: [] });
+      const serialized = JSON.stringify(creatives).toLowerCase();
+      for (const forbidden of ['spend', 'cpa', 'roas', 'profit', 'cost']) {
+        assert.ok(!serialized.includes(forbidden), `rezultatul getCreativePerformance nu trebuie sa contina "${forbidden}"`);
+      }
+    }
+  );
+});
+
+// ==========================================================================================
 // computeRevenue — folosit si de Dashboard, trebuie sa fie IDENTICA formula ca getFunnelKpis
 // ==========================================================================================
 test('computeRevenue: SUM(COALESCE(amount_total, price)) — aceeasi formula ca restul motorului KPI (Dashboard si Sales & Funnel raporteaza IDENTIC "venit")', async () => {

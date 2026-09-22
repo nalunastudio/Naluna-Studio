@@ -2249,6 +2249,80 @@ async function getTrafficSources({ startDate, endDateExclusive, excludeEmails = 
     .sort((a, b) => b.ordersCreated - a.ordersCreated);
 }
 
+// Creative Performance (2026-09-22, atribuire reclame/creative) — ACELASI tipar EXACT ca
+// getTrafficSources de mai sus (cohortat pe orders.created_at, "(unknown)" pentru orice
+// atribuire lipsa/pierduta, acelasi excludeEmails), dar grupat STRICT pe utm_content (cheia
+// principala pentru identificarea creative-ului, cerinta explicita) in loc de utm_source/
+// utm_campaign. utm_campaign/utm_source raman disponibile STRICT contextual (STRING_AGG DISTINCT
+// — un utm_content poate teoretic aparea sub mai multe campanii/surse; afisam pe toate, niciodata
+// doar una aleasa arbitrar) — utm_content ramane singura dimensiune de grupare reala.
+//
+// trackedVisitors/formStarted: identice ca semantica cu getTrafficSources — identificatori de
+// browser/tracking (funnel_events.visitor_id), NICIODATA persoane reale; masurabile STRICT dupa
+// consimtamant analytics (vezi getOrCreateVisitorId, analytics.js) — apelantul (server.js) trebuie
+// sa combine acest rezultat cu trafficDataAvailability (ACELASI semnal 3-stari deja calculat
+// pentru restul paginii, vezi getTrafficDataAvailability) ca sa nu prezinte "0" acolo unde
+// inseamna de fapt "nemasurat" pentru perioada ceruta.
+async function getCreativePerformance({ startDate, endDateExclusive, excludeEmails = [] } = {}) {
+  const excl = (excludeEmails || []).map((e) => e.toLowerCase());
+  const hasExcl = excl.length > 0;
+  const params = hasExcl ? [startDate, endDateExclusive, excl] : [startDate, endDateExclusive];
+
+  const ordersSql = `
+    SELECT
+      COALESCE(utm_content, '(unknown)') AS content,
+      STRING_AGG(DISTINCT COALESCE(utm_campaign, '(unknown)'), ', ' ORDER BY COALESCE(utm_campaign, '(unknown)')) AS campaigns,
+      STRING_AGG(DISTINCT COALESCE(utm_source, '(unknown)'), ', ' ORDER BY COALESCE(utm_source, '(unknown)')) AS sources,
+      COUNT(*) AS orders_created,
+      COUNT(*) FILTER (WHERE checkout_created_at IS NOT NULL) AS reached_checkout,
+      COUNT(*) FILTER (WHERE paid_at IS NOT NULL) AS paid_orders,
+      COALESCE(SUM(COALESCE(amount_total, price)) FILTER (WHERE paid_at IS NOT NULL), 0) AS revenue
+    FROM orders
+    WHERE ${timeWindowClause('created_at', 1, 2)}
+      ${hasExcl ? `AND lower(email) != ALL($3)` : ''}
+    GROUP BY 1
+  `;
+  const preOrderSql = `
+    SELECT
+      COALESCE(fe.utm_content, '(unknown)') AS content,
+      COUNT(DISTINCT fe.visitor_id) FILTER (WHERE fe.visitor_id IS NOT NULL) AS tracked_visitors,
+      COUNT(*) FILTER (WHERE fe.event_name = 'form_started') AS form_started
+    FROM funnel_events fe
+    LEFT JOIN orders o ON o.id = fe.order_id
+    WHERE ${timeWindowClause('fe.occurred_at', 1, 2)}
+      ${hasExcl ? `AND (o.email IS NULL OR lower(o.email) != ALL($3))` : ''}
+    GROUP BY 1
+  `;
+
+  const [ordersRes, preOrderRes] = await Promise.all([
+    pool.query(ordersSql, params),
+    pool.query(preOrderSql, params)
+  ]);
+
+  const rows = new Map();
+  for (const r of ordersRes.rows) {
+    rows.set(r.content, {
+      content: r.content, campaigns: r.campaigns, sources: r.sources,
+      trackedVisitors: 0, formStarted: 0,
+      ordersCreated: Number(r.orders_created), reachedCheckout: Number(r.reached_checkout),
+      paidOrders: Number(r.paid_orders), revenue: Number(r.revenue)
+    });
+  }
+  for (const r of preOrderRes.rows) {
+    const existing = rows.get(r.content) || {
+      content: r.content, campaigns: '(unknown)', sources: '(unknown)',
+      trackedVisitors: 0, formStarted: 0, ordersCreated: 0, reachedCheckout: 0, paidOrders: 0, revenue: 0
+    };
+    existing.trackedVisitors = Number(r.tracked_visitors);
+    existing.formStarted = Number(r.form_started);
+    rows.set(r.content, existing);
+  }
+
+  return Array.from(rows.values())
+    .map((r) => ({ ...r, conversionRatePct: r.ordersCreated > 0 ? (r.paidOrders / r.ordersCreated) * 100 : null }))
+    .sort((a, b) => b.ordersCreated - a.ordersCreated);
+}
+
 // Data exacta de la care analiza funnel-ului e COMPLETA (funnel_events a inceput sa existe) —
 // null daca inca nu exista niciun eveniment (nedeployat inca/DB proaspata). Afisata explicit in
 // Admin — nicio cifra din perioadele DINAINTE de aceasta data pentru Tracked Visitors/CTA Clicks/
@@ -2841,7 +2915,7 @@ async function markInstagramTokenAlertSent() {
 module.exports = {
   pool, initDb, createOrder, getOrderById, getOrderByToken, getOrderByMusicTaskId, getOrderByAnyMusicTaskId,
   insertFunnelEvent, linkFunnelEventsToOrder, deleteFunnelEventsOlderThan,
-  getFunnelKpis, getConversionFunnel, getRevenueAndOrdersTrend, getTrafficSources, getFunnelDataCompleteSince,
+  getFunnelKpis, getConversionFunnel, getRevenueAndOrdersTrend, getTrafficSources, getCreativePerformance, getFunnelDataCompleteSince,
   getTrafficDataAvailability,
   buildOrdersFilter,
   getStuckInFlightOrders,

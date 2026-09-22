@@ -157,8 +157,10 @@ test('TEST 2: buildExactLyricsRequest() contine noua clauza de continuitate ("li
 // ===============================================================================================
 test('TEST 3: forma FULL ("Start the vocals around 8-10 seconds, like the verse.") si forma SHORT ("Verse intro") exista ambele in cod, cu aceeasi intentie', () => {
   assert.ok(server.includes('Start the vocals around 8-10 seconds, like the verse.'), 'forma FULL trebuie sa existe verbatim');
-  assert.ok(server.includes(" Verse intro; story details throughout, not invented; complete words only, no shortening; name recipient early+chorus; mention sender once.'"), 'instructionWithSenderShort trebuie sa foloseasca noua formulare');
-  assert.ok(server.includes(" Verse intro; story details throughout, not invented. Address recipient by name naturally, complete words only, no shortening.'"), 'instructionNoSenderShort trebuie sa foloseasca noua formulare');
+  // CORECTIE (2026-09-22, TASK naturalete versuri): formele SHORT au primit si ele cerinta
+  // anti-repetitie ("not invented" -> "never invented/repeated"), vezi test/lyrics-naturalness.test.js
+  assert.ok(server.includes(" Verse intro; story details throughout, never invented/repeated; complete words, no shortening; name recipient early+chorus; sender once.'"), 'instructionWithSenderShort trebuie sa foloseasca noua formulare');
+  assert.ok(server.includes(" Verse intro; story details throughout, never invented/repeated. Address by name naturally, complete words, no shortening.'"), 'instructionNoSenderShort trebuie sa foloseasca noua formulare');
 });
 
 // ===============================================================================================

@@ -195,16 +195,19 @@ test('buildPrompt: tema reala (Occasion + instructiune de atmosfera) reflecta le
 // ---------------------------------------------------------------------------------------------
 // TEST 7: pentru Soră, instructiunea cere o formulare echivalenta cu "sora mea Maria".
 // ---------------------------------------------------------------------------------------------
-test('buildPrompt: instructiunea pentru "sister" cere adresarea ca "sora mea" + nume, niciodata prenume gol', () => {
+test('buildPrompt: instructiunea pentru "sister" mentioneaza relatia "sora mea" natural, niciodata mecanic lipita de nume', () => {
   const order = typicalOrder({ recipient: 'Maria', recipientRole: 'sister' });
   const prompt = buildPrompt(order, '', undefined);
   // CORECȚIE (2026-09-14, "povestea a ajuns doar 'Te' " — reparatie generala a bugetului): pentru
   // aceasta comanda, povestea (85 caractere) + genul "pop" + celelalte campuri chiar umplu bugetul
-  // de 600 — plasa de siguranta finala (relationClause minimal, vezi server.js) se activeaza AICI
-  // ca sa protejeze povestea intreaga, comprimand adresarea la forma "As X+name." — identificarea
-  // relatiei ("sora mea") ramane intacta, doar "never bare name"/atributia expeditorului sunt
-  // renuntate ca ultim compromis. Testul accepta acum toate cele 3 forme posibile.
-  assert.ok(prompt.includes('Address as "sora mea"+name, never bare name.') || prompt.includes('Always address the recipient as "sora mea" plus their name, never by first name alone.') || prompt.includes('As "sora mea"+name.'), `promptul trebuie sa contina instructiunea de adresare "sora mea"+nume, a produs: ${prompt}`);
+  // de 600 — plasa de siguranta finala (relationClause minimal, vezi server.js) se poate activa AICI
+  // ca sa protejeze povestea intreaga — identificarea relatiei ("sora mea") ramane intacta in
+  // TOATE cele 3 forme.
+  // CORECȚIE (2026-09-22, TASK naturalete versuri — ruptura reala reparata): "Address as X+name"/
+  // "As X+name" instruiau EXPLICIT concatenarea mecanica relatie+nume — inlocuite cu mentionare
+  // naturala, separata de cerinta de nume (vezi test/lyrics-naturalness.test.js).
+  assert.ok(/Mention naturally, once, that the recipient is their "sora mea"|Mention once: their "sora mea"|Their "sora mea"\./.test(prompt), `promptul trebuie sa mentioneze relatia "sora mea" natural, a produs: ${prompt}`);
+  assert.ok(!prompt.includes('as "sora mea" plus their name'), 'sablonul mecanic vechi nu mai trebuie sa apara');
 });
 
 test('buildPrompt: in alte limbi decat romana, conceptul "my sister" e trimis (Suno traduce natural, ex. "my sister Maria" in engleza)', () => {
@@ -216,11 +219,12 @@ test('buildPrompt: in alte limbi decat romana, conceptul "my sister" e trimis (S
 // ---------------------------------------------------------------------------------------------
 // TEST 8: pentru Frate, instructiunea cere o formulare echivalenta cu "fratele meu Vasile".
 // ---------------------------------------------------------------------------------------------
-test('buildPrompt: instructiunea pentru "brother" cere adresarea ca "fratele meu" + nume, niciodata prenume gol', () => {
+test('buildPrompt: instructiunea pentru "brother" mentioneaza relatia "fratele meu" natural, niciodata mecanic lipita de nume', () => {
   const order = typicalOrder({ recipient: 'Vasile', recipientRole: 'brother' });
   const prompt = buildPrompt(order, '', undefined);
-  // Vezi comentariul identic de la testul "sora" de mai sus — aceeasi plasa de siguranta.
-  assert.ok(prompt.includes('Address as "fratele meu"+name, never bare name.') || prompt.includes('Always address the recipient as "fratele meu" plus their name, never by first name alone.') || prompt.includes('As "fratele meu"+name.'), `promptul trebuie sa contina instructiunea de adresare "fratele meu"+nume, a produs: ${prompt}`);
+  // Vezi comentariul identic de la testul "sora" de mai sus — aceeasi plasa de siguranta/reparatie.
+  assert.ok(/Mention naturally, once, that the recipient is their "fratele meu"|Mention once: their "fratele meu"|Their "fratele meu"\./.test(prompt), `promptul trebuie sa mentioneze relatia "fratele meu" natural, a produs: ${prompt}`);
+  assert.ok(!prompt.includes('as "fratele meu" plus their name'), 'sablonul mecanic vechi nu mai trebuie sa apara');
 });
 
 test('buildPrompt: in alte limbi decat romana, conceptul "my brother" e trimis (Suno traduce natural, ex. "my brother Vasile" in engleza)', () => {

@@ -94,12 +94,43 @@ const REAL_ORDER = {
 
 // ===============================================================================================
 // 1+2. Reproduce EXACT comanda reala — confirma bug-ul DINAINTE de reparatie (poveste = doar "Te").
+//
+// CORECTIE (2026-09-22, TASK naturalete versuri): relationClause() a fost scurtata separat (vezi
+// server.js — "Address as X plus their name" (mecanic, cauza reala a unui bug DIFERIT, raportat
+// separat — "Victor, tata") inlocuit cu "Mention naturally, once, that...") — efect secundar
+// POZITIV, masurat direct: chiar si FARA plasa de siguranta (useMinimalRelationClause), bugetul
+// eliberat de aceasta scurtare e acum suficient ca mesajul "Te iubesc" sa incapa ntreg pentru
+// ACEASTA comanda specifica (nu mai trunchiat la "Te") — sistemul a devenit MAI ROBUST, nu doar
+// "reparat prin plasa de siguranta". Testul de mai jos verifica acum EXACT asta (imbunatatire),
+// NU mai reproduce trunchierea originala la 2 caractere — acoperirea protectiva a plasei de
+// siguranta insasi (necesara pentru comenzi SI MAI incarcate) ramane verificata separat, in
+// testul "PLASA DE SIGURANTA RAMANE NECESARA" de mai jos.
 // ===============================================================================================
-test('REPRODUCERE BUG REAL (comanda 400d4a20): inainte de reparatie, povestea ajungea trunchiata la doar "Te" — confirmat cu datele exacte ale comenzii', () => {
+test('DUPA imbunatatirile de naturalete (2026-09-22): chiar FARA plasa de siguranta, mesajul "Te iubesc" al comenzii reale 400d4a20 incape intreg — relationClause() scurtata a eliberat suficient buget', () => {
   const promptBefore = buildPromptBeforeFix(REAL_ORDER, '', null);
-  assert.ok(promptBefore.includes('Story/details to include: Te Occasion:'), `asteptat povestea trunchiata la "Te" inainte de reparatie, primit: ${promptBefore}`);
-  assert.ok(!promptBefore.toLowerCase().includes('te iubesc'), 'inainte de reparatie, mesajul explicit "Te iubesc" NU trebuia sa ajunga in prompt (asta a fost bug-ul)');
+  assert.ok(promptBefore.toLowerCase().includes('te iubesc'), `mesajul explicit "Te iubesc" trebuie sa incapa acum, chiar fara plasa de siguranta, primit: ${promptBefore}`);
   assert.ok(Array.from(promptBefore).length <= 600);
+});
+
+// PLASA DE SIGURANTA RAMANE NECESARA: pentru o comanda SI MAI incarcata decat 400d4a20 (ocazie
+// "grandparents" — cel mai lung roNoun, expeditor+relatie foarte lungi, voce 'duet'), FARA plasa
+// de siguranta povestea tot dispare complet din prompt — confirmat empiric (vezi raportul fazei)
+// — deci reparatia din 2026-09-14 ramane cod activ, necesar, nu balast.
+test('PLASA DE SIGURANTA RAMANE NECESARA: pentru o comanda si mai incarcata (grandparents+expeditor si relatie lungi+duet), FARA plasa povestea tot dispare complet', () => {
+  const heavierOrder = {
+    plan: 'video', lang: 'ro', genre: 'populara', occasion: 'bunici',
+    recipient: 'Maria', recipientMode: 'single', recipientRole: 'grandparents',
+    senderName: 'Ana-Maria-Elisabeta', senderRole: 'granddaughter',
+    relationship: 'Nepoata draga si iubita din tot sufletul',
+    voicePreference: 'duet',
+    story: REAL_ORDER.story
+  };
+  const promptBefore = buildPromptBeforeFix(heavierOrder, '', null);
+  const promptAfter = buildPrompt(heavierOrder, '', null);
+  assert.ok(!promptBefore.includes('Story/details to include:'), `fara plasa de siguranta, povestea trebuie sa dispara complet pentru acest caz extrem, primit: ${promptBefore}`);
+  assert.ok(promptAfter.includes('Story/details to include:'), `CU plasa de siguranta (comportamentul REAL al codului), povestea trebuie sa ramana prezenta, primit: ${promptAfter}`);
+  assert.ok(Array.from(promptBefore).length <= 600);
+  assert.ok(Array.from(promptAfter).length <= 600);
 });
 
 // ===============================================================================================

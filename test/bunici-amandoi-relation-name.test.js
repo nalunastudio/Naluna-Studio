@@ -167,28 +167,35 @@ test('buildPrompt: clauza de relatie pentru "Amândoi" la bunici mentioneaza exp
 // CORECȚIE (2026-09-14, "povestea a ajuns doar 'Te' " — reparatie generala a bugetului): pentru
 // aceste comenzi (poveste realista de ~97 caractere + gen/relatie/expeditor), plasa de siguranta
 // finala (relationClause "minimal", vezi server.js) se poate activa ca sa protejeze povestea
-// intreaga — adresarea prin relatie+nume ("grandmother"/"mother"/"aunt"+name) ramane intacta;
-// STRICT "never bare name" (fraza explicita de intarire) poate lipsi in acest caz, ca ultim
-// compromis fata de povestea clientului. Testele accepta acum ambele forme.
-test('buildPrompt: bunici (rol individual) instruieste explicit adresarea relatie+nume, nu doar prenumele', () => {
+// intreaga — relatia ramane identificabila in TOATE cele 3 forme (full/short/minimal), doar
+// gradul de intarire text difera.
+//
+// CORECȚIE (2026-09-22, TASK naturalete versuri — ruptura reala reparata: "Address as X plus
+// their name"/"As X+name" instruia EXPLICIT concatenarea mecanica relatie+nume, cauza directa a
+// exemplului real raportat "Victor, tata"): relationClause() nu mai foloseste acest sablon —
+// cere acum relatia NATURAL ("Mention naturally, once, that the recipient is their X" / "Mention
+// once: their X" / "Their X." minimal), separat de cerinta de nume (garantata NECONDITIONAT de
+// currentInstruction(), vezi test/lyrics-naturalness.test.js). Testele de mai jos verifica noile
+// forme — protectia REALA (relatia ramane identificabila) e neschimbata, doar formularea exacta.
+test('buildPrompt: bunici (rol individual) mentioneaza relatia natural (nu mai mecanic "X+name"), relatia ramane identificabila', () => {
   const order = typicalOrder({ recipient: 'Maria', recipientRole: 'grandmother', recipientMode: 'single', recipientNames: null });
   const prompt = buildPrompt(order, '', undefined);
-  assert.ok(/never (bare( first)?|by first) name/i.test(prompt) || /As "grandmother"\+name\./.test(prompt), `promptul trebuie sa interzica adresarea prin prenume gol SAU sa foloseasca forma minimala relatie+nume, a produs: ${prompt}`);
-  assert.ok(prompt.includes('"grandmother"') || prompt.includes('grandmother'), 'promptul trebuie sa mentioneze relatia "grandmother"');
+  assert.ok(/Mention naturally, once, that the recipient is their "grandmother"|Mention once: their "grandmother"|Their "grandmother"\./.test(prompt), `promptul trebuie sa mentioneze relatia natural, a produs: ${prompt}`);
+  assert.ok(!prompt.includes('as "grandmother" plus their name'), 'sablonul mecanic vechi nu mai trebuie sa apara');
 });
 
-test('buildPrompt: parinti (Mamă/Tată) instruieste relatie+nume, nu doar prenume', () => {
+test('buildPrompt: parinti (Mamă/Tată) mentioneaza relatia natural, relatia ramane identificabila', () => {
   const order = typicalOrder({ occasion: 'parinti', recipient: 'Elena', recipientRole: 'mother', senderRole: 'daughter', recipientMode: 'single', recipientNames: null });
   const prompt = buildPrompt(order, '', undefined);
-  assert.ok(/never (bare( first)?|by first) name/i.test(prompt) || /As "mother"\+name\./.test(prompt));
-  assert.ok(prompt.includes('mother'));
+  assert.ok(/Mention naturally, once, that the recipient is their "mother"|Mention once: their "mother"|Their "mother"\./.test(prompt), `promptul trebuie sa mentioneze relatia natural, a produs: ${prompt}`);
+  assert.ok(!prompt.includes('as "mother" plus their name'), 'sablonul mecanic vechi nu mai trebuie sa apara');
 });
 
-test('buildPrompt: matusa-unchi (Mătușă/Unchi) instruieste relatie+nume, nu doar prenume', () => {
+test('buildPrompt: matusa-unchi (Mătușă/Unchi) mentioneaza relatia natural, relatia ramane identificabila', () => {
   const order = typicalOrder({ occasion: 'matusa-unchi', recipient: 'Ana', recipientRole: 'aunt', senderRole: 'niece', recipientMode: 'single', recipientNames: null });
   const prompt = buildPrompt(order, '', undefined);
-  assert.ok(/never (bare( first)?|by first) name/i.test(prompt) || /As "aunt"\+name\./.test(prompt));
-  assert.ok(prompt.includes('aunt'));
+  assert.ok(/Mention naturally, once, that the recipient is their "aunt"|Mention once: their "aunt"|Their "aunt"\./.test(prompt), `promptul trebuie sa mentioneze relatia natural, a produs: ${prompt}`);
+  assert.ok(!prompt.includes('as "aunt" plus their name'), 'sablonul mecanic vechi nu mai trebuie sa apara');
 });
 
 test('buildPrompt: socri (Soacră/Socru) foloseste forma romaneasca exacta "mama-soacră"/"tata-socru" cand versurile sunt in romana', () => {

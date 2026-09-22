@@ -1706,11 +1706,12 @@ app.get('/api/admin/orders/funnel-summary', async (req, res, next) => {
     }
 
     const args = { startDate: bounds.startDate, endDateExclusive: bounds.endDateExclusive, excludeEmails: ANALYTICS_EXCLUDED_EMAILS };
-    const [kpis, funnel, trend, sources, dataCompleteSince, trafficDataAvailability] = await Promise.all([
+    const [kpis, funnel, trend, sources, creatives, dataCompleteSince, trafficDataAvailability] = await Promise.all([
       db.getFunnelKpis(args),
       db.getConversionFunnel(args),
       db.getRevenueAndOrdersTrend(args),
       db.getTrafficSources(args),
+      db.getCreativePerformance(args),
       db.getFunnelDataCompleteSince(),
       db.getTrafficDataAvailability(bounds.startDate, bounds.endDateExclusive)
     ]);
@@ -1723,12 +1724,14 @@ app.get('/api/admin/orders/funnel-summary', async (req, res, next) => {
       // Formular) — 'partial' arata cifrele reale existente insotite de un mesaj compact, NU le
       // ascunde ca "Nemăsurat" (asta ar sterge date reale, ex. Septembrie 2026, tracking pornit pe
       // 19.09). Comenzi create/Checkout/Platite/Venit raman NEATINSE (sursa lor, tabela orders, e
-      // mereu reala, indiferent de tracking).
+      // mereu reala, indiferent de tracking). ACELASI semnal e folosit si de "creatives"
+      // (Performanta creativelor) mai jos, pentru trackedVisitors/formStarted per utm_content.
       trafficDataAvailability,
       kpis,
       funnel,
       trend,
-      sources
+      sources,
+      creatives
     });
   } catch (err) {
     next(err);
@@ -9539,19 +9542,34 @@ function buildPrompt(order, feedback, genreOverride) {
     const isBoth = bothKeys && order.recipientMode === 'both';
     // CORECȚIE (2026-09-14, comanda reala 400d4a20 — "povestea a ajuns doar 'Te' din 'Te iubesc
     // bunica mea...'"): forma "minimal", ULTIMA plasa de siguranta (vezi useMinimalRelationClause
-    // mai jos) — pastreaza STRICT adresarea prin relatie+nume (roNoun, testat separat — ex.
-    // "mother"/"grandmother" trebuie sa ramana identificabil in prompt), renuntand la
-    // "never bare name" si la mentiunea expeditorului ("from their X") — text de intarire, util,
-    // dar niciodata la fel de important ca insasi povestea clientului. "Never omit either person."
-    // (Amândoi) RAMANE — previne o regresie reala, deja raportata, de omitere a unei persoane.
-    if (useMinimalRelationClause) return ` As ${roNoun}+name.${isBoth ? ' Never omit either person.' : ''}`;
+    // mai jos) — pastreaza STRICT identificarea relatiei (roNoun, testat separat — ex.
+    // "mother"/"grandmother" trebuie sa ramana identificabil in prompt), renuntand la mentiunea
+    // expeditorului ("from their X") — text de intarire, util, dar niciodata la fel de important
+    // ca insasi povestea clientului. "Never omit either person." (Amândoi) RAMANE — previne o
+    // regresie reala, deja raportata, de omitere a unei persoane.
+    //
+    // CORECȚIE (2026-09-22, TASK naturalete versuri — cerinta explicita "nu lipi doar doua campuri
+    // din formular cu virgula"): formularea veche ("Address as X plus their name", "As X+name")
+    // INSTRUIA EXPLICIT concatenarea mecanica relatie+nume — cauza directa a exemplului real
+    // raportat ("Victor, tata" — o combinatie nenaturala). Numele insusi NU mai trebuie cerut aici
+    // — currentInstruction() de mai jos garanteaza deja, NECONDITIONAT (inclusiv in forma short),
+    // ca numele destinatarului apare ("Name the recipient early and again in the chorus"/"name
+    // recipient early+chorus") — relationClause() are acum o singura responsabilitate proprie:
+    // relatia (roNoun) sa fie mentionata NATURAL, undeva in versuri, fara sa impuna Suno-ului NICI
+    // forma, NICI pozitia exacta fata de nume (poate fi in acelasi vers sau in altul — decizia
+    // ramane a modelului, per cerinta explicita "nu crea o formula universala"). Masurat empiric
+    // (vezi raportul fazei): toate cele 3 forme (full/short/minimal) ies EGALE SAU MAI SCURTE decat
+    // versiunea inlocuita, pentru orice combinatie realista de relatie/expeditor — bugetul eliberat
+    // aici compenseaza adaosul din currentInstruction() (anti-repetitie/naturalete>rima), pastrand
+    // bugetul TOTAL al lui `head` neschimbat sau mai mic fata de inainte, in aproape toate cazurile.
+    if (useMinimalRelationClause) return ` Their ${roNoun}.${isBoth ? ' Never omit either person.' : ''}`;
     let clause = useShortOccasionInstruction
       ? (senderNoun
-          ? ` Address as ${roNoun}+name, never bare name (from their ${senderNoun}).`
-          : ` Address as ${roNoun}+name, never bare name.`)
+          ? ` Mention once: their ${roNoun} (from their ${senderNoun}).`
+          : ` Mention once: their ${roNoun}.`)
       : (senderNoun
-          ? ` Always address the recipient as ${roNoun} plus their name (never bare first name); the song is from their ${senderNoun}.`
-          : ` Always address the recipient as ${roNoun} plus their name, never by first name alone.`);
+          ? ` Mention naturally, once, that the recipient is their ${roNoun}; the song is from their ${senderNoun}.`
+          : ` Mention naturally, once, that the recipient is their ${roNoun}.`);
     if (isBoth) clause += ' Never omit either person.';
     return clause;
   }
@@ -9679,17 +9697,41 @@ function buildPrompt(order, feedback, genreOverride) {
   // Cerere, nu garantie — aceeasi natura ca durationTargetClause de mai jos. NU elimina
   // cerinta de 8-10 secunde, NU cere intro instrumental, NU atinge GENRE_STYLE_MAP/
   // VOICE_INSTRUCTIONS (neschimbate).
-  const instructionWithSenderFull = ' Write this as a personal song from the sender to the recipient, weaving several real, specific, never-invented details from the story throughout — never a generic line. Use only complete, grammatically correct words in the target language — never a shortened or invented word form. Start the vocals around 8-10 seconds, like the verse. Name the recipient early and again in the chorus. Mention the sender once.';
-  // fereastra SCURTA trebuie sa ramana chiar scurta (folosita cand bugetul fix, `head`, tot nu
-  // incape — daca ea insasi devine lunga, cascada de scurtare isi pierde sensul, exact bug-ul
-  // gasit empiric aici la runda "cuvinte taiate": adaugarea clauzei de gramatica ca text simplu
-  // concatenat umfla forma "scurta" la 200+ caractere, impingand `head` mult peste buget chiar
-  // si pentru comenzi tipice, scurte).
-  // Forma SHORT: acelasi principiu (INLOCUIRE, nu ADAOS) — "Short intro" (11 caractere) ->
-  // "Verse intro" (11 caractere, delta ZERO) — restul propozitiei ramane neschimbat.
-  const instructionWithSenderShort = ' Verse intro; story details throughout, not invented; complete words only, no shortening; name recipient early+chorus; mention sender once.';
-  const instructionNoSenderFull = ' Weave real, specific, never-invented details from the story throughout — never a generic line. Use only complete, grammatically correct words in the target language — never a shortened or invented word form. Start the vocals around 8-10 seconds, like the verse. Address the recipient by name naturally in the lyrics.';
-  const instructionNoSenderShort = ' Verse intro; story details throughout, not invented. Address recipient by name naturally, complete words only, no shortening.';
+  // CORECȚIE (2026-09-22, TASK naturalete versuri — problema reala raportata: versuri care
+  // "sună artificial/generat" prin repetarea aceleiasi idei in versuri apropiate — ex. real:
+  // "te iubesc și mi-e dor de tine" urmat imediat de "te iubesc, tata, și mi-e dor de tine").
+  // "never a generic line" (deja exista) NU previne repetitia — o idee poate fi complet
+  // specifica/non-generica si TOT sa fie spusa de doua ori in versuri consecutive. Adaugat STRICT
+  // prin INLOCUIRE (acelasi principiu documentat mai sus, "cuvinte taiate"): "— never a generic
+  // line" -> ", never generic or repeated — vary each line, natural phrasing over forced rhyme."
+  // — plus "in the target language" eliminat (deja implicit, vezi headPart1 "Write the song
+  // lyrics entirely in ${lyricsLanguage}"), "several"/"or invented" (dupa "shortened") eliminate,
+  // "again"/"Mention" comprimate cu punct-si-virgula — masurat direct (vezi raportul fazei,
+  // test scratch dedicat): forma FULL (WITH si NO sender) iese STRICT mai scurta decat inainte
+  // (-38/-24 caractere), niciodata mai lunga — buget real ELIBERAT pentru poveste, nu furat.
+  // "natural phrasing over forced rhyme" acopera direct cerinta explicita "nu sacrifica
+  // naturalete/sens/gramatica pentru o rima perfecta".
+  const instructionWithSenderFull = ' Write this as a personal song from the sender to the recipient, weaving real, specific, never-invented story details throughout — never generic or repeated, natural over forced rhyme. Use only complete, grammatically correct words — never shortened. Start the vocals around 8-10 seconds, like the verse. Name the recipient early and in the chorus; mention the sender once.';
+  // fereastra SCURTA — masurat empiric (vezi raportul fazei): NU e un caz rar/de margine — orice
+  // comanda cu expeditor numit SI un gen/ocazie de lungime obisnuita (verificat direct: chiar
+  // "pop"/"aniversare", cele mai usoare combinatii tipice) DEPASESTE deja budgetForFixedPart cu
+  // instructiunea FULL singura — forma SHORT e, in practica, forma predominant folosita pentru
+  // comenzi reale cu expeditor, nu doar plasa pentru extreme. Din acest motiv, cerinta
+  // anti-repetitie (cea mai des raportata dintre toate, patru exemple in raportul fazei) TREBUIE
+  // sa ajunga si aici, STRICT prin INLOCUIRE de lungime egala sau mai mica (acelasi principiu
+  // documentat mai sus): "not invented" -> "never invented/repeated" (fuzioneaza ambele cerinte
+  // intr-un singur cuvant compus), "complete words only" -> "complete words" ("only" redundant),
+  // "mention sender once" -> "sender once" ("mention" implicit din context). Masurat direct:
+  // ambele forme (with/no sender) ies STRICT mai scurte decat inainte (-2/-4 caractere) — buget
+  // ELIBERAT, nu furat, deci NU regreseaza comenzile grele (familie+poveste lunga) verificate
+  // separat, in toate cele 8 limbi (vezi test/story-floor-occasion-fallback-fix.test.js).
+  // "natural over forced rhyme" ramane STRICT in forma FULL (nu incape aici fara sa reintroduca
+  // regresia +17/+30 caractere deja documentata) — degradarea ramane graduala, nu brusca: FULL
+  // (rar, comenzi foarte usoare) > SHORT cu anti-repetitie (comun) > SHORT fara nimic (niciodata,
+  // dupa aceasta corectie).
+  const instructionWithSenderShort = ' Verse intro; story details throughout, never invented/repeated; complete words, no shortening; name recipient early+chorus; sender once.';
+  const instructionNoSenderFull = ' Weave real, specific, never-invented story details throughout — never generic or repeated, natural over forced rhyme. Use only complete, grammatically correct words — never shortened. Start the vocals around 8-10 seconds, like the verse. Address the recipient by name naturally in the lyrics.';
+  const instructionNoSenderShort = ' Verse intro; story details throughout, never invented/repeated. Address by name naturally, complete words, no shortening.';
 
   let useShortInstruction = false;
   function currentInstruction() {
