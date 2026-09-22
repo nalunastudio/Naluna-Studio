@@ -91,7 +91,9 @@ test('server.js: mapari cheie per gen contin caracteristicile muzicale cerute ex
     country: [/country/i, /guitar/i],
     jazz: [/jazz/i, /piano/i, /bass/i],
     edm_dance: [/edm|dance/i, /synth|drop|build/i],
-    manele_suflet: [/manele/i, /clarinet/i],
+    // ACTUALIZAT (2026-09-22, runda 3): clarinetul a fost eliminat pentru buget (vezi
+    // test/manele-suflet-authentic-sound.test.js) — vioara ramane instrumentul verificat aici.
+    manele_suflet: [/manele/i, /violin/i],
     manele_jale: [/manele/i, /minor|grief|jale|mournful/i],
     populara: [/populara|folk/i, /violin|accordion/i],
     copii: [/child/i],

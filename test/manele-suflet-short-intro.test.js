@@ -1,11 +1,13 @@
 // INTRO SCURT — STRICT pentru genul real "manele_suflet" (2026-09-19, cerinta explicita,
 // urmare a testarii in productie: "manele_jale" e "perfecta" si NU trebuie atinsa deloc;
 // "manele_suflet" are un intro instrumental prea lung chiar si in fereastra de preview de 50s).
-// ACTUALIZAT (2026-09-22, runda 2): GENRE_STYLE_MAP.manele_suflet a fost re-scris pentru un sunet
-// mai autentic de manea romaneasca (cerinta explicita separata) — "short intro, vocals enter
-// early" (verificat mai jos, sectiunile 6-10) ramane neschimbat, la finalul noii descrieri. Vezi
-// test/manele-suflet-authentic-sound.test.js pentru acoperirea completa a noii directii muzicale
-// (caracteristici de gen, buget, limbi, pachete, manele_jale neatins).
+// ACTUALIZAT (2026-09-22, runda 2 SI runda 3): GENRE_STYLE_MAP.manele_suflet a fost re-scris de
+// doua ori pentru un sunet mai autentic de manea romaneasca (runda 3: un test audio real a
+// demonstrat ca runda 2 tot nu suna suficient de manea, desi testele de cod treceau) — "short
+// intro, vocals enter early" (verificat mai jos, sectiunile 6-10) ramane neschimbat, la finalul
+// descrierii, in ambele runde. Vezi test/manele-suflet-authentic-sound.test.js pentru acoperirea
+// completa a directiei muzicale curente (caracteristici de gen, buget, limbi, pachete, manele_jale
+// neatins).
 //
 // Scop STRICT limitat: instructiunea de generare (GENRE_STYLE_MAP.manele_suflet) e singura
 // sursa centrala care alimenteaza atat buildPrompt() (generare initiala) cat si
@@ -157,10 +159,10 @@ function typicalOrder(overrides) {
 // ===============================================================================================
 // 1) TEXT VECHI/NOU — definitia exacta, singura sursa centrala.
 // ===============================================================================================
-test('1) GENRE_STYLE_MAP.manele_suflet — text ACTUALIZAT (2026-09-22, runda 2, "sunet autentic de manea romaneasca"); vezi test/manele-suflet-authentic-sound.test.js pentru acoperirea completa a noii directii muzicale', () => {
+test('1) GENRE_STYLE_MAP.manele_suflet — text ACTUALIZAT (2026-09-22, runda 3, dupa test audio real); vezi test/manele-suflet-authentic-sound.test.js pentru acoperirea completa a noii directii muzicale', () => {
   assert.equal(
     GENRE_STYLE_MAP.manele_suflet,
-    'Romanian manele de suflet, violin, accordion, clarinet, melismatic vibrato vocal, hopeful manele phrasing, short intro, vocals enter early'
+    'Romanian manele, oriental melismatic vibrato vocal, manele keyboards, violin, accordion, hopeful rhythm, short intro, vocals enter early'
   );
   // "short intro, vocals enter early" (proven fix, 2026-09-19) ramane la finalul descrierii,
   // neschimbat:

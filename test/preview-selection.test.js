@@ -1,104 +1,22 @@
-// lib/preview-selection.js — Smart Preview: DECIZIE FINALA (2026-09-22, runda 2) — previewul
-// incepe STRICT de la PRIMA STROFA (Verse 1) a melodiei, la inceputul primei ei linii efectiv
-// cantate — NU mai exista scoring intre Chorus/Pre-Chorus/Verse/energie/personalizare (versiunea
-// anterioara alegea prea des refrenul, comportament respins explicit de client). Teste PURE, fara
-// retea/ffmpeg/Postgres — acelasi tipar ca test/media-analysis.test.js.
+// lib/preview-selection.js — Smart Preview: DECIZIE FINALA (2026-09-22, runda 3, dupa test audio
+// real in productie) — previewul incepe STRICT cu ~2 secunde de context muzical inainte de PRIMUL
+// CUVANT REAL CANTAT (nu la inceputul sectiunii Verse — runda 2, respinsa: a produs ~30s de
+// instrumental intr-un test real, deoarece timestamp-ul unei sectiuni structurale nu garanteaza
+// unde incepe efectiv vocea). Teste PURE, fara retea/ffmpeg/Postgres.
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const {
-  snapToLineStart,
-  findFirstVerseSection,
-  firstCaptionLineStartInWindow,
-  firstRealWordStartInWindow,
-  selectPreviewStart
-} = require('../lib/preview-selection');
-const { deriveSectionTimings } = require('../lib/media-analysis');
+const { VOCAL_LEAD_IN_SECONDS, findFirstRealVocalStart, selectPreviewStart } = require('../lib/preview-selection');
 
-// ================================================================================================
-// FIXTURE — helpers pentru a construi "melodii" sintetice, deterministice.
-// ================================================================================================
-function w(word, startS, endS, success = true) {
-  return { word, startS, endS, success };
+function w(word, startS, success = true) {
+  return { word, startS, success };
 }
 
-// Grupeaza cuvintele intre marcaje de sectiune in linii de cate 4 cuvinte — simulare simpla, dar
-// realista, a buildCaptionLines() (server.js), suficienta ca sa testam snap-ul la o linie reala
-// fara sa reimplementam logica ei exacta.
-function buildCaptionLinesFor(alignedWords) {
-  const lines = [];
-  let buffer = [];
-  let bufStart = null;
-  for (const word of alignedWords) {
-    if (/^\[.*\]$/.test(word.word)) {
-      if (buffer.length) { lines.push({ start: bufStart, end: buffer[buffer.length - 1].endS, text: buffer.map((b) => b.word).join(' ') }); buffer = []; bufStart = null; }
-      continue;
-    }
-    if (bufStart === null) bufStart = word.startS;
-    buffer.push(word);
-    if (buffer.length >= 4) { lines.push({ start: bufStart, end: word.endS, text: buffer.map((b) => b.word).join(' ') }); buffer = []; bufStart = null; }
-  }
-  if (buffer.length) lines.push({ start: bufStart, end: buffer[buffer.length - 1].endS, text: buffer.map((b) => b.word).join(' ') });
-  return lines;
-}
-
-// Melodie STANDARD: [Intro] 0-8 (tacere) -> [Verse] 8-38 (prima strofa, cuvinte reale de la 8.2)
-// -> [Chorus] 38-68 -> [Verse] 68-98 (a doua strofa) -> [Outro] 98-108.
-function buildStandardSong() {
-  const words = [w('[Intro]', 0, 0)];
-  words.push(w('[Verse]', 8, 8));
-  let t = 8.2;
-  for (; t < 38; t += 1) words.push(w('la', t, t + 0.6));
-  words.push(w('[Chorus]', 38, 38));
-  for (let c = 38.2; c < 68; c += 0.5) words.push(w('na', c, c + 0.3));
-  words.push(w('[Verse]', 68, 68));
-  for (let v = 68.2; v < 98; v += 1) words.push(w('la', v, v + 0.6));
-  words.push(w('[Outro]', 98, 98));
-  for (let o = 98.2; o < 108; o += 1) words.push(w('la', o, o + 0.6));
-  return words;
-}
-
-// Melodie cu CHORUS INAINTE de Verse: [Intro] 0-8 -> [Chorus] 8-38 -> [Verse] 38-68 -> [Outro] 68-78.
-function buildChorusFirstSong() {
-  const words = [w('[Intro]', 0, 0)];
-  words.push(w('[Chorus]', 8, 8));
-  for (let c = 8.2; c < 38; c += 0.5) words.push(w('na', c, c + 0.3));
-  words.push(w('[Verse]', 38, 38));
-  let t = 38.2;
-  for (; t < 68; t += 1) words.push(w('la', t, t + 0.6));
-  words.push(w('[Outro]', 68, 68));
-  for (let o = 68.2; o < 78; o += 1) words.push(w('la', o, o + 0.6));
-  return words;
-}
-
-// Melodie FARA niciun Verse (doar Chorus/Bridge/Outro) — findFirstVerseSection trebuie sa esueze.
-function buildNoVerseSong() {
-  const words = [w('[Intro]', 0, 0)];
-  words.push(w('[Chorus]', 5, 5));
-  for (let c = 5.2; c < 30; c += 0.5) words.push(w('na', c, c + 0.3));
-  words.push(w('[Bridge]', 30, 30));
-  for (let b = 30.2; b < 50; b += 1) words.push(w('la', b, b + 0.6));
-  words.push(w('[Outro]', 50, 50));
-  for (let o = 50.2; o < 60; o += 1) words.push(w('la', o, o + 0.6));
-  return words;
-}
-
-// Melodie FARA marcaje de structura deloc (< 2 marcaje -> deriveSectionTimings cade pe fallback
-// 'full_song'/alignmentStatus='fallback') — dar CU cuvinte reale cantate.
-function buildUnstructuredSong() {
-  const words = [];
-  for (let t = 3; t < 40; t += 1) words.push(w('la', t, t + 0.6));
-  return words;
-}
-
-const DURATION = 110;
+const DURATION = 200;
 const PREVIEW_MAX = 40;
 
 function baseInputs(overrides) {
-  const alignedWords = buildStandardSong();
-  const captionLines = buildCaptionLinesFor(alignedWords);
   return Object.assign({
-    alignedWords,
-    captionLines,
+    alignedWords: [w('[Intro]', 0), w('[Verse]', 5), w('Hello', 30), w('world', 30.6)],
     durationSeconds: DURATION,
     previewMaxSeconds: PREVIEW_MAX,
     vocalOnsetStartSeconds: 0
@@ -106,105 +24,156 @@ function baseInputs(overrides) {
 }
 
 // ================================================================================================
-// SELECTIE — PRIMA STROFA
+// CONSTANTA — lead-in de 2 secunde, cerinta explicita ("aproximativ 1-2 secunde"), NICIODATA 9s.
 // ================================================================================================
-test('Verse 1 disponibil -> previewul incepe din prima strofa (8-38s), NU din refren (38-68s)', () => {
-  const result = selectPreviewStart(baseInputs());
-  assert.equal(result.selectionReason, 'first_verse');
-  assert.ok(result.previewStartSeconds >= 8 && result.previewStartSeconds < 38, `trebuie sa fie in fereastra primei strofe, a ales ${result.previewStartSeconds}s`);
-});
-
-test('Chorus apare INAINTE de Verse -> e ignorat complet, previewul tot incepe din Verse', () => {
-  const inputs = baseInputs();
-  inputs.alignedWords = buildChorusFirstSong();
-  inputs.captionLines = buildCaptionLinesFor(inputs.alignedWords);
-  const result = selectPreviewStart(inputs);
-  assert.equal(result.selectionReason, 'first_verse');
-  assert.ok(result.previewStartSeconds >= 38 && result.previewStartSeconds < 68, `nu trebuie sa aleaga refrenul (8-38s), trebuie sa aleaga strofa (38-68s), a ales ${result.previewStartSeconds}s`);
-});
-
-test('mai multe Verse-uri -> se alege STRICT primul (8-38s), niciodata al doilea (68-98s)', () => {
-  const result = selectPreviewStart(baseInputs());
-  assert.ok(result.previewStartSeconds < 68, `nu trebuie sa aleaga a doua strofa, a ales ${result.previewStartSeconds}s`);
-});
-
-test('previewStart incepe la inceputul unei linii REALE cantate — valoare exacta, nu aproximata', () => {
-  const inputs = baseInputs();
-  const result = selectPreviewStart(inputs);
-  const matchingLine = inputs.captionLines.find((l) => Math.abs(l.start - result.previewStartSeconds) < 0.001);
-  assert.ok(matchingLine, `previewStartSeconds (${result.previewStartSeconds}) trebuie sa coincida EXACT cu inceputul unei linii din captionLines`);
-});
-
-test('previewStart NU incepe niciodata mid-word: valoarea returnata coincide cu startS-ul unui cuvant real din alignedWords', () => {
-  const inputs = baseInputs();
-  const result = selectPreviewStart(inputs);
-  const matchingWord = inputs.alignedWords.find((word) => word.success === true && Math.abs(word.startS - result.previewStartSeconds) < 0.001);
-  assert.ok(matchingWord, `previewStartSeconds (${result.previewStartSeconds}) trebuie sa coincida cu startS-ul unui cuvant real cantat`);
-});
-
-test('previewStart NU incepe la marcajul textual [Verse] insusi (startS=8), ci la primul cuvant cantat DUPA marcaj (startS=8.2)', () => {
-  const result = selectPreviewStart(baseInputs());
-  assert.ok(Math.abs(result.previewStartSeconds - 8.2) < 0.5, `trebuie sa fie langa 8.2s (primul cuvant real), nu 8s (marcajul), a ales ${result.previewStartSeconds}s`);
+test('VOCAL_LEAD_IN_SECONDS = 2 — NICIODATA 9 (vechea formula, prea lunga pentru scopul comercial al preview-ului)', () => {
+  assert.equal(VOCAL_LEAD_IN_SECONDS, 2);
 });
 
 // ================================================================================================
-// FALLBACK — lantul exact cerut: first_verse -> first_vocal_line_fallback -> vocal_onset_fallback
-// -> start_zero_fallback
+// FORMULA — firstRealVocalStart -> previewStart = max(0, firstRealVocalStart - 2)
 // ================================================================================================
-test('fallback 1: lipsa Verse (doar Chorus/Bridge/Outro) -> first_vocal_line_fallback, prima linie cantata din tot cantecul', () => {
-  const inputs = baseInputs();
-  inputs.alignedWords = buildNoVerseSong();
-  inputs.captionLines = buildCaptionLinesFor(inputs.alignedWords);
-  const result = selectPreviewStart(inputs);
-  assert.equal(result.selectionReason, 'first_vocal_line_fallback');
-  assert.ok(Math.abs(result.previewStartSeconds - 5.2) < 0.5, `trebuie sa fie prima linie reala cantata (~5.2s), a ales ${result.previewStartSeconds}s`);
+test('firstRealVocalStart = 30 -> previewStart = 28', () => {
+  const result = selectPreviewStart(baseInputs({ alignedWords: [w('[Verse]', 5), w('Hello', 30)] }));
+  assert.equal(result.selectionReason, 'first_vocal_word');
+  assert.equal(result.previewStartSeconds, 28);
 });
 
-test('fallback 2: lipsa oricarui marcaj de structura (sectiuni in fallback) -> first_vocal_line_fallback, prima linie reala', () => {
-  const inputs = baseInputs();
-  inputs.alignedWords = buildUnstructuredSong();
-  inputs.captionLines = buildCaptionLinesFor(inputs.alignedWords);
-  const sections = deriveSectionTimings(inputs.alignedWords, inputs.durationSeconds, null);
-  assert.equal(sections[0].alignmentStatus, 'fallback', 'fixture-ul trebuie sa produca sectiuni fallback, ca sa testeze cazul real');
-  const result = selectPreviewStart(inputs);
-  assert.equal(result.selectionReason, 'first_vocal_line_fallback');
-  assert.ok(Math.abs(result.previewStartSeconds - 3) < 0.5, `trebuie sa fie primul cuvant real (~3s), a ales ${result.previewStartSeconds}s`);
+test('firstRealVocalStart = 10 -> previewStart = 8', () => {
+  const result = selectPreviewStart(baseInputs({ alignedWords: [w('Hello', 10)] }));
+  assert.equal(result.previewStartSeconds, 8);
 });
 
-test('fallback 3: alignedWords LIPSA (undefined) -> vocal_onset_fallback, foloseste vocalOnsetStartSeconds', () => {
-  const inputs = baseInputs({ alignedWords: undefined, vocalOnsetStartSeconds: 12.5 });
-  const result = selectPreviewStart(inputs);
+test('firstRealVocalStart = 1 -> previewStart = 0 (max(0, 1-2) = 0, niciodata negativ)', () => {
+  const result = selectPreviewStart(baseInputs({ alignedWords: [w('Hello', 1)] }));
+  assert.equal(result.previewStartSeconds, 0);
+});
+
+test('firstRealVocalStart = 0 -> previewStart = 0', () => {
+  const result = selectPreviewStart(baseInputs({ alignedWords: [w('Hello', 0)] }));
+  assert.equal(result.previewStartSeconds, 0);
+});
+
+test('firstRealVocalStart = 2 -> previewStart = 0 (exact la limita)', () => {
+  const result = selectPreviewStart(baseInputs({ alignedWords: [w('Hello', 2)] }));
+  assert.equal(result.previewStartSeconds, 0);
+});
+
+// ================================================================================================
+// MARCAJ [Verse] STRUCTURAL — nu mai e folosit ca ancora. Vocea reala la 30s trebuie sa produca
+// previewStart=28, NU 0/5 (fosta ancora pe sectiune, runda 2, respinsa).
+// ================================================================================================
+test('marker [Verse] la 5s, voce reala la 30s -> previewStart = 28, NU 0 sau 5 (nu se mai ancoreaza pe sectiune)', () => {
+  const alignedWords = [w('[Intro]', 0), w('[Verse]', 5), w('Prima', 30), w('linie', 30.5)];
+  const result = selectPreviewStart(baseInputs({ alignedWords }));
+  assert.equal(result.previewStartSeconds, 28);
+  assert.notEqual(result.previewStartSeconds, 0);
+  assert.notEqual(result.previewStartSeconds, 5);
+});
+
+test('marker [Chorus] inainte de voce -> irelevant, complet ignorat (nu exista nicio logica de sectiune in acest modul)', () => {
+  const alignedWords = [w('[Intro]', 0), w('[Chorus]', 3), w('[Verse]', 5), w('Prima', 30)];
+  const result = selectPreviewStart(baseInputs({ alignedWords }));
+  assert.equal(result.previewStartSeconds, 28);
+});
+
+test('alignedWords cu markere structurale multiple ([Intro]/[Verse]/[Chorus]/[Bridge]/[Strofa]/[Refren]) — toate ignorate, STRICT primul cuvant real gaseste vocea', () => {
+  const alignedWords = [
+    w('[Intro]', 0), w('[Strofa]', 2), w('[Verse]', 4), w('[Chorus]', 6),
+    w('[Refren]', 8), w('[Bridge]', 9), w('Vocea', 12), w('reala', 12.4)
+  ];
+  const result = selectPreviewStart(baseInputs({ alignedWords }));
+  assert.equal(result.previewStartSeconds, 10); // 12 - 2
+});
+
+// ================================================================================================
+// success:false — ignorat complet, STRICT primul success:true real e folosit.
+// ================================================================================================
+test('cuvinte cu success:false sunt ignorate — STRICT primul success:true e folosit', () => {
+  const alignedWords = [w('fals1', 1, false), w('fals2', 3, false), w('real', 20, true), w('altul', 25, false)];
+  const result = selectPreviewStart(baseInputs({ alignedWords }));
+  assert.equal(result.previewStartSeconds, 18); // 20 - 2
+});
+
+test('findFirstRealVocalStart: ignora success:false, gaseste primul success:true', () => {
+  const alignedWords = [w('a', 1, false), w('b', 5, true), w('c', 10, true)];
+  assert.equal(findFirstRealVocalStart(alignedWords), 5);
+});
+
+test('findFirstRealVocalStart: cuvant care e STRICT un marcaj structural (fara text real ramas dupa strip) e ignorat, chiar daca success:true', () => {
+  const alignedWords = [w('[Verse]', 5, true), w('Real', 20, true)];
+  assert.equal(findFirstRealVocalStart(alignedWords), 20);
+});
+
+test('findFirstRealVocalStart: fara niciun cuvant real -> null', () => {
+  assert.equal(findFirstRealVocalStart([w('[Intro]', 0, true), w('[Verse]', 5, true)]), null);
+  assert.equal(findFirstRealVocalStart([]), null);
+  assert.equal(findFirstRealVocalStart(null), null);
+});
+
+// ================================================================================================
+// FALLBACK — lantul exact cerut: first_vocal_word -> vocal_onset_fallback -> start_zero_fallback
+// ================================================================================================
+test('fallback B: lipsa alignedWords (undefined) -> vocal_onset_fallback, foloseste vocalOnsetStartSeconds', () => {
+  const result = selectPreviewStart(baseInputs({ alignedWords: undefined, vocalOnsetStartSeconds: 12.5 }));
   assert.equal(result.selectionReason, 'vocal_onset_fallback');
   assert.equal(result.previewStartSeconds, 12.5);
 });
 
-test('fallback 3b: alignedWords GOL ([]) -> vocal_onset_fallback', () => {
-  const inputs = baseInputs({ alignedWords: [], vocalOnsetStartSeconds: 7 });
-  const result = selectPreviewStart(inputs);
+test('fallback B: alignedWords GOL ([]) -> vocal_onset_fallback', () => {
+  const result = selectPreviewStart(baseInputs({ alignedWords: [], vocalOnsetStartSeconds: 7 }));
   assert.equal(result.selectionReason, 'vocal_onset_fallback');
   assert.equal(result.previewStartSeconds, 7);
 });
 
-test('fallback 3c: durationSeconds invalid -> vocal_onset_fallback', () => {
-  const result = selectPreviewStart(baseInputs({ durationSeconds: NaN, vocalOnsetStartSeconds: 4 }));
+test('fallback B: alignedWords prezente dar FARA niciun cuvant real (STRICT marcaje structurale) -> vocal_onset_fallback', () => {
+  const alignedWords = [w('[Intro]', 0, true), w('[Verse]', 5, true), w('[Chorus]', 10, false)];
+  const result = selectPreviewStart(baseInputs({ alignedWords, vocalOnsetStartSeconds: 3 }));
   assert.equal(result.selectionReason, 'vocal_onset_fallback');
-  assert.equal(result.previewStartSeconds, 4);
+  assert.equal(result.previewStartSeconds, 3);
 });
 
-test('fallback 4: vocal-onset INDISPONIBIL (null/NaN) -> start_zero_fallback, previewStart = 0, indiferent de restul datelor', () => {
+test('fallback C: nicio informatie utila (alignedWords lipsa SI vocal-onset lipsa) -> previewStart = 0', () => {
   for (const bad of [null, undefined, NaN, 'x']) {
-    const result = selectPreviewStart(baseInputs({ vocalOnsetStartSeconds: bad }));
+    const result = selectPreviewStart(baseInputs({ alignedWords: undefined, vocalOnsetStartSeconds: bad }));
     assert.equal(result.selectionReason, 'start_zero_fallback');
     assert.equal(result.previewStartSeconds, 0);
   }
 });
 
+test('durationSeconds invalid -> tot foloseste first_vocal_word (fara clamp la durata, care nu poate fi calculat), previewStart necolapsat', () => {
+  const result = selectPreviewStart(baseInputs({ durationSeconds: NaN, alignedWords: [w('Hello', 30)] }));
+  assert.equal(result.selectionReason, 'first_vocal_word');
+  assert.equal(result.previewStartSeconds, 28);
+});
+
+// ================================================================================================
+// CLAMP LA DURATA MELODIEI — vocea foarte aproape de finalul piesei, previewul tot trebuie sa
+// incapa in durationSeconds.
+// ================================================================================================
+test('voce foarte aproape de finalul piesei -> previewStart e clampat sa incapa (maxStart = duration - previewMaxSeconds)', () => {
+  const result = selectPreviewStart({
+    alignedWords: [w('Hello', 195)], durationSeconds: 200, previewMaxSeconds: 40, vocalOnsetStartSeconds: 0
+  });
+  assert.equal(result.previewStartSeconds, 160); // 200 - 40 = 160, mai mic decat 195-2=193
+});
+
+test('voce devreme, departe de finalul piesei -> NU e afectat de clamp', () => {
+  const result = selectPreviewStart({
+    alignedWords: [w('Hello', 30)], durationSeconds: 200, previewMaxSeconds: 40, vocalOnsetStartSeconds: 0
+  });
+  assert.equal(result.previewStartSeconds, 28);
+});
+
+// ================================================================================================
+// ROBUSTETE — niciodata nu arunca, determinist.
+// ================================================================================================
 test('selectPreviewStart NICIODATA nu arunca, indiferent de input (fuzz minimal cu forme neasteptate)', () => {
   const weird = [
     {},
     { alignedWords: 'nu-e-array' },
     { alignedWords: [null, {}, { word: 5 }], vocalOnsetStartSeconds: 3, durationSeconds: 100, previewMaxSeconds: 40 },
-    { alignedWords: [], captionLines: 'nu-e-array', vocalOnsetStartSeconds: 3, durationSeconds: 100, previewMaxSeconds: 40 }
+    { alignedWords: [{ word: 'x', startS: 'nu-e-numar', success: true }], vocalOnsetStartSeconds: 3 }
   ];
   for (const input of weird) {
     assert.doesNotThrow(() => selectPreviewStart(input));
@@ -218,64 +187,10 @@ test('selectPreviewStart e determinist — acelasi input produce STRICT acelasi 
   assert.deepEqual(r1, r2);
 });
 
-// ================================================================================================
-// DURATA — clamp aproape de finalul piesei, tot reancorat la o linie reala
-// ================================================================================================
-test('strofa foarte aproape de finalul piesei -> previewStart e clampat sa incapa in durationSeconds, dar tot pe o granita reala de linie', () => {
-  const alignedWords = buildStandardSong(); // a doua strofa: 68.2-98s, piesa dureaza 110s
-  const captionLines = buildCaptionLinesFor(alignedWords);
-  // fortam findFirstVerseSection sa gaseasca STRICT a doua "strofa" facand-o singura, ca sa
-  // testam clamp-ul aproape de capat: durata redusa la 100s (previewMax 40s -> maxStart = 60s),
-  // deci un candidat brut la 68.2s trebuie clampat la 60s si reancorat la o linie reala <= 60s.
-  const inputs = { alignedWords, captionLines, durationSeconds: 100, previewMaxSeconds: 40, vocalOnsetStartSeconds: 0 };
-  const result = selectPreviewStart(inputs);
-  assert.ok(result.previewStartSeconds <= 60 + 0.001, `previewStart nu trebuie sa depaseasca maxStart (60s), a ales ${result.previewStartSeconds}s`);
-  const matchingLine = captionLines.find((l) => Math.abs(l.start - result.previewStartSeconds) < 0.001);
-  assert.ok(matchingLine, 'chiar si dupa clamp, previewStart trebuie sa coincida cu inceputul unei linii reale');
-});
-
-// ================================================================================================
-// HELPERS PURE — testate direct
-// ================================================================================================
-test('findFirstVerseSection: gaseste STRICT primul verse ALIGNED, ignora chorus/bridge/intro/outro', () => {
-  const sections = deriveSectionTimings(buildStandardSong(), DURATION, null);
-  const verse = findFirstVerseSection(sections);
-  assert.ok(verse);
-  assert.equal(verse.sectionType, 'verse');
-  assert.equal(verse.startTime, 8);
-});
-
-test('findFirstVerseSection: fara niciun verse -> null', () => {
-  const sections = deriveSectionTimings(buildNoVerseSong(), 60, null);
-  assert.equal(findFirstVerseSection(sections), null);
-});
-
-test('findFirstVerseSection: sectiuni fallback (alignmentStatus="fallback") -> null, niciodata acceptat ca "verse" real', () => {
-  const sections = deriveSectionTimings(buildUnstructuredSong(), 40, null);
-  assert.equal(findFirstVerseSection(sections), null);
-});
-
-test('firstCaptionLineStartInWindow: gaseste prima linie cu start in fereastra, respecta limita superioara', () => {
-  const lines = [{ start: 5, end: 8 }, { start: 10, end: 13 }, { start: 40, end: 43 }];
-  assert.equal(firstCaptionLineStartInWindow(lines, 6, 41), 10);
-  assert.equal(firstCaptionLineStartInWindow(lines, 0, null), 5);
-  assert.equal(firstCaptionLineStartInWindow(lines, 41, null), null);
-});
-
-test('firstRealWordStartInWindow: ignora cuvintele success=false si pe cele in afara ferestrei', () => {
-  const words = [w('a', 1, 1.5, false), w('b', 2, 2.5, true), w('c', 10, 10.5, true)];
-  assert.equal(firstRealWordStartInWindow(words, 0, 5), 2);
-  assert.equal(firstRealWordStartInWindow(words, 0, null), 2);
-  assert.equal(firstRealWordStartInWindow(words, 5, null), 10);
-});
-
-test('snapToLineStart: muta la cea mai apropiata linie reala, in limita tolerantei', () => {
-  const lines = [{ start: 10 }, { start: 20 }];
-  assert.equal(snapToLineStart(10.5, lines, 100), 10);
-  assert.equal(snapToLineStart(50, lines, 100), 50, 'fara nicio linie in toleranta, pastreaza punctul brut');
-});
-
-test('snapToLineStart: fara linii disponibile -> ramane punctul brut, fara eroare', () => {
-  assert.equal(snapToLineStart(15, [], 100), 15);
-  assert.equal(snapToLineStart(15, null, 100), 15);
+test('modulul NU mai depinde de deriveSectionTimings/media-analysis.js (sectiunile structurale nu mai sunt folosite pentru start)', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'preview-selection.js'), 'utf8');
+  assert.ok(!src.includes("require('./media-analysis')"), 'nu mai trebuie sa existe nicio dependenta de media-analysis.js — singurul indicator real; mentiunile textuale din comentariul de audit sunt permise (documenteaza legitim de ce a fost eliminat)');
+  assert.ok(!src.includes('const { deriveSectionTimings }'), 'nu mai trebuie sa existe importul real al functiei');
 });

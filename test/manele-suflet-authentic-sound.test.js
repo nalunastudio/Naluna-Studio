@@ -1,12 +1,14 @@
-// MANELE_SUFLET — SUNET AUTENTIC DE MANEA ROMANEASCA (2026-09-22, runda 2, cerinta explicita).
+// MANELE_SUFLET — SUNET AUTENTIC DE MANEA ROMANEASCA (2026-09-22, runda 3 — dupa un test audio
+// real care a demonstrat ca runda 2 tot nu suna suficient de manea, desi toate testele de cod
+// treceau; NU s-a presupus ca implementarea anterioara era corecta doar pentru asta).
 //
-// Problema raportata: manele_suflet suna "prea generic", nu suficient de mult a manea romaneasca
-// autentica. Directia ceruta (artisti precum Costel Biju/Tzanca Uraganu/Adrian Minune/Laura Vass/
-// Printesa de Aur) e STRICT o REFERINTA de directie muzicala pentru mine — NICIODATA trimisa mai
-// departe catre furnizor, NICIODATA nume de artist in text, NICIODATA clonare/imitare de voce —
-// tradusa in CARACTERISTICI GENERALE ale genului: identitate "authentic Romanian manele",
-// instrumentatie (vioara/acordeon/clarinet), si interpretare vocala specifica genului (melisme,
-// vibrato, frazare de manea) — NICIODATA timbrul vocal al unui artist anume.
+// Problema raportata (runda 3): manele_suflet inca suna insuficient de manea romaneasca autentica.
+// Directia ceruta (artisti precum Costel Biju/Tzanca Uraganu/Florin Salam/Adrian Minune pentru
+// masculin, Printesa de Aur/Laura Vass pentru feminin) e STRICT o REFERINTA de directie muzicala
+// pentru mine — NICIODATA trimisa mai departe catre furnizor, NICIODATA nume de artist in text,
+// NICIODATA clonare/imitare de voce — tradusa in CARACTERISTICI GENERALE ale genului: identitate
+// "Romanian manele", culoare orientala, productie de claviaturi de manele, si interpretare vocala
+// specifica genului (melisme, vibrato) — NICIODATA timbrul vocal al unui artist anume.
 //
 // NU s-a atins: manele_jale ("perfecta" in productie, raportat explicit), niciun alt gen,
 // relationClause()/regulile anti-repetitie/STORY_MIN_RESERVE/buildExactLyricsRequest() (folosite,
@@ -139,7 +141,7 @@ const worstCaseOrder = (overrides) => Object.assign({
   story: 'V-ati cunoscut acum zece ani la o petrecere organizata de prieteni comuni, iar de atunci povestea voastra de dragoste a fost una plina de calatorii si sprijin reciproc.'
 }, overrides);
 
-const NEW_STYLE = 'Romanian manele de suflet, violin, accordion, clarinet, melismatic vibrato vocal, hopeful manele phrasing, short intro, vocals enter early';
+const NEW_STYLE = 'Romanian manele, oriental melismatic vibrato vocal, manele keyboards, violin, accordion, hopeful rhythm, short intro, vocals enter early';
 
 // ===============================================================================================
 // 1) DESCRIEREA NOUA — folosita, caracteristicile de manea prezente.
@@ -154,7 +156,7 @@ test('descrierea contine identitatea clara de gen: "Romanian manele"', () => {
 
 // ACTUALIZAT (2026-09-22): "Authentic" (cuvant separat) a fost sacrificat pentru bugetul de 600
 // caractere in favoarea pastrarii distinctiei de mood fata de manele_jale (vezi grupul 1b de mai
-// jos) — identitatea de gen ramane clara prin "Romanian manele de suflet" insusi (cuvantul
+// jos) — identitatea de gen ramane clara prin "Romanian manele" insusi (cuvantul
 // "manele" apare direct, explicit).
 test('1b) DIFERENTIERE fata de manele_jale ramane INTACTA (regresie pre-existenta, 2026-09-13): manele_suflet ramane caldut/plin de speranta ("hopeful"), manele_jale ramane intunecat/jelitor — niciodata amestecate', () => {
   assert.match(GENRE_STYLE_MAP.manele_suflet, /hopeful|devoted/i);
@@ -168,14 +170,20 @@ test('descrierea contine interpretarea vocala specifica manelelor: melismatic si
   assert.match(GENRE_STYLE_MAP.manele_suflet, /vibrato/i);
 });
 
-test('descrierea contine frazarea specifica manelelor ("manele phrasing")', () => {
-  assert.match(GENRE_STYLE_MAP.manele_suflet, /manele phrasing/);
+test('descrierea contine culoarea orientala/balcanica (runda 3, cerinta noua — diferentiaza de pop occidental generic)', () => {
+  assert.match(GENRE_STYLE_MAP.manele_suflet, /oriental/i);
 });
 
-test('descrierea pastreaza instrumentatia specifica (vioara/acordeon/clarinet)', () => {
+test('descrierea contine productia specifica manelelor: "manele keyboards" (runda 3, cerinta noua)', () => {
+  assert.match(GENRE_STYLE_MAP.manele_suflet, /manele keyboards/);
+});
+
+// ACTUALIZAT (2026-09-22, runda 3): clarinetul a fost eliminat din descrierea de manele_suflet
+// pentru buget (cerinta originala permitea explicit "acordeon SI/SAU clarinet" — un singur
+// instrument suplimentar, deja acoperit de acordeon, e suficient); vioara+acordeon raman.
+test('descrierea pastreaza instrumentatia specifica (vioara/acordeon)', () => {
   assert.match(GENRE_STYLE_MAP.manele_suflet, /violin/);
   assert.match(GENRE_STYLE_MAP.manele_suflet, /accordion/);
-  assert.match(GENRE_STYLE_MAP.manele_suflet, /clarinet/);
 });
 
 test('short intro ramane in descriere', () => {
@@ -194,8 +202,8 @@ test('CRITIC — descrierea NU contine niciodata cuvantul "instrumental" (REGRES
 // 2) NICIO CLONARE/IMITARE DE ARTIST — cerinta explicita: numele mentionate de client sunt STRICT
 // referinte de directie muzicala pentru mine, niciodata trimise mai departe catre furnizor.
 // ===============================================================================================
-test('descrierea NU contine niciun nume de artist real (Costel Biju/Tzanca Uraganu/Adrian Minune/Laura Vass/Printesa de Aur) — referinte STRICT de directie, niciodata trimise catre furnizor', () => {
-  const forbidden = [/costel/i, /biju/i, /tzanca/i, /uraganu/i, /adrian minune/i, /laura vass/i, /printesa de aur/i];
+test('descrierea NU contine niciun nume de artist real (masculin: Costel Biju/Tzanca Uraganu/Florin Salam/Adrian Minune; feminin: Printesa de Aur/Laura Vass) — referinte STRICT de directie, niciodata trimise catre furnizor', () => {
+  const forbidden = [/costel/i, /biju/i, /tzanca/i, /uraganu/i, /florin/i, /salam/i, /adrian minune/i, /laura vass/i, /printesa de aur/i];
   for (const re of forbidden) {
     assert.doesNotMatch(GENRE_STYLE_MAP.manele_suflet, re, `descrierea nu trebuie sa contina o referinta la un artist real (${re})`);
   }
@@ -205,7 +213,7 @@ test('niciun nume de artist NU apare nicaieri in server.js langa GENRE_STYLE_MAP
   const idx = server.indexOf('const GENRE_STYLE_MAP = {');
   const end = server.indexOf('\n};', idx);
   const body = server.slice(idx, end);
-  for (const forbidden of ['Costel Biju', 'Tzanca Uraganu', 'Adrian Minune', 'Laura Vass', 'Printesa de Aur']) {
+  for (const forbidden of ['Costel Biju', 'Tzanca Uraganu', 'Florin Salam', 'Adrian Minune', 'Laura Vass', 'Printesa de Aur']) {
     assert.ok(!body.includes(forbidden), `nu trebuie sa apara "${forbidden}" in blocul GENRE_STYLE_MAP`);
   }
 });
@@ -220,7 +228,7 @@ for (const voicePreference of ['female', 'male', 'duet', 'auto']) {
     if (voicePreference === 'female') assert.match(style, /Female lead vocal\./);
     if (voicePreference === 'male') assert.match(style, /Male lead vocal\./);
     if (voicePreference === 'duet') assert.match(style, /Male and female duet, both voices clearly present\./);
-    assert.match(style, /manele phrasing/, 'stilul de manele trebuie sa fie prezent indiferent de vocea aleasa');
+    assert.match(style, /manele keyboards/, 'stilul de manele trebuie sa fie prezent indiferent de vocea aleasa');
   });
 }
 
@@ -239,12 +247,12 @@ test('buildPrompt: instructiunea de voce (currentVoiceInstruction) ramane prezen
 for (const lang of LANGS) {
   test(`[${lang}] buildPrompt() (generare initiala) contine noua descriere de manele pentru manele_suflet`, () => {
     const prompt = buildPrompt(typicalOrder({ lang }), '', undefined);
-    assert.ok(prompt.includes('Romanian manele de suflet'), `[${lang}] descrierea lipseste din prompt: ${prompt}`);
+    assert.ok(prompt.includes('Romanian manele'), `[${lang}] descrierea lipseste din prompt: ${prompt}`);
     assert.ok(prompt.includes('short intro, vocals enter early'), `[${lang}] intro-ul scurt lipseste din prompt`);
   });
   test(`[${lang}] buildExactLyricsRequest() (editare/regenerare) contine noua descriere in style`, () => {
     const { style } = buildExactLyricsRequest(typicalOrder({ lang }), 'Vers exact', undefined, 'auto', '');
-    assert.ok(style.includes('Romanian manele de suflet'), `[${lang}] descrierea lipseste din style: ${style}`);
+    assert.ok(style.includes('Romanian manele'), `[${lang}] descrierea lipseste din style: ${style}`);
   });
 }
 
@@ -253,32 +261,32 @@ for (const lang of LANGS) {
 // ===============================================================================================
 test('Standard: buildPrompt() cu plan=standard, genre=manele_suflet foloseste noua descriere', () => {
   const prompt = buildPrompt(typicalOrder({ plan: 'standard' }), '', undefined);
-  assert.ok(prompt.includes('Romanian manele de suflet'));
+  assert.ok(prompt.includes('Romanian manele'));
 });
 
 test('Premium: manele_suflet ca genre (prima melodie, fara genreOverride)', () => {
   const order = typicalOrder({ plan: 'premium', genre: 'manele_suflet', genre2: 'pop' });
   const prompt = buildPrompt(order, '', undefined);
-  assert.ok(prompt.includes('Romanian manele de suflet'));
+  assert.ok(prompt.includes('Romanian manele'));
 });
 
 test('Premium: manele_suflet ca genre2 (a doua melodie, prin genreOverride) — izolat per melodie, prima melodie (pop) neafectata', () => {
   const order = typicalOrder({ plan: 'premium', genre: 'pop', genre2: 'manele_suflet' });
   const prompt2 = buildPrompt(order, '', 'manele_suflet');
-  assert.ok(prompt2.includes('Romanian manele de suflet'));
+  assert.ok(prompt2.includes('Romanian manele'));
   const prompt1 = buildPrompt(order, '', order.genre);
-  assert.ok(!prompt1.includes('Romanian manele de suflet'), 'prima melodie (pop) nu trebuie sa capete stilul de manele');
+  assert.ok(!prompt1.includes('Romanian manele'), 'prima melodie (pop) nu trebuie sa capete stilul de manele');
 });
 
 test('Video: buildPrompt() cu plan=video, genre=manele_suflet foloseste noua descriere', () => {
   const prompt = buildPrompt(typicalOrder({ plan: 'video' }), '', undefined);
-  assert.ok(prompt.includes('Romanian manele de suflet'));
+  assert.ok(prompt.includes('Romanian manele'));
 });
 
 test('Regenerare/editare (buildExactLyricsRequest, customMode:true) primeste aceeasi descriere, prin acelasi GENRE_STYLE_MAP', () => {
   const order = typicalOrder();
   const { style } = buildExactLyricsRequest(order, 'Vers editat manual de client', undefined, 'auto', 'Mai vesela te rog');
-  assert.ok(style.includes('Romanian manele de suflet'), `descrierea lipseste din style-ul de regenerare: ${style}`);
+  assert.ok(style.includes('Romanian manele'), `descrierea lipseste din style-ul de regenerare: ${style}`);
 });
 
 // ===============================================================================================
@@ -338,7 +346,9 @@ test('manele_jale ramane BYTE-IDENTIC — NU a fost atins de aceasta corectie', 
 test('manele_jale, in buildPrompt() real, ramane vizibil neschimbat pentru comenzi cu acest gen', () => {
   const prompt = buildPrompt(typicalOrder({ genre: 'manele_jale' }), '', undefined);
   assert.ok(prompt.includes('Romanian manele de jale, minor-key oriental colour'));
-  assert.ok(!prompt.includes('Romanian manele de suflet'), 'manele_jale nu trebuie sa capete noua descriere de manele_suflet');
+  // verificare STRICT pe fragmentul distinctiv al lui manele_suflet (nu pe "Romanian manele",
+  // prefix impartit legitim de ambele genuri) — manele_jale nu trebuie sa capete descrierea noua.
+  assert.ok(!prompt.includes('melismatic vibrato vocal, manele keyboards'), 'manele_jale nu trebuie sa capete noua descriere de manele_suflet');
 });
 
 // ===============================================================================================
