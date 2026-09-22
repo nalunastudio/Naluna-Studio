@@ -9589,19 +9589,32 @@ function buildPrompt(order, feedback, genreOverride) {
     // recipient early+chorus") — relationClause() are acum o singura responsabilitate proprie:
     // relatia (roNoun) sa fie mentionata NATURAL, undeva in versuri, fara sa impuna Suno-ului NICI
     // forma, NICI pozitia exacta fata de nume (poate fi in acelasi vers sau in altul — decizia
-    // ramane a modelului, per cerinta explicita "nu crea o formula universala"). Masurat empiric
-    // (vezi raportul fazei): toate cele 3 forme (full/short/minimal) ies EGALE SAU MAI SCURTE decat
-    // versiunea inlocuita, pentru orice combinatie realista de relatie/expeditor — bugetul eliberat
-    // aici compenseaza adaosul din currentInstruction() (anti-repetitie/naturalete>rima), pastrand
-    // bugetul TOTAL al lui `head` neschimbat sau mai mic fata de inainte, in aproape toate cazurile.
+    // ramane a modelului, per cerinta explicita "nu crea o formula universala").
+    //
+    // CORECȚIE (2026-09-22, runda 2, exemplu real NOU raportat — "Victor, tu ești tata mea",
+    // gramatical gresit): formularea de mai sus ("that the recipient IS their {roNoun}") ramanea o
+    // PROPOZITIE COMPLETA (subiect+copula+predicat) in engleza, pe care modelul o putea traduce
+    // CUVANT-CU-CUVANT in limba versurilor — exact mecanismul care produce dezacord de gen/caz in
+    // limbi flexionare (romana: "tata" masculin + "mea" posesiv feminin, gresit; corect ar fi
+    // "tatăl meu"). Inlocuita cu formatul ETICHETA: VALOARE ("Relation: {roNoun}"), ACELASI tipar
+    // deja folosit si dovedit sigur pentru Recipient:/Sender:/Relationship: (buildHeadPart1, mai
+    // sus) — o eticheta e neutra fata de gramatica limbii tinta, nu o propozitie de tradus literal.
+    // Adaugat explicit "correct grammar"/"any line" — cere ACORD gramatical corect in limba
+    // versurilor (nu traducere cuvant-cu-cuvant) si confirma ca relatia poate aparea in ORICE vers,
+    // nu neaparat langa nume (satisface direct cerinta "poate mentiona numele intr-un vers si
+    // relatia in altul"). Masurat direct: toate cele 5 forme (full/short x cu/fara expeditor,
+    // minimal) raman EGALE SAU MAI SCURTE decat versiunea inlocuita (delta -4/+3/-1/0/0 caractere),
+    // niciun buget suplimentar cerut de la poveste — verificat impotriva scenariilor reale grele
+    // (comanda 400d4a20, testul "PLASA DE SIGURANTA RAMANE NECESARA"), vezi
+    // test/story-floor-occasion-fallback-fix.test.js si test/lyrics-relation-name-naturalness.test.js.
     if (useMinimalRelationClause) return ` Their ${roNoun}.${isBoth ? ' Never omit either person.' : ''}`;
     let clause = useShortOccasionInstruction
       ? (senderNoun
-          ? ` Mention once: their ${roNoun} (from their ${senderNoun}).`
-          : ` Mention once: their ${roNoun}.`)
+          ? ` Relation: ${roNoun} (natural; from their ${senderNoun}).`
+          : ` Relation: ${roNoun} (natural).`)
       : (senderNoun
-          ? ` Mention naturally, once, that the recipient is their ${roNoun}; the song is from their ${senderNoun}.`
-          : ` Mention naturally, once, that the recipient is their ${roNoun}.`);
+          ? ` Relation: ${roNoun} — phrase naturally, correct grammar, any line; song from their ${senderNoun}.`
+          : ` Relation: ${roNoun} — phrase naturally, correct grammar, any line.`);
     if (isBoth) clause += ' Never omit either person.';
     return clause;
   }

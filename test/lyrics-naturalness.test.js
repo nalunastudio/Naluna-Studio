@@ -98,16 +98,25 @@ test('RUPTURA REPARATA: instructiunea mecanica "address as X plus their name"/"X
   assert.ok(!/\$\{roNoun\}\+name/.test(server), 'sablonul literal "${roNoun}+name" nu mai trebuie sa existe ca cod activ');
 });
 
-test('relationClause: noua formulare cere relatia NATURAL, separat de nume — "Mention naturally" / "Mention once", niciodata lipita de nume', () => {
-  assert.match(server, /Mention naturally, once, that the recipient is their/);
-  assert.match(server, /Mention once: their \$\{roNoun\}/);
+// ACTUALIZAT (2026-09-22, runda 2 — exemplu real NOU raportat: "Victor, tu ești tata mea",
+// gramatical gresit): formularea "Mention naturally, once, that the recipient is their X" ramanea
+// o PROPOZITIE COMPLETA (subiect+copula+predicat) in engleza, pe care modelul o putea traduce
+// cuvant-cu-cuvant, producand dezacord de gen/caz in limbi flexionare. Inlocuita cu formatul
+// ETICHETA: VALOARE ("Relation: X"), acelasi tipar deja folosit si dovedit sigur pentru
+// Recipient:/Sender:/Relationship: — vezi test/lyrics-relation-name-naturalness.test.js pentru
+// acoperirea completa a acestei runde.
+test('relationClause: noua formulare foloseste formatul ETICHETA: VALOARE ("Relation: X"), NICIODATA propozitia veche "is their X" (predispusa la traducere cuvant-cu-cuvant gresita gramatical)', () => {
+  assert.match(server, /` Relation: \$\{roNoun\} — phrase naturally, correct grammar, any line/);
+  assert.match(server, /` Relation: \$\{roNoun\} \(natural/);
+  assert.ok(!/Mention naturally, once, that the recipient is their \$\{roNoun\}/.test(server), 'propozitia veche, predispusa la traducere gresita, nu mai trebuie sa existe ca cod activ');
 });
 
-test('buildPrompt: pentru o relatie de familie (tata), instructiunea de relatie NU produce sablonul "Nume, relatie" — cere relatia ca fapt separat, natural (forma FULL sau SHORT, ambele corecte)', () => {
+test('buildPrompt: pentru o relatie de familie (tata), instructiunea de relatie NU produce sablonul "Nume, relatie" — cere relatia ca fapt separat, natural, cu acord gramatical corect (forma FULL sau SHORT, ambele corecte)', () => {
   const prompt = buildPrompt(familyOrder(), '', null);
-  assert.match(prompt, /Mention naturally, once, that the recipient is their "father"|Mention once: their "father"|Their "father"/, `relatia trebuie mentionata natural, primit: ${prompt}`);
+  assert.match(prompt, /Relation: "father" — phrase naturally, correct grammar, any line|Relation: "father" \(natural|Their "father"/, `relatia trebuie mentionata natural, primit: ${prompt}`);
   assert.ok(!prompt.includes('Victor, "father"'), 'promptul nu trebuie sa lipeasca numele si relatia ca doua campuri de formular');
   assert.ok(!prompt.includes('as "father" plus their name'), 'sablonul mecanic vechi nu mai trebuie sa apara');
+  assert.ok(!prompt.includes('recipient is their "father"'), 'copula veche, predispusa la traducere gresita gramatical, nu mai trebuie sa apara');
 });
 
 // ===============================================================================================
