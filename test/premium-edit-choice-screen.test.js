@@ -24,16 +24,7 @@ const server = read('server.js');
 test('server.js: GET /api/orders/:orderId (safeVariants) expune campul relationship per varianta — necesar ca melodia-mea.html sa afiseze persoana CORECTA a fiecarei melodii, nu mereu persoana melodiei 1', () => {
   const idx = server.indexOf('const safeVariants = (order.variants || []).map(v => ({');
   assert.ok(idx !== -1);
-  // Fereastra de citire nu mai e un numar fix de caractere (blocul a crescut de atunci — vezi
-  // campurile Smart Preview adaugate 2026-09-22) — mergem STRICT pana la inchiderea reala a
-  // apelului .map(v => ({ ... })), prin balans de acolade, la fel ca alte teste care extrag
-  // acelasi bloc (vezi test/melodia-mea-preview-analytics.test.js).
-  let depth = 0, i = server.indexOf('({', idx) + 1;
-  for (; i < server.length; i++) {
-    if (server[i] === '{') depth++;
-    else if (server[i] === '}') { depth--; if (depth === 0) break; }
-  }
-  const body = server.slice(idx, i + 1);
+  const body = server.slice(idx, idx + 3000);
   assert.ok(body.includes('relationship: v.relationship || order.relationship || null'), 'relationship trebuie inclus explicit in whitelist-ul trimis catre client');
 });
 

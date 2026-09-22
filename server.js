@@ -103,7 +103,6 @@ const { getCurrentInstagramAccessToken } = require('./lib/social/instagram-token
 const { checkInstagramTokenLifecycle } = require('./lib/social/instagram-token-lifecycle');
 const { buildEventId: buildMetaCapiEventId, buildPurchaseEvent: buildMetaCapiPurchaseEvent } = require('./lib/meta-capi/capi-payload');
 const { startMetaCapiWorker } = require('./lib/meta-capi/capi-worker');
-const { selectPreviewStart } = require('./lib/preview-selection');
 
 // META CAPI (2026-09-21) — handle-ul worker-ului de retry (vezi lib/meta-capi/capi-worker.js),
 // pornit STRICT dupa initDb() (langa socialWorkerHandle, vezi finalul fisierului). Declarat AICI
@@ -158,15 +157,24 @@ const ANALYTICS_EXCLUDED_EMAILS = (process.env.ANALYTICS_EXCLUDED_EMAILS || '')
 function isTestCustomerEmail(email) {
   return ANALYTICS_EXCLUDED_EMAILS.includes(String(email || '').trim().toLowerCase());
 }
-// CORECȚIE (2026-09-22, SMART PREVIEW — cerinta explicita): 40 de secunde pentru TOATE stilurile,
-// inclusiv manele_suflet/manele_jale — exceptia EXTENDED_PREVIEW_SECONDS=50 (2026-09-19) a fost
-// eliminata. Motivul original (instrumental initial mai lung la aceste doua genuri, care putea
-// consuma o parte mare din fereastra fixa de 40s) e rezolvat acum altfel — Smart Preview
-// (lib/preview-selection.js) muta punctul de START catre prima strofa cantata a melodiei, in loc
-// sa mareasca DURATA ferestrei — nu mai e nevoie de o exceptie per-gen. `resolvePreviewMaxSeconds`/
-// `EXTENDED_PREVIEW_GENRES`/`EXTENDED_PREVIEW_SECONDS` au fost eliminate complet (nu doar dezactivate)
-// — nicio ramura de cod ramasa neatinsa care ar putea reintroduce accidental exceptia.
 const PREVIEW_SECONDS = 40;
+// EXCEPTIE (2026-09-19, cerinta explicita, observatie productie reala): manele_suflet/
+// manele_jale au de regula un instrumental initial mai lung decat celelalte genuri — cele 40 de
+// secunde standard se pot termina exact cand partea vocala/povestea devine relevanta. STRICT
+// aceste 2 genuri (genre keys REALE, verificate direct in cod — vezi GENRE_STYLE_TAGS mai jos)
+// primesc o fereastra maxima de preview mai mare; toate celelalte raman la PREVIEW_SECONDS (40),
+// neschimbat. NU afecteaza punctul de START al preview-ului (previewStart / vocal onset —
+// getPreviewStartFromLyrics, neatinsa) — doar durata maxima permisa DUPA acel punct. Daca
+// materialul disponibil dupa previewStart e mai scurt decat aceasta fereastra, trimAudio() (mai
+// jos, `-t` in ffmpeg) se opreste natural la finalul materialului real — nu exista nicaieri
+// padding/loop artificial, la niciun gen.
+const EXTENDED_PREVIEW_GENRES = ['manele_suflet', 'manele_jale'];
+const EXTENDED_PREVIEW_SECONDS = 50;
+// Functie PURA, izolata STRICT ca sa fie usor testabila direct (vezi test/preview-duration-manele.test.js)
+// — niciun efect secundar, niciun acces la retea/fisiere/ffmpeg, doar decizia "cate secunde".
+function resolvePreviewMaxSeconds(genre) {
+  return EXTENDED_PREVIEW_GENRES.includes(genre) ? EXTENDED_PREVIEW_SECONDS : PREVIEW_SECONDS;
+}
 // Previzualizarea GRATUITĂ a videoclipului cadou (pachetul "video"), disponibilă ÎNAINTE de
 // plată — vezi generateLyricVideo() mai jos, care taie acest fragment (stream copy, fără
 // reencodare) din videoclipul complet deja randat, exact ca la începutul lui.
@@ -3853,13 +3861,6 @@ app.get('/api/orders/:orderId', async (req, res, next) => {
       // separata de hasVideo (videoclipul COMPLET, deblocat STRICT dupa plata, vezi /media/video).
       hasVideoPreview: !!v.videoPreviewKey,
       videoFailedReason: v.videoFailedReason || null,
-      // SMART PREVIEW (2026-09-22, runda 3 — VOCEA REALA) — STRICT punctul de start (secunde) si
-      // eticheta enum a motivului selectiei ('first_vocal_word'/'vocal_onset_fallback'/
-      // 'start_zero_fallback'), necesare client-side pentru analytics-ul preview-ului (vezi
-      // melodia-mea.html). NICIODATA previewSignals (rezumatul de debug) — nu e nevoie de el in
-      // UI, ramane STRICT server-side/admin.
-      previewStartSeconds: typeof v.previewStartSeconds === 'number' ? v.previewStartSeconds : null,
-      previewSelectionReason: v.previewSelectionReason || null,
       // Standard, fluxul de editare cu alegere (Partea 2, hotfix 2026-08-08) — fara acest
       // camp, melodia-mea.html nu poate distinge "Versiunea inițială" de "Versiunea editată"
       // (gasit direct la testarea reala: ambele carduri aparea etichetate "inițială", pentru
@@ -6215,7 +6216,7 @@ async function obtainAcceptableVariant(orderId, tracks, taskId, genre, order, re
     for (const track of ordered) {
       let candidate;
       try {
-        candidate = await buildVariantFromTrack(orderId, randomUUID().slice(0, 8), track, candidateTaskId);
+        candidate = await buildVariantFromTrack(orderId, randomUUID().slice(0, 8), track, candidateTaskId, genre);
       } catch (err) {
         lastErr = err;
         trackIndex++;
@@ -6749,65 +6750,6 @@ async function getPreviewStartFromLyrics(taskId, audioId, orderId) {
   return previewStart;
 }
 
-// ==========================================================================================
-// SMART PREVIEW (2026-09-22) — fetch-ul brut de alignedWords, reutilizat DOAR pentru selectia
-// inteligenta a fragmentului de preview. STRICT UN SINGUR apel HTTP catre get-timestamped-lyrics
-// per varianta (fetchTimestampedLyricsOnce, functie EXISTENTA, neatinsa) — buildVariantFromTrack
-// nu mai apeleaza si getPreviewStartFromLyrics() separat (care ar fi facut un al doilea apel
-// identic) — foloseste in schimb findFirstRealWordStartS() + constantele TARGET_VOICE_POSITION_S/
-// PREVIEW_START_MAX_S de mai sus (toate NEATINSE) direct pe rezultatul de aici, ca sa obtina
-// EXACT aceeasi valoare de "vocal onset" pe care getPreviewStartFromLyrics ar fi calculat-o —
-// vezi buildVariantFromTrack mai jos. getPreviewStartFromLyrics() ramane in cod, neschimbata,
-// neapelata de acest flux (comportamentul ei, testat separat, ramane sursa de adevar pentru
-// FORMULA vocal-onset, doar orchestrarea apelului HTTP s-a mutat).
-async function fetchAlignedWordsForSmartPreview(taskId, audioId, orderId) {
-  const orderTag = orderId ? String(orderId).slice(0, 8) : '?';
-  const taskTag = taskId ? String(taskId).slice(0, 8) : '?';
-  const logPrefix = `[smart-preview] comanda ${orderTag}, task ${taskTag}`;
-
-  if (!taskId || !audioId) {
-    console.log(`${logPrefix}: fallback (motiv: taskId sau audioId lipsa)`);
-    return null;
-  }
-  let outcome;
-  try {
-    outcome = await fetchTimestampedLyricsOnce(taskId, audioId);
-  } catch (err) {
-    console.log(`${logPrefix}: fallback (motiv: eroare neasteptata: ${err.message})`);
-    return null;
-  }
-  if (!outcome.ok) {
-    console.log(`${logPrefix}: fallback (motiv: ${outcome.reason})`);
-    return null;
-  }
-  let body;
-  try {
-    body = await outcome.res.json();
-  } catch (err) {
-    console.log(`${logPrefix}: fallback (motiv: raspuns invalid, nu e JSON)`);
-    return null;
-  }
-  if (!body || body.code !== 200 || !body.data || !Array.isArray(body.data.alignedWords) || body.data.alignedWords.length === 0) {
-    console.log(`${logPrefix}: fallback (motiv: alignedWords lipsa/gol/structura neasteptata)`);
-    return null;
-  }
-  return body.data.alignedWords;
-}
-
-// ELIMINATA (2026-09-22, runda 4 — "nu mai vreau NICAIERI regula -9 secunde pentru preview",
-// cerinta explicita): computeVocalOnsetPreviewStart() aplica formula veche
-// (firstRealStartS - TARGET_VOICE_POSITION_S(9), cap la PREVIEW_START_MAX_S(25)) — folosita STRICT
-// ca baza pentru fallback-ul B (vocal_onset_fallback) in buildVariantFromTrack de mai jos. Runda 4
-// a eliminat complet acest -9s din LOGICA EFECTIVA de creare a preview-ului: fallback-ul B foloseste
-// acum ACEEASI constanta ca fallback-ul A (VOCAL_LEAD_IN_SECONDS=2, lib/preview-selection.js),
-// aplicata pe timestamp-ul BRUT al primului cuvant real (findFirstRealWordStartS, NEATINSA, apelata
-// direct mai jos) — nu mai exista niciun cod intermediar cu formula -9s. Functia era apelata
-// STRICT dintr-un singur loc (buildVariantFromTrack) — fara alta utilizare legitima, a fost
-// stearsa complet (nu doar dezactivata). getPreviewStartFromLyrics() (mai jos) ramane NEATINSA —
-// contine INCA formula -9s originala, dar NU mai are niciun apelant in server.js (verificat direct,
-// cod complet inert) — pastrata STRICT pentru cele 5+ fisiere de test care ii pineaza formula
-// istoric, fara nicio legatura cu Smart Preview.
-
 // Verifica DUPA upload ca preview-ul e chiar accesibil public la URL-ul construit din
 // S3_PUBLIC_BASE_URL. Un raspuns 200/206 de la PutObjectCommand catre R2/S3 NU garanteaza
 // ca fisierul e livrat corect prin domeniul public configurat — Custom Domain-ul Cloudflare
@@ -6849,7 +6791,7 @@ async function verifyPreviewReachable(orderId, variantId, previewUrl) {
   }
 }
 
-async function buildVariantFromTrack(orderId, variantId, track, taskId) {
+async function buildVariantFromTrack(orderId, variantId, track, taskId, genre) {
   if (!track.audioUrl) {
     throw new Error(`Piesa primita de la Suno (id: ${track.id || 'necunoscut'}) nu are audioUrl/audio_url.`);
   }
@@ -6858,54 +6800,41 @@ async function buildVariantFromTrack(orderId, variantId, track, taskId) {
   const tempPreview = path.join(TEMP_DIR, `${orderId}-${variantId}-preview.mp3`);
   const vTag = `varianta=${variantId}`;
 
-  // Descarcarea fisierului si cererea de timestamp-uri (STRICT UN SINGUR apel, reutilizat si
-  // pentru Smart Preview — vezi fetchAlignedWordsForSmartPreview) NU depind una de cealalta —
-  // le rulam in PARALEL. Fisierul COMPLET (tempFull) ramane neschimbat de acest pas —
-  // descarcarea e singura operatie care il atinge.
+  // Descarcarea fisierului si cererea de timestamp-uri NU depind una de cealalta (ambele
+  // au nevoie doar de taskId/track.id, disponibile deja) — le rulam in PARALEL, nu una
+  // dupa alta, ca sa nu adaugam timpul lor unul peste celalalt in "drumul critic" al
+  // generarii. Fisierul COMPLET (tempFull) ramane neschimbat de acest pas — descarcarea e
+  // singura operatie care il atinge.
   const downloadStart = Date.now();
   const timestampStart = Date.now();
   perfLog(orderId, 'download_start', vTag);
   perfLog(orderId, 'timestamp_fetch_start', vTag);
-  const [, alignedWords] = await Promise.all([
+  const [, previewStart] = await Promise.all([
     downloadFile(track.audioUrl, tempFull).then(() => {
       perfLog(orderId, 'download_done', `${vTag}, ${Date.now() - downloadStart}ms`);
     }),
-    fetchAlignedWordsForSmartPreview(taskId, track.id, orderId).then(v => {
+    getPreviewStartFromLyrics(taskId, track.id, orderId).then(v => {
       perfLog(orderId, 'timestamp_fetch_done', `${vTag}, ${Date.now() - timestampStart}ms`);
       return v;
     })
   ]);
 
-  // SMART PREVIEW (2026-09-22, runda 3 — DECIZIE FINALA, dupa un test audio real in productie:
-  // runda 2 (ancorare pe inceputul sectiunii Verse) a produs ~30s de instrumental intr-un preview
-  // real — vezi auditul detaliat in lib/preview-selection.js): durata (ffprobe) e STRICT ce mai
-  // are nevoie de tempFull aici. Analiza de energie audio locala (extractAudioOnsets) NU ruleaza
-  // in acest flux pre-plata — servea DOAR scoring-ului vechi, eliminat runda 2. extractAudioOnsets
-  // ramane NEATINSA si continua sa ruleze normal POST-plata, pentru pachetul video (buildShotPlan).
-  // captionLines/deriveSectionTimings (folosite runda 2 pentru ancorarea pe sectiune) NU mai sunt
-  // necesare — runda 3 scaneaza STRICT alignedWords direct pentru primul cuvant real cantat, fara
-  // nicio notiune de sectiune/linie.
+  // Taierea preview-ului (FFmpeg, doar copiere de stream — deja cea mai rapida optiune
+  // posibila pentru asta, fara reincodare) si citirea duratei fisierului complet (ffprobe)
+  // NU depind una de cealalta — ambele au nevoie doar de tempFull, deja descarcat. Le
+  // rulam de asemenea in paralel.
   const ffmpegStart = Date.now();
   perfLog(orderId, 'ffmpeg_start', vTag);
-  const durationSeconds = await getAudioDuration(tempFull);
-
-  // Vocal onset BRUT (2026-09-22, runda 4) — findFirstRealWordStartS() NEATINSA, apelata direct,
-  // FARA nicio ajustare aici (nici -9s, nici cap 25s) — timestamp-ul neprocesat al primului cuvant
-  // real cantat, transmis ca atare catre selectPreviewStart(). Serveste STRICT drept baza pentru
-  // fallback-ul B (vocal_onset_fallback), daca alignedWords nu permite calea principala (A) — acel
-  // fallback aplica EL INSUSI acelasi lead-in de 2 secunde (VOCAL_LEAD_IN_SECONDS,
-  // lib/preview-selection.js), niciodata -9s.
-  const vocalOnsetStartSeconds = alignedWords ? findFirstRealWordStartS(alignedWords) : null;
-  const previewDecision = selectPreviewStart({
-    alignedWords,
-    durationSeconds,
-    previewMaxSeconds: PREVIEW_SECONDS,
-    vocalOnsetStartSeconds
-  });
-  perfLog(orderId, 'smart_preview_selected', `${vTag}, reason=${previewDecision.selectionReason}, start=${previewDecision.previewStartSeconds.toFixed(2)}s`);
-
-  await trimAudio(tempFull, tempPreview, PREVIEW_SECONDS, previewDecision.previewStartSeconds);
-  perfLog(orderId, 'ffmpeg_done', `${vTag}, ${Date.now() - ffmpegStart}ms`);
+  // Fereastra maxima de preview: STRICT manele_suflet/manele_jale primesc EXTENDED_PREVIEW_SECONDS
+  // (50) — orice alt gen (inclusiv genre lipsa/necunoscut) ramane la PREVIEW_SECONDS (40),
+  // neschimbat. previewStart (vocal onset) e neatins — doar durata maxima DUPA acel punct.
+  const previewMaxSeconds = resolvePreviewMaxSeconds(genre);
+  const [, durationSeconds] = await Promise.all([
+    trimAudio(tempFull, tempPreview, previewMaxSeconds, previewStart).then(() => {
+      perfLog(orderId, 'ffmpeg_done', `${vTag}, ${Date.now() - ffmpegStart}ms`);
+    }),
+    getAudioDuration(tempFull)
+  ]);
 
   const fullKey = `orders/full/${orderId}-${variantId}.mp3`;
   const previewKey = `orders/preview/${orderId}-${variantId}.mp3`;
@@ -6973,17 +6902,7 @@ async function buildVariantFromTrack(orderId, variantId, track, taskId) {
     // POST /api/orders/:orderId/variants/:variantId/lyrics).
     originalLyrics: track.lyrics || null,
     editedLyrics: null,
-    lyricsUpdatedAt: null,
-    // SMART PREVIEW (2026-09-22, runda 3 — VOCEA REALA) — persistenta MINIMALA a deciziei, pe
-    // variantul JSONB deja existent (nicio migrare de schema): previewStartSeconds (secunda
-    // EXACTA de start a fisierului preview, deja fixata la taierea ffmpeg de mai sus — niciodata
-    // recalculata dupa aceea), previewSelectionReason (enum, vezi lib/preview-selection.js —
-    // 'first_vocal_word' | 'vocal_onset_fallback' | 'start_zero_fallback'), previewSignals
-    // (rezumat MIC, STRICT numere/enum-uri — niciodata poveste/versuri/nume brute, vezi
-    // selectPreviewStart()).
-    previewStartSeconds: previewDecision.previewStartSeconds,
-    previewSelectionReason: previewDecision.selectionReason,
-    previewSignals: previewDecision.signals
+    lyricsUpdatedAt: null
   };
 }
 
@@ -8906,30 +8825,11 @@ async function downloadFile(url, destPath) {
 // Suplimentar (NU inlocuieste fixul de mai sus): un fade-in de 15ms — doar atat cat sa elimine
 // un eventual "click" de esantion daca taietura (-ss) nu cade exact pe zero-crossing; 15ms e
 // mult prea scurt ca sa masce vreo distorsiune reala, doar rotunjeste tranzitia bruta silence->sunet.
-// SMART PREVIEW (2026-09-22): fade-out adaugat la finalul preview-ului — auditul a confirmat
-// ca exista deja un fade-IN foarte scurt (15ms, doar impotriva unui "click" de taiere brusca la
-// start), dar NICIUN fade-out, deci preview-ul se oprea STRICT brusc, indiferent de unde pornea
-// fereastra. Cu Smart Preview mutand punctul de start oriunde in melodie (nu doar la inceput),
-// o oprire brusca la final devine mai vizibila/deranjanta. FADE_OUT_SECONDS conservator (0.6s,
-// 1.5% din fereastra de 40s) — "scurt si natural", nu consuma o parte semnificativa din preview.
-// Calculat fata de `seconds` (durata CERUTA) — daca materialul real disponibil e mai scurt (caz
-// rar, vezi comentariul de mai jos), fade-out-ul pur si simplu nu apuca sa declanseze (afade nu
-// are efect dupa finalul real al fluxului) — acelasi comportament de "oprire naturala" ca inainte,
-// niciodata o eroare. Atinge STRICT fisierul preview (tempPreview) — melodia completa (tempFull)
-// nu e citita decat ca sursa needitata pentru acest ffmpeg, niciodata scrisa.
-// VERIFICAT (2026-09-22, runda 3 — cerinta explicita "fade-in-ul sa nu manance primul cuvant"):
-// fade-in-ul de 15ms (0.015s) ramane sigur si NEATINS — cu Smart Preview runda 3, vocea reala
-// intra la ~VOCAL_LEAD_IN_SECONDS (2s) in fisierul de preview (lib/preview-selection.js), deci
-// fade-in-ul se termina cu ~1985ms INAINTE ca vocea sa inceapa — nicio suprapunere posibila,
-// marja mult mai mare decat inainte (cand lead-in-ul vechi era de 9s).
-const FADE_OUT_SECONDS = 0.6;
 async function trimAudio(srcPath, destPath, seconds, startSeconds = 0) {
   const safeStart = Math.max(0, Number(startSeconds) || 0);
-  const safeSeconds = Math.max(0, Number(seconds) || 0);
-  const fadeOutStart = Math.max(0, safeSeconds - FADE_OUT_SECONDS);
   const args = ['-y'];
   if (safeStart > 0) args.push('-ss', String(safeStart));
-  args.push('-i', srcPath, '-t', String(safeSeconds), '-af', `afade=t=in:st=0:d=0.015,afade=t=out:st=${fadeOutStart.toFixed(3)}:d=${FADE_OUT_SECONDS}`, '-c:a', 'libmp3lame', '-q:a', '0', destPath);
+  args.push('-i', srcPath, '-t', String(seconds), '-af', 'afade=t=in:st=0:d=0.015', '-c:a', 'libmp3lame', '-q:a', '0', destPath);
   await execFfmpeg(args);
 }
 
@@ -9298,36 +9198,19 @@ const GENRE_STYLE_MAP = {
   // (143 vs 146 caractere) — imbunatateste, nu inrautateste, bugetul de 600 caractere.
   hiphop: '2000s street hip-hop, hard drums, punchy kick, dry snare, deep heavy bass, sparse dark gritty beat from the first beat, rap verses, street hook',
   edm_dance: 'EDM dance, four-on-the-floor kick, synth-driven, powerful bass, build-up into drop, danceable groove, festival energy',
-  // CORECȚIE (2026-09-22, runda 3 — "sunet inca insuficient de manea romaneasca" dupa un test
-  // audio real cu descrierea rundei 2; cerinta explicita a clientului, scop STRICT limitat la
-  // aceasta valoare): REINLOCUIRE completa, IMPORTANT — testul audio real a demonstrat ca runda 2
-  // NU a fost suficienta, desi toate testele de cod treceau; nu s-a presupus ca implementarea
-  // anterioara era corecta doar pentru ca testele treceau. Directie noua: caracteristici de
-  // interpretare vocala si productie SPECIFICE manelelor, mai puternic marcate — melisme, vibrato,
-  // culoare orientala/balcanica, claviaturi de manele — NICIODATA numele/vocea/identitatea vreunui
-  // artist real (artistii mentionati de client, inclusiv cei noi din aceasta runda, au fost STRICT
-  // referinte de directie muzicala pentru mine, niciodata trimisi mai departe catre furnizor —
-  // niciun nume apare in text, verificat direct).
-  // BUGET (2026-09-22, verificat matematic din nou, nu presupus — vezi
-  // test/manele-suflet-authentic-sound.test.js): SUNO_PROMPT_MAX_LEN=600, STORY_MIN_RESERVE=190
-  // raman NEATINSE. Repetand binary-search-ul pe lungime (script dedicat) impotriva scenariului
-  // REAL cel mai incarcat (nunta, nume/relatie maxime PROTEJATE de trunchiere, duet): plafonul
-  // absolut a ramas 141 caractere (identic cu runda 2) — orice valoare peste asta elimina povestea
-  // COMPLET in majoritatea limbilor. "de suflet" si "Authentic" (cuvinte decorative, nu esentiale)
-  // au fost sacrificate pentru a face loc la doua concepte noi, cerute explicit si absente pana
-  // acum: "oriental" (culoare melodica/vocala orientala — diferentiaza de pop occidental generic)
-  // si "manele keyboards" (productie specifica manelelor, sound de claviaturi/synth). Instrumentatia
-  // s-a restrans la vioara+acordeon (clarinet eliminat — "si/sau" in cerinta originala, deci un
-  // singur instrument suplimentar e suficient) ca sa faca loc. Noua descriere (136 caractere, +3
-  // fata de runda 2) verificata direct (nu presupusa) in toate cele 8 limbi, scenariul extrem:
-  // promptul ramane STRICT <=600 caractere SI povestea (eticheta+continut real, uneori COMPLET
-  // netrunchiata) ramane prezenta peste tot. "hopeful" pastrat — distinctia de mood fata de
-  // manele_jale ramane testata (test/genre-differentiation-v2.test.js — caldut/hopeful vs
-  // intunecat/mournful, niciodata amestecate). manele_jale ("perfecta" in productie, raportat
-  // explicit) NU e atins. NICIODATA cuvantul "instrumental" (vezi REGRESIE CRITICA 2026-08-13,
-  // documentata in test/lyrics-exact-story-premium-sequential.test.js) — "short intro"/"vocals
-  // enter early" (proven fix din 2026-09-19) pastrate neschimbate, la finalul descrierii.
-  manele_suflet: 'Romanian manele, oriental melismatic vibrato vocal, manele keyboards, violin, accordion, hopeful rhythm, short intro, vocals enter early',
+  // CORECȚIE (2026-09-19, "intro-ul melodiei generate e prea lung chiar si in fereastra de
+  // 50s" — cerinta explicita, scop STRICT limitat la aceasta valoare): ADAOS minimal, la finalul
+  // descrierii existente, altfel neatinsa — restul caracterului genului (instrumentatie, tehnica
+  // vocala, mood) ramane identic. manele_jale ("perfecta" in productie, raportat explicit) NU e
+  // atins. NICIODATA cuvantul "instrumental" (vezi REGRESIE CRITICA 2026-08-13, documentata in
+  // test/lyrics-exact-story-premium-sequential.test.js: acel cuvant literal in prompt a corelat,
+  // verificat pe comenzi reale de productie, cu Suno generand piese fara voce deloc) — formulare
+  // echivalenta, deja folosita in codebase pentru acelasi motiv ("Short intro"/"Verse intro" in
+  // clauza de continuitate vocala). Lungimea rezultata (133 caractere) ramane sub cea a altor
+  // genuri deja verificate sigure in productie (ex. hiphop, 143 caractere) — vezi
+  // test/manele-suflet-short-intro.test.js pentru verificarea explicita a bugetului de 600
+  // caractere (SUNO_PROMPT_MAX_LEN) in cel mai incarcat scenariu real pentru acest gen.
+  manele_suflet: 'Romanian manele de suflet, violin accordion or clarinet, warm melismatic vocal, hopeful devoted mood, short intro, vocals enter early',
   manele_jale: 'Romanian manele de jale, minor-key oriental colour, mournful violin and clarinet, melismatic lament vocal, heavier longing mood',
   // CORECȚIE (2026-09-13): "unornamented vocal"/"no autotune" eliminate — ornamentatia vocala
   // e autentica si legitima in muzica populara romaneasca; diferentierea reala fata de Manele

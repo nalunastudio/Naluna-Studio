@@ -54,11 +54,8 @@ test('P5: markGenerationFailed() pastreaza variantele existente (status "preview
 });
 
 test("P5: retry-ul de coerenta a versurilor (obtainAcceptableVariant) e SARIT complet pentru versuri canonice/locked ('un esec tehnic ramane final') — nu incearca niciodata sa REscrie versuri explicit blocate de client, in nicio limba", () => {
-  // Fereastra marita (2026-09-22, SMART PREVIEW): attempt() a capatat cod suplimentar (calculul
-  // effectiveOrderForPreview, transmis catre buildVariantFromTrack) inainte de verificarea de mai
-  // jos — logica insasi (retry sarit pentru versuri canonice/locked) ramane neschimbata.
   const idx = server.indexOf('async function obtainAcceptableVariant(orderId, tracks, taskId, genre, order, recipientSnapshot, canonicalLyrics) {');
-  const body = server.slice(idx, idx + 2700);
+  const body = server.slice(idx, idx + 2200);
   assert.match(body, /if \(first\.built \|\| canonicalLyrics\) return first;/);
 });
 

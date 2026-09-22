@@ -1,13 +1,6 @@
 // INTRO SCURT — STRICT pentru genul real "manele_suflet" (2026-09-19, cerinta explicita,
 // urmare a testarii in productie: "manele_jale" e "perfecta" si NU trebuie atinsa deloc;
 // "manele_suflet" are un intro instrumental prea lung chiar si in fereastra de preview de 50s).
-// ACTUALIZAT (2026-09-22, runda 2 SI runda 3): GENRE_STYLE_MAP.manele_suflet a fost re-scris de
-// doua ori pentru un sunet mai autentic de manea romaneasca (runda 3: un test audio real a
-// demonstrat ca runda 2 tot nu suna suficient de manea, desi testele de cod treceau) — "short
-// intro, vocals enter early" (verificat mai jos, sectiunile 6-10) ramane neschimbat, la finalul
-// descrierii, in ambele runde. Vezi test/manele-suflet-authentic-sound.test.js pentru acoperirea
-// completa a directiei muzicale curente (caracteristici de gen, buget, limbi, pachete, manele_jale
-// neatins).
 //
 // Scop STRICT limitat: instructiunea de generare (GENRE_STYLE_MAP.manele_suflet) e singura
 // sursa centrala care alimenteaza atat buildPrompt() (generare initiala) cat si
@@ -17,15 +10,8 @@
 // implementare separata/duplicata de stil pe gen. Limbajul (LYRICS_LANGUAGE_NAMES/lyricsLanguage)
 // e complet independent de styleTags — o singura modificare acopera automat toate cele 8 limbi.
 //
-// NU s-a atins: manele_jale, orice alt gen, getPreviewStartFromLyrics() (functia insasi, ca
-// implementare — ramane byte-identica, desi SMART PREVIEW, 2026-09-22, nu o mai apeleaza direct
-// din buildVariantFromTrack, vezi test/preview-selection.test.js), alignedWords, lyrics,
-// optiunile de voce, preturile/pachetele.
-// CORECTIE (2026-09-22, SMART PREVIEW): sectiunea 4 de mai jos proteja exceptia de durata
-// EXTENDED_PREVIEW_SECONDS=50 pentru manele_suflet/manele_jale (2026-09-19) — eliminata acum
-// intentionat, cerinta explicita a fazei Smart Preview (durata uniforma 40s pentru toate
-// stilurile; Smart Preview muta START-ul in loc sa mareasca durata). Actualizata sa verifice
-// noua realitate, nu vechea cerinta.
+// NU s-a atins: manele_jale, orice alt gen, durata preview (50s manele/40s restul), previewStart,
+// getPreviewStartFromLyrics(), alignedWords, lyrics, optiunile de voce, preturile/pachetele.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -159,14 +145,15 @@ function typicalOrder(overrides) {
 // ===============================================================================================
 // 1) TEXT VECHI/NOU — definitia exacta, singura sursa centrala.
 // ===============================================================================================
-test('1) GENRE_STYLE_MAP.manele_suflet — text ACTUALIZAT (2026-09-22, runda 3, dupa test audio real); vezi test/manele-suflet-authentic-sound.test.js pentru acoperirea completa a noii directii muzicale', () => {
+test('1) GENRE_STYLE_MAP.manele_suflet contine noul text (adaos minimal la finalul descrierii existente)', () => {
   assert.equal(
     GENRE_STYLE_MAP.manele_suflet,
-    'Romanian manele, oriental melismatic vibrato vocal, manele keyboards, violin, accordion, hopeful rhythm, short intro, vocals enter early'
+    'Romanian manele de suflet, violin accordion or clarinet, warm melismatic vocal, hopeful devoted mood, short intro, vocals enter early'
   );
-  // "short intro, vocals enter early" (proven fix, 2026-09-19) ramane la finalul descrierii,
-  // neschimbat:
-  assert.ok(GENRE_STYLE_MAP.manele_suflet.endsWith('short intro, vocals enter early'));
+  // caracterul existent al genului (instrumentatie/mood) ramane INTACT, ca prefix identic:
+  assert.ok(GENRE_STYLE_MAP.manele_suflet.startsWith(
+    'Romanian manele de suflet, violin accordion or clarinet, warm melismatic vocal, hopeful devoted mood'
+  ), 'descrierea originala trebuie pastrata neschimbata, ca prefix');
 });
 
 test('1b) GENRE_STYLE_MAP e SINGURA sursa folosita la generare — exact 2 folosiri in tot server.js, ambele GENRE_STYLE_MAP[genreOverride || order.genre]', () => {
@@ -207,18 +194,23 @@ test('3) niciun alt gen din GENRE_STYLE_MAP nu a fost modificat (comparat byte-c
 });
 
 // ===============================================================================================
-// 4) Preview: durata UNIFORMA de 40s pentru TOATE genurile (SMART PREVIEW, 2026-09-22) — exceptia
-// veche (manele_suflet/manele_jale=50s) a fost eliminata complet, nu doar dezactivata.
+// 4) Preview: manele_suflet=50, manele_jale=50, restul=40 — NEATINS de aceasta corectie.
 // ===============================================================================================
-test('4) PREVIEW_SECONDS = 40, pentru TOATE genurile — nicio exceptie ramasa in cod pentru manele_suflet/manele_jale', () => {
-  assert.match(server, /const PREVIEW_SECONDS = 40;/);
-  // verificam DECLARATIILE/apelurile de cod real, niciodata simpla mentiune in comentarii
-  // (care documenteaza legitim, istoric, exceptia eliminata — acelasi tipar folosit peste tot
-  // in acest fisier).
-  assert.ok(!/const EXTENDED_PREVIEW_GENRES\s*=/.test(server), 'EXTENDED_PREVIEW_GENRES nu mai trebuie declarata in cod');
-  assert.ok(!/const EXTENDED_PREVIEW_SECONDS\s*=/.test(server), 'EXTENDED_PREVIEW_SECONDS nu mai trebuie declarata in cod');
-  assert.ok(!/function resolvePreviewMaxSeconds/.test(server), 'resolvePreviewMaxSeconds nu mai trebuie definita in cod — nicio ramura per-gen ramasa');
-  assert.ok(!/resolvePreviewMaxSeconds\(/.test(server), 'resolvePreviewMaxSeconds nu mai trebuie apelata in cod');
+function loadResolvePreviewMaxSeconds() {
+  const constGenres = server.match(/const EXTENDED_PREVIEW_GENRES = \[[^\]]*\];/)[0];
+  const constSeconds = server.match(/const EXTENDED_PREVIEW_SECONDS = \d+;/)[0];
+  const constPreview = server.match(/const PREVIEW_SECONDS = \d+;/)[0];
+  const fn = extractFn(server, 'function resolvePreviewMaxSeconds(genre) {');
+  const src = `${constPreview}\n${constGenres}\n${constSeconds}\n${fn}\nreturn resolvePreviewMaxSeconds;`;
+  return new Function(src)();
+}
+test('4) durata preview ramane 50s pentru manele_suflet, 50s pentru manele_jale, 40s pentru restul genurilor', () => {
+  const resolvePreviewMaxSeconds = loadResolvePreviewMaxSeconds();
+  assert.equal(resolvePreviewMaxSeconds('manele_suflet'), 50);
+  assert.equal(resolvePreviewMaxSeconds('manele_jale'), 50);
+  for (const g of NEW_GENRES.filter(g => g !== 'manele_suflet' && g !== 'manele_jale')) {
+    assert.equal(resolvePreviewMaxSeconds(g), 40, `genul "${g}" trebuie sa ramana la 40 secunde`);
+  }
 });
 
 // ===============================================================================================

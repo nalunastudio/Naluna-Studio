@@ -201,9 +201,11 @@ test('melodia-mea.html: fiecare card de comparare arata denumirea versiunii, gen
   assert.ok(body.includes('songLabel'), 'denumirea versiunii (melodia 1/2)');
   assert.ok(body.includes('versionLabel'), 'initiala/editata');
   assert.ok(body.includes('genreTag'), 'genul muzical');
-  // Semnatura extinsa (2026-09-22, SMART PREVIEW ANALYTICS): parametri noi (v.id/v.previewStartSeconds/
-  // v.previewSelectionReason) necesari pentru instrumentarea preview_played/progress/replayed per
-  // varianta — vezi test/melodia-mea-preview-analytics.test.js pentru acoperirea completa.
+  // Semnatura extinsa (2026-09-22, instrumentare analytics preview — KEPT dupa restaurarea
+  // audio/Smart Preview la be5b700: parametrii suplimentari (v.id/v.previewStartSeconds/
+  // v.previewSelectionReason) alimenteaza STRICT attachPreviewAnalytics(), independent de
+  // mecanismul de selectie a preview-ului; ultimii doi sunt acum mereu undefined (safeVariants
+  // nu-i mai expune, optiunea A), tratati gracios ca 'unknown' de attachPreviewAnalytics.
   assert.ok(body.includes('createPremiumAudioPlayer(v.previewUrl, v.durationSeconds, v.id, v.previewStartSeconds, v.previewSelectionReason)'), 'playerul real de 40s');
   assert.ok(body.includes('lyricsHtml'), 'versurile');
   assert.ok(body.includes('premium-compare-check'), 'controlul de selectare (bifa)');

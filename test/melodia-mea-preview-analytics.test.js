@@ -322,7 +322,13 @@ test('public/js/analytics.js: FUNNEL_TRACKABLE_EVENTS include toate cele 7 eveni
   }
 });
 
-test('server.js: variantele expun previewStartSeconds/previewSelectionReason catre client (safeVariants), niciodata previewSignals', () => {
+// RESTAURARE AUDIO (2026-09-22, revenire la comportamentul din be5b700 — Smart Preview anulat):
+// safeVariants NU mai expune previewStartSeconds/previewSelectionReason (optiunea A, aleasa
+// explicit) — acele campuri existau STRICT pentru mecanismul de selectie Smart Preview, eliminat.
+// Playerul si analytics-ul functioneaza in continuare: attachPreviewAnalytics() (mai jos, KEPT)
+// trateaza deja lipsa lor ca 'unknown' (previewStartBucket/selectionReason), fara nicio schimbare
+// de cod necesara acolo — vezi testele de mai jos care confirma exact acest comportament gracios.
+test('server.js: variantele NU mai expun previewStartSeconds/previewSelectionReason/previewSignals catre client (safeVariants) — restaurate la be5b700, optiunea A', () => {
   const idx = server.indexOf('const safeVariants = (order.variants || []).map(v => ({');
   assert.ok(idx !== -1);
   let depth = 0, i = server.indexOf('({', idx) + 1;
@@ -331,7 +337,7 @@ test('server.js: variantele expun previewStartSeconds/previewSelectionReason cat
     else if (server[i] === '}') { depth--; if (depth === 0) break; }
   }
   const body = server.slice(idx, i + 1);
-  assert.match(body, /previewStartSeconds:/);
-  assert.match(body, /previewSelectionReason:/);
-  assert.ok(!/previewSignals\s*:/.test(body), 'previewSignals (rezumatul de scor) nu trebuie expus client-side ca si cheie de raspuns (comentariile care il mentioneaza sunt permise)');
+  assert.ok(!/previewStartSeconds\s*:/.test(body), 'previewStartSeconds nu mai trebuie expus — mecanismul Smart Preview a fost eliminat');
+  assert.ok(!/previewSelectionReason\s*:/.test(body), 'previewSelectionReason nu mai trebuie expus — mecanismul Smart Preview a fost eliminat');
+  assert.ok(!/previewSignals\s*:/.test(body), 'previewSignals nu a fost niciodata expus client-side, ramane asa');
 });
