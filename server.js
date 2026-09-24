@@ -9210,7 +9210,14 @@ const GENRE_STYLE_MAP = {
   // genuri deja verificate sigure in productie (ex. hiphop, 143 caractere) — vezi
   // test/manele-suflet-short-intro.test.js pentru verificarea explicita a bugetului de 600
   // caractere (SUNO_PROMPT_MAX_LEN) in cel mai incarcat scenariu real pentru acest gen.
-  manele_suflet: 'Romanian manele de suflet, violin accordion or clarinet, warm melismatic vocal, hopeful devoted mood, short intro, vocals enter early',
+  // REVIZUIT (2026-09-24, cerinta explicita — sunet manele romanesc autentic, influenta
+  // balcanica/orientala, voce expresiva cu ornamentatie melismatica si vocal runs, acompaniament
+  // violin/accordion/clarinet, fara nume de artisti): noua lungime (137 caractere) verificata
+  // empiric (nu presupunere) impotriva celui mai strans scenariu real (nunta, nume compuse
+  // maxime, voce duet) in TOATE cele 8 limbi — cea mai stransa e bulgara (bg), sigura pana la
+  // 140 caractere, se rupe la 141 — 137 lasa 3 caractere marja. "short intro, vocals enter early"
+  // pastrat identic (cerinta separata, neatinsa — vezi test/manele-suflet-short-intro.test.js).
+  manele_suflet: 'Romanian manele, Balkan oriental, melismatic vocal runs, violin accordion clarinet, hopeful devoted mood, short intro, vocals enter early',
   manele_jale: 'Romanian manele de jale, minor-key oriental colour, mournful violin and clarinet, melismatic lament vocal, heavier longing mood',
   // CORECȚIE (2026-09-13): "unornamented vocal"/"no autotune" eliminate — ornamentatia vocala
   // e autentica si legitima in muzica populara romaneasca; diferentierea reala fata de Manele

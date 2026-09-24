@@ -69,7 +69,7 @@ function baseOrder(lang, genre, voicePreference) {
 const CONTRASTING_PAIRS = [
   ['jazz', 'hiphop', /soulful vocal/i, /rap verses/i],
   ['populara', 'rock', /folk ornamentation/i, /strong vocal/i],
-  ['manele_suflet', 'manele_jale', /warm melismatic vocal, hopeful devoted mood/i, /melismatic lament vocal, heavier longing mood/i]
+  ['manele_suflet', 'manele_jale', /Balkan oriental, melismatic vocal runs/i, /melismatic lament vocal, heavier longing mood/i]
 ];
 for (const [genreA, genreB, patternA, patternB] of CONTRASTING_PAIRS) {
   for (const voicePreference of VOICE_PREFS) {

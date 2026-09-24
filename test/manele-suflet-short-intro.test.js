@@ -145,15 +145,16 @@ function typicalOrder(overrides) {
 // ===============================================================================================
 // 1) TEXT VECHI/NOU — definitia exacta, singura sursa centrala.
 // ===============================================================================================
-test('1) GENRE_STYLE_MAP.manele_suflet contine noul text (adaos minimal la finalul descrierii existente)', () => {
+test('1) GENRE_STYLE_MAP.manele_suflet contine textul curent (REVIZUIT 2026-09-24 — descriere muzicala rescrisa complet, cerinta explicita; instructiunea de intro scurt din aceasta corectie ramane INTACTA ca sufix)', () => {
   assert.equal(
     GENRE_STYLE_MAP.manele_suflet,
-    'Romanian manele de suflet, violin accordion or clarinet, warm melismatic vocal, hopeful devoted mood, short intro, vocals enter early'
+    'Romanian manele, Balkan oriental, melismatic vocal runs, violin accordion clarinet, hopeful devoted mood, short intro, vocals enter early'
   );
-  // caracterul existent al genului (instrumentatie/mood) ramane INTACT, ca prefix identic:
-  assert.ok(GENRE_STYLE_MAP.manele_suflet.startsWith(
-    'Romanian manele de suflet, violin accordion or clarinet, warm melismatic vocal, hopeful devoted mood'
-  ), 'descrierea originala trebuie pastrata neschimbata, ca prefix');
+  // instructiunea de intro scurt/voce timpurie (obiectul acestui fisier de test) ramane INTACTA,
+  // ca sufix identic, indiferent de rescrierea din 2026-09-24 a restului descrierii:
+  assert.ok(GENRE_STYLE_MAP.manele_suflet.endsWith(
+    'short intro, vocals enter early'
+  ), 'instructiunea de intro scurt trebuie pastrata neschimbata, ca sufix');
 });
 
 test('1b) GENRE_STYLE_MAP e SINGURA sursa folosita la generare — exact 2 folosiri in tot server.js, ambele GENRE_STYLE_MAP[genreOverride || order.genre]', () => {

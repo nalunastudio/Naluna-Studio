@@ -376,7 +376,11 @@ test('melodia-mea.html: butonul de deschidere a editarii Premium reutilizeaza EX
   const htmlIdx = melodia.indexOf('id="premium-edit-open-btn"');
   const htmlSnippet = melodia.slice(htmlIdx - 40, htmlIdx + 200);
   assert.ok(htmlSnippet.includes('class="btn-toggle-orange" id="premium-edit-open-btn"'), `atributul class trebuie sa fie exact btn-toggle-orange, gasit: ${htmlSnippet.slice(0, 55)}`);
-  assert.ok(htmlSnippet.includes('✏️'));
+  // REVIZUIT (2026-09-24, buton pe 3 randuri): creionul nu mai e un <span> static langa buton —
+  // e construit dinamic, pe randul 1, de editLyricsBtnStackHtml() (reutilizata si de Standard/
+  // Video), atribuita la premium-edit-open-btn-label.innerHTML.
+  assert.match(melodia, /document\.getElementById\('premium-edit-open-btn-label'\)\.innerHTML = editLyricsBtnStackHtml\(\);/);
+  assert.match(melodia, /function editLyricsBtnStackHtml\(\)[\s\S]{0,400}✏️/);
 });
 
 test('melodia-mea.html: editarea Premium (ambele melodii) contine caseta "Nu este exact cum îți dorești?" cu badge OPȚIONAL, reutilizand textele Standard (feedback_label/explain/optional_badge/ph)', () => {

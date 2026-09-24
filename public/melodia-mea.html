@@ -257,7 +257,11 @@
     color:var(--gold-deep); background:rgba(168,131,75,.1); border-radius:999px; padding:3px 10px;
     margin-bottom:8px; font-family:'Sora', sans-serif; font-style:normal;
   }
-  .edit-lyrics-btn{ margin-top:12px; }
+  .edit-lyrics-btn{ margin-top:12px; display:none; }
+  .edit-toggle-label-stack{ display:flex; flex-direction:column; align-items:center; gap:2px; line-height:1.3; }
+  .edit-toggle-label-stack .etl-line{ text-align:center; }
+  .edit-toggle-label-stack .etl-line:first-child{ display:inline-flex; align-items:center; gap:6px; }
+  .edit-toggle-label-stack .etl-line-sau{ font-weight:400; font-size:13px; opacity:.8; }
 
   .order-summary{ margin-top:10px; padding-top:18px; border-top:1px solid var(--line); margin-bottom:10px; }
   .order-summary .row{ display:flex; justify-content:space-between; font-size:14px; margin-bottom:8px; color:var(--text-secondary); }
@@ -464,7 +468,7 @@
                  buton CTA plin (btn-cta-orange), care nu corespundea cerintei "aceeași casetă
                  conturată, cu creion". -->
             <button type="button" class="btn-toggle-orange" id="premium-edit-open-btn" style="max-width:none;">
-              <span aria-hidden="true">✏️</span> <span id="premium-edit-open-btn-label"></span>
+              <span class="edit-toggle-label-stack" id="premium-edit-open-btn-label"></span>
             </button>
             <div id="premium-result-checkout-slot"></div>
           </div>
@@ -633,7 +637,7 @@
         <div id="standard-preedit-toggle-wrap" style="display:none; margin:10px 0 4px; text-align:center;">
           <p id="edit-menu-toggle-hint" style="font-size:13px; color:var(--text-secondary); margin:0 0 8px;"></p>
           <button type="button" id="edit-menu-toggle-btn" class="btn-toggle-orange" aria-expanded="false" aria-controls="edit-menu-fields">
-            <span aria-hidden="true">✏️</span> <span id="edit-menu-toggle-label"></span>
+            <span class="edit-toggle-label-stack" id="edit-menu-toggle-label"></span>
           </button>
         </div>
 
@@ -997,7 +1001,10 @@
       listened: (t, d) => `Ai ascultat ${t} din ${d}`,
       lyrics_empty: 'Versurile nu sunt încă disponibile pentru afișare.',
       lyrics_edited_tag: 'Versuri editate de tine',
-      edit_lyrics_btn: 'Editează versurile sau schimbă genul muzical',
+      edit_lyrics_btn: 'Editează versurile',
+      edit_lyrics_btn_line1: 'Editează Versurile',
+      edit_lyrics_btn_line2: 'sau',
+      edit_lyrics_btn_line3: 'Schimbă Genul Muzical',
       premium_song1_label: 'Melodia 1', premium_song2_label: 'Melodia 2',
       premium_edit_title: 'Ce vrei să editezi?',
       premium_edit_subtitle: 'Alege una sau ambele melodii. Editarea gratuită rămâne una singură, indiferent câte melodii editezi acum.',
@@ -1082,7 +1089,10 @@
       listened: (t, d) => `You've listened to ${t} of ${d}`,
       lyrics_empty: 'Lyrics are not available to display yet.',
       lyrics_edited_tag: 'Lyrics edited by you',
-      edit_lyrics_btn: 'Edit the lyrics or change the music genre',
+      edit_lyrics_btn: 'Edit the lyrics',
+      edit_lyrics_btn_line1: 'Edit the lyrics',
+      edit_lyrics_btn_line2: 'or',
+      edit_lyrics_btn_line3: 'Change the music genre',
       premium_song1_label: 'Song 1', premium_song2_label: 'Song 2',
       premium_edit_title: 'What do you want to edit?',
       premium_edit_subtitle: 'Choose one or both songs. Your free edit stays a single round, no matter how many songs you edit now.',
@@ -1167,7 +1177,10 @@
       listened: (t, d) => `Du hast ${t} von ${d} gehört`,
       lyrics_empty: 'Der Text steht noch nicht zur Anzeige zur Verfügung.',
       lyrics_edited_tag: 'Von dir bearbeiteter Text',
-      edit_lyrics_btn: 'Text bearbeiten oder Musikgenre ändern',
+      edit_lyrics_btn: 'Text bearbeiten',
+      edit_lyrics_btn_line1: 'Text bearbeiten',
+      edit_lyrics_btn_line2: 'oder',
+      edit_lyrics_btn_line3: 'Musikgenre ändern',
       premium_song1_label: 'Lied 1', premium_song2_label: 'Lied 2',
       premium_edit_title: 'Was möchtest du bearbeiten?',
       premium_edit_subtitle: 'Wähle eines oder beide Lieder. Deine kostenlose Bearbeitung bleibt eine einzige Runde, egal wie viele Lieder du jetzt bearbeitest.',
@@ -1252,7 +1265,10 @@
       listened: (t, d) => `Has escuchado ${t} de ${d}`,
       lyrics_empty: 'La letra todavía no está disponible para mostrar.',
       lyrics_edited_tag: 'Letra editada por ti',
-      edit_lyrics_btn: 'Editar la letra o cambiar el género musical',
+      edit_lyrics_btn: 'Editar la letra',
+      edit_lyrics_btn_line1: 'Editar la letra',
+      edit_lyrics_btn_line2: 'o',
+      edit_lyrics_btn_line3: 'Cambiar el género musical',
       premium_song1_label: 'Canción 1', premium_song2_label: 'Canción 2',
       premium_edit_title: '¿Qué quieres editar?',
       premium_edit_subtitle: 'Elige una o ambas canciones. Tu edición gratuita sigue siendo una sola ronda, sin importar cuántas canciones edites ahora.',
@@ -1337,7 +1353,10 @@
       listened: (t, d) => `Hai ascoltato ${t} di ${d}`,
       lyrics_empty: 'Il testo non è ancora disponibile per la visualizzazione.',
       lyrics_edited_tag: 'Testo modificato da te',
-      edit_lyrics_btn: 'Modifica il testo o cambia il genere musicale',
+      edit_lyrics_btn: 'Modifica il testo',
+      edit_lyrics_btn_line1: 'Modifica il testo',
+      edit_lyrics_btn_line2: 'o',
+      edit_lyrics_btn_line3: 'Cambia il genere musicale',
       premium_song1_label: 'Canzone 1', premium_song2_label: 'Canzone 2',
       premium_edit_title: 'Cosa vuoi modificare?',
       premium_edit_subtitle: 'Scegli una o entrambe le canzoni. La tua modifica gratuita resta un unico giro, indipendentemente da quante canzoni modifichi ora.',
@@ -1422,7 +1441,10 @@
       listened: (t, d) => `Vous avez écouté ${t} sur ${d}`,
       lyrics_empty: "Les paroles ne sont pas encore disponibles à l'affichage.",
       lyrics_edited_tag: 'Paroles modifiées par vous',
-      edit_lyrics_btn: 'Modifier les paroles ou changer le genre musical',
+      edit_lyrics_btn: 'Modifier les paroles',
+      edit_lyrics_btn_line1: 'Modifier les paroles',
+      edit_lyrics_btn_line2: 'ou',
+      edit_lyrics_btn_line3: 'Changer le genre musical',
       premium_song1_label: 'Chanson 1', premium_song2_label: 'Chanson 2',
       premium_edit_title: 'Que veux-tu modifier ?',
       premium_edit_subtitle: 'Choisis une ou les deux chansons. Ta modification gratuite reste unique, quel que soit le nombre de chansons modifiées maintenant.',
@@ -1507,7 +1529,10 @@
       listened: (t, d) => `Изслуша ${t} от ${d}`,
       lyrics_empty: 'Текстът все още не е наличен за показване.',
       lyrics_edited_tag: 'Текст, редактиран от теб',
-      edit_lyrics_btn: 'Редактирай текста или смени музикалния жанр',
+      edit_lyrics_btn: 'Редактирай текста',
+      edit_lyrics_btn_line1: 'Редактирай текста',
+      edit_lyrics_btn_line2: 'или',
+      edit_lyrics_btn_line3: 'Смени музикалния жанр',
       premium_song1_label: 'Песен 1', premium_song2_label: 'Песен 2',
       premium_edit_title: 'Какво искаш да редактираш?',
       premium_edit_subtitle: 'Избери една или и двете песни. Безплатната ти редакция остава само една, независимо колко песни редактираш сега.',
@@ -1592,7 +1617,10 @@
       listened: (t, d) => `${d} şarkının ${t} kadarını dinlediniz`,
       lyrics_empty: 'Sözler henüz görüntülenmeye hazır değil.',
       lyrics_edited_tag: 'Sizin tarafınızdan düzenlenen sözler',
-      edit_lyrics_btn: 'Sözleri düzenle veya müzik türünü değiştir',
+      edit_lyrics_btn: 'Sözleri düzenle',
+      edit_lyrics_btn_line1: 'Sözleri düzenle',
+      edit_lyrics_btn_line2: 'veya',
+      edit_lyrics_btn_line3: 'Müzik türünü değiştir',
       premium_song1_label: 'Şarkı 1', premium_song2_label: 'Şarkı 2',
       premium_edit_title: 'Neyi düzenlemek istiyorsun?',
       premium_edit_subtitle: 'Bir veya her iki şarkıyı seç. Şimdi kaç şarkı düzenlersen düzenle, ücretsiz düzenlemen tek bir tur olarak kalır.',
@@ -2203,6 +2231,17 @@
     return div.innerHTML;
   }
 
+  // Butonul mare portocaliu de editare (Standard/Video: #edit-menu-toggle-label, stare inchisa;
+  // Premium: #premium-edit-open-btn-label, mereu) — text pe 3 randuri centrate, cerinta explicita
+  // (2026-09-24): "Editează Versurile" / "sau" / "Schimbă Genul Muzical", creionul existent ramane
+  // STRICT pe primul rand. Layout-ul (randurile) e controlat aici, in HTML/JS — traducerile
+  // (t.edit_lyrics_btn_line1/2/3) raman text simplu, fara <br> in ele.
+  function editLyricsBtnStackHtml() {
+    return `<span class="etl-line"><span aria-hidden="true">✏️</span> ${escapeHtml(t.edit_lyrics_btn_line1)}</span>` +
+      `<span class="etl-line etl-line-sau">${escapeHtml(t.edit_lyrics_btn_line2)}</span>` +
+      `<span class="etl-line">${escapeHtml(t.edit_lyrics_btn_line3)}</span>`;
+  }
+
   // Elimina cursa dintre selectarea variantei si plata: butonul de checkout se
   // DEZACTIVEAZA imediat si ramane asa pana cand serverul confirma explicit ca
   // selectedVariantId a fost salvat SI starea reala a comenzii (inclusiv videoStatus,
@@ -2320,6 +2359,10 @@
         variant.lyricsUpdatedAt = new Date().toISOString();
       }
       renderVariants(currentOrder);
+      // CTA mic redundant eliminat (2026-09-24): renderVariants() reconstruieste cardurile de la
+      // zero (butonul mic pornit ascuns implicit, via CSS) — resincronizam vizibilitatea lui aici,
+      // ca sa ramana vizibil daca meniul mare era deja deschis (editare inca in desfasurare).
+      updateStandardEditMenuVisibility(currentOrder, computePendingVariantChoice(currentOrder));
       closeLyricsEditor();
       statusMsgEl.textContent = t.lyrics_saved_msg;
       statusMsgEl.className = 'status-ok';
@@ -2990,11 +3033,23 @@
     }
 
     editMenuToggleBtn.setAttribute('aria-expanded', String(menuExpanded));
-    // Reutilizeaza EXACT acelasi text ca butonul existent de editare a versurilor per-varianta
-    // (t.edit_lyrics_btn = "Editează versurile") — cerinta explicita a clientului, text
-    // recunoscut deja de client, fara sa mai adaugam o cheie noua doar pentru asta.
-    editMenuToggleLabel.textContent = menuExpanded ? t.edit_menu_close_btn : t.edit_lyrics_btn;
+    // REVIZUIT (2026-09-24, cerinta explicita — buton mare pe 3 randuri): stare inchisa =
+    // stiva de 3 randuri (editLyricsBtnStackHtml); stare deschisa ("Închide") ramane STRICT
+    // pe un singur rand, cu creionul, neschimbata fata de comportamentul anterior.
+    editMenuToggleLabel.innerHTML = menuExpanded
+      ? `<span class="etl-line"><span aria-hidden="true">✏️</span> ${escapeHtml(t.edit_menu_close_btn)}</span>`
+      : editLyricsBtnStackHtml();
     editMenuToggleHint.textContent = t.edit_menu_toggle_hint;
+    // REVIZUIT (2026-09-24, cerinta explicita — CTA mic redundant eliminat din starea initiala):
+    // butonul mic per-varianta (.edit-lyrics-btn, deschide openLyricsEditor — editare LIBERA a
+    // textului versurilor, functionalitate DISTINCTA de meniul mare de mai sus, care schimba
+    // doar voce/gen + regenereaza) e ascuns implicit (CSS: display:none) si devine vizibil STRICT
+    // cat timp meniul mare e deschis (menuExpanded) — nu mai apare pe prima stare, dupa generare.
+    // openLyricsEditor() si tot fluxul lui raman COMPLET neatinse — doar vizibilitatea butonului
+    // care il deschide se schimba.
+    document.querySelectorAll('.edit-lyrics-btn').forEach((btn) => {
+      btn.style.display = menuExpanded ? '' : 'none';
+    });
 
     // [hidden] scoate elementul complet din navigarea cu tastatura SI din arborele de
     // accesibilitate (nu doar invizibil vizual) — cerinta explicita.
@@ -3356,7 +3411,7 @@
     });
 
     const editBtn = document.getElementById('premium-edit-open-btn');
-    document.getElementById('premium-edit-open-btn-label').textContent = t.edit_lyrics_btn;
+    document.getElementById('premium-edit-open-btn-label').innerHTML = editLyricsBtnStackHtml();
     // CORECȚIE (2026-08-13): "Editează versurile" deschide ACUM ecranul de alegere (melodia 1/
     // melodia 2/ambele), niciodata direct editorul primei melodii.
     editBtn.onclick = () => {

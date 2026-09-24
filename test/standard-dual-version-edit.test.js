@@ -433,13 +433,17 @@ test('melodia-mea.html: [hidden] scoate meniul din navigarea cu tastatura, nu do
   );
 });
 
-test('melodia-mea.html: butonul de deschidere/inchidere reutilizeaza textul "Editează versurile" existent, cu iconita de creion', () => {
+test('melodia-mea.html: butonul de deschidere/inchidere reutilizeaza iconita de creion, cu eticheta pe 3 randuri cand e inchis', () => {
   const html = read('public/melodia-mea.html');
   assert.ok(html.includes('id="edit-menu-toggle-btn"'), 'butonul trebuie sa existe');
   assert.ok(html.includes('>✏️<'), 'iconita de creion trebuie sa existe');
+  // REVIZUIT (2026-09-24, buton mare pe 3 randuri): eticheta nu mai e text simplu — inchis =
+  // editLyricsBtnStackHtml() (3 randuri: "Editează Versurile"/"sau"/"Schimbă Genul Muzical"),
+  // deschis = ramane un singur rand, cu creion, text t.edit_menu_close_btn (neschimbat).
   assert.ok(
-    html.includes('editMenuToggleLabel.textContent = menuExpanded ? t.edit_menu_close_btn : t.edit_lyrics_btn;'),
-    'eticheta trebuie sa alterneze intre "Editează versurile" (inchis) si "Închide editarea" (deschis), reutilizand cheia existenta'
+    html.includes("? `<span class=\"etl-line\"><span aria-hidden=\"true\">✏️</span> ${escapeHtml(t.edit_menu_close_btn)}</span>`") &&
+    html.includes(': editLyricsBtnStackHtml();'),
+    'eticheta trebuie sa alterneze intre stiva pe 3 randuri (inchis) si un singur rand cu creion + t.edit_menu_close_btn (deschis)'
   );
   assert.ok(html.includes('aria-expanded="false"') && html.includes("aria-controls=\"edit-menu-fields\""), 'aria-expanded/aria-controls trebuie sa existe pentru accesibilitate');
 });
