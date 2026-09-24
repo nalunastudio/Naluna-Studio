@@ -3047,8 +3047,13 @@
     // cat timp meniul mare e deschis (menuExpanded) — nu mai apare pe prima stare, dupa generare.
     // openLyricsEditor() si tot fluxul lui raman COMPLET neatinse — doar vizibilitatea butonului
     // care il deschide se schimba.
+    // FIX (2026-09-24, bug real de productie): style.display='' NU inseamna "vizibil" — sterge
+    // STRICT stilul inline si lasa cascada CSS sa decida, iar regula .edit-lyrics-btn{display:none}
+    // (linia 260, aceeasi specificitate ca .btn, dar declarata DUPA ea) tot castiga, deci butonul
+    // ramanea ascuns si cu meniul deschis. Fixul: valoare explicita de afisare (inline-flex,
+    // exact cea folosita de .btn), care are prioritate reala fata de regula din clasa.
     document.querySelectorAll('.edit-lyrics-btn').forEach((btn) => {
-      btn.style.display = menuExpanded ? '' : 'none';
+      btn.style.display = menuExpanded ? 'inline-flex' : 'none';
     });
 
     // [hidden] scoate elementul complet din navigarea cu tastatura SI din arborele de

@@ -107,10 +107,10 @@ test('Standard/Video (renderVariants, per-varianta): markup-ul butonului mic ram
   );
 });
 
-test('updateStandardEditMenuVisibility(): toate .edit-lyrics-btn devin vizibile STRICT cand menuExpanded===true, ascunse altfel', () => {
+test('updateStandardEditMenuVisibility(): toate .edit-lyrics-btn devin vizibile STRICT cand menuExpanded===true, ascunse altfel (FIX 2026-09-24: valoare explicita "inline-flex", NU string gol — vezi test/edit-lyrics-btn-visibility-toggle-fix.test.js pentru cauza exacta si verificarea executabila)', () => {
   assert.match(
     melodia,
-    /document\.querySelectorAll\('\.edit-lyrics-btn'\)\.forEach\(\(btn\) => \{\s*btn\.style\.display = menuExpanded \? '' : 'none';\s*\}\);/
+    /document\.querySelectorAll\('\.edit-lyrics-btn'\)\.forEach\(\(btn\) => \{\s*btn\.style\.display = menuExpanded \? 'inline-flex' : 'none';\s*\}\);/
   );
 });
 
