@@ -38,8 +38,16 @@
   // definitiv cu schema noua. Vezi parseConsentState pentru regula EXACTA de migrare.
   var CONSENT_KEY = 'naluna_consent';
   var GA_ID = (global.NALUNA_GA_MEASUREMENT_ID || '').trim();
+  // META PIXEL (2026-09-24, V1 minima — audit "Meta Pixel + evenimente Meta pre-purchase"):
+  // ID-ul vine STRICT din window.NALUNA_META_PIXEL_ID, injectat de server la runtime din
+  // variabila de mediu META_PIXEL_ID (vezi GET /js/config.js, server.js) — ACELASI tipar STRICT
+  // ca GA_ID de mai sus, niciodata hardcodat. Distinct de META_DATASET_ID (folosit STRICT
+  // server-side, de Meta Conversions API existent — vezi enqueueMetaCapiPurchase, server.js) —
+  // cele doua ID-uri NU trebuie confundate, fiecare cu propriul rol.
+  var META_PIXEL_ID = (global.NALUNA_META_PIXEL_ID || '').trim();
 
   var gaLoadStarted = false;
+  var metaPixelLoadStarted = false;
 
   // FUNNEL ANALYTICS (2026-09-18) — visitor_id anonim (UUID, crypto.randomUUID()) STRICT dupa
   // consimtamant, folosit DOAR pentru a lega evenimentele funnel (funnel_events, DB interna) de
@@ -206,6 +214,7 @@
 
   function applyStoredConsent() {
     if (isAnalyticsConsentGranted()) loadGtagIfNeeded();
+    if (isMarketingConsentGranted()) loadMetaPixelIfNeeded();
   }
 
   // CORECTIE (2026-09-18, verificare revocare consimtamant): gtag.js, o data INCARCAT, poate
@@ -233,6 +242,79 @@
   // asociat activitatii dinainte de retragere.
   function clearVisitorId() {
     try { global.localStorage.removeItem(VISITOR_ID_KEY); } catch (e) { /* best-effort */ }
+  }
+
+  // ==========================================================================================
+  // META PIXEL (2026-09-24, V1 minima) — incarcare STRICT dupa consimtamant Marketing, o singura
+  // data per pagina (metaPixelLoadStarted), ACELASI tipar exact ca loadGtagIfNeeded() de mai sus:
+  // scriptul NU exista deloc in HTML static — injectat dinamic STRICT din acest apel, niciodata
+  // inainte de consimtamant. Codul de baza de mai jos e codul standard oficial Meta (fbq stub +
+  // script async catre fbevents.js), scris direct (nu evaluat dintr-un string extern).
+  // fbq('track','PageView') se trimite o SINGURA DATA aici, in interiorul aceleiasi garzi
+  // (metaPixelLoadStarted) — apeluri repetate ale functiei (din applyStoredConsent() SI dintr-un
+  // eventual accept ulterior, pe aceeasi incarcare de pagina) NU mai trimit un al doilea PageView.
+  function loadMetaPixelIfNeeded() {
+    if (metaPixelLoadStarted || !META_PIXEL_ID) return;
+    metaPixelLoadStarted = true;
+    try {
+      if (!global.fbq) {
+        var n = global.fbq = function () {
+          n.callMethod ? n.callMethod.apply(n, arguments) : n.queue.push(arguments);
+        };
+        if (!global._fbq) global._fbq = n;
+        n.push = n;
+        n.loaded = true;
+        n.version = '2.0';
+        n.queue = [];
+        var script = document.createElement('script');
+        script.async = true;
+        script.src = 'https://connect.facebook.net/en_US/fbevents.js';
+        document.head.appendChild(script);
+      }
+      global.fbq('init', META_PIXEL_ID);
+      global.fbq('track', 'PageView');
+    } catch (e) { /* analytics nu trebuie sa poata rupe pagina */ }
+  }
+
+  // Retragere consimtamant Marketing DUPA ce Pixel-ul a fost deja incarcat — ACELASI principiu ca
+  // updateGtagConsent() de mai sus: Pixel-ul, o data incarcat, ar putea trimite singur evenimente
+  // ulterioare (orice apel fbq() facut in afara acestui fisier, sau un eventual cod viitor) daca
+  // nu i se instruieste explicit sa opreasca — fbq('consent', 'revoke'/'grant') e mecanismul
+  // documentat oficial Meta pentru asta (echivalentul Google Consent Mode). No-op sigur daca fbq
+  // nu exista inca (Pixel-ul nu a fost niciodata incarcat, deci nu are ce sa opreasca).
+  function updateMetaPixelConsent(granted) {
+    try {
+      if (typeof global.fbq === 'function') {
+        global.fbq('consent', granted ? 'grant' : 'revoke');
+      }
+    } catch (e) { /* niciodata nu blocam pagina */ }
+  }
+
+  // Trimite un eveniment Meta Pixel — no-op silentios daca Marketing consent nu e acordat SAU
+  // fbq nu exista (Pixel neincarcat/blocat de ad-blocker) — ACELASI tipar STRICT ca track() (GA4)
+  // de mai jos. Sursa unica pentru orice pagina care trebuie sa trimita un eveniment Meta —
+  // niciun apelant nu trebuie sa citeasca vreodata window.fbq sau consimtamantul direct.
+  function trackMeta(eventName, params) {
+    try {
+      if (!isMarketingConsentGranted()) return;
+      if (typeof global.fbq === 'function') {
+        global.fbq('track', eventName, params || {});
+      }
+    } catch (e) { /* niciodata nu blocam pagina */ }
+  }
+
+  // _fbp — cookie-ul first-party pe care Meta Pixel il seteaza SINGUR, in browser, o data
+  // incarcat (vezi loadMetaPixelIfNeeded mai sus) — NICIODATA fabricat aici. STRICT dupa
+  // consimtamant Marketing (fara el, Pixel-ul nu exista, deci cookie-ul nu exista niciodata) —
+  // returneaza null daca lipseste consimtamantul SAU cookie-ul insusi (Pixel blocat de
+  // ad-blocker, sau inca neincarcat in acel moment). Folosit STRICT la crearea comenzii (vezi
+  // comanda.html), pentru orders.fbp (coloana existenta — vezi server.js POST /api/orders).
+  function getFbpForOrder() {
+    try {
+      if (!isMarketingConsentGranted()) return null;
+      var match = /(?:^|;\s*)_fbp=([^;]+)/.exec(document.cookie || '');
+      return match ? decodeURIComponent(match[1]) : null;
+    } catch (e) { return null; }
   }
 
   // ==========================================================================================
@@ -465,9 +547,14 @@
       updateGtagConsent(false);
       clearVisitorId();
     }
-    // Marketing NU are inca niciun efect de aplicat (niciun Meta Pixel/CAPI in acest fisier) —
-    // scrierea de mai sus e STRICT persistenta deciziei, pentru citire ulterioara de
-    // isMarketingConsentGranted() de catre viitorul cod Meta.
+    // META PIXEL (2026-09-24) — ACELASI tipar STRICT ca ramura Analytics de mai sus.
+    if (marketingGranted) {
+      loadMetaPixelIfNeeded();
+      // Acopera identic cazul "revocare, apoi re-acceptare, pe aceeasi incarcare de pagina".
+      updateMetaPixelConsent(true);
+    } else {
+      updateMetaPixelConsent(false);
+    }
     hideBanner();
   }
 
@@ -634,6 +721,10 @@
     // aceste doua functii, niciodata sa citeasca localStorage sau schema interna direct.
     isAnalyticsConsentGranted: isAnalyticsConsentGranted,
     isMarketingConsentGranted: isMarketingConsentGranted,
+    // META PIXEL (2026-09-24) — API public folosit de alte pagini (melodia-mea.html: trackMeta
+    // pentru InitiateCheckout; comanda.html: getFbpForOrder pentru orders.fbp).
+    trackMeta: trackMeta,
+    getFbpForOrder: getFbpForOrder,
     // expuse STRICT pentru teste (logica pura, fara efecte asupra paginii reale)
     _isConsentGranted: isConsentGranted,
     _isConsentDecided: isConsentDecided,
@@ -644,6 +735,8 @@
     _FUNNEL_TRACKABLE_EVENTS: FUNNEL_TRACKABLE_EVENTS,
     _updateGtagConsent: updateGtagConsent,
     _clearVisitorId: clearVisitorId,
+    _loadMetaPixelIfNeeded: loadMetaPixelIfNeeded,
+    _updateMetaPixelConsent: updateMetaPixelConsent,
     _BANNER_COPY: BANNER_COPY
   };
 })(window);

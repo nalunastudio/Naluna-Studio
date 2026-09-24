@@ -2679,11 +2679,18 @@ app.use(express.static(path.join(__dirname, 'public'), {
 // analytics.js deja trateaza asta explicit ca "nu incarca nimic", niciodata o eroare.
 // NECACHE-uit (acelasi tratament ca paginile HTML, mai sus) — o schimbare a variabilei de mediu
 // (redeploy) trebuie sa ajunga imediat la clienti, fara sa astepte expirarea unui cache vechi.
+// META PIXEL (2026-09-24, V1 minima) — ACELASI tratament STRICT ca GA_MEASUREMENT_ID de mai sus:
+// META_PIXEL_ID e un identificator public prin design (echivalentul unui Pixel ID/Data Source ID,
+// gandit sa apara in orice cod sursa de pagina care il foloseste) — NICIODATA
+// META_CAPI_ACCESS_TOKEN/META_DATASET_ID, care raman STRICT server-side (vezi
+// lib/meta-capi/capi-client.js, enqueueMetaCapiPurchase). Fara META_PIXEL_ID setat, raspunde cu
+// o valoare goala — public/js/analytics.js trateaza asta identic ca la GA4 ("nu incarca nimic").
 app.get('/js/config.js', (req, res) => {
   res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
   const measurementId = (process.env.GA_MEASUREMENT_ID || '').trim();
-  res.send(`window.NALUNA_GA_MEASUREMENT_ID = ${JSON.stringify(measurementId)};\n`);
+  const metaPixelId = (process.env.META_PIXEL_ID || '').trim();
+  res.send(`window.NALUNA_GA_MEASUREMENT_ID = ${JSON.stringify(measurementId)};\nwindow.NALUNA_META_PIXEL_ID = ${JSON.stringify(metaPixelId)};\n`);
 });
 
 // ==========================================================================================
@@ -3012,6 +3019,15 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
     // legarea evenimentelor pre-comanda e best-effort, niciodata un motiv de refuz al comenzii.
     const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     const safeVisitorId = (typeof visitorId === 'string' && UUID_RE.test(visitorId.trim())) ? visitorId.trim() : null;
+    // _fbp (2026-09-24, Meta Pixel V1) — spre deosebire de fbclid/UTM (text liber, safeAttr),
+    // _fbp are un FORMAT DOCUMENTAT de Meta: fb.<subdomain_index>.<creation_time_ms>.<random_id>
+    // (ex. "fb.1.1596403881668.1116446470") — validat STRICT aici, inainte de persistare (cerinta
+    // explicita). Orice valoare care nu se potriveste exact devine null, niciodata trecuta mai
+    // departe "ca atare" — comanda se creeaza identic in ambele cazuri, niciun status 400.
+    const FBP_FORMAT_RE = /^fb\.\d\.\d+\.\d+$/;
+    const safeFbp = (typeof fbp === 'string' && fbp.trim().length <= 100 && FBP_FORMAT_RE.test(fbp.trim()))
+      ? fbp.trim()
+      : null;
 
     const order = await db.createOrder({
       id: randomUUID(),
@@ -3040,7 +3056,7 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
       relationship2: safeRelationship2,
       story2: safeStory2,
       utmSource: safeAttr(utmSource), utmMedium: safeAttr(utmMedium), utmCampaign: safeAttr(utmCampaign),
-      utmContent: safeAttr(utmContent), utmTerm: safeAttr(utmTerm), fbclid: safeAttr(fbclid), fbp: safeAttr(fbp),
+      utmContent: safeAttr(utmContent), utmTerm: safeAttr(utmTerm), fbclid: safeAttr(fbclid), fbp: safeFbp,
       visitorId: safeVisitorId
     });
 

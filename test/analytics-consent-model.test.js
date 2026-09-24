@@ -212,11 +212,17 @@ test('BANNER_COPY: descrierea Marketing, in toate limbile, NU afirma ca Meta Pix
 });
 
 // ================================================================================================
-// Securitate — niciun cod Meta (fbq/Pixel/hostname) introdus accidental in analytics.js sau
-// attribution.js, si nicio cerere de retea catre Meta e posibila din acest cod.
+// Securitate — Meta Pixel (2026-09-24, V1) EXISTA acum in analytics.js, dar STRICT gated pe
+// Marketing consent — vezi test/meta-pixel-client.test.js pentru verificarea executabila completa
+// a incarcarii/consimtamantului. Testul de aici ramane STRICT structural: cele doua puncte de
+// apel ale loadMetaPixelIfNeeded() trebuie sa fie AMBELE in interiorul unei conditii
+// isMarketingConsentGranted()/marketingGranted — niciodata neconditionat.
 // ================================================================================================
-test('SECURITATE: analytics.js NU contine niciun apel/SDK Meta real (fbq, connect.facebook.net, graph.facebook.com) — Marketing consent e STRICT persistenta unei alegeri, fara niciun efect de retea', () => {
-  assert.ok(!/fbq\(|connect\.facebook\.net|graph\.facebook\.com/i.test(analyticsSrc));
+test('SECURITATE: loadMetaPixelIfNeeded() e apelat STRICT din ramuri gated pe consimtamant Marketing (applyStoredConsent + applyConsentDecision), niciodata neconditionat', () => {
+  const calls = analyticsSrc.match(/loadMetaPixelIfNeeded\(\);/g) || [];
+  assert.equal(calls.length, 2, 'trebuie sa existe EXACT 2 apeluri: applyStoredConsent() si applyConsentDecision()');
+  assert.match(analyticsSrc, /if \(isMarketingConsentGranted\(\)\) loadMetaPixelIfNeeded\(\);/);
+  assert.match(analyticsSrc, /if \(marketingGranted\) \{\s*loadMetaPixelIfNeeded\(\);/);
 });
 
 test('SECURITATE: attribution.js NU contine niciun apel/SDK Meta real — captarea fbclid ramane STRICT un parametru de URL persistat local, niciodata trimis catre Meta din acest fisier', () => {

@@ -2569,6 +2569,17 @@
             package: currentOrder.plan,
             order_id: orderId
           });
+          // META PIXEL (2026-09-24, V1 minima, audit "Meta Pixel + evenimente Meta pre-purchase"):
+          // InitiateCheckout — ACELASI punct exact ca begin_checkout de mai sus (sesiune Stripe
+          // confirmata valida, imediat inainte de redirect), NICIODATA la simplul checkout_clicked
+          // (care include si cererile esuate/abandonate). trackMeta() e STRICT no-op daca Marketing
+          // consent nu e acordat (vezi analytics.js) — niciun apel fbq daca Pixel-ul nu e incarcat.
+          window.NalunaAnalytics.trackMeta('InitiateCheckout', {
+            value: currentOrder.price,
+            currency: 'GBP',
+            content_ids: [orderId],
+            content_type: 'product'
+          });
         }
         window.location.href = data.url;
       } else {

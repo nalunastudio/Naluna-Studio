@@ -246,9 +246,35 @@ test('processConfirmedPayment(): apelul catre enqueueMetaCapiPurchase e invelit 
 });
 
 // ===============================================================================================
-// HARDENING — niciun Meta Pixel client-side adaugat (cerinta explicita: NU adauga Pixel).
+// HARDENING (REVIZUIT 2026-09-24, Meta Pixel V1) — Meta Pixel client-side EXISTA acum, dar STRICT
+// intr-un singur loc (public/js/analytics.js) — vezi test/meta-pixel-client.test.js pentru
+// verificarea completa a incarcarii/consimtamantului. Invariantul care ramane NEATINS aici e cel
+// mai important: NICIUN Pixel Purchase, in NICIUN fisier — Purchase ramane STRICT Meta CAPI
+// server-side (cerinta explicita, neschimbata de aceasta faza).
 // ===============================================================================================
-test('nu exista niciun Meta Pixel (fbq/connect.facebook.net) in niciun fisier din public/', () => {
+test('Meta Pixel (fbq/connect.facebook.net) exista STRICT in public/js/analytics.js — niciun alt fisier din public/ nu initializeaza sau incarca propriul Pixel', () => {
+  function listFilesRecursive(dir) {
+    let out = [];
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) out = out.concat(listFilesRecursive(full));
+      else out.push(full);
+    }
+    return out;
+  }
+  const publicDir = path.join(__dirname, '..', 'public');
+  const analyticsJsPath = path.join(publicDir, 'js', 'analytics.js');
+  const files = listFilesRecursive(publicDir);
+  assert.ok(files.length > 10, 'sanity check');
+  for (const file of files) {
+    if (file === analyticsJsPath) continue;
+    const content = fs.readFileSync(file, 'utf8');
+    assert.ok(!content.includes('connect.facebook.net'), `"${file}" nu trebuie sa incarce Meta Pixel — STRICT public/js/analytics.js`);
+    assert.ok(!/fbq\s*\(\s*['"]init['"]/.test(content), `"${file}" nu trebuie sa initializeze fbq (Meta Pixel) — STRICT public/js/analytics.js`);
+  }
+});
+
+test('NICIUN fisier din public/ nu trimite vreodata fbq("track","Purchase") — Purchase ramane STRICT Meta CAPI server-side, cerinta explicita, neschimbata', () => {
   function listFilesRecursive(dir) {
     let out = [];
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -260,11 +286,9 @@ test('nu exista niciun Meta Pixel (fbq/connect.facebook.net) in niciun fisier di
   }
   const publicDir = path.join(__dirname, '..', 'public');
   const files = listFilesRecursive(publicDir);
-  assert.ok(files.length > 10, 'sanity check');
   for (const file of files) {
     const content = fs.readFileSync(file, 'utf8');
-    assert.ok(!content.includes('connect.facebook.net'), `"${file}" nu trebuie sa incarce Meta Pixel`);
-    assert.ok(!/fbq\s*\(\s*['"]init['"]/.test(content), `"${file}" nu trebuie sa initializeze fbq (Meta Pixel)`);
+    assert.ok(!/fbq\([^)]*['"]Purchase['"]/i.test(content), `"${file}" nu trebuie sa trimita niciodata Purchase prin Pixel`);
   }
 });
 

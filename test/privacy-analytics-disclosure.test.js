@@ -3,7 +3,11 @@
 // do not run any tracking scripts on this site" — FALS fata de implementarea reala (GA4 +
 // funnel_events + visitor_id + UTM/fbclid, toate consent-gated). Acest fisier verifica STRUCTURAL
 // noua sectiune "Cookies and analytics" — acopera exact punctele cerute explicit, fara sa inventeze
-// nimic (nicio perioada de retentie inventata, niciun Meta Pixel/CAPI nemetionat in cod).
+// nimic (nicio perioada de retentie inventata).
+// REVIZUIT (2026-09-24, Meta Pixel V1 — evenimente Meta pre-purchase): Meta Pixel/Conversions API
+// EXISTA acum, real, gated pe Marketing consent (vezi test/meta-pixel-client.test.js) — privacy.html
+// trebuie sa le descrie, STRICT in paragraful Marketing consent (sectiunile 1+2, vezi mai jos), NU
+// in paragraful de atribuire UTM/fbclid (mecanism separat, primul-party, neschimbat de aceasta faza).
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -43,13 +47,46 @@ test('privacy.html: descrie funnel analytics intern, SEPARAT de Google — masur
   assert.match(privacy, /started the form, or reached checkout/i);
 });
 
-test('privacy.html: mentioneaza atribuirea UTM/campanie (utm_source, utm_campaign, fbclid) — STRICT ca parametri URL, NICIODATA Meta Pixel/CAPI', () => {
+test('privacy.html: mentioneaza atribuirea UTM/campanie (utm_source, utm_campaign, fbclid) — STRICT ca parametri URL', () => {
   assert.match(privacy, /utm_source/);
   assert.match(privacy, /utm_campaign/);
   assert.match(privacy, /fbclid/);
-  assert.doesNotMatch(privacy, /Meta Pixel/i);
-  assert.doesNotMatch(privacy, /Conversions API/i);
-  assert.doesNotMatch(privacy, /\bCAPI\b/);
+});
+
+test('privacy.html: paragraful de atribuire UTM/fbclid ("Order attribution data") ramane STRICT despre parametri URL — NICIODATA Meta Pixel/CAPI (mecanism separat, descris doar in paragraful Marketing consent, vezi mai jos)', () => {
+  const idx = privacy.indexOf('<strong>Order attribution data</strong>');
+  assert.ok(idx !== -1, 'bullet-ul "Order attribution data" trebuie sa existe');
+  const end = privacy.indexOf('</li>', idx);
+  const block = privacy.slice(idx, end);
+  assert.doesNotMatch(block, /Meta Pixel/i);
+  assert.doesNotMatch(block, /Conversions API/i);
+  assert.doesNotMatch(block, /\bCAPI\b/);
+});
+
+// ================================================================================================
+// META PIXEL V1 (2026-09-24, evenimente Meta pre-purchase) — Marketing consent NU mai e "not
+// currently active": Pixel + Conversions API sunt descrise explicit, STRICT gated pe consimtamant.
+// ================================================================================================
+test('privacy.html: Marketing consent descrie explicit Meta Pixel (browser, cookie _fbp) SI Conversions API (server-side, Purchase) — nu mai afirma "not currently active"', () => {
+  assert.match(privacy, /Meta Pixel/i);
+  assert.match(privacy, /Conversions API/i);
+  assert.match(privacy, /_fbp/);
+  assert.doesNotMatch(privacy, /not currently connected to anything/i);
+  assert.doesNotMatch(privacy, /not currently active/i);
+});
+
+test('privacy.html: Purchase server-side ramane descris ca bazat pe plata CONFIRMATA, independent de Pixel — NU sugereaza Pixel Purchase', () => {
+  const idx = privacy.indexOf('<strong>Marketing (optional):</strong>');
+  assert.ok(idx !== -1);
+  const block = privacy.slice(idx, privacy.indexOf('</p>', idx));
+  assert.match(block, /always happens server-side, based on your confirmed payment/i);
+  assert.match(block, /does not depend on whether the Pixel loaded or ran successfully/i);
+});
+
+test('privacy.html: NU afirma ca trimitem IP-ul pentru advertising (CAPI real nu trimite client_ip_address) — afirma explicit ca IP-ul NU e trimis catre Meta', () => {
+  const idx = privacy.indexOf('<strong>Marketing (optional):</strong>');
+  const block = privacy.slice(idx, privacy.indexOf('</p>', idx));
+  assert.match(block, /never send your name, phone number, IP address/i);
 });
 
 test('privacy.html: declara explicit scopul — masurare/imbunatatire site si intelegerea canalelor de marketing, NICIODATA advertising sau profil cross-site', () => {

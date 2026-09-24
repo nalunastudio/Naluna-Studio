@@ -3393,6 +3393,11 @@
           fbclid: attribution.fbclid || null
         };
       })(),
+      // _fbp (2026-09-24, Meta Pixel V1) — citit STRICT din cookie-ul real, setat de Meta Pixel
+      // insusi (vezi getFbpForOrder, public/js/analytics.js) — NICIODATA fabricat aici. Rezolva
+      // null daca Marketing consent nu e acordat SAU cookie-ul nu exista inca (Pixel neincarcat/
+      // blocat) — comanda se creeaza identic in ambele cazuri, fara nicio conditionare aici.
+      fbp: (typeof window !== 'undefined' && window.NalunaAnalytics) ? window.NalunaAnalytics.getFbpForOrder() : null,
       // visitor_id (2026-09-18, Funnel Analytics) — leaga evenimentele funnel pre-comanda de
       // aceasta comanda (vezi db.linkFunnelEventsToOrder, server.js). null STRICT daca
       // consimtamantul analytics nu a fost acordat (getOrCreateVisitorId nu creeaza niciodata
