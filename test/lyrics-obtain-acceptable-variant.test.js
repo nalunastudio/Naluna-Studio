@@ -109,7 +109,13 @@ test('obtainAcceptableVariant: AMBELE trackuri initiale sunt incoerente si TOATE
   const badTrackA = { id: 'a', lyrics: 'Sunt Bunicului Andrei, te iubim mult, Maria.' }; // auto-identificare + derapaj
   const badTrackB = { id: 'b', lyrics: 'Noi te iubim, draga Maria, din suflet.' }; // derapaj (fara mesaj singular)
   const retryBadTrackA = { id: 'ra', lyrics: 'Iar aici Sunt Bunicului Andrei, va iubim mult.' };
-  const retryBadTrackB = { id: 'rb', lyrics: 'Melodie fara mesajul explicit din poveste.' }; // omisiune
+  // CORECȚIE (2026-09-25, investigatie separata — fals-pozitive validateLyricsCoherence()): o
+  // fixtura bazata STRICT pe omisiune ('explicit_message_omitted') nu mai e suficienta aici — acel
+  // motiv nu mai blocheaza (vezi NON_BLOCKING_COHERENCE_REASONS, server.js) — absenta unei fraze
+  // exacte nu mai dovedeste ca mesajul a fost omis, doar ca a fost reformulat. Inlocuita cu un
+  // derapaj de persoana/numar (forma GRESITA prezenta LITERAL), care ramane blocant, neschimbat —
+  // pastreaza intentia testului (TOATE cele 6 trackuri raman incoerente, niciuna acceptata).
+  const retryBadTrackB = { id: 'rb', lyrics: 'Noi te iubim, cu drag, pentru draga Maria.' }; // derapaj
 
   let buildCalls = 0;
   let pollCalls = 0;

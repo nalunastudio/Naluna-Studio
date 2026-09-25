@@ -158,14 +158,23 @@ for (const lang of LANGS) {
 }
 
 // ===============================================================================================
-// PROTECTIE: validateLyricsCoherence() ramane BYTE-IDENTICA (fixul nu a atins pragurile de
-// validare) — verificat prin comparatie cu commit-ul anterior acestei corectii.
-// ===============================================================================================
-test('PROTECTIE: validateLyricsCoherence() (pragurile de coerenta) ramane BYTE-IDENTICA fata de inaintea acestei corectii', () => {
-  const { execSync } = require('node:child_process');
-  const beforeSrc = execSync('git show HEAD:server.js', { cwd: path.join(__dirname, '..'), maxBuffer: 20 * 1024 * 1024 }).toString('utf8');
-  const extract = (src) => sliceFunctionBody(src, 'function validateLyricsCoherence(order, recipientSnapshot, lyricsText) {');
-  assert.equal(extract(server), extract(beforeSrc), 'validateLyricsCoherence() nu trebuie sa fi fost modificata de aceasta corectie');
+// PROTECTIE (istoric, 2026-09-14): la momentul corectiei de buget de reincercari testate in acest
+// fisier, validateLyricsCoherence() a ramas byte-identica — asertiunea originala compara STRICT
+// impotriva HEAD (deci ar fi picat pentru ORICE modificare ulterioara legitima a functiei, nu doar
+// pentru una accidentala din aceasta corectie de buget).
+//
+// SUPERSEDAT (2026-09-25, investigatie separata, aprobata explicit — fals-pozitive
+// validateLyricsCoherence() dupa manele_suflet "Short lines"): validateLyricsCoherence() A FOST
+// modificata deliberat, de aceasta data — 'explicit_message_omitted' nu mai blocheaza (absenta unei
+// fraze exacte nu dovedeste omiterea mesajului, doar reformulare), iar sender_self_declaration
+// cere acum pozitie de inceput de propozitie (elimina un omograf gramatical real — "sunt"/"sono" pot
+// insemna si "sunt/are" la persoana a III-a plural, nu doar "I am"). MAX_COHERENCE_RETRIES si
+// mecanismul de reincercare testate mai sus in acest fisier raman COMPLET neatinse — vezi
+// test/lyrics-coherence-false-positive-fix.test.js pentru verificarea dedicata, exhaustiva a noii
+// logici (ce ramane blocant, ce nu, si de ce).
+test('PROTECTIE: MAX_COHERENCE_RETRIES si structura obtainAcceptableVariant() raman neatinse de corectia din 2026-09-25 (STRICT validateLyricsCoherence() a fost modificata, cu aprobare explicita)', () => {
+  assert.match(server, /const MAX_COHERENCE_RETRIES = 2;/);
+  assert.match(server, /async function obtainAcceptableVariant\(orderId, tracks, taskId, genre, order, recipientSnapshot, canonicalLyrics\) \{/);
 });
 
 // ===============================================================================================

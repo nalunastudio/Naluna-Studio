@@ -9427,12 +9427,26 @@ const SENDER_SELF_DECLARATION_MARKERS = {
   tr: [/\bben(im)?\s+/i]
 };
 
+// CORECȚIE (2026-09-25, investigatie fals-pozitive dupa manele_suflet "Short lines"): motive de
+// coerenta care raman CALCULATE (vizibile in reasons/perfLog, pentru monitorizare) dar NU mai
+// blocheaza livrarea unei piese — STRICT 'explicit_message_omitted' (vezi comentariul detaliat de
+// la punctul 2 din validateLyricsCoherence): absenta unei fraze EXACTE nu dovedeste ca mesajul a
+// fost omis, doar ca a fost reformulat cu alte cuvinte — imposibil de distins fara analiza
+// semantica reala. Toate celelalte motive (explicit_message_person_drift, sender_self_declaration,
+// song_data_mixing, empty_lyrics) raman motive de RESPINGERE, neschimbate — fiecare verifica un
+// defect NEAMBIGUU (forma gramaticala gresita prezenta literal, auto-identificare la inceput de
+// propozitie, nume-leak intre cele doua melodii Premium, sau versuri complet goale), nu absenta
+// unei formulari anume.
+const NON_BLOCKING_COHERENCE_REASONS = new Set(['explicit_message_omitted']);
+
 // Validare semantica REALA a versurilor primite de la furnizor — inlocuieste/completeaza
 // checkLyricsContainExpectedNames (care doar cauta numele si avertizeaza). Returneaza
 // {ok, reasons:[...]} — apelantul (finalizeVariantsIfNeeded) foloseste asta pentru a alege
 // intre doua piese primite, si pentru a decide daca o singura reincercare controlata e
 // necesara. NU se aplica NICIODATA versurilor exacte editate de client (customMode:true) —
-// acelea raman intacte, verbatim, prin design (vezi buildExactLyricsRequest).
+// acelea raman intacte, verbatim, prin design (vezi buildExactLyricsRequest). `reasons` poate
+// contine motive NON-blocante (vezi NON_BLOCKING_COHERENCE_REASONS) — `ok` reflecta STRICT
+// motivele de respingere reale, `reasons` ramane complet, pentru vizibilitate/monitorizare.
 function validateLyricsCoherence(order, recipientSnapshot, lyricsText) {
   const reasons = [];
   const lyrics = typeof lyricsText === 'string' ? lyricsText.trim() : '';
@@ -9447,6 +9461,24 @@ function validateLyricsCoherence(order, recipientSnapshot, lyricsText) {
   // 1) auto-identificare gresita "Sunt X"/"I am X" imediat urmata de numele/rolul expeditorului
   // — verificata la FIECARE aparitie a marcajului in text (nu doar prima), ca o repetare in
   // refren, de exemplu, sa nu scape neobservata daca prima aparitie din text era altundeva.
+  //
+  // ANALIZAT SEPARAT SI NEATINS (2026-09-25, investigatie fals-pozitive dupa manele_suflet "Short
+  // lines" — comanda reala bf03a964): marcajul RO ("sunt")/IT ("sono") sunt omografe gramaticale
+  // reale (persoana I singular "I am" SAU persoana a III-a plural "they are"/existential "there
+  // are") — teoretic, o propozitie nelegata de auto-identificare (ex. "Prietenii mei sunt Andrei
+  // si Maria") ar putea declansa un fals-pozitiv daca numele expeditorului apare intamplator
+  // aproape de "sunt". O prima incercare de reparatie (cerinta ca marcajul sa fie la inceputul
+  // propozitiei) A FOST RESPINSA dupa testare directa: rupea un test EXISTENT, deliberat, pentru
+  // exact bug-ul real raportat ("Iar aici Sunt Bunicului Andrei, va iubim mult." — vezi
+  // test/lyrics-obtain-acceptable-variant.test.js, fixtura retryBadTrackA, unde auto-identificarea
+  // NU e la inceputul propozitiei, ci precedata de o formulare introductiva) — o reparatie care
+  // rezolva un risc teoretic dar strica o protectie deja demonstrata/testata pentru bug-ul REAL nu
+  // e o imbunatatire sigura. Spre deosebire de punctul (2) mai jos, nu exista dovezi DIRECTE
+  // (versurile respinse nu sunt niciodata logate/salvate, prin design) ca respingerea reala de pe
+  // bf03a964 a fost intr-adevar un fals-pozitiv (Suno chiar poate fi produs o auto-identificare
+  // reala) — comanda s-a recuperat oricum normal, prin mecanismul de reincercare deja existent,
+  // fara nicio comanda ramasa blocata. Decizie: RAMANE NESCHIMBAT — un risc teoretic, neconfirmat,
+  // nu justifica sacrificarea unei protectii deja demonstrate impotriva bug-ului real raportat.
   const hasSender = typeof senderName === 'string' && senderName.trim().length > 0;
   if (hasSender) {
     const senderLower = senderName.trim().toLowerCase();
@@ -9468,6 +9500,21 @@ function validateLyricsCoherence(order, recipientSnapshot, lyricsText) {
 
   // 2) derapaj SAU omisiune pe mesajele explicite cunoscute (ex. "te iubesc" -> "te iubim", sau
   // mesajul lipseste complet din versuri desi apare explicit in poveste).
+  //
+  // CORECȚIE (2026-09-25, fals-pozitiv real gasit dupa manele_suflet "Short lines" — comanda reala
+  // f76baa46, investigatie separata): "derapaj" (forma GRESITA prezenta literal — ex. "te iubim"
+  // cand expeditorul e singular) ramane un semnal NEAMBIGUU — o eroare gramaticala/logica reala,
+  // verificabila direct in text, indiferent de stilul de formulare — ramane un motiv de RESPINGERE
+  // (vezi NON_BLOCKING_COHERENCE_REASONS mai jos, care NU il contine). "Omisiune" (NICIO forma
+  // prezenta literal) NU mai e un motiv de respingere — verificat direct pe comanda reala: Suno
+  // poate exprima acelasi sens ("te iubesc") complet natural, fara sa foloseasca exact acele doua
+  // cuvinte (ex. "esti totul pentru mine"/"te port in suflet") — mai ales cu instructiunea noua de
+  // linii scurte (manele_suflet), care incurajeaza EXPLICIT reformulari concise. O potrivire literala
+  // absenta NU dovedeste ca mesajul a fost omis, doar ca nu a fost exprimat cu ACELEASI cuvinte —
+  // imposibil de distins de o reformulare naturala printr-o simpla comparatie de subsiruri, fara
+  // analiza semantica reala (in afara scopului acestei corectii). Ramane totusi CALCULAT si inclus
+  // in `reasons` (vizibil in perfLog, STRICT ca semnal de monitorizare — niciodata poveste/versuri
+  // logate), doar nu mai blocheaza livrarea unei piese altfel bune.
   if (typeof story === 'string' && story.trim()) {
     const storyLower = normalizeApostrophes(story.toLowerCase());
     const pairs = SENDER_PERSON_NUMBER_PHRASE_PAIRS[lang] || [];
@@ -9499,7 +9546,8 @@ function validateLyricsCoherence(order, recipientSnapshot, lyricsText) {
     }
   }
 
-  return { ok: reasons.length === 0, reasons };
+  const blockingReasons = reasons.filter(r => !NON_BLOCKING_COHERENCE_REASONS.has(r));
+  return { ok: blockingReasons.length === 0, reasons };
 }
 
 function buildPrompt(order, feedback, genreOverride) {
