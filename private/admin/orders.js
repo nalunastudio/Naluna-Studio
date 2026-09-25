@@ -522,12 +522,17 @@ function buildQuery() {
 }
 
 // Actiuni contextuale per comanda — Retry Extras STRICT cand backend-ul chiar l-ar accepta
-// (plan platit cu extrase, status ready/preview_ready — vezi POST .../retry-extras in
-// server.js), Anonimizează mereu disponibila (backend-ul refuza singur cu 409 daca exista o
-// operatie activa, mesajul e afisat direct adminului).
+// (vezi guard-ul identic din POST .../retry-extras in server.js). 'preview_ready' e eligibil
+// direct pentru "video" (randeaza INAINTE de plata, prin design), dar pentru restul planurilor
+// (premium) DOAR daca order.paidAt e setat — altfel comanda pur si simplu nu a fost platita
+// niciodata (a ajuns la preview_ready prima data, nu printr-o regenerare esuata dupa plata) si
+// nu exista niciun extras de reincercat. Anonimizează mereu disponibila (backend-ul refuza
+// singur cu 409 daca exista o operatie activa, mesajul e afisat direct adminului).
 function getOrderRowActions(order) {
   const actions = [{ id: 'anonymize', label: 'Anonimizează', variant: 'btn-danger btn-small' }];
-  if ((order.plan === 'premium' || order.plan === 'video') && (order.status === 'ready' || order.status === 'preview_ready')) {
+  const extrasEligible = (order.plan === 'premium' || order.plan === 'video') &&
+    (order.status === 'ready' || (order.status === 'preview_ready' && (order.plan === 'video' || !!order.paidAt)));
+  if (extrasEligible) {
     actions.push({ id: 'retry-extras', label: 'Retry Extras', variant: 'btn-secondary btn-small' });
   }
   return actions;
