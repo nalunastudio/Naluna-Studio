@@ -142,10 +142,17 @@ document.getElementById('period-custom-apply').addEventListener('click', () => {
 // Funnel-ul de conversie (cohortat — vezi renderFunnelCohort mai jos) care poate afisa cifre
 // DIFERITE pentru "aceleasi" etape, din motive documentate in raportul de audit (sectiunea 11).
 const KPI_DEFS = [
-  { key: 'trackedVisitors', label: 'Vizitatori urmăriți', traffic: true },
+  { key: 'trackedVisitors', label: 'Vizitatori urmăriți', traffic: true, note: 'Doar vizitatorii cu Analytics acceptat' },
   { key: 'ctaClicks', label: 'Click-uri CTA homepage', traffic: true },
   { key: 'formStarted', label: 'Formular început', traffic: true },
   { key: 'ordersCreated', label: 'Comenzi create în perioadă' },
+  // distinctCustomers (2026-09-25, KPI nou "Clienți distincți cu comandă" — cerinta explicita,
+  // urmare a auditului aceleiasi zile): COUNT(DISTINCT lower(trim(email))) din comenzile REALE
+  // create in perioada — vezi db.js#getFunnelKpis pentru sursa exacta. Plasat imediat dupa
+  // "Comenzi create" (aceeasi sursa, tabela orders) — NU langa "Vizitatori urmăriți" (KPI diferit,
+  // consent-gated), ca sa nu sugereze fals ca sunt aceeasi masuratoare. NU are `traffic:true` —
+  // nu depinde de trafficDataAvailability/Analytics consent, e mereu masurabil complet.
+  { key: 'distinctCustomers', label: 'Clienți distincți cu comandă' },
   { key: 'reachedCheckout', label: 'Checkout-uri create în perioadă' },
   { key: 'paidOrders', label: 'Comenzi plătite în perioadă' },
   { key: 'paidCustomers', label: 'Clienți plătitori în perioadă' },
@@ -171,9 +178,12 @@ function renderKpiCards(kpis, trafficDataAvailability, dataCompleteSince) {
     const value = unmeasured ? 'Nemăsurat' : (d.money ? '£' + Number(kpis[d.key]).toFixed(2) : Number(kpis[d.key]));
     const statClass = unmeasured ? ' stat-unmeasured' : (partial ? ' stat-partial' : '');
     const note = partial ? `<div class="stat-note" title="${escapeHtml(partialNote)}">Date parțiale</div>` : '';
+    // d.note (2026-09-25, "Vizitatori urmăriți" — cerinta explicita): explicatie foarte scurta,
+    // STRICT tooltip (title) — nu schimba formula KPI-ului, doar clarifica dependenta de consent.
+    const labelTitle = d.note ? ` title="${escapeHtml(d.note)}"` : '';
     return `
     <div class="stat${statClass}">
-      <div class="label">${d.label}</div>
+      <div class="label"${labelTitle}>${d.label}</div>
       <div class="value">${value}</div>
       ${note}
     </div>
@@ -565,10 +575,44 @@ function renderSourceCell(o) {
   return `${escapeHtml(o.utmSource || '(unknown)')}${o.utmCampaign ? ' / ' + escapeHtml(o.utmCampaign) : ''}`;
 }
 
-function renderOrderRow(o) {
+// NR. CLIENT (2026-09-25, cerinta explicita — numarare clienti distincti, urmare a auditului KPI
+// din aceeasi zi): numaratoare pe CLIENT DISTINCT (lower(trim(email))), NU pe rand/comanda —
+// aceeasi persoana cu mai multe comenzi in setul curent afisat primeste ACELASI numar, atribuit in
+// ordinea PRIMEI aparitii in `orders` (acelasi array deja incarcat/afisat de tabel). STRICT o
+// functie PURA (fara acces DOM), testabila izolat — vezi test/admin-orders-distinct-customer-number.test.js.
+//
+// SCOP LIMITAT, documentat explicit: numerotarea e consistenta STRICT in cadrul setului de comenzi
+// CURENT AFISAT (pagina curenta, dupa filtrele active — PAGE_SIZE=50), nu global peste toate
+// paginile/intreaga baza de date — un client ale carui comenzi cad pe doua pagini diferite ar primi
+// numere diferite pe fiecare pagina. Suficient pentru cazul de utilizare cerut (o zi/perioada tipica
+// incape intr-o singura pagina) — o numerotare globala, stabila cross-paginare, ar necesita o
+// agregare separata server-side, in afara scopului acestei corectii.
+//
+// Comenzi FARA email (nu ar trebui sa existe — email e obligatoriu la creare, vezi server.js
+// isValidEmail — dar tratat defensiv) primesc STRICT propriul numar, niciodata grupate impreuna
+// intre ele (fiecare "email lipsa" e tratat ca un client distinct, nu ca un singur client comun).
+function assignDistinctCustomerNumbers(orders) {
+  const numberByKey = new Map();
+  const numberByOrderId = new Map();
+  let nextNumber = 1;
+  (orders || []).forEach((o, idx) => {
+    const rawEmail = typeof o.email === 'string' ? o.email.trim().toLowerCase() : '';
+    // cheie unica per "email lipsa" — vezi comentariul de mai sus, niciodata grupate impreuna
+    const key = rawEmail || `__no-email__${idx}`;
+    if (!numberByKey.has(key)) {
+      numberByKey.set(key, nextNumber);
+      nextNumber++;
+    }
+    numberByOrderId.set(o.id, numberByKey.get(key));
+  });
+  return numberByOrderId;
+}
+
+function renderOrderRow(o, clientNumber) {
   const actions = getOrderRowActions(o);
   return `
     <tr data-order-id="${escapeHtml(o.id)}">
+      <td>${clientNumber}</td>
       <td>${new Date(o.createdAt).toLocaleString('ro-RO')}</td>
       <td>${escapeHtml(o.recipient)}</td>
       <td>${escapeHtml(o.email || '—')}${o.isTestOrder ? ' <span class="badge b-draft" title="Exclusa din KPI-urile de conversie (Dashboard)">TEST</span>' : ''}</td>
@@ -599,7 +643,7 @@ function renderPagination(matchingCount) {
 }
 
 async function loadOrders() {
-  ordersBody.innerHTML = '<tr><td colspan="11" class="empty">Se încarcă…</td></tr>';
+  ordersBody.innerHTML = '<tr><td colspan="12" class="empty">Se încarcă…</td></tr>';
   try {
     const res = await fetch(`/api/admin/orders?${buildQuery()}`);
     const data = await res.json();
@@ -609,14 +653,15 @@ async function loadOrders() {
     document.getElementById('stat-revenue').textContent = '£' + data.revenue;
 
     if (ordersCache.length === 0) {
-      ordersBody.innerHTML = '<tr><td colspan="11" class="empty">Nicio comandă găsită</td></tr>';
+      ordersBody.innerHTML = '<tr><td colspan="12" class="empty">Nicio comandă găsită</td></tr>';
     } else {
-      ordersBody.innerHTML = ordersCache.map(renderOrderRow).join('');
+      const clientNumbers = assignDistinctCustomerNumbers(ordersCache);
+      ordersBody.innerHTML = ordersCache.map((o) => renderOrderRow(o, clientNumbers.get(o.id))).join('');
     }
     renderPagination(data.matchingCount);
     syncTopScrollbarWidth();
   } catch (err) {
-    ordersBody.innerHTML = '<tr><td colspan="11" class="empty">Eroare la încărcarea comenzilor.</td></tr>';
+    ordersBody.innerHTML = '<tr><td colspan="12" class="empty">Eroare la încărcarea comenzilor.</td></tr>';
     syncTopScrollbarWidth();
   }
 }

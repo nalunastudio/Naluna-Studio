@@ -2034,8 +2034,18 @@ async function getFunnelKpis({ startDate, endDateExclusive, excludeEmails = [] }
     WHERE ${timeWindowClause('fe.occurred_at', 1, 2)}
       ${hasExcl ? `AND (o.email IS NULL OR lower(o.email) != ALL($3))` : ''}
   `;
+  // distinct_customers (2026-09-25, KPI nou "Clienți distincți cu comandă" — cerinta explicita,
+  // urmare a auditului aceleiasi zile): COUNT(DISTINCT lower(trim(email))) din comenzile REALE
+  // create in perioada — NICIODATA legat de funnel_events/visitor_id/consimtamant analytics
+  // (sursa STRICT tabela orders, identic cu ordersCreated/reachedCheckout de mai jos). Raspunde
+  // direct la "cate persoane distincte au creat cel putin o comanda", spre deosebire de
+  // trackedVisitors (vizitatori ANONIMI, STRICT dupa Analytics consent — vezi timeWindowClause,
+  // mai sus, comentariul de la "LIMITA STRUCTURALA"). NU inlocuieste trackedVisitors — cele doua
+  // masoara lucruri diferite (vezi KPI_DEFS, private/admin/orders.js). trim() alaturi de lower()
+  // — un email cu spatii accidentale la capete (copy-paste) nu trebuie sa creeze fals un client
+  // distinct suplimentar.
   const ordersCreatedSql = `
-    SELECT COUNT(*) AS n FROM orders
+    SELECT COUNT(*) AS n, COUNT(DISTINCT lower(trim(email))) AS distinct_customers FROM orders
     WHERE ${timeWindowClause('created_at', 1, 2)}
       ${hasExcl ? `AND lower(email) != ALL($3)` : ''}
   `;
@@ -2070,6 +2080,7 @@ async function getFunnelKpis({ startDate, endDateExclusive, excludeEmails = [] }
     ctaClicks: Number(preOrderRes.rows[0].cta_clicks),
     formStarted: Number(preOrderRes.rows[0].form_started),
     ordersCreated: Number(ordersCreatedRes.rows[0].n),
+    distinctCustomers: Number(ordersCreatedRes.rows[0].distinct_customers),
     reachedCheckout: Number(reachedCheckoutRes.rows[0].n),
     paidOrders: Number(paidRes.rows[0].paid_orders),
     paidCustomers: Number(paidRes.rows[0].paid_customers),
