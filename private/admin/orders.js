@@ -391,7 +391,15 @@ function renderDataCompleteBanner(dataCompleteSince) {
   }
 }
 
-async function loadFunnelSummary() {
+// silent (2026-09-25, auto-refresh KPI — vezi raportul catre user): apelurile EXPLICITE ale
+// utilizatorului (incarcarea paginii, navigarea Period Selector-ului, bifarea "Restrange la
+// perioada", schimbarea filtrului "Doar plătite") raman NESCHIMBATE — silent=false implicit,
+// tot resincronizeaza tabelul cu perioada (INCLUSIV resetarea paginii la 1, comportament corect
+// cand utilizatorul chiar a schimbat ceva). Tick-ul periodic de fundal (autoRefreshTick, mai jos)
+// cere STRICT silent=true — actualizeaza cardurile KPI/funnel FARA sa atinga starea tabelului
+// (offset/cautare/filtre/pozitie de scroll), ca o reimprospatare de fundal sa nu "sara" admin-ul
+// inapoi la pagina 1 sau sa ii stearga cautarea in timp ce citeste.
+async function loadFunnelSummary({ silent = false } = {}) {
   try {
     const res = await fetch(`/api/admin/orders/funnel-summary?${buildPeriodParams()}`);
     const data = await res.json();
@@ -405,8 +413,11 @@ async function loadFunnelSummary() {
     renderCreatives(data.creatives, data.trafficDataAvailability, data.dataCompleteSince);
     renderPreviewSection(data.preview, data.previewDataAvailability, data.previewDataCompleteSince);
     renderDataCompleteBanner(data.dataCompleteSince);
-    if (syncPeriodCheckbox.checked) applyPeriodSyncToOrdersFilter();
+    if (!silent && syncPeriodCheckbox.checked) applyPeriodSyncToOrdersFilter();
   } catch (err) {
+    // Un fetch esuat (retea/server) NU trebuie sa strice pagina — ramanem STRICT pe ultimele
+    // date afisate cu succes, niciodata un ecran gol/spart. Valabil identic pentru apelurile
+    // explicite SI pentru tick-ul de fundal.
     console.error('Eroare la încărcarea rezumatului funnel:', err);
   }
 }
@@ -501,6 +512,14 @@ function applyPeriodSyncToOrdersFilter() {
 syncPeriodCheckbox.addEventListener('change', () => {
   if (syncPeriodCheckbox.checked) {
     applyPeriodSyncToOrdersFilter();
+    // CORECTIE (2026-09-25, audit discrepanta KPI vs tabel — cauza demonstrata: KPI cards se
+    // reimprospateaza STRICT la navigarea Period Selector-ului (refreshAll), niciodata la
+    // schimbarea filtrelor tabelului — un card "Comenzi plătite" putea ramane "inghetat" de la
+    // ultima incarcare a paginii, in timp ce tabelul (interogare noua, la fiecare schimbare de
+    // filtru) reflecta deja o plata sosita intre timp. Reimprospatam explicit si KPI-urile aici,
+    // ca cele doua sa nu poata diverge vizual exact in momentul in care Adminul activeaza
+    // "Restrange la perioada" ca sa compare tabelul cu KPI-urile de mai sus.
+    loadFunnelSummary();
   } else {
     state.dateFrom = null;
     state.dateTo = null;
@@ -575,44 +594,39 @@ function renderSourceCell(o) {
   return `${escapeHtml(o.utmSource || '(unknown)')}${o.utmCampaign ? ' / ' + escapeHtml(o.utmCampaign) : ''}`;
 }
 
-// NR. CLIENT (2026-09-25, cerinta explicita — numarare clienti distincti, urmare a auditului KPI
-// din aceeasi zi): numaratoare pe CLIENT DISTINCT (lower(trim(email))), NU pe rand/comanda —
-// aceeasi persoana cu mai multe comenzi in setul curent afisat primeste ACELASI numar, atribuit in
-// ordinea PRIMEI aparitii in `orders` (acelasi array deja incarcat/afisat de tabel). STRICT o
-// functie PURA (fara acces DOM), testabila izolat — vezi test/admin-orders-distinct-customer-number.test.js.
-//
-// SCOP LIMITAT, documentat explicit: numerotarea e consistenta STRICT in cadrul setului de comenzi
-// CURENT AFISAT (pagina curenta, dupa filtrele active — PAGE_SIZE=50), nu global peste toate
-// paginile/intreaga baza de date — un client ale carui comenzi cad pe doua pagini diferite ar primi
-// numere diferite pe fiecare pagina. Suficient pentru cazul de utilizare cerut (o zi/perioada tipica
-// incape intr-o singura pagina) — o numerotare globala, stabila cross-paginare, ar necesita o
-// agregare separata server-side, in afara scopului acestei corectii.
-//
-// Comenzi FARA email (nu ar trebui sa existe — email e obligatoriu la creare, vezi server.js
-// isValidEmail — dar tratat defensiv) primesc STRICT propriul numar, niciodata grupate impreuna
-// intre ele (fiecare "email lipsa" e tratat ca un client distinct, nu ca un singur client comun).
-function assignDistinctCustomerNumbers(orders) {
-  const numberByKey = new Map();
-  const numberByOrderId = new Map();
-  let nextNumber = 1;
-  (orders || []).forEach((o, idx) => {
-    const rawEmail = typeof o.email === 'string' ? o.email.trim().toLowerCase() : '';
-    // cheie unica per "email lipsa" — vezi comentariul de mai sus, niciodata grupate impreuna
-    const key = rawEmail || `__no-email__${idx}`;
-    if (!numberByKey.has(key)) {
-      numberByKey.set(key, nextNumber);
-      nextNumber++;
-    }
-    numberByOrderId.set(o.id, numberByKey.get(key));
-  });
-  return numberByOrderId;
+// NR. CLIENT (2026-09-25, REFACUT server-side — vezi raportul catre user): numerotarea cronologica
+// pe client distinct (lower(trim(email))) e acum calculata de server (db.getDistinctCustomerRanks,
+// DENSE_RANK peste TOT setul filtrat — nu doar pagina curenta) si vine gata atasata pe fiecare
+// comanda ca `o.clientNumber` (GET /api/admin/orders). Primul client din perioada/filtrele curente
+// = 1, cel mai recent = numarul total de clienti distincti din acea perioada — corect INDIFERENT
+// de paginare, spre deosebire de vechea implementare client-side (assignDistinctCustomerNumbers,
+// eliminata — numerota STRICT pagina curenta, in ordine inversa).
+
+// RECOVERY (2026-09-25, cerinta 9 — varianta minimala): `o.recovery` (GET /api/admin/orders) —
+// STRICT ultima notificare (indiferent de tip) pentru aceasta comanda, sau null daca nu exista
+// niciuna inca (normal, cat timp RECOVERY_EMAILS_ENABLED e oprit). Niciun istoric complet, niciun
+// dashboard separat — un singur text compact, cu tooltip pentru detalii.
+const RECOVERY_TYPE_LABEL = { preview_ready: 'Preview gata', preview_recovery: 'Reminder preview', checkout_recovery: 'Reminder checkout' };
+const RECOVERY_STATUS_LABEL = {
+  pending: 'în așteptare', sending: 'se trimite', sent: 'trimis',
+  skipped_paid: 'sărit (plătit)', skipped_suppressed: 'sărit (suprimat)', skipped_unsubscribed: 'sărit (dezabonat)',
+  skipped_test: 'sărit (test)', skipped_not_eligible: 'sărit (neeligibil)', skipped_cooldown: 'sărit (cooldown)',
+  failed: 'eșuat', abandoned: 'abandonat'
+};
+function renderRecoveryCell(o) {
+  if (!o.recovery) return '—';
+  const typeLabel = RECOVERY_TYPE_LABEL[o.recovery.type] || o.recovery.type;
+  const statusLabelText = RECOVERY_STATUS_LABEL[o.recovery.status] || o.recovery.status;
+  const when = o.recovery.sentAt || o.recovery.createdAt;
+  const whenStr = when ? new Date(when).toLocaleString('ro-RO') : '';
+  return `<span title="${escapeHtml(whenStr)}">${escapeHtml(typeLabel)} · ${escapeHtml(statusLabelText)}</span>`;
 }
 
-function renderOrderRow(o, clientNumber) {
+function renderOrderRow(o) {
   const actions = getOrderRowActions(o);
   return `
     <tr data-order-id="${escapeHtml(o.id)}">
-      <td>${clientNumber}</td>
+      <td>${o.clientNumber != null ? o.clientNumber : '—'}</td>
       <td>${new Date(o.createdAt).toLocaleString('ro-RO')}</td>
       <td>${escapeHtml(o.recipient)}</td>
       <td>${escapeHtml(o.email || '—')}${o.isTestOrder ? ' <span class="badge b-draft" title="Exclusa din KPI-urile de conversie (Dashboard)">TEST</span>' : ''}</td>
@@ -623,6 +637,7 @@ function renderOrderRow(o, clientNumber) {
       <td>£${o.price}</td>
       <td><span class="badge b-${o.status}">${statusLabel[o.status] || o.status}</span></td>
       <td>${renderSourceCell(o)}</td>
+      <td>${renderRecoveryCell(o)}</td>
       <td>
         <div class="orders-row-actions">
           ${actions.map(a => `<button type="button" class="${a.variant}" data-order-action="${a.id}">${a.label}</button>`).join('')}
@@ -643,7 +658,7 @@ function renderPagination(matchingCount) {
 }
 
 async function loadOrders() {
-  ordersBody.innerHTML = '<tr><td colspan="12" class="empty">Se încarcă…</td></tr>';
+  ordersBody.innerHTML = '<tr><td colspan="13" class="empty">Se încarcă…</td></tr>';
   try {
     const res = await fetch(`/api/admin/orders?${buildQuery()}`);
     const data = await res.json();
@@ -653,15 +668,14 @@ async function loadOrders() {
     document.getElementById('stat-revenue').textContent = '£' + data.revenue;
 
     if (ordersCache.length === 0) {
-      ordersBody.innerHTML = '<tr><td colspan="12" class="empty">Nicio comandă găsită</td></tr>';
+      ordersBody.innerHTML = '<tr><td colspan="13" class="empty">Nicio comandă găsită</td></tr>';
     } else {
-      const clientNumbers = assignDistinctCustomerNumbers(ordersCache);
-      ordersBody.innerHTML = ordersCache.map((o) => renderOrderRow(o, clientNumbers.get(o.id))).join('');
+      ordersBody.innerHTML = ordersCache.map((o) => renderOrderRow(o)).join('');
     }
     renderPagination(data.matchingCount);
     syncTopScrollbarWidth();
   } catch (err) {
-    ordersBody.innerHTML = '<tr><td colspan="12" class="empty">Eroare la încărcarea comenzilor.</td></tr>';
+    ordersBody.innerHTML = '<tr><td colspan="13" class="empty">Eroare la încărcarea comenzilor.</td></tr>';
     syncTopScrollbarWidth();
   }
 }
@@ -679,7 +693,11 @@ searchInput.addEventListener('input', () => {
 });
 
 statusFilter.addEventListener('change', () => { state.status = statusFilter.value; state.offset = 0; loadOrders(); });
-paidFilter.addEventListener('change', () => { state.paid = paidFilter.value; state.offset = 0; loadOrders(); });
+// CORECTIE (2026-09-25, audit discrepanta KPI vs tabel — vezi raportul): filtrul "Doar plătite"
+// e EXACT controlul pe care un Admin il foloseste ca sa compare tabelul cu cardul KPI "Comenzi
+// plătite în perioadă" — reimprospatam si KPI-urile aici, din acelasi motiv ca la
+// syncPeriodCheckbox mai sus, ca cele doua sa nu poata arata vreodata cifre dintr-un moment diferit.
+paidFilter.addEventListener('change', () => { state.paid = paidFilter.value; state.offset = 0; loadOrders(); loadFunnelSummary(); });
 sourceFilter.addEventListener('change', () => { state.utmSource = sourceFilter.value; state.offset = 0; loadOrders(); });
 campaignFilter.addEventListener('change', () => { state.utmCampaign = campaignFilter.value; state.offset = 0; loadOrders(); });
 testFilterEl.addEventListener('change', () => { state.testFilter = testFilterEl.value; state.offset = 0; loadOrders(); });
@@ -739,3 +757,57 @@ updatePeriodLabel();
 loadFilterOptions();
 refreshAll();
 loadOrders();
+
+// ==========================================================================================
+// AUTO-REFRESH (2026-09-25, elimina riscul ramas de staleness — vezi raportul catre user:
+// cardurile KPI se puteau "ingheta" la ultima incarcare/navigare de perioada, in timp ce o plata
+// noua sosea intre timp; fixul anterior a acoperit STRICT schimbarea filtrelor tabelului
+// (paidFilter/syncPeriodCheckbox) — asta ramane insuficient daca admin-ul lasa pagina deschisa,
+// fara sa atinga niciun filtru). Tick periodic, silentios: reimprospateaza KPI/funnel-ul SI
+// tabelul, fara sa resetezi cautarea/filtrele/pagina/pozitia de scroll a admin-ului — vezi
+// loadFunnelSummary({silent:true}) mai sus (sare peste applyPeriodSyncToOrdersFilter, care altfel
+// ar reseta state.offset la 0 la fiecare tick) si loadOrders() (foloseste STRICT `state` curent,
+// neschimbat, niciun reset).
+// ==========================================================================================
+const AUTO_REFRESH_INTERVAL_MS = 60 * 1000; // "rezonabil", cerinta explicita — 60s
+let autoRefreshTimer = null;
+let lastAutoRefreshAt = Date.now(); // init la pornire — pagina tocmai a incarcat date proaspete
+
+async function autoRefreshTick() {
+  // Pagina ascunsa (alt tab/fereastra minimizata) — ZERO cereri catre server, niciun risc de
+  // request-uri excesive pentru file ramase deschise, uitate, in fundal (Page Visibility API,
+  // suport universal in browserele moderne).
+  if (typeof document !== 'undefined' && document.hidden) return;
+  lastAutoRefreshAt = Date.now();
+  // Cele doua reimprospatari sunt independente (fiecare cu propriul try/catch intern) — un esec
+  // al uneia (retea/server) nu trebuie sa il opreasca pe celalalt si NICIODATA nu trebuie sa
+  // arunce mai departe (pagina ramane exact cum era, niciodata stricata de un tick de fundal).
+  await loadFunnelSummary({ silent: true });
+  try {
+    await loadOrders();
+  } catch (err) {
+    console.error('Eroare la reimprospatarea de fundal a tabelului de comenzi:', err);
+  }
+}
+
+// Garda impotriva unui interval DUBLAT (ex. daca acest bloc ar rula de doua ori din greseala la
+// reincarcare/reinitializare) — o a doua chemare e un no-op sigur, niciodata un al doilea timer
+// concurent care ar dubla frecventa reala a request-urilor.
+function startAutoRefresh() {
+  if (autoRefreshTimer) return;
+  autoRefreshTimer = setInterval(autoRefreshTick, AUTO_REFRESH_INTERVAL_MS);
+}
+startAutoRefresh();
+
+// Revenirea in prim-plan dupa ce tab-ul a stat ascuns mai mult decat intervalul normal —
+// reimprospatare imediata (admin-ul nu trebuie sa astepte pana la 60s aditionale dupa ce a
+// revenit), dar STRICT daca a trecut deja cel putin un interval intreg de la ultima
+// reimprospatare reala — altfel un comutator rapid intre tab-uri nu declanseaza cereri suplimentare
+// (nu dubleaza tick-ul periodic normal, care oricum va rula la timpul lui).
+if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && (Date.now() - lastAutoRefreshAt) >= AUTO_REFRESH_INTERVAL_MS) {
+      autoRefreshTick();
+    }
+  });
+}

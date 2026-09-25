@@ -65,7 +65,11 @@
     display:flex; align-items:center; justify-content:space-between;
     padding:28px 0;
   }
-  .logo{ display:flex; align-items:center; gap:12px; }
+  .logo{ display:flex; align-items:center; gap:12px; flex-shrink:0; }
+  /* .lang-switch e flex item DIRECT al lui nav (#lang-select e doar copilul lui, nu e el insusi
+     flex item) — flex-shrink:0 trebuie sa fie AICI, nu (doar) pe .lang-select, altfel nav tot
+     il poate comprima pe div, indiferent de width:auto de pe select. */
+  .lang-switch{ flex-shrink:0; }
   .logo-mark{ width:34px; height:auto; display:block; }
   .logo-mark img{ width:100%; height:auto; display:block; }
   .logo-text{
@@ -80,6 +84,17 @@
     background:var(--surface); border:1px solid var(--line); color:var(--text);
     font-family:'Sora', sans-serif; font-size:12px; letter-spacing:.04em; padding:7px 12px; border-radius:8px;
     cursor:pointer;
+    /* CAUZA REALA a bug-ului "doar sageata" pe mobil (2026-09-25, audit): regula generica
+       `input, select, textarea{ width:100%; ... }` mai jos (destinata campurilor unui formular —
+       dar index.html NU are niciun <input>/<textarea>, si SINGURUL <select> e acesta) se aplica
+       si peste selectorul de limba din nav, fortandu-l la width:100% din div-ul .lang-switch —
+       care, fiind un flex item NEprotejat in nav (flex-shrink:1 implicit), se comprima sub
+       presiunea CTA-ului lung ("Componer ahora" etc.) pe ecrane inguste, pana cand browserul
+       (in special WebKit/iOS Safari, mai putin protector aici decat Chrome) randeaza doar sageata
+       nativa, fara loc pentru steag+cod. width:auto + flex-shrink:0 anuleaza EXPLICIT ambele
+       cauze: selectorul isi ia latimea naturala (steag+cod+sageata) si NU mai poate fi comprimat
+       de flexbox, indiferent de spatiul disponibil. */
+    width:auto; flex-shrink:0;
   }
   .lang-select:focus{ outline:2px solid var(--gold); outline-offset:1px; }
 
@@ -281,8 +296,23 @@
     .moon-svg{ width:200px; }
     .steps{ grid-template-columns:1fr 1fr; }
     .nav-links{ display:none; }
+    /* CORECTIE (2026-09-25, audit selector de limba pe mobil) — comportament responsive
+       INTENTIONAT, nu un workaround pe selector: CTA-ul din nav ("Compune acum"/"Componer
+       ahora"/etc, cel mai lung element ramas dupa ascunderea .nav-links) e STRICT redundant pe
+       mobil — .mobile-sticky-cta (mai jos) ofera deja acelasi CTA, fixat jos, pe toata pagina.
+       Ascunzandu-l AICI (nu selectorul, nu logo-ul) elibereaza exact spatiul necesar ca logo +
+       selectorul de limba (steag+cod+sageata complet vizibile, vezi .lang-select mai sus) sa
+       incapa impreuna, fara nicio comprimare, de la 320px in sus, in toate cele 8 limbi. */
+    nav .btn-ghost{ display:none; }
 
-    body{ padding-bottom:84px; }
+    /* CORECTIE (2026-09-25, audit bara sticky mobila — FAZA 4): 84px fix, masurat direct (JS,
+       getBoundingClientRect), era INSUFICIENT — bara reala (link "Comanda mea" + buton, cu
+       padding-ul ei 12px sus/jos) are ~114px, FARA safe-area — deja un deficit de ~30px pe orice
+       telefon FARA notch, ~64px pe un iPhone cu notch (safe-area-inset-bottom ~34px, adaugat la
+       padding-ul barei, dar NICIODATA la cel al body-ului, care ramanea static). Rezultat: ultimii
+       ~30-64px de continut real (ex. footer) puteau fi ascunsi vizual sub bara la scroll complet
+       jos. Corectat sa reflecte ACEEASI baza (safe-area inclus) plus o marja mica de siguranta. */
+    body{ padding-bottom:calc(120px + env(safe-area-inset-bottom)); }
     .mobile-sticky-cta{
       display:block; position:fixed; left:0; right:0; bottom:0; z-index:40;
       padding:12px 16px calc(12px + env(safe-area-inset-bottom));

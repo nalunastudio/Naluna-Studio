@@ -44,7 +44,9 @@ test('orders.html: NU mai contine niciuna dintre clasele compactarii vechi (col-
   // "Data"): asertiunea originala (byte-identica cu 66cd46d) verifica STRICT ca nu a reaparut
   // compactarea veche — actualizata sa reflecte coloana noua, aprobata separat, fara nicio clasa
   // de compactare (col-*/orders-table-compact) langa ea.
-  assert.match(html, /<tr><th[^>]*>Nr\. client<\/th><th>Data<\/th><th>Pentru<\/th><th>Email<\/th><th>Limba<\/th><th>Ocazie<\/th><th>Gen<\/th><th>Pachet<\/th><th>Preț<\/th><th>Status<\/th><th>Sursă<\/th><th>Acțiuni<\/th><\/tr>/, 'antetul trebuie sa ramana identic cu varianta originala, DOAR cu coloana noua Nr. client adaugata, fara nicio clasa de coloana veche');
+  // CORECȚIE (2026-09-25, recovery emails — coloana minimala "Recovery", APROBATA separat,
+  // inainte de "Acțiuni"): asertiunea actualizata din nou, in acelasi spirit.
+  assert.match(html, /<tr><th[^>]*>Nr\. client<\/th><th>Data<\/th><th>Pentru<\/th><th>Email<\/th><th>Limba<\/th><th>Ocazie<\/th><th>Gen<\/th><th>Pachet<\/th><th>Preț<\/th><th>Status<\/th><th>Sursă<\/th><th[^>]*>Recovery<\/th><th>Acțiuni<\/th><\/tr>/, 'antetul trebuie sa ramana identic cu varianta originala, DOAR cu coloanele noi Nr. client si Recovery adaugate, fara nicio clasa de coloana veche');
 });
 
 test('orders.js: NU mai contine functiile/clasele compactarii vechi (renderDateCell pe doua randuri, cell-truncate) — data/email/sursa afisate simplu, ca inainte de 66cd46d', () => {
@@ -144,5 +146,7 @@ test('orders.html/orders.js: sectiunile de analytics/funnel (Period Selector, KP
   assert.match(html, /id="funnel-cohort"/);
   assert.match(html, /id="trend-chart"/);
   assert.match(html, /id="sources-table"/);
-  assert.match(js, /async function loadFunnelSummary\(\) \{/);
+  // CORECTIE (2026-09-25, auto-refresh KPI): semnatura a capatat un parametru optional
+  // ({ silent = false } = {}), neatins altfel de aceasta corectie de scroll.
+  assert.match(js, /async function loadFunnelSummary\(\{ silent = false \} = \{\}\) \{/);
 });

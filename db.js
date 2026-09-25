@@ -609,6 +609,23 @@ async function initDb() {
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_orders_paid_at ON orders(paid_at);`);
 
   // ==================================================================================
+  // EMAIL MARKETING OPT-OUT (2026-09-25, corectie PECR soft opt-in — vezi raportul catre user) —
+  // bifa OPTIONALA, aratata la colectarea emailului (comanda.html, pasul 2), COMPLET SEPARATA de
+  // Analytics/Marketing (cookie consent Meta Pixel/CAPI, neatinse). Persistata pe COMANDA, ca
+  // DOVADA server-side — ce alegere exista, sub ce text (policy_version), la ce moment (choice_at)
+  // — vezi POST /api/orders (server.js).
+  //
+  // email_marketing_opt_out: NULLABLE, FARA DEFAULT — NULL inseamna STRICT "aceasta comanda a
+  // fost creata inainte ca acest mecanism sa existe, clientul nu a fost NICIODATA intrebat".
+  // O comanda veche (NULL) NU e echivalenta cu "nu a refuzat" (false) — tratamentul lor e diferit
+  // in eligibility (vezi findDueRecoveryCandidates mai jos: `email_marketing_opt_out = false`
+  // exclude STRICT si NULL si true, prin comportamentul normal SQL al comparatiei cu NULL — asta
+  // impune protectia forward-only ceruta explicit, fara sa mai fie nevoie de un cutoff separat).
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS email_marketing_opt_out BOOLEAN;`);
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS email_marketing_choice_at TIMESTAMPTZ;`);
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS email_marketing_policy_version TEXT;`);
+
+  // ==================================================================================
   // FUNNEL_EVENTS (2026-09-18, Funnel Analytics) — jurnal de evenimente ANONIME pentru etapele
   // funnel-ului care preced existenta unei comenzi (nu au unde sa fie stocate pe orders, pentru
   // ca inca nu exista niciun rand): cta_clicked, order_page_viewed, form_started,
@@ -780,6 +797,77 @@ async function initDb() {
   `);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_meta_capi_events_status_next_attempt ON meta_capi_events(status, next_attempt_at);`);
 
+  // ==================================================================================
+  // RECOVERY EMAILS (2026-09-25, IMPLEMENTARE — vezi lib/recovery-emails/) — outbox ACELASI
+  // tipar exact ca meta_capi_events (claim atomic FOR UPDATE SKIP LOCKED, retry cu backoff,
+  // recuperare dupa crash), adaptat la 3 tipuri de notificare per comanda in loc de un singur
+  // eveniment Purchase:
+  //   'preview_ready'      — operational, "melodia ta e gata" — link de acces, o SINGURA data,
+  //                          per comanda, NICIODATA gated de suppression de marketing (e livrare
+  //                          de acces la ce a comandat deja, acelasi scop deja declarat in Privacy
+  //                          Policy ca sendDeliveryEmail).
+  //   'preview_recovery'   — reminder neutru ("vrei sa mai schimbi ceva?") — preview gata, neplatit,
+  //                          fara checkout incercat.
+  //   'checkout_recovery'  — reminder ("melodia ta te asteapta") — checkout creat, neplatit.
+  // UNIQUE(order_id, notification_type): un eveniment nu e NICIODATA renotificat, indiferent de
+  // status (inclusiv status terminal 'abandoned') — garantat la nivel de baza de date, nu doar
+  // prin conventie in worker.
+  // email_key: lower(trim(email)) capturat LA MOMENTUL enqueue-ului — permite interogari de
+  // deduplicare per-client (recovery_client_state mai jos) fara join cu orders (care ar putea
+  // fi între timp anonimizat).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS order_notifications (
+      id UUID PRIMARY KEY,
+      order_id UUID NOT NULL REFERENCES orders(id),
+      email_key TEXT NOT NULL,
+      notification_type TEXT NOT NULL CHECK (notification_type IN ('preview_ready', 'preview_recovery', 'checkout_recovery')),
+      lang TEXT,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (
+        'pending', 'sending', 'sent',
+        'skipped_paid', 'skipped_suppressed', 'skipped_unsubscribed', 'skipped_test',
+        'skipped_not_eligible', 'skipped_cooldown', 'skipped_opted_out', 'failed', 'abandoned'
+      )),
+      attempts INTEGER NOT NULL DEFAULT 0,
+      max_attempts INTEGER NOT NULL DEFAULT 5,
+      next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      claimed_at TIMESTAMPTZ,
+      last_attempt_at TIMESTAMPTZ,
+      last_error TEXT,
+      resend_message_id TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      sent_at TIMESTAMPTZ,
+      UNIQUE (order_id, notification_type)
+    );
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_order_notifications_status_next_attempt ON order_notifications(status, next_attempt_at);`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_order_notifications_email_key ON order_notifications(email_key);`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_order_notifications_order_id ON order_notifications(order_id);`);
+
+  // recovery_client_state: cooldown PER CLIENT (email normalizat), STRICT pentru tipurile
+  // 'preview_recovery'/'checkout_recovery' (niciodata 'preview_ready', care e operational, nu
+  // marketing) — un client cu 2-3-4 comenzi nu primeste mai mult de un reminder per fereastra
+  // (vezi lib/recovery-emails/worker.js, RECOVERY_CLIENT_COOLDOWN_HOURS, pentru regula exacta
+  // deterministă de alegere a comenzii relevante).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS recovery_client_state (
+      email_key TEXT PRIMARY KEY,
+      last_recovery_sent_at TIMESTAMPTZ NOT NULL
+    );
+  `);
+
+  // email_marketing_suppressions: unsubscribe SEPARAT, explicit, de email_suppressions de mai sus
+  // (bounce/complaint Resend — ramane neatins, foloseste in continuare STRICT pentru
+  // sendDeliveryEmail). Aceasta suprima STRICT 'preview_recovery'/'checkout_recovery' — niciodata
+  // 'preview_ready' (livrare de acces, nu marketing) si niciodata sendDeliveryEmail (livrare
+  // comanda platita, deja disclosed separat). Vezi POST /api/email-marketing/unsubscribe.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS email_marketing_suppressions (
+      email TEXT PRIMARY KEY,
+      reason TEXT NOT NULL DEFAULT 'unsubscribed',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `);
+
   console.log('Postgres: schema orders verificata/creata.');
 }
 
@@ -884,15 +972,23 @@ function rowToOrder(row) {
     fbclid: row.fbclid || null,
     fbp: row.fbp || null,
     visitorId: row.visitor_id || null,
-    checkoutCreatedAt: row.checkout_created_at || null
+    checkoutCreatedAt: row.checkout_created_at || null,
+    // Email marketing opt-out (2026-09-25) — booleanul e pastrat EXACT ca in DB (true/false/null),
+    // niciodata coercizat cu `|| null`/`!!` — null (comanda veche, dinainte de mecanism) trebuie sa
+    // ramana distinct de false ("a ales explicit sa NU refuze"), vezi comentariul ALTER TABLE.
+    emailMarketingOptOut: row.email_marketing_opt_out === null || row.email_marketing_opt_out === undefined
+      ? null
+      : !!row.email_marketing_opt_out,
+    emailMarketingChoiceAt: row.email_marketing_choice_at || null,
+    emailMarketingPolicyVersion: row.email_marketing_policy_version || null
   };
 }
 
 async function createOrder(order) {
   const result = await pool.query(
     `INSERT INTO orders
-      (id, access_token, occasion, recipient, email, story, genre, genre2, plan, price, lang, status, edits_used, variants, selected_variant_id, sender_name, relationship, voice_preference, phone, grandparent_type, recipient_role, sender_role, recipient_mode, recipient_names, wedding_type, song2_target, occasion_2, recipient_role_2, sender_role_2, recipient_mode_2, recipient_names_2, recipient_2, wedding_type_2, sender_name_2, relationship_2, story_2, utm_source, utm_medium, utm_campaign, utm_content, utm_term, fbclid, fbp, visitor_id)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44)
+      (id, access_token, occasion, recipient, email, story, genre, genre2, plan, price, lang, status, edits_used, variants, selected_variant_id, sender_name, relationship, voice_preference, phone, grandparent_type, recipient_role, sender_role, recipient_mode, recipient_names, wedding_type, song2_target, occasion_2, recipient_role_2, sender_role_2, recipient_mode_2, recipient_names_2, recipient_2, wedding_type_2, sender_name_2, relationship_2, story_2, utm_source, utm_medium, utm_campaign, utm_content, utm_term, fbclid, fbp, visitor_id, email_marketing_opt_out, email_marketing_choice_at, email_marketing_policy_version)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44,$45,$46,$47)
      RETURNING *`,
     [
       order.id, order.accessToken, order.occasion, order.recipient, order.email,
@@ -911,7 +1007,9 @@ async function createOrder(order) {
       // Atribuire marketing (2026-09-18) — vezi comentariul de la ALTER TABLE/rowToOrder.
       order.utmSource || null, order.utmMedium || null, order.utmCampaign || null,
       order.utmContent || null, order.utmTerm || null, order.fbclid || null, order.fbp || null,
-      order.visitorId || null
+      order.visitorId || null,
+      // Email marketing opt-out (2026-09-25) — vezi comentariul ALTER TABLE/rowToOrder.
+      order.emailMarketingOptOut === true, order.emailMarketingChoiceAt || null, order.emailMarketingPolicyVersion || null
     ]
   );
   return rowToOrder(result.rows[0]);
@@ -3013,6 +3111,234 @@ async function getMetaCapiEventByOrderId(orderId) {
   return rowToMetaCapiEvent(result.rows[0]);
 }
 
+// ==================================================================================
+// RECOVERY EMAILS (2026-09-25) — vezi comentariul CREATE TABLE order_notifications mai sus
+// pentru arhitectura generala. Acelasi tipar exact ca functiile meta_capi_events de mai sus.
+// ==================================================================================
+function rowToOrderNotification(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    orderId: row.order_id,
+    emailKey: row.email_key,
+    notificationType: row.notification_type,
+    lang: row.lang,
+    status: row.status,
+    attempts: row.attempts,
+    maxAttempts: row.max_attempts,
+    nextAttemptAt: row.next_attempt_at,
+    claimedAt: row.claimed_at,
+    lastAttemptAt: row.last_attempt_at,
+    lastError: row.last_error,
+    resendMessageId: row.resend_message_id,
+    createdAt: row.created_at,
+    sentAt: row.sent_at
+  };
+}
+
+// Enqueue idempotent — UNIQUE(order_id, notification_type) garanteaza ca un eveniment nu e
+// NICIODATA creat de doua ori, indiferent cate ori e apelata aceasta functie pentru aceeasi
+// comanda+tip (ex. finalizeVariantsIfNeeded, apelata si la o regenerare ulterioara aceleiasi
+// comenzi — a doua incercare de enqueue pentru 'preview_ready' e un no-op sigur).
+async function enqueueOrderNotification({ orderId, emailKey, notificationType, lang }) {
+  const result = await pool.query(
+    `INSERT INTO order_notifications (id, order_id, email_key, notification_type, lang)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (order_id, notification_type) DO NOTHING
+     RETURNING *`,
+    [randomUUID(), orderId, emailKey, notificationType, lang || null]
+  );
+  return rowToOrderNotification(result.rows[0]);
+}
+
+// CLAIM ATOMIC — identic ca structura cu claimDueMetaCapiEvent (FOR UPDATE SKIP LOCKED).
+// notificationTypes: array — un singur worker proceseaza toate cele 3 tipuri prin aceeasi
+// coada, dispecerizarea catre sablonul corect facandu-se in lib/recovery-emails/worker.js.
+async function claimDueOrderNotification(notificationTypes) {
+  const result = await pool.query(
+    `UPDATE order_notifications
+     SET status = 'sending', claimed_at = now()
+     WHERE id = (
+       SELECT id FROM order_notifications
+       WHERE status = 'pending' AND next_attempt_at <= now() AND notification_type = ANY($1::text[])
+       ORDER BY next_attempt_at ASC
+       FOR UPDATE SKIP LOCKED
+       LIMIT 1
+     )
+     RETURNING *`,
+    [notificationTypes]
+  );
+  return rowToOrderNotification(result.rows[0]);
+}
+
+async function finalizeOrderNotification(id, patch) {
+  const result = await pool.query(
+    `UPDATE order_notifications SET
+      status = $2,
+      attempts = $3,
+      next_attempt_at = $4,
+      last_attempt_at = $5,
+      last_error = $6,
+      resend_message_id = $7,
+      sent_at = $8,
+      claimed_at = NULL
+     WHERE id = $1
+     RETURNING *`,
+    [
+      id, patch.status, patch.attempts, patch.nextAttemptAt || null,
+      patch.lastAttemptAt || null, patch.lastError || null, patch.resendMessageId || null, patch.sentAt || null
+    ]
+  );
+  return rowToOrderNotification(result.rows[0]);
+}
+
+async function recoverStaleOrderNotifications(staleMinutes) {
+  const result = await pool.query(
+    `UPDATE order_notifications
+     SET status = 'pending', next_attempt_at = now(), claimed_at = NULL
+     WHERE status = 'sending'
+       AND claimed_at IS NOT NULL
+       AND claimed_at < now() - ($1 || ' minutes')::interval
+     RETURNING *`,
+    [staleMinutes]
+  );
+  return result.rows.map(rowToOrderNotification);
+}
+
+// SCAN — gaseste comenzi ELIGIBILE (nu inca notificate) pentru 'preview_recovery' (preview gata,
+// neplatit, checkout NICIODATA incercat) si 'checkout_recovery' (checkout creat, neplatit),
+// intr-un SINGUR query (UNION ALL). Fereastra dubla — prag minim (trebuie sa fi trecut cel putin
+// X ore) SI plafon maxim (maxLookbackHours, plasa de siguranta impotriva unor comenzi foarte
+// vechi ramase intr-o stare stranie) — plus cutoffSince (vezi app_settings
+// 'recovery_emails_first_enabled_at', citit de lib/recovery-emails/worker.js): NICIODATA
+// comenzi mai vechi decat momentul in care acest sistem a fost pornit prima data, indiferent de
+// cat de vechi ar fi altfel eligibile — protectia explicita impotriva trimiterii retroactive.
+//
+// email_marketing_opt_out = false (2026-09-25, corectie PECR soft opt-in) — GATE-UL PRINCIPAL de
+// eligibilitate pentru email marketing: exclude, prin ACELASI predicat SQL, ambele cazuri "nu
+// trebuie trimis":
+//   - email_marketing_opt_out = true  -> client a refuzat explicit la colectarea emailului;
+//   - email_marketing_opt_out IS NULL -> comanda VECHE, dinainte ca acest mecanism sa existe,
+//     clientul nu a fost NICIODATA intrebat (comparatia SQL cu NULL nu e niciodata TRUE) — asta
+//     e mecanismul forward-only cerut explicit pentru comenzile istorice (cerinta 7), mai precis
+//     decat cutoffSince de mai sus (care ramane, ca a doua plasa de siguranta independenta).
+// Verificat DIN NOU, live, la trimitere (vezi eligibility.js#checkSendEligibility) — nu doar aici,
+// la scanare.
+async function findDueRecoveryCandidates({ previewThresholdHours, checkoutThresholdHours, maxLookbackHours, cutoffSince, testEmails }) {
+  const testEmailsLower = (testEmails && testEmails.length > 0) ? testEmails.map((e) => e.toLowerCase()) : null;
+  const result = await pool.query(
+    `
+    SELECT id AS order_id, lower(trim(email)) AS email_key, lang, 'preview_recovery' AS notification_type, generated_at AS qualifying_at
+    FROM orders
+    WHERE status = 'preview_ready'
+      AND paid_at IS NULL
+      AND checkout_created_at IS NULL
+      AND anonymized_at IS NULL
+      AND generated_at IS NOT NULL
+      AND email_marketing_opt_out = false
+      AND generated_at <= now() - ($1 || ' hours')::interval
+      AND generated_at >= now() - ($2 || ' hours')::interval
+      AND generated_at >= $3
+      AND ($4::text[] IS NULL OR NOT (lower(email) = ANY($4::text[])))
+      AND NOT EXISTS (SELECT 1 FROM order_notifications n WHERE n.order_id = orders.id AND n.notification_type = 'preview_recovery')
+
+    UNION ALL
+
+    SELECT id AS order_id, lower(trim(email)) AS email_key, lang, 'checkout_recovery' AS notification_type, checkout_created_at AS qualifying_at
+    FROM orders
+    WHERE checkout_created_at IS NOT NULL
+      AND paid_at IS NULL
+      AND anonymized_at IS NULL
+      AND status <> 'generation_failed'
+      AND email_marketing_opt_out = false
+      AND checkout_created_at <= now() - ($5 || ' hours')::interval
+      AND checkout_created_at >= now() - ($2 || ' hours')::interval
+      AND checkout_created_at >= $3
+      AND ($4::text[] IS NULL OR NOT (lower(email) = ANY($4::text[])))
+      AND NOT EXISTS (SELECT 1 FROM order_notifications n WHERE n.order_id = orders.id AND n.notification_type = 'checkout_recovery')
+    `,
+    [previewThresholdHours, maxLookbackHours, cutoffSince, testEmailsLower, checkoutThresholdHours]
+  );
+  return result.rows.map((r) => ({
+    orderId: r.order_id,
+    emailKey: r.email_key,
+    lang: r.lang,
+    notificationType: r.notification_type,
+    qualifyingAt: r.qualifying_at
+  }));
+}
+
+async function getRecoveryClientCooldown(emailKey) {
+  const result = await pool.query(`SELECT last_recovery_sent_at FROM recovery_client_state WHERE email_key = $1`, [emailKey]);
+  return result.rows[0] ? result.rows[0].last_recovery_sent_at : null;
+}
+
+async function touchRecoveryClientCooldown(emailKey) {
+  await pool.query(
+    `INSERT INTO recovery_client_state (email_key, last_recovery_sent_at) VALUES ($1, now())
+     ON CONFLICT (email_key) DO UPDATE SET last_recovery_sent_at = now()`,
+    [emailKey]
+  );
+}
+
+async function isEmailMarketingSuppressed(email) {
+  const result = await pool.query(
+    `SELECT 1 FROM email_marketing_suppressions WHERE email = $1`,
+    [String(email || '').toLowerCase().trim()]
+  );
+  return result.rows.length > 0;
+}
+
+async function addEmailMarketingSuppression(email, reason) {
+  await pool.query(
+    `INSERT INTO email_marketing_suppressions (email, reason) VALUES ($1, $2)
+     ON CONFLICT (email) DO NOTHING`,
+    [String(email || '').toLowerCase().trim(), reason || 'unsubscribed']
+  );
+}
+
+// Rezumat minim de recovery per comanda, pentru Admin > Comenzi (coloana "Recovery") — STRICT
+// ultima notificare (indiferent de tip) per order_id, niciun istoric complet incarcat in browser.
+async function getOrderNotificationSummaries(orderIds) {
+  if (!orderIds || orderIds.length === 0) return new Map();
+  const result = await pool.query(
+    `SELECT DISTINCT ON (order_id) order_id, notification_type, status, sent_at, created_at
+     FROM order_notifications
+     WHERE order_id = ANY($1::uuid[])
+     ORDER BY order_id, created_at DESC`,
+    [orderIds]
+  );
+  const map = new Map();
+  for (const row of result.rows) {
+    map.set(row.order_id, { type: row.notification_type, status: row.status, sentAt: row.sent_at, createdAt: row.created_at });
+  }
+  return map;
+}
+
+// "NR. CLIENT" — rang cronologic ROBUST (2026-09-25, aprobat explicit) — DENSE_RANK peste
+// INTREG setul filtrat (nu doar pagina curenta, spre deosebire de vechea implementare
+// client-side din private/admin/orders.js), ordonat dupa PRIMA comanda a fiecarui client
+// (MIN(created_at) ASC) — clientul cel mai VECHI din perioada/filtrele curente = 1, cel mai
+// RECENT = numarul total de clienti distincti. Identitatea clientului ramane STRICT
+// lower(trim(email)) — neschimbata. Foloseste ACELASI buildOrdersFilter (deci ACELASI
+// testFilter/perioada/status/etc.) ca listOrdersPage/countOrders de mai sus — niciun filtru
+// separat, niciun risc de divergenta intre ce se vede in tabel si ce se numara aici.
+async function getDistinctCustomerRanks(filterArgs) {
+  const { where, values } = buildOrdersFilter(filterArgs);
+  const result = await pool.query(
+    `SELECT lower(trim(email)) AS email_key, DENSE_RANK() OVER (ORDER BY MIN(created_at) ASC) AS rnk
+     FROM orders
+     ${where}
+     GROUP BY lower(trim(email))`,
+    values
+  );
+  const map = new Map();
+  for (const row of result.rows) {
+    map.set(row.email_key, Number(row.rnk));
+  }
+  return map;
+}
+
 async function markInstagramTokenAlertSent() {
   await pool.query(`UPDATE instagram_token_state SET last_alert_sent_at = now() WHERE id = 1`);
 }
@@ -3052,5 +3378,9 @@ module.exports = {
   getInstagramTokenState, claimInstagramTokenRefresh, recordInstagramTokenRefreshSuccess,
   recordInstagramTokenRefreshFailure, markInstagramTokenAlertSent,
   enqueueMetaCapiEvent, claimDueMetaCapiEvent, finalizeMetaCapiEvent, recoverStaleMetaCapiEvents,
-  getMetaCapiEventByOrderId
+  getMetaCapiEventByOrderId,
+  enqueueOrderNotification, claimDueOrderNotification, finalizeOrderNotification, recoverStaleOrderNotifications,
+  findDueRecoveryCandidates, getRecoveryClientCooldown, touchRecoveryClientCooldown,
+  isEmailMarketingSuppressed, addEmailMarketingSuppression, getOrderNotificationSummaries,
+  getDistinctCustomerRanks
 };

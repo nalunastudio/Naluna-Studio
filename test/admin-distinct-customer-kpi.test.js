@@ -169,128 +169,105 @@ test('renderKpiCards: randeaza title-ul (tooltip) pe label STRICT cand d.note ex
   assert.match(fn, /d\.note \? ` title="\$\{escapeHtml\(d\.note\)\}"` : ''/);
 });
 
-// ---- assignDistinctCustomerNumbers — functie PURA, extrasa textual si evaluata intr-un sandbox.
-function loadAssignDistinctCustomerNumbers() {
-  const start = ordersSrc.indexOf('function assignDistinctCustomerNumbers(orders) {');
-  assert.ok(start !== -1, 'assignDistinctCustomerNumbers lipseste sau s-a schimbat structural');
-  let depth = 0, i = ordersSrc.indexOf('{', start);
-  for (; i < ordersSrc.length; i++) {
-    if (ordersSrc[i] === '{') depth++;
-    else if (ordersSrc[i] === '}') { depth--; if (depth === 0) break; }
-  }
-  const snippet = ordersSrc.slice(start, i + 1);
-  const wrapperSrc = `(function () {\n${snippet}\nreturn assignDistinctCustomerNumbers;\n})`;
-  return new Function('return ' + wrapperSrc)()();
-}
-const assignDistinctCustomerNumbers = loadAssignDistinctCustomerNumbers();
-
-test('assignDistinctCustomerNumbers: email CASE-INSENSITIVE — "Ana@Exemplu.com" si "ana@exemplu.com" primesc ACELASI numar', () => {
-  const orders = [
-    { id: 'o1', email: 'Ana@Exemplu.com' },
-    { id: 'o2', email: 'ana@exemplu.com' }
-  ];
-  const numbers = assignDistinctCustomerNumbers(orders);
-  assert.equal(numbers.get('o1'), numbers.get('o2'));
-  assert.equal(numbers.get('o1'), 1);
+// ================================================================================================
+// (2b) db.js#getDistinctCustomerRanks — REFACUT server-side (2026-09-25, aprobat explicit) —
+// inlocuieste vechea assignDistinctCustomerNumbers (client-side, doar pagina curenta, ordine
+// INVERSA — cel mai recent client = 1). Vezi raportul pentru explicatia completa a schimbarii.
+// ================================================================================================
+test('getDistinctCustomerRanks: foloseste DENSE_RANK() OVER (ORDER BY MIN(created_at) ASC) — primul client din perioada = 1, GROUP BY lower(trim(email))', async () => {
+  await withMockPool((sql) => ({ rows: [] }), async (calls) => {
+    await db.getDistinctCustomerRanks({});
+    const call = calls.find((c) => c.sql.includes('DENSE_RANK'));
+    assert.ok(call, 'trebuie sa existe o interogare cu DENSE_RANK');
+    assert.match(call.sql, /DENSE_RANK\(\) OVER \(ORDER BY MIN\(created_at\) ASC\)/);
+    assert.match(call.sql, /GROUP BY lower\(trim\(email\)\)/);
+  });
 });
 
-test('assignDistinctCustomerNumbers: TRIM whitespace — " ana@exemplu.com " (spatii la capete) e acelasi client ca "ana@exemplu.com"', () => {
-  const orders = [
-    { id: 'o1', email: ' ana@exemplu.com ' },
-    { id: 'o2', email: 'ana@exemplu.com' }
-  ];
-  const numbers = assignDistinctCustomerNumbers(orders);
-  assert.equal(numbers.get('o1'), numbers.get('o2'));
+test('getDistinctCustomerRanks: reutilizeaza buildOrdersFilter (ACELASI where/values ca listOrdersPage/countOrders) — respecta testFilter/perioada/status curente', async () => {
+  await withMockPool((sql) => ({ rows: [] }), async (calls) => {
+    await db.getDistinctCustomerRanks({ testFilter: 'real', testEmails: ['test@naluna.dev'], dateFrom: '2026-09-25', dateToExclusive: '2026-09-26' });
+    const call = calls.find((c) => c.sql.includes('DENSE_RANK'));
+    assert.match(call.sql, /lower\(email\) != ALL\(\$\d\)/, 'testFilter=real trebuie sa produca aceeasi clauza de excludere ca listOrdersPage');
+    assert.match(call.sql, /created_at >= \(\$\d::date AT TIME ZONE 'Europe\/London'\)/);
+  });
 });
 
-test('assignDistinctCustomerNumbers: exemplul EXACT cerut — client 1 (3 comenzi) -> 1,1,1; client 2 (1 comanda) -> 2; client 3 (2 comenzi) -> 3,3', () => {
-  const orders = [
-    { id: 'a1', email: 'client1@exemplu.com' },
-    { id: 'a2', email: 'client1@exemplu.com' },
-    { id: 'a3', email: 'client1@exemplu.com' },
-    { id: 'b1', email: 'client2@exemplu.com' },
-    { id: 'c1', email: 'client3@exemplu.com' },
-    { id: 'c2', email: 'client3@exemplu.com' }
+test('getDistinctCustomerRanks: transforma randurile (email_key, rnk) intr-un Map email_key -> numar', async () => {
+  const rows = [
+    { email_key: 'primul@exemplu.com', rnk: '1' },
+    { email_key: 'aldoilea@exemplu.com', rnk: '2' }
   ];
-  const numbers = assignDistinctCustomerNumbers(orders);
-  assert.equal(numbers.get('a1'), 1);
-  assert.equal(numbers.get('a2'), 1);
-  assert.equal(numbers.get('a3'), 1);
-  assert.equal(numbers.get('b1'), 2);
-  assert.equal(numbers.get('c1'), 3);
-  assert.equal(numbers.get('c2'), 3);
-});
-
-test('assignDistinctCustomerNumbers: emailuri DIFERITE -> numere DIFERITE, niciodata grupate gresit', () => {
-  const orders = [
-    { id: 'o1', email: 'primul@exemplu.com' },
-    { id: 'o2', email: 'aldoilea@exemplu.com' },
-    { id: 'o3', email: 'altreilea@exemplu.com' }
-  ];
-  const numbers = assignDistinctCustomerNumbers(orders);
-  const values = [numbers.get('o1'), numbers.get('o2'), numbers.get('o3')];
-  assert.equal(new Set(values).size, 3, 'trei emailuri distincte trebuie sa produca trei numere distincte');
-});
-
-test('assignDistinctCustomerNumbers: numerotarea e STABILA (deterministica) pentru ACELASI set de comenzi, reevaluata de mai multe ori', () => {
-  const orders = [
-    { id: 'a1', email: 'client1@exemplu.com' },
-    { id: 'b1', email: 'client2@exemplu.com' },
-    { id: 'a2', email: 'client1@exemplu.com' }
-  ];
-  const numbers1 = assignDistinctCustomerNumbers(orders);
-  const numbers2 = assignDistinctCustomerNumbers(orders);
-  assert.equal(numbers1.get('a1'), numbers2.get('a1'));
-  assert.equal(numbers1.get('b1'), numbers2.get('b1'));
-  assert.equal(numbers1.get('a2'), numbers2.get('a2'));
-  assert.equal(numbers1.get('a1'), numbers1.get('a2'), 'client1 trebuie sa aiba acelasi numar pe ambele comenzi ale lui');
-});
-
-test('assignDistinctCustomerNumbers: numarul reflecta ORDINEA PRIMEI aparitii, nu ordinea alfabetica sau alt criteriu', () => {
-  const orders = [
-    { id: 'o1', email: 'zzz@exemplu.com' },
-    { id: 'o2', email: 'aaa@exemplu.com' }
-  ];
-  const numbers = assignDistinctCustomerNumbers(orders);
-  assert.equal(numbers.get('o1'), 1, 'primul aparut (zzz@) trebuie sa fie clientul 1, desi alfabetic ar fi ultimul');
-  assert.equal(numbers.get('o2'), 2);
-});
-
-test('assignDistinctCustomerNumbers: comenzi FARA email (caz defensiv) primesc fiecare propriul numar, niciodata grupate impreuna intre ele', () => {
-  const orders = [
-    { id: 'o1', email: '' },
-    { id: 'o2', email: null },
-    { id: 'o3', email: 'real@exemplu.com' }
-  ];
-  const numbers = assignDistinctCustomerNumbers(orders);
-  assert.notEqual(numbers.get('o1'), numbers.get('o2'), 'doua comenzi fara email NU trebuie grupate ca acelasi client');
-  assert.equal(numbers.get('o3'), 3);
+  const map = await withMockPool(() => ({ rows }), () => db.getDistinctCustomerRanks({}));
+  assert.equal(map.get('primul@exemplu.com'), 1);
+  assert.equal(map.get('aldoilea@exemplu.com'), 2);
+  assert.equal(typeof map.get('primul@exemplu.com'), 'number');
 });
 
 // ================================================================================================
-// (3) private/admin/orders.js — renderOrderRow foloseste numarul primit, colspan actualizat.
+// (2c) server.js — GET /api/admin/orders atasaza clientNumber (din getDistinctCustomerRanks) si
+// recovery (din getOrderNotificationSummaries) pe fiecare comanda, ACELASI filterArgs ca
+// listOrdersPage/countOrders — fara sa schimbe KPI-urile (totalCount/revenue raman globale).
 // ================================================================================================
-test('renderOrderRow: primeste clientNumber ca al doilea parametru si il randeaza in PRIMA celula', () => {
-  const start = ordersSrc.indexOf('function renderOrderRow(o, clientNumber) {');
-  assert.ok(start !== -1, 'renderOrderRow trebuie sa primeasca clientNumber ca parametru');
+const serverSrcForOrders = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+
+test('server.js GET /api/admin/orders: apeleaza db.getDistinctCustomerRanks(filterArgs) — ACELASI filterArgs ca listOrdersPage/countOrders', () => {
+  const idx = serverSrcForOrders.indexOf("app.get('/api/admin/orders', async");
+  assert.ok(idx !== -1);
+  const end = serverSrcForOrders.indexOf('\n});', idx);
+  const fn = serverSrcForOrders.slice(idx, end);
+  assert.match(fn, /db\.getDistinctCustomerRanks\(filterArgs\)/);
+});
+
+test('server.js GET /api/admin/orders: fiecare comanda primeste clientNumber din clientRanks.get(email normalizat)', () => {
+  const idx = serverSrcForOrders.indexOf("app.get('/api/admin/orders', async");
+  const end = serverSrcForOrders.indexOf('\n});', idx);
+  const fn = serverSrcForOrders.slice(idx, end);
+  assert.match(fn, /clientNumber:\s*clientRanks\.get\(String\(o\.email \|\| ''\)\.trim\(\)\.toLowerCase\(\)\)/);
+});
+
+test('server.js GET /api/admin/orders: totalCount si revenue raman GLOBALE (db.countOrders({}) fara filtre, db.computeRevenue() neschimbat) — KPI-urile nu s-au schimbat', () => {
+  const idx = serverSrcForOrders.indexOf("app.get('/api/admin/orders', async");
+  const end = serverSrcForOrders.indexOf('\n});', idx);
+  const fn = serverSrcForOrders.slice(idx, end);
+  assert.match(fn, /db\.countOrders\(\{\}\)/);
+  assert.match(fn, /db\.computeRevenue\(\)/);
+});
+
+// ================================================================================================
+// (3) private/admin/orders.js — renderOrderRow foloseste o.clientNumber (server-side), colspan
+// actualizat pentru coloana noua "Recovery".
+// ================================================================================================
+test('renderOrderRow: primeste STRICT `o` (nu mai primeste clientNumber separat) si randeaza o.clientNumber in PRIMA celula', () => {
+  const start = ordersSrc.indexOf('function renderOrderRow(o) {');
+  assert.ok(start !== -1, 'renderOrderRow trebuie sa primeasca STRICT `o` — numarul vine deja atasat de server (o.clientNumber)');
   const end = ordersSrc.indexOf('\n}', start);
   const fn = ordersSrc.slice(start, end);
-  const firstTdIdx = fn.indexOf('<td>');
-  assert.ok(firstTdIdx !== -1);
-  assert.match(fn.slice(firstTdIdx, firstTdIdx + 30), /<td>\$\{clientNumber\}<\/td>/);
+  assert.match(fn, /<td>\$\{o\.clientNumber != null \? o\.clientNumber : '—'\}<\/td>/);
 });
 
-test('loadOrders(): apeleaza assignDistinctCustomerNumbers() pe ordersCache INAINTE de a randa randurile, si trece numarul catre renderOrderRow', () => {
-  const idx = ordersSrc.indexOf('const clientNumbers = assignDistinctCustomerNumbers(ordersCache);');
+test('loadOrders(): NU mai calculeaza numerotarea client-side — renderOrderRow(o) e apelat direct pe ordersCache, fara nicio functie intermediara de numerotare', () => {
+  assert.ok(!ordersSrc.includes('function assignDistinctCustomerNumbers'), 'functia veche client-side trebuie eliminata complet (nu doar neapelata) — o mentiune in comentariu, ca explicatie istorica, e acceptabila');
+  const idx = ordersSrc.indexOf('ordersCache.map((o) => renderOrderRow(o))');
   assert.ok(idx !== -1);
-  const afterIdx = ordersSrc.indexOf('renderOrderRow(o, clientNumbers.get(o.id))', idx);
-  assert.ok(afterIdx !== -1 && afterIdx > idx);
 });
 
-test('colspan actualizat la 12 (11 coloane vechi + 1 noua "Nr. client") in toate cele 3 stari ale tabelului (incarcare/gol/eroare)', () => {
-  const matches = ordersSrc.match(/colspan="12"/g) || [];
+test('colspan actualizat la 13 (12 coloane vechi + 1 noua "Recovery") in toate cele 3 stari ale tabelului (incarcare/gol/eroare)', () => {
+  const matches = ordersSrc.match(/colspan="13"/g) || [];
   assert.equal(matches.length, 3, 'trebuie actualizate toate cele 3 locuri (Se încarcă/Nicio comandă/Eroare)');
-  assert.ok(!ordersSrc.includes('colspan="11"'), 'nu trebuie sa mai ramana niciun colspan vechi de 11');
+  assert.ok(!ordersSrc.includes('colspan="12"'), 'nu trebuie sa mai ramana niciun colspan vechi de 12');
+});
+
+test('renderOrderRow: randeaza o celula Recovery (renderRecoveryCell) inainte de coloana Actiuni', () => {
+  const start = ordersSrc.indexOf('function renderOrderRow(o) {');
+  const end = ordersSrc.indexOf('\n}', start);
+  const fn = ordersSrc.slice(start, end);
+  assert.match(fn, /\$\{renderRecoveryCell\(o\)\}/);
+});
+
+test('orders.html: antetul tabelului contine coloana "Recovery" dupa "Sursă" si inainte de "Acțiuni"', () => {
+  const htmlSrc = fs.readFileSync(path.join(__dirname, '..', 'private', 'admin', 'orders.html'), 'utf8');
+  assert.match(htmlSrc, /<th>Sursă<\/th><th[^>]*>Recovery<\/th><th>Acțiuni<\/th>/);
 });
 
 // ================================================================================================

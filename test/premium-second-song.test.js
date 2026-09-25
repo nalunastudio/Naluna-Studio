@@ -437,7 +437,10 @@ test('comanda.html: song2DetailsAllValid() (mini-pagina, pasul 7) verifica numel
 // ---------------------------------------------------------------------------------------------
 test('comanda.html: saveDraft() persista toate campurile song2 (target, ocazie, rol, sender, mod, nunta, nume)', () => {
   const start = comanda.indexOf('function saveDraft() {');
-  const snippet = comanda.slice(start, start + 1800);
+  // CORECTIE (2026-09-25, PECR soft opt-in): saveDraft() a capatat o linie noua
+  // (emailMarketingOptOut) langa campul email, aproape de inceputul functiei — fereastra marita
+  // usor ca sa continue sa acopere toate campurile song2 verificate mai jos.
+  const snippet = comanda.slice(start, start + 1900);
   assert.ok(snippet.includes('song2Target: song2TargetInput.value,'));
   assert.ok(snippet.includes('occasion2: song2OccasionInput.value,'));
   assert.ok(snippet.includes('recipientRole2: song2RecipientRoleInput.value,'));

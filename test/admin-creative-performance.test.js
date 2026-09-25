@@ -98,7 +98,8 @@ test('orders.html/server.js: NICIO urma de Spend/CPA/ROAS/Profit in sectiunea de
 
 test('orders.js: renderCreatives() exista si e apelata din loadFunnelSummary, cu data.creatives + trafficDataAvailability', () => {
   assert.match(js, /function renderCreatives\(/);
-  const loadIdx = js.indexOf('async function loadFunnelSummary()');
+  // CORECTIE (2026-09-25, auto-refresh KPI): semnatura a capatat un parametru optional.
+  const loadIdx = js.indexOf('async function loadFunnelSummary(');
   assert.ok(loadIdx !== -1);
   const loadEnd = js.indexOf('\n}', loadIdx);
   const loadBody = js.slice(loadIdx, loadEnd);

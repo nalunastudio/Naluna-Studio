@@ -70,7 +70,9 @@ test('2) orders.js: KPI_DEFS contine "ctaClicks" cu eticheta care clarifica STRI
 });
 
 test('2b) KPI Cards raman SEPARATE de funnel-ul cohortat — renderKpiCards si renderFunnelCohort sunt functii distincte, apelate independent in loadFunnelSummary', () => {
-  const loadFnStart = js.indexOf('async function loadFunnelSummary()');
+  // CORECTIE (2026-09-25, auto-refresh KPI): semnatura a capatat un parametru optional
+  // ({ silent = false } = {}) — cautam STRICT prefixul stabil al declaratiei.
+  const loadFnStart = js.indexOf('async function loadFunnelSummary(');
   const loadFnEnd = js.indexOf('\n}', loadFnStart);
   const loadFn = js.slice(loadFnStart, loadFnEnd);
   assert.match(loadFn, /renderKpiCards\(data\.kpis, data\.trafficDataAvailability, data\.dataCompleteSince\)/);

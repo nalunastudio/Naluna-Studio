@@ -477,6 +477,16 @@
         <label for="email" data-i18n="label_email">Emailul tău (primești melodia și aici)</label>
         <input type="email" id="email" placeholder="nume@exemplu.com">
         <div class="field-error" id="err-email"></div>
+        <!-- EMAIL MARKETING OPT-OUT (2026-09-25, corectie PECR soft opt-in) — optiune CLARA,
+             SIMPLA, OPTIONALA, la locul exact unde se colecteaza emailul, COMPLET SEPARATA de
+             Analytics/Marketing (cookie consent Meta Pixel/CAPI, neatinse — vezi consimtamant
+             separat la nivel de site). Necompletata/nebifata = eligibil (soft opt-in implicit) —
+             bifarea NU blocheaza in niciun fel trimiterea comenzii (fara "required", fara validare
+             la data-validate="2"). -->
+        <label class="field-checkbox" for="email-marketing-optout" style="display:flex; align-items:flex-start; gap:8px; margin-top:8px; font-weight:normal; cursor:pointer;">
+          <input type="checkbox" id="email-marketing-optout" style="margin-top:3px;">
+          <span data-i18n="label_email_marketing_optout">Nu vreau emailuri de reamintire dacă nu finalizez comanda</span>
+        </label>
       </div>
       <div class="field">
         <label for="phone" data-i18n="label_phone">Număr WhatsApp (opțional)</label>
@@ -919,6 +929,7 @@
       label_relationship: 'Ce relație există între voi',
       ph_relationship: 'ex: soție și soț, mamă și fiică, prieteni',
       label_email: 'Emailul tău (primești melodia și aici)',
+      label_email_marketing_optout: 'Nu vreau emailuri de reamintire dacă nu finalizez comanda',
       label_phone: 'Număr WhatsApp (opțional)',
       ph_phone: '+44 7xxx xxxxxx',
       label_story: 'Povestea / detalii de inclus în versuri',
@@ -1084,6 +1095,7 @@
       label_relationship: 'What is your relationship',
       ph_relationship: 'e.g. wife and husband, mother and daughter, friends',
       label_email: 'Your email (you\'ll also receive the song here)',
+      label_email_marketing_optout: "I don't want reminder emails if I don't complete my order",
       label_phone: 'WhatsApp number (optional)',
       ph_phone: '+44 7xxx xxxxxx',
       label_story: 'The story / details to include in the lyrics',
@@ -1245,6 +1257,7 @@
       label_relationship: 'Welche Beziehung habt ihr',
       ph_relationship: 'z.B. Ehefrau und Ehemann, Mutter und Tochter, Freunde',
       label_email: 'Deine E-Mail (du erhältst das Lied auch hier)',
+      label_email_marketing_optout: 'Ich möchte keine Erinnerungs-E-Mails, falls ich meine Bestellung nicht abschließe',
       label_phone: 'WhatsApp-Nummer (optional)',
       ph_phone: '+44 7xxx xxxxxx',
       label_story: 'Die Geschichte / Details für den Text',
@@ -1406,6 +1419,7 @@
       label_relationship: 'Qué relación tenéis',
       ph_relationship: 'ej: esposa y esposo, madre e hija, amigos',
       label_email: 'Tu email (también recibirás la canción aquí)',
+      label_email_marketing_optout: 'No quiero recibir correos de recordatorio si no completo mi pedido',
       label_phone: 'Número de WhatsApp (opcional)',
       ph_phone: '+44 7xxx xxxxxx',
       label_story: 'La historia / detalles para la letra',
@@ -1567,6 +1581,7 @@
       label_relationship: 'Che relazione avete',
       ph_relationship: 'es: moglie e marito, madre e figlia, amici',
       label_email: 'La tua email (riceverai la canzone anche qui)',
+      label_email_marketing_optout: 'Non voglio email di promemoria se non completo il mio ordine',
       label_phone: 'Numero WhatsApp (facoltativo)',
       ph_phone: '+44 7xxx xxxxxx',
       label_story: 'La storia / dettagli per il testo',
@@ -1728,6 +1743,7 @@
       label_relationship: 'Quelle est votre relation',
       ph_relationship: 'ex : épouse et mari, mère et fille, amis',
       label_email: 'Votre email (vous recevrez aussi la chanson ici)',
+      label_email_marketing_optout: "Je ne veux pas recevoir d'e-mails de rappel si je ne finalise pas ma commande",
       label_phone: 'Numéro WhatsApp (facultatif)',
       ph_phone: '+44 7xxx xxxxxx',
       label_story: 'L\'histoire / détails à inclure dans les paroles',
@@ -1889,6 +1905,7 @@
       label_relationship: 'Каква е връзката между вас',
       ph_relationship: 'напр. съпруга и съпруг, майка и дъщеря, приятели',
       label_email: 'Твоят имейл (ще получиш песента и тук)',
+      label_email_marketing_optout: 'Не искам напомнящи имейли, ако не завърша поръчката си',
       label_phone: 'WhatsApp номер (по желание)',
       ph_phone: '+44 7xxx xxxxxx',
       label_story: 'Историята / детайли за текста',
@@ -2050,6 +2067,7 @@
       label_relationship: 'Aranızdaki ilişki nedir',
       ph_relationship: 'örn: eş ve eş, anne ve kız, arkadaşlar',
       label_email: 'E-posta adresiniz (şarkıyı buraya da alacaksınız)',
+      label_email_marketing_optout: 'Siparişimi tamamlamazsam hatırlatma e-postası almak istemiyorum',
       label_phone: 'WhatsApp numarası (isteğe bağlı)',
       ph_phone: '+44 7xxx xxxxxx',
       label_story: 'Hikaye / sözlere eklenecek detaylar',
@@ -3300,6 +3318,10 @@
       senderName: document.getElementById('sender').value,
       relationship: document.getElementById('relationship').value,
       email: document.getElementById('email').value,
+      // emailMarketingOptOut (2026-09-25, corectie PECR soft opt-in) — STRICT boolean, bifa
+      // OPTIONALA de la colectarea emailului, COMPLET SEPARATA de Analytics/Marketing (Meta
+      // Pixel/CAPI, fbp/visitorId mai jos) — vezi POST /api/orders (server.js).
+      emailMarketingOptOut: document.getElementById('email-marketing-optout').checked,
       phone: getPhoneInfo().value,
       story: document.getElementById('story').value,
       genre: document.getElementById('genre').value,
@@ -3414,6 +3436,7 @@
         sender: document.getElementById('sender').value,
         relationship: document.getElementById('relationship').value,
         email: document.getElementById('email').value,
+        emailMarketingOptOut: document.getElementById('email-marketing-optout').checked,
         phone: getPhoneInfo().value || phoneInput.value,
         story: document.getElementById('story').value,
         genre: document.getElementById('genre').value,
@@ -3485,6 +3508,7 @@
     if (draft.sender) document.getElementById('sender').value = draft.sender;
     if (draft.relationship) document.getElementById('relationship').value = draft.relationship;
     if (draft.email) document.getElementById('email').value = draft.email;
+    if (typeof draft.emailMarketingOptOut === 'boolean') document.getElementById('email-marketing-optout').checked = draft.emailMarketingOptOut;
     if (draft.phone) setPhoneValue(draft.phone);
     if (draft.story) document.getElementById('story').value = draft.story;
     if (draft.genre) {

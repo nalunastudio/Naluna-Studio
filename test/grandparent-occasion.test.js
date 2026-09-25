@@ -78,8 +78,12 @@ test('db.js: createOrder salveaza grandparent_type (acum urmat de recipient_role
   // medium/campaign/content/term, fbclid, fbp, visitor_id) adaugate la FINALUL listei, dupa
   // story_2 — grandparent_type ramane la aceeasi pozitie relativa (neschimbat), doar
   // numerotarea parametrilor de dupa el s-a extins din nou.
-  assert.ok(dbjs.includes('grandparent_type, recipient_role, sender_role, recipient_mode, recipient_names, wedding_type, song2_target, occasion_2, recipient_role_2, sender_role_2, recipient_mode_2, recipient_names_2, recipient_2, wedding_type_2, sender_name_2, relationship_2, story_2, utm_source, utm_medium, utm_campaign, utm_content, utm_term, fbclid, fbp, visitor_id)'), 'INSERT-ul trebuie sa includa toate coloanele, in aceasta ordine');
-  assert.ok(dbjs.includes('$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44)'), 'coloanele noi trebuie sa fie ultimii 24 parametri ($21-$44)');
+  // CORECTIE (2026-09-25, PECR soft opt-in): 3 coloane noi (email_marketing_opt_out/choice_at/
+  // policy_version) adaugate la FINALUL listei, dupa visitor_id — grandparent_type ramane la
+  // aceeasi pozitie relativa (neschimbat), doar numerotarea parametrilor de dupa el s-a extins
+  // din nou, pana la $47.
+  assert.ok(dbjs.includes('grandparent_type, recipient_role, sender_role, recipient_mode, recipient_names, wedding_type, song2_target, occasion_2, recipient_role_2, sender_role_2, recipient_mode_2, recipient_names_2, recipient_2, wedding_type_2, sender_name_2, relationship_2, story_2, utm_source, utm_medium, utm_campaign, utm_content, utm_term, fbclid, fbp, visitor_id, email_marketing_opt_out, email_marketing_choice_at, email_marketing_policy_version)'), 'INSERT-ul trebuie sa includa toate coloanele, in aceasta ordine');
+  assert.ok(dbjs.includes('$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44,$45,$46,$47)'), 'coloanele noi trebuie sa fie ultimii 27 parametri ($21-$47)');
   assert.ok(dbjs.includes('order.grandparentType || null'), 'valoarea trebuie sa vina din order.grandparentType, cu fallback null');
   assert.ok(dbjs.includes('grandparentType: row.grandparent_type,'), 'rowToOrder trebuie sa expuna coloana catre restul aplicatiei');
 });

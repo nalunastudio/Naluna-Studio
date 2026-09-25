@@ -178,7 +178,9 @@ test('orders.js: renderPreviewSection() afiseaza o nota "Date parțiale" cand pr
 });
 
 test('orders.js: loadFunnelSummary() apeleaza renderPreviewSection(data.preview, data.previewDataAvailability, data.previewDataCompleteSince)', () => {
-  const loadIdx = js.indexOf('async function loadFunnelSummary()');
+  // CORECTIE (2026-09-25, auto-refresh KPI): semnatura a capatat un parametru optional
+  // ({ silent = false } = {}) — cautam STRICT prefixul stabil al declaratiei.
+  const loadIdx = js.indexOf('async function loadFunnelSummary(');
   assert.ok(loadIdx !== -1);
   const loadEnd = js.indexOf('\n}', loadIdx);
   const loadBody = js.slice(loadIdx, loadEnd);

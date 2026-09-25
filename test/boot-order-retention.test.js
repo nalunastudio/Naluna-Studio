@@ -30,7 +30,11 @@ function extractFn(source, signature) {
 }
 
 const idxInitDbCall = server.indexOf('db.initDb()');
-const thenBody = extractFn(server, 'db.initDb()\n    .then(() => {');
+// CORECTIE (2026-09-25, recovery emails): .then(() => {...}) a devenit .then(async () => {...})
+// — necesar pentru await-urile din pornirea conditionata a worker-ului de recovery emails
+// (citirea/scrierea o singura data a cutoffSince in app_settings). Comportamentul de fire-and-
+// forget al celor 4 joburi de retentie, verificat mai jos, ramane NESCHIMBAT.
+const thenBody = extractFn(server, 'db.initDb()\n    .then(async () => {');
 
 test('CRITIC (regresie directa) — niciunul din cele 4 apeluri imediate de retentie nu apare INAINTE de db.initDb() in fisier', () => {
   for (const job of JOBS) {

@@ -121,7 +121,7 @@
         <option value="ready">Plătită și livrată</option>
         <option value="generation_failed">Eroare</option>
       </select>
-      <select id="orders-paid-filter">
+      <select id="orders-paid-filter" title="Filtrează după data creării comenzii (coloana Data) + starea de plată curentă — NU după data plății. KPI-ul „Comenzi plătite în perioadă” de mai sus folosește data plății, nu data creării.">
         <option value="">Plătit/Neplătit — toate</option>
         <option value="true">Doar plătite</option>
         <option value="false">Doar neplătite</option>
@@ -142,6 +142,12 @@
         Restrânge la perioada selectată mai sus
       </label>
     </div>
+    <!-- CORECTIE (2026-09-25, audit discrepanta KPI vs tabel — cauza demonstrata in raport:
+         tabelul filtreaza dupa data CREARII comenzii, KPI-urile de plata dupa data PLATII —
+         doua masuratori legitim diferite, nu o eroare. Nota vizibila permanent, nu doar la hover,
+         ca sa nu mai para o contradictie cand cele doua numere difera legitim (comanda creata
+         intr-o zi, platita in alta). -->
+    <div class="section-sub">Tabelul de mai jos filtrează după data creării comenzii („Data”). KPI-urile „Comenzi plătite”, „Clienți plătitori” și „Venit încasat” de mai sus folosesc data plății — pot diferi legitim de ce arată tabelul dacă o comandă a fost creată într-o zi și plătită în alta.</div>
 
     <!-- Bara de scroll orizontal de SUS (2026-09-19, sticky pe verticala din 2026-09-20) — control
          real, sincronizat bidirectional cu cea de JOS (vezi .table-scroll mai jos) — NU sunt doua
@@ -154,7 +160,7 @@
       <div class="table-scroll" id="orders-table-scroll">
         <table id="orders-table">
           <thead>
-            <tr><th title="Numerotare pe client distinct (email), nu pe comandă — aceeași persoană cu mai multe comenzi afișate primește același număr.">Nr. client</th><th>Data</th><th>Pentru</th><th>Email</th><th>Limba</th><th>Ocazie</th><th>Gen</th><th>Pachet</th><th>Preț</th><th>Status</th><th>Sursă</th><th>Acțiuni</th></tr>
+            <tr><th title="Numerotare cronologica pe client distinct (lower(trim(email))), calculata server-side pe toata perioada/filtrele curente — primul client din perioada = 1, cel mai recent = numarul total de clienti distincti (nu doar pagina curenta).">Nr. client</th><th>Data</th><th>Pentru</th><th>Email</th><th>Limba</th><th>Ocazie</th><th>Gen</th><th>Pachet</th><th>Preț</th><th>Status</th><th>Sursă</th><th title="Ultima notificare de recovery email trimisa pentru aceasta comanda (daca sistemul e activat).">Recovery</th><th>Acțiuni</th></tr>
           </thead>
           <tbody id="orders-body"></tbody>
         </table>

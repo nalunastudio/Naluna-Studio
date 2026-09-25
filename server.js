@@ -43,7 +43,7 @@ const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
 const Stripe = require('stripe');
 const multer = require('multer');
-const { randomUUID, randomBytes, timingSafeEqual, createHash } = require('crypto');
+const { randomUUID, randomBytes, timingSafeEqual, createHash, createHmac } = require('crypto');
 const path = require('path');
 const fs = require('fs');
 const { pipeline } = require('stream/promises');
@@ -87,7 +87,7 @@ const {
 } = require('./lib/media-analysis');
 const { getGiftVariant, getPremiumBonusVariant } = require('./lib/entitlements');
 const { DICTION_INSTRUCTIONS, getDictionInstruction, normalizeSingingText } = require('./lib/diction');
-const { htmlToPlainText } = require('./lib/email-text');
+const { htmlToPlainText, escapeHtmlForEmail } = require('./lib/email-text');
 const { buildCspDirectives } = require('./lib/csp');
 const { fetchWithTimeout } = require('./lib/fetch-with-timeout');
 const { resolvePeriodBounds, addDays } = require('./lib/funnel-period');
@@ -103,6 +103,8 @@ const { getCurrentInstagramAccessToken } = require('./lib/social/instagram-token
 const { checkInstagramTokenLifecycle } = require('./lib/social/instagram-token-lifecycle');
 const { buildEventId: buildMetaCapiEventId, buildPurchaseEvent: buildMetaCapiPurchaseEvent } = require('./lib/meta-capi/capi-payload');
 const { startMetaCapiWorker } = require('./lib/meta-capi/capi-worker');
+const { startRecoveryEmailWorker } = require('./lib/recovery-emails/worker');
+const { buildNotificationEmail } = require('./lib/recovery-emails/templates');
 
 // META CAPI (2026-09-21) — handle-ul worker-ului de retry (vezi lib/meta-capi/capi-worker.js),
 // pornit STRICT dupa initDb() (langa socialWorkerHandle, vezi finalul fisierului). Declarat AICI
@@ -112,6 +114,16 @@ const { startMetaCapiWorker } = require('./lib/meta-capi/capi-worker');
 // tick-ului periodic de fond). Null inainte de boot/in teste — verificat explicit inainte de
 // folosire, niciodata presupus non-null.
 let metaCapiWorkerHandle = null;
+
+// Vezi lib/recovery-emails/worker.js — null cand RECOVERY_EMAILS_ENABLED e oprit (implicit):
+// worker-ul nici macar nu porneste in acel caz (vezi blocul de boot mai jos), niciodata doar
+// "pornit dar inactiv".
+let recoveryEmailWorkerHandle = null;
+// Citit O SINGURA DATA, la prima pornire REALA a worker-ului cu flag-ul activat (vezi blocul de
+// boot) — app_settings 'recovery_emails_first_enabled_at' — nicio comanda mai veche decat acest
+// moment nu poate deveni vreodata candidat pentru scanare (cerinta 10, protectie impotriva
+// trimiterii retroactive). Ramane null cat timp RECOVERY_EMAILS_ENABLED e oprit.
+let recoveryEmailsCutoffSince = null;
 
 // -------- Validare stricta a variabilelor de mediu obligatorii, la pornire --------
 // Mai bine esueaza clar la boot decat sa porneasca "pe jumatate" si sa pice abia la prima comanda.
@@ -157,6 +169,35 @@ const ANALYTICS_EXCLUDED_EMAILS = (process.env.ANALYTICS_EXCLUDED_EMAILS || '')
 function isTestCustomerEmail(email) {
   return ANALYTICS_EXCLUDED_EMAILS.includes(String(email || '').trim().toLowerCase());
 }
+
+// ==================================================================================
+// RECOVERY EMAILS (2026-09-25) — vezi lib/recovery-emails/. SAFE DISABLE explicit (cerinta 10):
+// implicit OFF ('true' e SINGURA valoare care il porneste) — un simplu restart al serverului NU
+// poate incepe niciodata sa trimita, in productie, pana cand aceasta variabila nu e setata
+// explicit in Railway, ceea ce NU se intampla in aceasta etapa (implementare locala, neactivata,
+// nedeployuita — vezi raportul).
+const RECOVERY_EMAILS_ENABLED = process.env.RECOVERY_EMAILS_ENABLED === 'true';
+// Prag minim (ore) care trebuie sa fi trecut inainte de fiecare tip de reminder — configurabile
+// prin env, cu valori implicite rezonabile (nefolosite inca in productie, alese aici STRICT ca
+// punct de plecare pentru aprobare, vezi raportul).
+const RECOVERY_PREVIEW_THRESHOLD_HOURS = Number(process.env.RECOVERY_PREVIEW_THRESHOLD_HOURS) > 0
+  ? Number(process.env.RECOVERY_PREVIEW_THRESHOLD_HOURS) : 24;
+const RECOVERY_CHECKOUT_THRESHOLD_HOURS = Number(process.env.RECOVERY_CHECKOUT_THRESHOLD_HOURS) > 0
+  ? Number(process.env.RECOVERY_CHECKOUT_THRESHOLD_HOURS) : 2;
+// Plafon maxim (ore) — o comanda mai veche de atat, chiar daca altfel eligibila, nu mai e
+// considerata candidat (plasa de siguranta suplimentara, independenta de cutoffSince).
+const RECOVERY_MAX_LOOKBACK_HOURS = Number(process.env.RECOVERY_MAX_LOOKBACK_HOURS) > 0
+  ? Number(process.env.RECOVERY_MAX_LOOKBACK_HOURS) : 24 * 14;
+// Cooldown per client (lower(trim(email))) — vezi cerinta 5, eligibility.js#isWithinCooldown.
+const RECOVERY_CLIENT_COOLDOWN_HOURS = Number(process.env.RECOVERY_CLIENT_COOLDOWN_HOURS) > 0
+  ? Number(process.env.RECOVERY_CLIENT_COOLDOWN_HOURS) : 24;
+// Secret pentru linkurile de unsubscribe (HMAC peste email, fara sa mai fie nevoie de un token
+// stocat separat per adresa) — OBLIGATORIU pentru orice email de tip reminder (2/3): fara el,
+// nu putem construi un link de unsubscribe SIGUR, deci sendRecoveryNotificationEmail refuza
+// explicit sa trimita reminder-e (vezi mai jos) — 'preview_ready' (operational, fara
+// unsubscribe) ramane neafectat.
+const RECOVERY_EMAIL_UNSUBSCRIBE_SECRET = process.env.RECOVERY_EMAIL_UNSUBSCRIBE_SECRET || '';
+
 const PREVIEW_SECONDS = 40;
 // EXCEPTIE (2026-09-19, cerinta explicita, observatie productie reala): manele_suflet/
 // manele_jale au de regula un instrumental initial mai lung decat celelalte genuri — cele 40 de
@@ -250,6 +291,13 @@ const PLAN_PRICES = { standard: 15, premium: 25, video: 35 };
 // caracterizarea factuala a MOMENTULUI e corectata. terms.html/refund.html (engleza, neatinse de
 // limba) primesc aceeasi corectie, pentru identitate deplina cu acest text.
 const CONSENT_POLICY_VERSION = '2026-09-13-v8';
+
+// EMAIL_MARKETING_POLICY_VERSION (2026-09-25, corectie PECR soft opt-in) — versiunea textului de
+// opt-out afisat la colectarea emailului (comanda.html, pasul 2, checkbox "email-marketing-optout")
+// — vezi createOrder/email_marketing_choice_at mai jos si raportul catre user. Identifica exact CE
+// text de refuz i s-a aratat clientului la momentul comenzii — proba server-side, per comanda,
+// independenta de CONSENT_POLICY_VERSION de mai sus (care acopera termenii Stripe, nu acest opt-out).
+const EMAIL_MARKETING_POLICY_VERSION = '2026-09-25-softoptin-v1';
 // Text localizat pentru custom_text.terms_of_service_acceptance (Stripe Checkout) — versiune
 // scurtă, fără mențiunea explicită a numărului de zile, substanță identică cu refund.html
 // Secțiunea 2 (creare imediată, fără anulare pentru schimbarea părerii) și excepțiile din
@@ -1637,19 +1685,35 @@ app.get('/api/admin/orders', async (req, res, next) => {
 
     const filterArgs = { status, q, dateFrom, dateToExclusive, paid, utmSource, utmCampaign, testFilter, testEmails: ANALYTICS_EXCLUDED_EMAILS };
 
-    const [orders, matchingCount, totalCount, revenue] = await Promise.all([
+    const [orders, matchingCount, totalCount, revenue, clientRanks] = await Promise.all([
       db.listOrdersPage({ limit, offset, ...filterArgs }),
       db.countOrders(filterArgs),
       db.countOrders({}),
-      db.computeRevenue()
+      db.computeRevenue(),
+      // "NR. CLIENT" (2026-09-25, robust server-side, aprobat explicit) — vezi
+      // db.getDistinctCustomerRanks: DENSE_RANK peste TOT setul filtrat (nu doar pagina curenta),
+      // ordonat cronologic (primul client din perioada = 1) — ACELASI filterArgs, deci ACELASI
+      // testFilter/perioada/status ca listOrdersPage/countOrders de mai sus, niciun risc de
+      // divergenta. Inlocuieste vechea numerotare client-side (assignDistinctCustomerNumbers in
+      // private/admin/orders.js), care numerota STRICT pagina curenta si in ordine inversa
+      // (cel mai recent client = 1) — vezi raportul.
+      db.getDistinctCustomerRanks(filterArgs)
     ]);
 
     // isTestOrder: STRICT informativ (afisat ca badge in Comenzi) — comanda ramane completa in
     // aceasta lista, statisticile de mai sus raman GLOBALE (neschimbate) aici; excluderea reala
     // din KPI-urile de conversie se intampla in /api/admin/dashboard-summary.
-    const ordersWithTestFlag = orders.map((o) => ({ ...o, isTestOrder: isTestCustomerEmail(o.email) }));
+    // recoverySummary (2026-09-25) — STRICT ultima notificare de recovery per comanda, pentru
+    // coloana minimala "Recovery" din Admin (cerinta 9) — vezi db.getOrderNotificationSummaries.
+    const recoverySummaries = await db.getOrderNotificationSummaries(orders.map((o) => o.id));
+    const ordersWithExtras = orders.map((o) => ({
+      ...o,
+      isTestOrder: isTestCustomerEmail(o.email),
+      clientNumber: clientRanks.get(String(o.email || '').trim().toLowerCase()) || null,
+      recovery: recoverySummaries.get(o.id) || null
+    }));
 
-    res.json({ orders: ordersWithTestFlag, matchingCount, totalCount, revenue, page: { limit, offset } });
+    res.json({ orders: ordersWithExtras, matchingCount, totalCount, revenue, page: { limit, offset } });
   } catch (err) {
     next(err);
   }
@@ -2740,7 +2804,11 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
       // (vezi getOrCreateVisitorId, public/js/analytics.js), STRICT dupa consimtamant analytics.
       // Foloseste EXCLUSIV pentru a lega evenimentele pre-comanda (funnel_events) de acest order
       // dupa creare (vezi db.linkFunnelEventsToOrder mai jos) — niciodata pentru identificare.
-      visitorId
+      visitorId,
+      // emailMarketingOptOut (2026-09-25, corectie PECR soft opt-in) — bifa OPTIONALA de la
+      // colectarea emailului (comanda.html, pasul 2), COMPLET SEPARATA de Analytics/Marketing
+      // (Meta Pixel/CAPI) — vezi comentariul de la calculul safeEmailMarketingOptOut mai jos.
+      emailMarketingOptOut
     } = req.body || {};
     const safeLang = ALLOWED_LANGS.includes(lang) ? lang : 'ro';
 
@@ -3056,6 +3124,28 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
       ? fbp.trim()
       : null;
 
+    // ==================================================================================
+    // EMAIL MARKETING OPT-OUT (2026-09-25, corectie PECR soft opt-in — vezi raportul catre
+    // user) — STRICT boolean, orice altceva (lipsa, tip gresit) devine implicit false ("nu a
+    // refuzat" — bifa e OPTIONALA, NICIODATA obligatorie pentru plasarea comenzii, cerinta 2).
+    // COMPLET SEPARAT de Analytics/Marketing (Meta Pixel/CAPI, fbp/visitorId de mai sus) — nu
+    // atinge si nu e atins de acele campuri.
+    //
+    // Persistat pe COMANDA (email_marketing_opt_out/choice_at/policy_version) ca DOVADA — ce
+    // alegere exista, sub ce text, la ce moment — independent de orice schimbare ulterioara.
+    // O comanda VECHE (dinainte de acest mecanism) are email_marketing_opt_out = NULL, NICIODATA
+    // false — o comanda careia nu i s-a aratat NICIODATA aceasta optiune nu poate fi tratata ca
+    // "a acceptat implicit" (vezi db.findDueRecoveryCandidates: `email_marketing_opt_out = false`
+    // exclude STRICT si NULL si true, prin comportamentul normal SQL al comparatiei cu NULL).
+    //
+    // Daca a refuzat explicit, suprimarea (email_marketing_suppressions — ACELASI tabel folosit
+    // de linkul de unsubscribe din remindere) se scrie ACUM, sincron, inainte de raspuns — nu
+    // asteapta un eventual prim reminder ca sa afle ca acest client a refuzat deja.
+    const safeEmailMarketingOptOut = emailMarketingOptOut === true;
+    if (safeEmailMarketingOptOut) {
+      await db.addEmailMarketingSuppression(email.trim().toLowerCase(), 'opted_out_at_order_creation');
+    }
+
     const order = await db.createOrder({
       id: randomUUID(),
       accessToken: randomBytes(24).toString('hex'),
@@ -3084,7 +3174,10 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
       story2: safeStory2,
       utmSource: safeAttr(utmSource), utmMedium: safeAttr(utmMedium), utmCampaign: safeAttr(utmCampaign),
       utmContent: safeAttr(utmContent), utmTerm: safeAttr(utmTerm), fbclid: safeAttr(fbclid), fbp: safeFbp,
-      visitorId: safeVisitorId
+      visitorId: safeVisitorId,
+      emailMarketingOptOut: safeEmailMarketingOptOut,
+      emailMarketingChoiceAt: new Date(),
+      emailMarketingPolicyVersion: EMAIL_MARKETING_POLICY_VERSION
     });
 
     // Leaga evenimentele funnel pre-comanda (cta_clicked, order_page_viewed, form_started etc.,
@@ -6535,6 +6628,9 @@ async function finalizeVariantsIfNeeded(orderId, requestsInfo, options = {}) {
     // 100% pentru pachetul Video, care mai are o a doua faza (videoclipul) dupa aceasta; vezi
     // triggerVideoGeneration/generatePremiumExtras pentru 'video_processing'/'video_ready'.
     recordGenerationProgress(orderId, 'ready').catch(() => {});
+    // RECOVERY EMAILS (2026-09-25) — enqueue operational "melodia ta e gata" (vezi comentariul
+    // functiei): fire-and-forget, no-op sigur daca RECOVERY_EMAILS_ENABLED e oprit (implicit).
+    enqueuePreviewReadyNotification({ id: orderId, email: claimed.email, lang: claimed.lang }).catch(() => {});
     if (options.regenerationJobId) {
       // "previewul nou exista, este verificat si poate fi redat" — exact acum, dupa ce
       // scrierea in DB a reusit (variants/status/selectedVariantId sunt deja persistate).
@@ -10527,20 +10623,6 @@ function buildExactLyricsRequest(order, exactLyrics, genreOverride, voicePrefere
 // ==========================================================================================
 // EMAIL DE LIVRARE — Resend. Link cu access token, nu doar "cauta cu emailul tau".
 // ==========================================================================================
-// Escape HTML-uri simplu, pentru text interpolat in corpul HTML al emailurilor de livrare —
-// order.recipient e text liber introdus de client (nu are alt fel de validare/enum care sa-l
-// restrictioneze), deci trebuie tratat ca neincrezator oriunde ajunge in HTML randat. NU se
-// aplica pe subject (subiectul emailului e text simplu, nu HTML — escaparea acolo ar afisa
-// gresit caractere ca &amp; direct in subiect, in loc sa previna ceva).
-function escapeHtmlForEmail(str) {
-  return String(str == null ? '' : str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
 async function sendDeliveryEmail(order) {
   if (!process.env.RESEND_API_KEY) {
     console.warn('RESEND_API_KEY lipsa din .env — email de livrare NU a fost trimis.');
@@ -10737,6 +10819,115 @@ async function sendDeliveryEmail(order) {
   }
 }
 
+// ==================================================================================
+// RECOVERY EMAILS (2026-09-25) — trimiterea efectiva (dispecerizata pe cele 3 sabloane din
+// lib/recovery-emails/templates.js) + linkul de unsubscribe (HMAC peste emailul normalizat,
+// fara token stocat separat per adresa — vezi RECOVERY_EMAIL_UNSUBSCRIBE_SECRET mai sus).
+// ==================================================================================
+function buildUnsubscribeToken(emailKey) {
+  return createHmac('sha256', RECOVERY_EMAIL_UNSUBSCRIBE_SECRET).update(emailKey).digest('hex');
+}
+function verifyUnsubscribeToken(emailKey, token) {
+  if (!RECOVERY_EMAIL_UNSUBSCRIBE_SECRET || !token) return false;
+  const expected = Buffer.from(buildUnsubscribeToken(emailKey), 'hex');
+  const provided = Buffer.from(String(token), 'hex');
+  return expected.length === provided.length && timingSafeEqual(expected, provided);
+}
+
+// notification: randul din order_notifications (claimed) — order: comanda PROASPATA din DB
+// (deja reverificata de eligibility.js#checkSendEligibility de catre apelant, vezi
+// lib/recovery-emails/worker.js#processClaimedNotification).
+async function sendRecoveryNotificationEmail({ order, notification }) {
+  if (!process.env.RESEND_API_KEY) {
+    throw new Error('RESEND_API_KEY lipsa din .env — email de recovery NU poate fi trimis.');
+  }
+  const emailKey = String(order.email || '').trim().toLowerCase();
+  const isReminderType = notification.notificationType !== 'preview_ready';
+  if (isReminderType && !RECOVERY_EMAIL_UNSUBSCRIBE_SECRET) {
+    // Fara secret configurat nu putem construi un link de unsubscribe SIGUR — refuzam explicit
+    // sa trimitem orice reminder (tip 2/3), niciodata un email de marketing fara optiune de
+    // dezabonare. 'preview_ready' (operational) nu ajunge niciodata pe aceasta ramura.
+    throw new Error('RECOVERY_EMAIL_UNSUBSCRIBE_SECRET lipsa — reminder-ul NU a fost trimis (fara el nu exista link de unsubscribe sigur).');
+  }
+  const template = buildNotificationEmail(notification.notificationType, {
+    lang: notification.lang || order.lang,
+    domain: DOMAIN,
+    orderId: order.id,
+    accessToken: order.accessToken,
+    recipientName: order.recipient,
+    email: emailKey,
+    unsubscribeToken: isReminderType ? buildUnsubscribeToken(emailKey) : null
+  });
+
+  const rawFromAddress = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
+  const fromWithDisplayName = rawFromAddress.includes('<') ? rawFromAddress : `Naluna Studio <${rawFromAddress}>`;
+
+  const res = await fetchWithTimeout('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      from: fromWithDisplayName,
+      reply_to: 'contact@nalunastudio.com',
+      to: order.email,
+      subject: template.subject,
+      html: template.html,
+      text: template.text
+    })
+  }, 15000);
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Resend a raspuns cu status ${res.status}: ${body}`);
+  }
+  const parsed = await res.json().catch(() => null);
+  return { resendMessageId: parsed && parsed.id ? parsed.id : null };
+}
+
+// Apelat STRICT din finalizeVariantsIfNeeded, imediat dupa ce o comanda devine 'preview_ready'
+// cu variante REAL noi (generare initiala SAU regenerare reusita) — vezi comentariul de acolo.
+// Fire-and-forget, ca restul hook-urilor din acel punct (recordGenerationProgress etc) — un esec
+// aici NU trebuie sa afecteze livrarea preview-ului catre client. ON CONFLICT DO NOTHING (vezi
+// db.enqueueOrderNotification) face aceasta functie sigura de apelat de fiecare data cand o
+// comanda ajunge 'preview_ready', inclusiv la a doua, a treia oara (regenerari ulterioare) —
+// notificarea operationala se trimite STRICT o data, per comanda, pentru totdeauna.
+async function enqueuePreviewReadyNotification(order) {
+  if (!RECOVERY_EMAILS_ENABLED) return;
+  if (!order || !order.email) return;
+  const emailKey = String(order.email).trim().toLowerCase();
+  await db.enqueueOrderNotification({
+    orderId: order.id,
+    emailKey,
+    notificationType: 'preview_ready',
+    lang: order.lang
+  });
+}
+
+// RECOVERY EMAILS — unsubscribe (cerinta 6): STRICT pentru reminderele de tip 2/3
+// (preview_recovery/checkout_recovery) — SEPARAT explicit de consimtamantul cookie "Marketing"
+// (Meta Pixel/CAPI, neschimbat) si de email_suppressions (bounce/complaint Resend, neschimbat).
+// Ruta e publica (linkul e in email, fara autentificare admin) — protejata STRICT prin token
+// HMAC (verifyUnsubscribeToken), nu prin sesiune/parola. GET (nu POST) — clientul doar da click
+// pe linkul din email, fara niciun formular.
+app.get('/api/email-marketing/unsubscribe', async (req, res, next) => {
+  try {
+    const token = typeof req.query.token === 'string' ? req.query.token : '';
+    const emailFromQuery = typeof req.query.email === 'string' ? req.query.email.trim().toLowerCase() : null;
+    // Tokenul e un HMAC STRICT peste emailul normalizat — nu putem "descoperi" adresa dintr-un
+    // token opac, deci acceptam fie ?email=&token= (verificat direct), fie STRICT un token care
+    // se potriveste unei adrese deja cunoscute nu e posibil fara adresa — cerem explicit ?email=
+    // in link (vezi buildUnsubscribeLink — de fapt linkul contine STRICT tokenul; simplificam
+    // aici cerand si emailul in link, ca verificarea sa fie directa si fara nicio baza de date
+    // suplimentara de "token -> email").
+    if (!emailFromQuery || !verifyUnsubscribeToken(emailFromQuery, token)) {
+      return res.status(400).send('Link invalid sau expirat.');
+    }
+    await db.addEmailMarketingSuppression(emailFromQuery, 'unsubscribed');
+    res.status(200).send('Te-ai dezabonat cu succes de la remindere. Nu vei mai primi acest tip de email.');
+  } catch (err) {
+    next(err);
+  }
+});
+
 // -------- 404 pentru orice ruta necunoscuta (dupa fisierele statice si toate rutele API) --------
 app.use((req, res) => {
   res.status(404).json({ error: 'Rută inexistentă.' });
@@ -10920,7 +11111,7 @@ let socialWorkerHandle = null;
 // retentie pornite mai jos, in interiorul lui db.initDb().then(...)).
 if (require.main === module) {
   db.initDb()
-    .then(() => {
+    .then(async () => {
       checkFfmpegAvailability(); // fire-and-forget — nu blocheaza si nu conditioneaza pornirea
       checkExiftoolAvailability(); // fire-and-forget, acelasi motiv
       checkHeifConvertAvailability(); // fire-and-forget, acelasi motiv
@@ -10976,6 +11167,36 @@ if (require.main === module) {
           testEventCode: (process.env.META_CAPI_TEST_EVENT_CODE || '').trim() || null
         })
       });
+
+      // RECOVERY EMAILS (2026-09-25) — SAFE DISABLE (cerinta 10): worker-ul NICI MACAR NU
+      // PORNESTE cand RECOVERY_EMAILS_ENABLED e oprit (implicit) — un simplu restart al
+      // serverului, in aceasta etapa (nedeployuita, flag niciodata setat in Railway), nu poate
+      // niciodata sa inceapa sa trimita. cutoffSince se scrie o SINGURA DATA (prima pornire REALA
+      // cu flag-ul activat, vreodata) — restarturile ulterioare citesc valoarea deja existenta,
+      // niciodata nu o "resetează" la now().
+      if (RECOVERY_EMAILS_ENABLED) {
+        recoveryEmailsCutoffSince = await db.getSetting('recovery_emails_first_enabled_at');
+        if (!recoveryEmailsCutoffSince) {
+          recoveryEmailsCutoffSince = new Date().toISOString();
+          await db.setSetting('recovery_emails_first_enabled_at', recoveryEmailsCutoffSince);
+        }
+        recoveryEmailWorkerHandle = startRecoveryEmailWorker({
+          db,
+          sendFn: sendRecoveryNotificationEmail,
+          isTestEmailFn: async (email) => isTestCustomerEmail(email),
+          isSuppressedFn: db.isEmailSuppressed,
+          isMarketingSuppressedFn: db.isEmailMarketingSuppressed,
+          getConfig: () => ({
+            enabled: RECOVERY_EMAILS_ENABLED,
+            previewRecoveryThresholdHours: RECOVERY_PREVIEW_THRESHOLD_HOURS,
+            checkoutRecoveryThresholdHours: RECOVERY_CHECKOUT_THRESHOLD_HOURS,
+            maxLookbackHours: RECOVERY_MAX_LOOKBACK_HOURS,
+            clientCooldownHours: RECOVERY_CLIENT_COOLDOWN_HOURS,
+            cutoffSince: recoveryEmailsCutoffSince,
+            testEmails: ANALYTICS_EXCLUDED_EMAILS
+          })
+        });
+      }
 
       app.listen(PORT, () => {
         console.log(`NALUNA ruleaza pe ${DOMAIN}`);
