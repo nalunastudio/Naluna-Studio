@@ -521,6 +521,27 @@ function buildQuery() {
   return params.toString();
 }
 
+// CORECȚIE (2026-09-25, investigatie separata — "Retry Extras" fals-pozitiv pe comenzi Video):
+// gasit prin audit read-only pe productie — 13/20 comenzi Video cu "Retry Extras" afisat aveau
+// deja un videoclip COMPLET (videoKey + videoPreviewKey), 5/20 nici macar nu ajunsesera la
+// confirmarea materialelor (video niciodata cerut) — butonul aparea generic, STRICT din
+// plan+status, fara sa verifice vreo stare reala a video-ului. Risc real confirmat: backend-ul
+// (POST .../retry-extras -> triggerVideoGeneration -> db.enqueueVideoRenderJob) NU verifica daca
+// exista deja un videoclip complet inainte sa puna in coada un job nou — un admin care apasa
+// butonul pe o comanda deja livrata ar fi declansat o re-randare reala, cu cost de compute.
+//
+// "Video are nevoie de retry" = media CONFIRMATA (altfel video nici n-a fost cerut vreodata —
+// nimic de reincercat) SI varianta selectata NU are AMBELE chei (videoKey + videoPreviewKey) —
+// daca ambele exista, video-ul e complet, punct. Extras-ul functie e SEPARATA de eligibilitatea
+// de baza (status/paidAt) — se aplica STRICT peste ea, ca o restrangere suplimentara pentru
+// "video", niciodata pentru "premium" (acolo, comportamentul ramane EXACT cel reparat anterior).
+function isVideoRetryNeeded(order) {
+  if (!order.mediaConfirmedAt) return false;
+  const variant = (order.variants || []).find(v => v.id === order.selectedVariantId);
+  if (!variant) return false;
+  return !(variant.videoKey && variant.videoPreviewKey);
+}
+
 // Actiuni contextuale per comanda — Retry Extras STRICT cand backend-ul chiar l-ar accepta
 // (vezi guard-ul identic din POST .../retry-extras in server.js). 'preview_ready' e eligibil
 // direct pentru "video" (randeaza INAINTE de plata, prin design), dar pentru restul planurilor
@@ -531,7 +552,8 @@ function buildQuery() {
 function getOrderRowActions(order) {
   const actions = [{ id: 'anonymize', label: 'Anonimizează', variant: 'btn-danger btn-small' }];
   const extrasEligible = (order.plan === 'premium' || order.plan === 'video') &&
-    (order.status === 'ready' || (order.status === 'preview_ready' && (order.plan === 'video' || !!order.paidAt)));
+    (order.status === 'ready' || (order.status === 'preview_ready' && (order.plan === 'video' || !!order.paidAt))) &&
+    (order.plan !== 'video' || isVideoRetryNeeded(order));
   if (extrasEligible) {
     actions.push({ id: 'retry-extras', label: 'Retry Extras', variant: 'btn-secondary btn-small' });
   }

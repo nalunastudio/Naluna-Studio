@@ -23,10 +23,13 @@ const ordersSrc = fs.readFileSync(path.join(__dirname, '..', 'private', 'admin',
 const serverSrc = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
 
 function extractFrontendEligibility() {
+  const helperRe = /function isVideoRetryNeeded\(order\) \{[\s\S]*?\n\}/;
+  const helperMatch = ordersSrc.match(helperRe);
+  assert.ok(helperMatch, 'isVideoRetryNeeded lipseste sau s-a schimbat structural in orders.js');
   const re = /function getOrderRowActions\(order\) \{[\s\S]*?\n\}/;
   const match = ordersSrc.match(re);
   assert.ok(match, 'getOrderRowActions lipseste sau s-a schimbat structural in orders.js');
-  const wrapperSrc = `(function () {\n${match[0]}\nreturn getOrderRowActions;\n})`;
+  const wrapperSrc = `(function () {\n${helperMatch[0]}\n${match[0]}\nreturn getOrderRowActions;\n})`;
   return new Function('return ' + wrapperSrc)()();
 }
 
@@ -60,13 +63,18 @@ const scenarios = [
     eligible: false
   },
   {
-    name: 'video, preview_ready, paidAt NULL — randare video pre-plata, prin design, extras ramane eligibil (comportament NESCHIMBAT)',
-    order: { plan: 'video', status: 'preview_ready', paidAt: null },
+    // NOTA (2026-09-25, corectie separata "Retry Extras video"): eligibilitatea video are ACUM
+    // si o garda suplimentara (media confirmata + video incomplet, vezi
+    // test/admin-retry-extras-video-guard.test.js pentru matricea completa) — acest scenariu
+    // foloseste STRICT fixturi care satisfac acea garda, ca sa testeze in continuare DOAR
+    // poarta de plata (obiectul acestui fisier), neschimbata pentru video.
+    name: 'video, preview_ready, paidAt NULL, media confirmata, video incomplet — randare video pre-plata, prin design, extras ramane eligibil (poarta de plata NESCHIMBATA)',
+    order: { plan: 'video', status: 'preview_ready', paidAt: null, mediaConfirmedAt: '2026-09-20T10:00:00.000Z', selectedVariantId: 'v1', variants: [{ id: 'v1', videoKey: null, videoPreviewKey: null }] },
     eligible: true
   },
   {
-    name: 'video, ready, platita — extras eligibil',
-    order: { plan: 'video', status: 'ready', paidAt: '2026-09-20T10:00:00.000Z' },
+    name: 'video, ready, platita, media confirmata, video incomplet — extras eligibil (poarta de plata NESCHIMBATA)',
+    order: { plan: 'video', status: 'ready', paidAt: '2026-09-20T10:00:00.000Z', mediaConfirmedAt: '2026-09-20T10:00:00.000Z', selectedVariantId: 'v1', variants: [{ id: 'v1', videoKey: null, videoPreviewKey: null }] },
     eligible: true
   },
   {
@@ -129,11 +137,15 @@ test('server.js: generatePremiumExtras ramane apelata neschimbat (forceVideo: fa
   assert.match(serverSrc, /await generatePremiumExtras\(req\.params\.orderId, \{ forceVideo: false \}\);/);
 });
 
-test('server.js: triggerVideoGeneration ramane apelata neschimbat pentru planul video din retry-extras', () => {
+test('server.js: triggerVideoGeneration ramane apelata pentru planul video din retry-extras (acum DUPA garda de video complet/media neconfirmata, vezi test/admin-retry-extras-video-guard.test.js)', () => {
   const idx = serverSrc.indexOf("app.post('/api/admin/orders/:orderId/retry-extras'");
   const end = serverSrc.indexOf('\n});', idx);
   const block = serverSrc.slice(idx, end);
-  assert.match(block, /if \(order\.plan === 'video' && order\.selectedVariantId\) \{\s*await triggerVideoGeneration\(order\.id, order\.selectedVariantId\);/);
+  const videoBranchIdx = block.indexOf("if (order.plan === 'video' && order.selectedVariantId) {");
+  assert.ok(videoBranchIdx !== -1);
+  const videoBranchEnd = block.indexOf('} else {', videoBranchIdx);
+  const videoBranch = block.slice(videoBranchIdx, videoBranchEnd);
+  assert.match(videoBranch, /await triggerVideoGeneration\(order\.id, order\.selectedVariantId\);/);
 });
 
 test('server.js si private/admin/orders.js raman sintactic valide', () => {

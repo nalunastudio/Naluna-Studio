@@ -2186,6 +2186,22 @@ app.post('/api/admin/orders/:orderId/retry-extras', async (req, res, next) => {
     // generatePremiumExtras() genereaza si WAV-ul in acelasi apel (comun premium/video),
     // deci un singur retry acopera ambele extrase pentru pachetul video.
     if (order.plan === 'video' && order.selectedVariantId) {
+      // CORECȚIE (2026-09-25, investigatie separata — "Retry Extras" fals-pozitiv pe comenzi
+      // Video): protectie server-side, NU doar ascunderea butonului in UI (vezi
+      // isVideoRetryNeeded() din private/admin/orders.js, aceeasi logica) — triggerVideoGeneration
+      // -> db.enqueueVideoRenderJob NU verifica singur daca exista deja un videoclip complet
+      // inainte sa puna un job nou in coada (protejeaza STRICT impotriva unui job 'pending'/
+      // 'claimed' duplicat pentru aceeasi tripleta, nu impotriva unui job deja 'done'), deci fara
+      // aceasta garda un apel direct catre endpoint (sau un bug viitor de UI) ar fi putut re-randa
+      // inutil un videoclip deja livrat, cu cost real de compute. Confirmat pe productie: 13 din
+      // 20 de comenzi cu butonul afisat aveau deja videoclipul complet.
+      if (!order.mediaConfirmedAt) {
+        return res.status(400).json({ error: 'Materialele video nu au fost confirmate încă — nu există niciun videoclip de reîncercat.' });
+      }
+      const videoVariant = (order.variants || []).find(v => v.id === order.selectedVariantId);
+      if (videoVariant && videoVariant.videoKey && videoVariant.videoPreviewKey) {
+        return res.status(400).json({ error: 'Videoclipul este deja complet — nu necesită reîncercare.' });
+      }
       await triggerVideoGeneration(order.id, order.selectedVariantId);
     } else {
       await generatePremiumExtras(req.params.orderId, { forceVideo: false });
