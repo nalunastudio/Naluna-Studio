@@ -42,8 +42,19 @@ function formatDateShort(dateStr) {
 // ==========================================================================================
 // PERIOD SELECTOR
 // ==========================================================================================
-const today = new Date();
-let periodState = { type: 'month', year: today.getFullYear(), month: today.getMonth() + 1, anchorDate: toDateStr(today), date: toDateStr(today), startDate: addDaysLocal(toDateStr(today), -6), endDate: toDateStr(today) };
+// DEFAULT "Zi"/Azi in Europe/London (2026-09-26, cerinta explicita): la fiecare acces nou/refresh
+// complet al paginii, perioada implicita trebuie sa fie "Zi" = ZIUA CURENTA in Europe/London, NU
+// ceasul local al browserului adminului (care poate fi intr-un alt fus orar) — spre deosebire de
+// restul navigarii Period Selector-ului (butoanele "Azi"/sageti, mai jos), care raman STRICT UI-
+// convenience pe ceasul local browserului (comportament PRE-EXISTENT, documentat, neschimbat aici
+// — bucketing-ul REAL al datelor tot in Europe/London, server-side, indiferent de aceasta valoare
+// initiala). 'en-CA' formateaza nativ ca YYYY-MM-DD, exact formatul folosit de restul fisierului.
+function todayInLondon() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+}
+const todayLondonStr = todayInLondon();
+const [todayLondonYear, todayLondonMonth] = todayLondonStr.split('-').map(Number);
+let periodState = { type: 'day', year: todayLondonYear, month: todayLondonMonth, anchorDate: todayLondonStr, date: todayLondonStr, startDate: addDaysLocal(todayLondonStr, -6), endDate: todayLondonStr };
 let lastResolvedBounds = null; // { startDate, endDateExclusive } — umplut dupa fiecare raspuns de la server
 
 const periodTypeTabs = document.getElementById('period-type-tabs');
@@ -441,6 +452,9 @@ const statusLabel = {
 };
 
 const PAGE_SIZE = 50;
+// TABLE_COLSPAN (2026-09-26): Nr. comandă, Nr. client, Data, Pentru, Email, Limba, Ocazie, Gen,
+// Pachet, Preț, Status, Sursă, Locație, Recovery, Acțiuni — 15 coloane totale (vezi orders.html).
+const TABLE_COLSPAN = 15;
 let state = { offset: 0, status: '', q: '', paid: '', utmSource: '', utmCampaign: '', testFilter: '', dateFrom: null, dateTo: null };
 let ordersCache = [];
 
@@ -594,6 +608,46 @@ function renderSourceCell(o) {
   return `${escapeHtml(o.utmSource || '(unknown)')}${o.utmCampaign ? ' / ' + escapeHtml(o.utmCampaign) : ''}`;
 }
 
+function renderLocationCell(o) {
+  return o.location ? escapeHtml(o.location) : '<span class="text-muted">—</span>';
+}
+
+// DIAGNOSTIC CLIENT COMPACT (2026-09-26, cerinta explicita, sectiunea 5) — STRICT date deja
+// existente pe `o` (acelasi obiect primit de la GET /api/admin/orders, deja incarcat in
+// ordersCache) — niciun fetch suplimentar, niciun eveniment inventat. previewReached foloseste
+// STRICT statusul curent (irreversibil crescator: draft -> generating ->
+// processing_provider_result -> preview_ready -> ready, sau generation_failed) — o comanda
+// 'ready' a trecut necesarmente prin 'preview_ready', deci "preview gata" ramane adevarat si dupa.
+// Nu expune NICIODATA accessToken/stripeSessionId/stripePaymentIntentId (date tehnice sensibile).
+function getOrderDiagnosticItems(o) {
+  const previewReached = o.status === 'preview_ready' || o.status === 'ready';
+  const items = [
+    { k: 'Status', v: statusLabel[o.status] || o.status },
+    { k: 'Preview gata', v: previewReached ? 'Da' : 'Nu' },
+    { k: 'Checkout creat', v: o.checkoutCreatedAt ? new Date(o.checkoutCreatedAt).toLocaleString('ro-RO') : 'Nu' },
+    { k: 'Plătit', v: o.paidAt ? new Date(o.paidAt).toLocaleString('ro-RO') : 'Nu' },
+    { k: 'Pachet', v: o.plan },
+    { k: 'Preț', v: `£${o.price}` },
+    { k: 'Sursă', v: (o.utmSource || o.utmCampaign) ? `${o.utmSource || '(unknown)'}${o.utmCampaign ? ' / ' + o.utmCampaign : ''}` : '—' },
+    { k: 'Locație', v: o.location || '—' }
+  ];
+  if (o.error) items.push({ k: 'Eroare', v: o.error, err: true });
+  return items;
+}
+
+function renderOrderDetailRow(o) {
+  const items = getOrderDiagnosticItems(o);
+  return `
+    <tr class="order-detail-row" data-order-detail-for="${escapeHtml(o.id)}" style="display:none;">
+      <td colspan="${TABLE_COLSPAN}">
+        <div class="order-detail-grid">
+          ${items.map((it) => `<div class="order-detail-item"><div class="k">${escapeHtml(it.k)}</div><div class="v${it.err ? ' err' : ''}">${escapeHtml(it.v)}</div></div>`).join('')}
+        </div>
+      </td>
+    </tr>
+  `;
+}
+
 // NR. CLIENT (2026-09-25, REFACUT server-side — vezi raportul catre user): numerotarea cronologica
 // pe client distinct (lower(trim(email))) e acum calculata de server (db.getDistinctCustomerRanks,
 // DENSE_RANK peste TOT setul filtrat — nu doar pagina curenta) si vine gata atasata pe fiecare
@@ -622,11 +676,23 @@ function renderRecoveryCell(o) {
   return `<span title="${escapeHtml(whenStr)}">${escapeHtml(typeLabel)} · ${escapeHtml(statusLabelText)}</span>`;
 }
 
+// Nr. client -> "X (N)" (2026-09-26, cerinta explicita): X = rangul cronologic server-side peste
+// setul filtrat curent (o.clientNumber, neschimbat); N = totalul LIFETIME real de comenzi al
+// acelui client, INDIFERENT de pagina/perioada/filtrele curente (o.clientLifetimeOrderCount,
+// server-side — vezi db.getLifetimeCustomerOrderCounts). Fara X (clientNumber null, teoretic
+// imposibil in conditii normale) -> STRICT "—", niciun "(N)" orfan.
+function renderClientNumberCell(o) {
+  if (o.clientNumber == null) return '—';
+  const n = o.clientLifetimeOrderCount != null ? o.clientLifetimeOrderCount : 1;
+  return `${o.clientNumber} (${n})`;
+}
+
 function renderOrderRow(o) {
   const actions = getOrderRowActions(o);
   return `
     <tr data-order-id="${escapeHtml(o.id)}">
-      <td>${o.clientNumber != null ? o.clientNumber : '—'}</td>
+      <td>${o.orderNumber != null ? o.orderNumber : '—'}</td>
+      <td>${renderClientNumberCell(o)}</td>
       <td>${new Date(o.createdAt).toLocaleString('ro-RO')}</td>
       <td>${escapeHtml(o.recipient)}</td>
       <td>${escapeHtml(o.email || '—')}${o.isTestOrder ? ' <span class="badge b-draft" title="Exclusa din KPI-urile de conversie (Dashboard)">TEST</span>' : ''}</td>
@@ -637,13 +703,16 @@ function renderOrderRow(o) {
       <td>£${o.price}</td>
       <td><span class="badge b-${o.status}">${statusLabel[o.status] || o.status}</span></td>
       <td>${renderSourceCell(o)}</td>
+      <td>${renderLocationCell(o)}</td>
       <td>${renderRecoveryCell(o)}</td>
       <td>
         <div class="orders-row-actions">
+          <button type="button" class="order-detail-toggle" data-order-detail-toggle="${escapeHtml(o.id)}">Detalii</button>
           ${actions.map(a => `<button type="button" class="${a.variant}" data-order-action="${a.id}">${a.label}</button>`).join('')}
         </div>
       </td>
     </tr>
+    ${renderOrderDetailRow(o)}
   `;
 }
 
@@ -658,7 +727,7 @@ function renderPagination(matchingCount) {
 }
 
 async function loadOrders() {
-  ordersBody.innerHTML = '<tr><td colspan="13" class="empty">Se încarcă…</td></tr>';
+  ordersBody.innerHTML = `<tr><td colspan="${TABLE_COLSPAN}" class="empty">Se încarcă…</td></tr>`;
   try {
     const res = await fetch(`/api/admin/orders?${buildQuery()}`);
     const data = await res.json();
@@ -668,14 +737,14 @@ async function loadOrders() {
     document.getElementById('stat-revenue').textContent = '£' + data.revenue;
 
     if (ordersCache.length === 0) {
-      ordersBody.innerHTML = '<tr><td colspan="13" class="empty">Nicio comandă găsită</td></tr>';
+      ordersBody.innerHTML = `<tr><td colspan="${TABLE_COLSPAN}" class="empty">Nicio comandă găsită</td></tr>`;
     } else {
       ordersBody.innerHTML = ordersCache.map((o) => renderOrderRow(o)).join('');
     }
     renderPagination(data.matchingCount);
     syncTopScrollbarWidth();
   } catch (err) {
-    ordersBody.innerHTML = '<tr><td colspan="13" class="empty">Eroare la încărcarea comenzilor.</td></tr>';
+    ordersBody.innerHTML = `<tr><td colspan="${TABLE_COLSPAN}" class="empty">Eroare la încărcarea comenzilor.</td></tr>`;
     syncTopScrollbarWidth();
   }
 }
@@ -738,6 +807,13 @@ async function handleRetryExtras(orderId) {
 }
 
 ordersBody.addEventListener('click', (e) => {
+  const detailToggle = e.target.closest('[data-order-detail-toggle]');
+  if (detailToggle) {
+    const orderId = detailToggle.dataset.orderDetailToggle;
+    const detailRow = ordersBody.querySelector(`[data-order-detail-for="${CSS.escape(orderId)}"]`);
+    if (detailRow) detailRow.style.display = detailRow.style.display === 'none' ? '' : 'none';
+    return;
+  }
   const btn = e.target.closest('[data-order-action]');
   if (!btn) return;
   const orderId = btn.closest('[data-order-id]').dataset.orderId;

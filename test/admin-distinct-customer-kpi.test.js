@@ -219,11 +219,16 @@ test('server.js GET /api/admin/orders: apeleaza db.getDistinctCustomerRanks(filt
   assert.match(fn, /db\.getDistinctCustomerRanks\(filterArgs\)/);
 });
 
-test('server.js GET /api/admin/orders: fiecare comanda primeste clientNumber din clientRanks.get(email normalizat)', () => {
+// CORECTIE (2026-09-26, "Nr. comandă"/"Locație"/lifetime — cerinta explicita): normalizarea
+// emailului a fost extrasa intr-o variabila `emailKey` (refolosita si pentru
+// clientLifetimeOrderCount), aceeasi normalizare exacta (lower+trim) — vezi
+// test/admin-orders-numbering.test.js pentru verificarea completa a noii forme.
+test('server.js GET /api/admin/orders: fiecare comanda primeste clientNumber din clientRanks.get(email normalizat, prin variabila emailKey)', () => {
   const idx = serverSrcForOrders.indexOf("app.get('/api/admin/orders', async");
   const end = serverSrcForOrders.indexOf('\n});', idx);
   const fn = serverSrcForOrders.slice(idx, end);
-  assert.match(fn, /clientNumber:\s*clientRanks\.get\(String\(o\.email \|\| ''\)\.trim\(\)\.toLowerCase\(\)\)/);
+  assert.match(fn, /const emailKey = String\(o\.email \|\| ''\)\.trim\(\)\.toLowerCase\(\);/);
+  assert.match(fn, /clientNumber:\s*clientRanks\.get\(emailKey\)\s*\|\|\s*null/);
 });
 
 test('server.js GET /api/admin/orders: totalCount si revenue raman GLOBALE (db.countOrders({}) fara filtre, db.computeRevenue() neschimbat) — KPI-urile nu s-au schimbat', () => {
@@ -238,12 +243,11 @@ test('server.js GET /api/admin/orders: totalCount si revenue raman GLOBALE (db.c
 // (3) private/admin/orders.js — renderOrderRow foloseste o.clientNumber (server-side), colspan
 // actualizat pentru coloana noua "Recovery".
 // ================================================================================================
-test('renderOrderRow: primeste STRICT `o` (nu mai primeste clientNumber separat) si randeaza o.clientNumber in PRIMA celula', () => {
-  const start = ordersSrc.indexOf('function renderOrderRow(o) {');
-  assert.ok(start !== -1, 'renderOrderRow trebuie sa primeasca STRICT `o` — numarul vine deja atasat de server (o.clientNumber)');
-  const end = ordersSrc.indexOf('\n}', start);
-  const fn = ordersSrc.slice(start, end);
-  assert.match(fn, /<td>\$\{o\.clientNumber != null \? o\.clientNumber : '—'\}<\/td>/);
+// CORECTIE (2026-09-26, "Nr. comandă" — coloana noua APROBATA, devine PRIMA celula): Nr. client
+// (renderClientNumberCell, care randeaza acum "X (N)" — vezi test/admin-orders-numbering.test.js)
+// trece pe A DOUA celula, dupa Nr. comandă (o.orderNumber).
+test('renderOrderRow: primeste STRICT `o` (nu mai primeste clientNumber separat) si randeaza renderClientNumberCell(o) in A DOUA celula (dupa Nr. comandă)', () => {
+  assert.match(ordersSrc, /<td>\$\{o\.orderNumber != null \? o\.orderNumber : '—'\}<\/td>\s*<td>\$\{renderClientNumberCell\(o\)\}<\/td>/);
 });
 
 test('loadOrders(): NU mai calculeaza numerotarea client-side — renderOrderRow(o) e apelat direct pe ordersCache, fara nicio functie intermediara de numerotare', () => {
@@ -252,10 +256,16 @@ test('loadOrders(): NU mai calculeaza numerotarea client-side — renderOrderRow
   assert.ok(idx !== -1);
 });
 
-test('colspan actualizat la 13 (12 coloane vechi + 1 noua "Recovery") in toate cele 3 stari ale tabelului (incarcare/gol/eroare)', () => {
-  const matches = ordersSrc.match(/colspan="13"/g) || [];
-  assert.equal(matches.length, 3, 'trebuie actualizate toate cele 3 locuri (Se încarcă/Nicio comandă/Eroare)');
-  assert.ok(!ordersSrc.includes('colspan="12"'), 'nu trebuie sa mai ramana niciun colspan vechi de 12');
+// CORECTIE (2026-09-26, "Nr. comandă" + "Locație" — coloane noi APROBATE): colspan-ul a crescut
+// din nou, la 15 (13 + Nr. comandă + Locație) — cele 3 stari ale tabelului folosesc acum
+// constanta TABLE_COLSPAN (nu mai un literal "15" repetat de 3 ori), plus randul de detalii
+// diagnostic (renderOrderDetailRow) foloseste ACEEASI constanta.
+test('colspan actualizat la 15 (13 + Nr. comandă + Locație), prin constanta TABLE_COLSPAN, folosita in toate cele 3 stari ale tabelului (incarcare/gol/eroare) SI in randul de detalii', () => {
+  assert.match(ordersSrc, /const TABLE_COLSPAN = 15;/);
+  const matches = ordersSrc.match(/colspan="\$\{TABLE_COLSPAN\}"/g) || [];
+  assert.equal(matches.length, 4, 'trebuie folosita in cele 3 stari ale tabelului (Se încarcă/Nicio comandă/Eroare) + randul de detalii diagnostic');
+  assert.ok(!ordersSrc.includes('colspan="13"'), 'nu trebuie sa mai ramana niciun colspan vechi literal de 13');
+  assert.ok(!ordersSrc.includes('colspan="12"'), 'nu trebuie sa mai ramana niciun colspan vechi literal de 12');
 });
 
 test('renderOrderRow: randeaza o celula Recovery (renderRecoveryCell) inainte de coloana Actiuni', () => {
@@ -265,18 +275,25 @@ test('renderOrderRow: randeaza o celula Recovery (renderRecoveryCell) inainte de
   assert.match(fn, /\$\{renderRecoveryCell\(o\)\}/);
 });
 
-test('orders.html: antetul tabelului contine coloana "Recovery" dupa "Sursă" si inainte de "Acțiuni"', () => {
+// CORECTIE (2026-09-26, coloana noua "Locație" — APROBATA separat, vezi
+// test/admin-orders-location.test.js): "Recovery" ramane dupa "Sursă" si inainte de "Acțiuni",
+// dar "Locație" s-a intercalat intre ele — actualizat sa reflecte asta, fara sa schimbe ce
+// verifica testul original (Recovery tot inainte de Acțiuni).
+test('orders.html: antetul tabelului contine coloana "Recovery" dupa "Sursă" (cu "Locație" intre ele) si inainte de "Acțiuni"', () => {
   const htmlSrc = fs.readFileSync(path.join(__dirname, '..', 'private', 'admin', 'orders.html'), 'utf8');
-  assert.match(htmlSrc, /<th>Sursă<\/th><th[^>]*>Recovery<\/th><th>Acțiuni<\/th>/);
+  assert.match(htmlSrc, /<th>Sursă<\/th><th[^>]*>Locație<\/th><th[^>]*>Recovery<\/th><th>Acțiuni<\/th>/);
 });
 
 // ================================================================================================
 // orders.html — antetul tabelului.
 // ================================================================================================
-test('orders.html: antetul tabelului are "Nr. client" ca PRIMA coloana, inaintea "Data"', () => {
+// CORECTIE (2026-09-26, coloana noua "Nr. comandă" — APROBATA separat, vezi
+// test/admin-orders-numbering.test.js): devine ea PRIMA coloana, "Nr. client" ramane a doua —
+// verificarea originala (Nr. client prima) actualizata sa reflecte asta.
+test('orders.html: antetul tabelului are "Nr. comandă" ca PRIMA coloana, urmata de "Nr. client", inaintea "Data"', () => {
   const htmlSrc = fs.readFileSync(path.join(__dirname, '..', 'private', 'admin', 'orders.html'), 'utf8');
-  const theadMatch = htmlSrc.match(/<tr><th[^>]*>Nr\. client<\/th><th>Data<\/th>/);
-  assert.ok(theadMatch, 'antetul trebuie sa inceapa cu Nr. client, urmat imediat de Data');
+  const theadMatch = htmlSrc.match(/<tr><th[^>]*>Nr\. comandă<\/th><th[^>]*>Nr\. client<\/th><th>Data<\/th>/);
+  assert.ok(theadMatch, 'antetul trebuie sa inceapa cu Nr. comandă, urmat de Nr. client, apoi Data');
 });
 
 // ================================================================================================

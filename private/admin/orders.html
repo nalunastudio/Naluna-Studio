@@ -33,9 +33,9 @@
     <!-- Period Selector -->
     <div class="period-selector">
       <div class="period-type-tabs" id="period-type-tabs">
-        <button type="button" class="period-tab active" data-period-type="month">Lună</button>
+        <button type="button" class="period-tab active" data-period-type="day">Zi</button>
         <button type="button" class="period-tab" data-period-type="week">Săptămână</button>
-        <button type="button" class="period-tab" data-period-type="day">Zi</button>
+        <button type="button" class="period-tab" data-period-type="month">Lună</button>
         <button type="button" class="period-tab" data-period-type="custom">Interval custom</button>
       </div>
       <div class="period-nav" id="period-nav">
@@ -110,8 +110,16 @@
       <div class="stat"><div class="label">Venit (comenzi plătite)</div><div class="value" id="stat-revenue">—</div></div>
     </div>
 
+    <!-- CAUTARE (2026-09-26, cerinta explicita — "mult mai practica"): mutata pe randul ei
+         propriu, chiar deasupra barei de filtre, ca sa fie prima actiune vizibila cand adminul
+         primeste un email de la un client si vrea sa il caute rapid. ACELASI element/logica
+         existenta (#orders-search, server-side, peste toata baza de date) — nu e un al doilea
+         sistem de cautare, doar repozitionat + facut mai vizibil. -->
+    <div class="orders-search-row">
+      <label for="orders-search" class="orders-search-label">Caută client</label>
+      <input type="search" id="orders-search" placeholder="Nume destinatar sau email — lipește un email complet ca să vezi toate comenzile acelui client…">
+    </div>
     <div class="orders-toolbar">
-      <input type="search" id="orders-search" placeholder="Caută după nume destinatar sau email…">
       <select id="orders-status-filter">
         <option value="">Toate statusurile</option>
         <option value="draft">Neplătită</option>
@@ -160,7 +168,7 @@
       <div class="table-scroll" id="orders-table-scroll">
         <table id="orders-table">
           <thead>
-            <tr><th title="Numerotare cronologica pe client distinct (lower(trim(email))), calculata server-side pe toata perioada/filtrele curente — primul client din perioada = 1, cel mai recent = numarul total de clienti distincti (nu doar pagina curenta).">Nr. client</th><th>Data</th><th>Pentru</th><th>Email</th><th>Limba</th><th>Ocazie</th><th>Gen</th><th>Pachet</th><th>Preț</th><th>Status</th><th>Sursă</th><th title="Ultima notificare de recovery email trimisa pentru aceasta comanda (daca sistemul e activat).">Recovery</th><th>Acțiuni</th></tr>
+            <tr><th title="Numerotare cronologica STRICT per comanda (nu per client), calculata server-side peste tot setul filtrat curent — prima comanda din perioada/filtrele curente = 1 (nu doar pagina curenta).">Nr. comandă</th><th title="Numerotare cronologica pe client distinct (lower(trim(email))), calculata server-side pe toata perioada/filtrele curente — primul client din perioada = 1, cel mai recent = numarul total de clienti distincti (nu doar pagina curenta). Numarul din paranteza e totalul LIFETIME de comenzi al acelui client, indiferent de pagina/perioada vizualizata.">Nr. client</th><th>Data</th><th>Pentru</th><th>Email</th><th>Limba</th><th>Ocazie</th><th>Gen</th><th>Pachet</th><th>Preț</th><th>Status</th><th>Sursă</th><th title="Oraș + țară din adresa de facturare Stripe, DOAR pentru comenzi plătite după 2026-09-26 — niciodată dedusă din limbă/nume/email. Comenzile fără această informație afișează „—”.">Locație</th><th title="Ultima notificare de recovery email trimisa pentru aceasta comanda (daca sistemul e activat).">Recovery</th><th>Acțiuni</th></tr>
           </thead>
           <tbody id="orders-body"></tbody>
         </table>

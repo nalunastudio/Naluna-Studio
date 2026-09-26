@@ -170,6 +170,29 @@ function isTestCustomerEmail(email) {
   return ANALYTICS_EXCLUDED_EMAILS.includes(String(email || '').trim().toLowerCase());
 }
 
+// LOCATIE (2026-09-26, Admin > Comenzi — coloana "Locatie", cerinta explicita): STRICT afisare —
+// order.customerCountry/customerCity vin DOAR din Stripe (session.customer_details.address, la
+// confirmarea platii — vezi customerCity/customerCountry, webhook-ul de mai jos), NICIODATA
+// deduse din limba/nume/email/genul melodiei. Harta de mai jos e STRICT cosmetica (cod ISO 3166-1
+// alpha-2 -> nume afisat in romana, ex. "UK" pentru GB, dupa formatul cerut explicit) — un cod
+// necunoscut/lipsa din harta se afiseaza NETRADUS (codul ISO brut), niciodata inventat sau ascuns.
+const COUNTRY_DISPLAY_NAMES = {
+  GB: 'UK', IE: 'Irlanda', RO: 'România', IT: 'Italia', ES: 'Spania', FR: 'Franța', DE: 'Germania',
+  PT: 'Portugalia', NL: 'Olanda', BE: 'Belgia', AT: 'Austria', CH: 'Elveția', SE: 'Suedia',
+  NO: 'Norvegia', DK: 'Danemarca', FI: 'Finlanda', PL: 'Polonia', CZ: 'Cehia', SK: 'Slovacia',
+  HU: 'Ungaria', GR: 'Grecia', BG: 'Bulgaria', HR: 'Croația', SI: 'Slovenia', LT: 'Lituania',
+  LV: 'Letonia', EE: 'Estonia', CY: 'Cipru', MT: 'Malta', LU: 'Luxemburg', IS: 'Islanda',
+  US: 'SUA', CA: 'Canada', AU: 'Australia', NZ: 'Noua Zeelandă'
+};
+// Fara oras/tara reale -> "—" STRICT (niciodata un text inventat). Cu tara dar fara oras -> STRICT
+// tara. Cu ambele -> "Oraș, Țară" (formatul cerut explicit).
+function formatOrderLocation(customerCity, customerCountry) {
+  const countryLabel = customerCountry ? (COUNTRY_DISPLAY_NAMES[customerCountry] || customerCountry) : null;
+  if (customerCity && countryLabel) return `${customerCity}, ${countryLabel}`;
+  if (countryLabel) return countryLabel;
+  return null;
+}
+
 // ==================================================================================
 // RECOVERY EMAILS (2026-09-25) — vezi lib/recovery-emails/. SAFE DISABLE explicit (cerinta 10):
 // implicit OFF ('true' e SINGURA valoare care il porneste) — un simplu restart al serverului NU
@@ -1420,6 +1443,10 @@ async function processConfirmedPayment(event, session) {
   // returnate de Stripe, fara nicio presupunere sau calcul propriu. NU logam sesiunea Stripe
   // intreaga (contine date de client) — doar campurile specifice de care avem nevoie.
   const customerCountry = (session.customer_details && session.customer_details.address && session.customer_details.address.country) || null;
+  // customerCity (2026-09-26, Admin > Comenzi — coloana "Locatie"): ACELASI camp Stripe
+  // (customer_details.address), citit o singura data alaturi de customerCountry de mai sus — nu o
+  // sursa noua, nu geolocalizare IP. Adresa de facturare introdusa chiar de client la checkout.
+  const customerCity = (session.customer_details && session.customer_details.address && session.customer_details.address.city) || null;
   const paymentCurrency = session.currency || null;
   const amountTotal = typeof session.amount_total === 'number' ? session.amount_total / 100 : null;
   const taxAmount = (session.total_details && typeof session.total_details.amount_tax === 'number')
@@ -1446,6 +1473,7 @@ async function processConfirmedPayment(event, session) {
     status: 'ready',
     paidAt: new Date().toISOString(),
     customerCountry,
+    customerCity,
     paymentCurrency,
     amountTotal,
     taxAmount,
@@ -1685,7 +1713,7 @@ app.get('/api/admin/orders', async (req, res, next) => {
 
     const filterArgs = { status, q, dateFrom, dateToExclusive, paid, utmSource, utmCampaign, testFilter, testEmails: ANALYTICS_EXCLUDED_EMAILS };
 
-    const [orders, matchingCount, totalCount, revenue, clientRanks] = await Promise.all([
+    const [orders, matchingCount, totalCount, revenue, clientRanks, orderSeqNumbers] = await Promise.all([
       db.listOrdersPage({ limit, offset, ...filterArgs }),
       db.countOrders(filterArgs),
       db.countOrders({}),
@@ -1697,7 +1725,11 @@ app.get('/api/admin/orders', async (req, res, next) => {
       // divergenta. Inlocuieste vechea numerotare client-side (assignDistinctCustomerNumbers in
       // private/admin/orders.js), care numerota STRICT pagina curenta si in ordine inversa
       // (cel mai recent client = 1) — vezi raportul.
-      db.getDistinctCustomerRanks(filterArgs)
+      db.getDistinctCustomerRanks(filterArgs),
+      // "NR. COMANDA" (2026-09-26, cerinta explicita) — ACELASI principiu, dar per COMANDA (nu per
+      // client): ROW_NUMBER() peste TOT setul filtrat curent, cronologic — vezi db.js pentru
+      // motivatia completa (inclusiv de ce e relativ la filtrele curente, ca Nr. client).
+      db.getOrderSequenceNumbers(filterArgs)
     ]);
 
     // isTestOrder: STRICT informativ (afisat ca badge in Comenzi) — comanda ramane completa in
@@ -1705,13 +1737,27 @@ app.get('/api/admin/orders', async (req, res, next) => {
     // din KPI-urile de conversie se intampla in /api/admin/dashboard-summary.
     // recoverySummary (2026-09-25) — STRICT ultima notificare de recovery per comanda, pentru
     // coloana minimala "Recovery" din Admin (cerinta 9) — vezi db.getOrderNotificationSummaries.
-    const recoverySummaries = await db.getOrderNotificationSummaries(orders.map((o) => o.id));
-    const ordersWithExtras = orders.map((o) => ({
-      ...o,
-      isTestOrder: isTestCustomerEmail(o.email),
-      clientNumber: clientRanks.get(String(o.email || '').trim().toLowerCase()) || null,
-      recovery: recoverySummaries.get(o.id) || null
-    }));
+    // lifetimeCounts (2026-09-26, "Nr. client" -> "X (N)", cerinta explicita): N e LIFETIME REAL
+    // al fiecarui client (toate comenzile acelei adrese de email, din ÎNTREAGA baza de date,
+    // INDIFERENT de pagina/perioada/filtrele curente) — vezi db.getLifetimeCustomerOrderCounts.
+    // Calculat STRICT pentru emailurile de pe PAGINA curenta (nu tot setul filtrat) — fiecare
+    // rand afisat are nevoie doar de numarul lifetime al PROPRIULUI email.
+    const [recoverySummaries, lifetimeCounts] = await Promise.all([
+      db.getOrderNotificationSummaries(orders.map((o) => o.id)),
+      db.getLifetimeCustomerOrderCounts(orders.map((o) => o.email))
+    ]);
+    const ordersWithExtras = orders.map((o) => {
+      const emailKey = String(o.email || '').trim().toLowerCase();
+      return {
+        ...o,
+        isTestOrder: isTestCustomerEmail(o.email),
+        clientNumber: clientRanks.get(emailKey) || null,
+        clientLifetimeOrderCount: lifetimeCounts.get(emailKey) || null,
+        orderNumber: orderSeqNumbers.get(o.id) || null,
+        location: formatOrderLocation(o.customerCity, o.customerCountry),
+        recovery: recoverySummaries.get(o.id) || null
+      };
+    });
 
     res.json({ orders: ordersWithExtras, matchingCount, totalCount, revenue, page: { limit, offset } });
   } catch (err) {

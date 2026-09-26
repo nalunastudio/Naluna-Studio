@@ -299,18 +299,29 @@ tr:last-child td{ border-bottom:none; }
 .table-scroll-top-spacer{ height:1px; }
 .text-muted{ color:var(--text-secondary); }
 
-/* -------- Comenzi: filtre + paginare -------- */
-.orders-toolbar{ display:flex; gap:10px; margin-bottom:18px; flex-wrap:wrap; align-items:center; }
-.orders-toolbar input[type=search]{
-  flex:1; min-width:200px; background:var(--surface); border:1px solid var(--line); border-radius:9px;
-  padding:10px 14px; font-family:'Sora', sans-serif; font-size:13px; color:var(--text);
+/* -------- Comenzi: cautare (randul ei propriu, deasupra barei de filtre) + paginare -------- */
+.orders-search-row{ display:flex; align-items:center; gap:12px; margin-bottom:12px; }
+.orders-search-label{ font-size:13px; font-weight:500; color:var(--text-secondary); white-space:nowrap; }
+.orders-search-row input[type=search]{
+  flex:1; background:var(--surface); border:1px solid var(--line); border-radius:9px;
+  padding:12px 16px; font-family:'Sora', sans-serif; font-size:14px; color:var(--text);
 }
+.orders-toolbar{ display:flex; gap:10px; margin-bottom:18px; flex-wrap:wrap; align-items:center; }
 .orders-toolbar select{
   background:var(--surface); border:1px solid var(--line); border-radius:9px;
   padding:10px 14px; font-family:'Sora', sans-serif; font-size:13px; color:var(--text);
 }
 .orders-period-sync{ display:flex; align-items:center; gap:7px; font-size:12px; color:var(--text-secondary); cursor:pointer; white-space:nowrap; }
-.orders-row-actions{ display:flex; gap:6px; flex-wrap:wrap; }
+.orders-row-actions{ display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+
+/* Diagnostic client compact (2026-09-26) — rand ascuns, extins la cerere ("Detalii"), STRICT din
+   datele deja incarcate ale comenzii (ordersCache) — niciun fetch nou. */
+.order-detail-toggle{ background:none; border:none; color:var(--gold-deep); font-size:12px; cursor:pointer; padding:4px 6px; text-decoration:underline; }
+.order-detail-row td{ background:var(--bg-secondary); padding:12px 16px; }
+.order-detail-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(160px, 1fr)); gap:10px 18px; font-size:12px; }
+.order-detail-item .k{ color:var(--text-secondary); margin-bottom:2px; }
+.order-detail-item .v{ color:var(--text); font-weight:500; }
+.order-detail-item .v.err{ color:var(--error); }
 .pagination-row{ display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:16px; flex-wrap:wrap; }
 .pagination-info{ font-size:12px; color:var(--text-secondary); }
 .pagination-controls{ display:flex; gap:8px; }
@@ -362,6 +373,7 @@ tr:last-child td{ border-bottom:none; }
   .sm-card-right{ flex-direction:row; width:100%; justify-content:space-between; }
   .sm-modal{ padding:20px; max-height:100vh; border-radius:0; }
   .sm-modal-backdrop{ padding:0; }
+  .orders-search-row{ flex-direction:column; align-items:stretch; }
   .orders-toolbar{ flex-direction:column; align-items:stretch; }
   .period-selector{ flex-direction:column; align-items:stretch; }
   .period-nav{ justify-content:center; }

@@ -108,6 +108,12 @@ async function initDb() {
   // ulterioara. Migrare sigura: ADD COLUMN IF NOT EXISTS nu atinge randurile existente,
   // comenzile deja platite raman intacte, doar cu aceste campuri goale (NULL) retroactiv.
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS customer_country TEXT;`);
+  // customer_city (2026-09-26, Admin > Comenzi — coloana "Locatie"): ACELASI moment/sursa exacta
+  // ca customer_country de mai sus — session.customer_details.address din Stripe, la confirmarea
+  // platii (vezi processConfirmedPayment, server.js) — NU geolocalizare IP, NU dedusa din
+  // limba/nume/email. Populata STRICT pentru comenzi platite DUPA acest deploy; comenzile vechi/
+  // neplatite raman NULL (Admin afiseaza "—", niciun backfill inventat — vezi raportul de audit).
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS customer_city TEXT;`);
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_currency TEXT;`);
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS amount_total NUMERIC;`);
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS tax_amount NUMERIC;`);
@@ -905,6 +911,7 @@ function rowToOrder(row) {
     generatedAt: row.generated_at,
     paidAt: row.paid_at,
     customerCountry: row.customer_country,
+    customerCity: row.customer_city,
     paymentCurrency: row.payment_currency,
     amountTotal: row.amount_total !== null && row.amount_total !== undefined ? Number(row.amount_total) : null,
     taxAmount: row.tax_amount !== null && row.tax_amount !== undefined ? Number(row.tax_amount) : null,
@@ -1930,6 +1937,7 @@ const COLUMN_MAP = {
   generatedAt: 'generated_at',
   paidAt: 'paid_at',
   customerCountry: 'customer_country',
+  customerCity: 'customer_city',
   paymentCurrency: 'payment_currency',
   amountTotal: 'amount_total',
   taxAmount: 'tax_amount',
@@ -3339,6 +3347,63 @@ async function getDistinctCustomerRanks(filterArgs) {
   return map;
 }
 
+// "NR. COMANDA" (2026-09-26, Admin > Comenzi — cerinta explicita) — numerotare cronologica
+// STRICT per comanda (nu per client), server-side, peste ACELASI set filtrat ca listOrdersPage/
+// countOrders/getDistinctCustomerRanks (ACELASI buildOrdersFilter — niciun risc de divergenta
+// intre ce se vede in tabel si ce se numara aici). ROW_NUMBER() OVER (ORDER BY created_at ASC,
+// id ASC) — prima comanda din setul filtrat curent = 1, a doua = 2, s.a.m.d.; id ASC e STRICT un
+// tie-breaker determinist pentru cazul (rar, dar posibil) a doua comenzi cu ACELASI created_at
+// (ex. seed de test) — fara el, ordinea ar putea varia intre doua rulari ale aceleiasi interogari.
+// La fel ca Nr. client, acest numar e relativ la filtrele/perioada curenta (Zi/Saptamana/Luna/
+// Real-Test/etc.) — ACELASI principiu deja aprobat pentru getDistinctCustomerRanks, documentat
+// explicit in raport: schimbarea filtrelor poate schimba ce comenzi intra in numarare, deci si
+// numerele — NU un ID istoric imutabil. Nu se repeta niciodata pentru acelasi client (e per
+// COMANDA, nu per email).
+async function getOrderSequenceNumbers(filterArgs) {
+  const { where, values } = buildOrdersFilter(filterArgs);
+  const result = await pool.query(
+    `SELECT id, ROW_NUMBER() OVER (ORDER BY created_at ASC, id ASC) AS rnk
+     FROM orders
+     ${where}`,
+    values
+  );
+  const map = new Map();
+  for (const row of result.rows) {
+    map.set(row.id, Number(row.rnk));
+  }
+  return map;
+}
+
+// "NR. CLIENT" — numarul din paranteza, "X (N)" (2026-09-26, cerinta explicita — LIFETIME real,
+// INDIFERENT de pagina/perioada/filtrele curente vizualizate). Deliberat SEPARAT de
+// getDistinctCustomerRanks de mai sus (care ramane STRICT rangul "X", calculat peste setul
+// FILTRAT curent) — aici numaram, per adresa de email normalizata (lower(trim(email))), TOATE
+// comenzile ei din intreaga baza de date, fara niciun WHERE de perioada/status/paid/sursa.
+// Identitatea "test"/"real" a unui client e o proprietate FIXA a adresei lui de email (vezi
+// ANALYTICS_EXCLUDED_EMAILS/isTestCustomerEmail, server.js — o lista fixa de adrese ale echipei,
+// niciodata per-comanda) — deci un numar de client dat e ORICUM 100% real sau 100% test, nu poate
+// exista amestec pe aceeasi adresa; nu e nevoie de niciun filtru testFilter suplimentar aici ca sa
+// nu "contamineze" statisticile clientilor reali cu comenzi de test.
+// apelantul (server.js) trimite STRICT emailurile de pe pagina curenta (nu tot setul filtrat) —
+// suficient, pentru ca fiecare rand afisat are nevoie STRICT de numarul lifetime al PROPRIULUI
+// email, niciodata de al altcuiva.
+async function getLifetimeCustomerOrderCounts(emails) {
+  const keys = [...new Set((emails || []).map((e) => String(e || '').trim().toLowerCase()).filter(Boolean))];
+  if (keys.length === 0) return new Map();
+  const result = await pool.query(
+    `SELECT lower(trim(email)) AS email_key, COUNT(*) AS n
+     FROM orders
+     WHERE lower(trim(email)) = ANY($1)
+     GROUP BY lower(trim(email))`,
+    [keys]
+  );
+  const map = new Map();
+  for (const row of result.rows) {
+    map.set(row.email_key, Number(row.n));
+  }
+  return map;
+}
+
 async function markInstagramTokenAlertSent() {
   await pool.query(`UPDATE instagram_token_state SET last_alert_sent_at = now() WHERE id = 1`);
 }
@@ -3382,5 +3447,5 @@ module.exports = {
   enqueueOrderNotification, claimDueOrderNotification, finalizeOrderNotification, recoverStaleOrderNotifications,
   findDueRecoveryCandidates, getRecoveryClientCooldown, touchRecoveryClientCooldown,
   isEmailMarketingSuppressed, addEmailMarketingSuppression, getOrderNotificationSummaries,
-  getDistinctCustomerRanks
+  getDistinctCustomerRanks, getOrderSequenceNumbers, getLifetimeCustomerOrderCounts
 };
