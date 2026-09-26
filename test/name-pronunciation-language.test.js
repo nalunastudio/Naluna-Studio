@@ -189,11 +189,15 @@ test('8) manele_jale: GENRE_STYLE_MAP ramane byte-identic — aceasta corectie n
   assert.match(server, /manele_jale: 'Romanian manele de jale, minor-key oriental colour, mournful violin and clarinet, melismatic lament vocal, heavier longing mood',/);
 });
 
-test('8b) manele_jale: buildPrompt() NU primeste "Short lines" (comportament neschimbat), dar primeste instructiunea generica de dictie+nume ca orice alt gen', () => {
+// CORECTIE (2026-09-26, "randuri scurte" extins la TOATE genurile — cerinta explicita): manele_jale
+// primeste acum SI el "Short lines" (ca orice alt gen — vezi
+// test/lyrics-short-lines-all-genres.test.js) — identitatea lui muzicala (GENRE_STYLE_MAP, testat
+// separat mai sus, #8) ramane byte-identica, neatinsa.
+test('8b) manele_jale: buildPrompt() primeste "Short lines" (ca orice alt gen, dupa extinderea la toate genurile), SI instructiunea generica de dictie+nume', () => {
   const order = orderWithName('ro', 'standard', { genre: 'manele_jale' });
   const prompt = buildPrompt(order, '', undefined);
-  assert.ok(!prompt.includes('Short lines;'));
-  assert.ok(prompt.includes('Verse intro'));
+  assert.ok(prompt.includes('Short lines;'));
+  assert.ok(!prompt.includes('Verse intro'));
   assert.ok(prompt.includes(DICTION_INSTRUCTIONS.ro.short));
 });
 

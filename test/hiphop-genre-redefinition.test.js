@@ -104,11 +104,13 @@ test('PROTECTIE: VOICE_INSTRUCTIONS_FULL/SHORT raman byte-identice', () => {
 });
 
 // CORECTIE (2026-09-22, TASK naturalete versuri): formele SHORT au primit cerinta anti-repetitie
-// ("not invented" -> "never invented/repeated") — vezi test/lyrics-naturalness.test.js. Clauza de
-// vocal-onset insasi ("like the verse"/"Verse intro") ramane byte-identica, neatinsa.
-test('PROTECTIE: clauza de vocal-onset ("like the verse" / "Verse intro") ramane neatinsa', () => {
+// ("not invented" -> "never invented/repeated") — vezi test/lyrics-naturalness.test.js.
+// CORECTIE (2026-09-26, "randuri scurte" extins la toate genurile): forma FULL a clauzei de
+// vocal-onset ramane byte-identica; forma SHORT foloseste acum "Short lines" (nu mai "Verse
+// intro") — vezi test/lyrics-short-lines-all-genres.test.js pentru mecanismul complet.
+test('PROTECTIE: clauza de vocal-onset — forma FULL ("like the verse") ramane neatinsa; forma SHORT foloseste acum "Short lines"', () => {
   assert.ok(server.includes('Start the vocals around 8-10 seconds, like the verse.'));
-  assert.ok(server.includes(" Verse intro; story details throughout, never invented/repeated; complete words, no shortening; name recipient early+chorus; sender once.'"));
+  assert.ok(server.includes(" Short lines; story details throughout, never invented/repeated; complete words, no shortening; name recipient early+chorus; sender once.'"));
 });
 
 test('PROTECTIE: durationTargetClause ramane byte-identic', () => {

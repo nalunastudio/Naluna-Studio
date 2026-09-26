@@ -9742,35 +9742,54 @@ function buildPrompt(order, feedback, genreOverride) {
   // customMode:false — Suno isi scrie SINGUR versurile dintr-un singur camp text descriptiv
   // ("prompt") — acesta nu continea NICIUN indiciu despre lungimea liniei, pentru niciun gen; nu
   // exista nicio regresie de cod care sa fi ALUNGIT liniile — doar absenta completa a unei
-  // instructiuni. STRICT pentru manele_suflet (genreOverride acopera si a doua melodie Premium) —
-  // manele_jale si toate celelalte genuri raman neatinse.
+  // instructiuni. Fix-ul initial (2026-09-25) a fost limitat STRICT la manele_suflet.
   //
-  // Doua incercari RESPINSE, gasite prin masurare directa (nu presupunere) — bugetul de 600
-  // caractere e mult mai strans pentru manele_suflet decat parea la prima vedere (styleTags-ul lui,
-  // 137 caractere, e deja cel mai lung dintre toate genurile): (1) un ADAOS in styleTags (parte
-  // NICIODATA scurtata a promptului) — chiar si 5 caractere in plus acolo impingeau cel mai strans
-  // scenariu deja documentat (nunta, nume maxime, duet — test #11c din
-  // manele-suflet-short-intro.test.js) peste marginea unde povestea clientului DISPARE COMPLET
-  // (marja reala masurata: doar 4 caractere); (2) o clauza NOUA, pur oportunista, adaugata la
-  // finalul promptului (dupa dictie/durata/paranteze) sau ca pas suplimentar in shrinkSteps — pentru
-  // manele_suflet, chiar si o comanda TIPICA (nu extrema) are nevoie sa treaca prin pasii de
-  // scurtare a instructiunii (head porneste la ~700+ caractere, mult peste budgetForFixedPart=410),
-  // deci orice piesa NOUA de buget ar fi eliminata de cascada aproape intotdeauna, nu doar in cazuri
-  // extreme — masurat direct pe comanda "tipica" de test.
+  // EXTINDERE LA TOATE GENURILE (2026-09-26, cerinta explicita): clientul a confirmat ca formatul
+  // de linii scurte functioneaza mult mai bine universal (mai putin lalait, poveste auzita mai
+  // repede/complet in preview) si vrea aceeasi SENZATIE DE LUNGIME a randurilor pentru toate cele
+  // 23 de genuri (7 LEGACY_ONLY_GENRES + 16 NEW_GENRES) — explicit NU o schimbare de identitate
+  // muzicala (GENRE_STYLE_MAP ramane byte-identic, vezi mai jos), STRICT lungimea liniilor din
+  // versuri. Fostul gate `isManeleSufletGenre` (care limita swap-ul STRICT la manele_suflet) a
+  // fost eliminat — formele SCURTE ale currentInstruction() (instructionWithSenderShort/
+  // instructionNoSenderShort, mai jos) contin acum STRICT "Short lines" pentru orice gen, nu doar
+  // manele_suflet; formele FULL raman NEATINSE (fara nicio mentiune de linii, ca inainte — vezi
+  // "SCOPE RAMAS" mai jos).
   //
-  // Solutia REALA: INLOCUIRE, NICIODATA ADAOS (acelasi principiu documentat repetat mai jos, in tot
-  // fisierul, pentru exact acest motiv) — formele SCURTE ale currentInstruction() (instructionWith/
-  // NoSenderShort) sunt cele care ajung EFECTIV la Suno in practica pentru manele_suflet (formele
-  // FULL, cu 236+ caractere mai lungi, nu incap niciodata langa un styleTags de 137 caractere).
-  // STRICT pentru manele_suflet, cele doua forme SCURTE inlocuiesc fragmentul "Verse intro" (11
-  // caractere) cu "Short lines" (11 caractere) — swap de lungime IDENTICA, deci zero impact asupra
-  // oricarui buget/test existent, pentru orice alt gen sau scenariu — vezi
-  // instructionWithSenderShortManeleSuflet/instructionNoSenderShortManeleSuflet si folosirea lor in
-  // currentInstruction() mai jos. "Verse intro" (timing-ul intrarii vocale) ramane oricum reinforced
-  // separat pentru manele_suflet prin "short intro, vocals enter early" din styleTags — nu se
-  // pierde nicio garantie, doar o mentiune redundanta e inlocuita cu cea mai importanta lipsa
-  // reala (lungimea liniei).
-  const isManeleSufletGenre = (genreOverride || order.genre) === 'manele_suflet';
+  // Doua incercari RESPINSE, gasite prin masurare directa (nu presupunere), la fix-ul initial —
+  // bugetul de 600 caractere e mult mai strans pentru genurile cu styleTags lung (hiphop, 143
+  // caractere — cel mai lung dintre toate genurile — chiar mai lung decat manele_suflet, 137) decat
+  // parea la prima vedere: (1) un ADAOS in styleTags (parte NICIODATA scurtata a promptului) —
+  // chiar si 5 caractere in plus acolo impingeau cel mai strans scenariu deja documentat (nunta,
+  // nume maxime, duet — test #11c din manele-suflet-short-intro.test.js) peste marginea unde
+  // povestea clientului DISPARE COMPLET (marja reala masurata: doar 4 caractere); (2) o clauza NOUA,
+  // pur oportunista, adaugata la finalul promptului (dupa dictie/durata/paranteze) sau ca pas
+  // suplimentar in shrinkSteps — chiar si o comanda TIPICA (nu extrema) are nevoie sa treaca prin
+  // pasii de scurtare a instructiunii (head porneste la ~700+ caractere, mult peste
+  // budgetForFixedPart=410), deci orice piesa NOUA de buget ar fi eliminata de cascada aproape
+  // intotdeauna, nu doar in cazuri extreme — masurat direct pe comanda "tipica" de test. Aceste doua
+  // concluzii raman valabile identic si dupa extinderea la toate genurile (niciun gen are un buget
+  // mai relaxat decat manele_suflet/hiphop).
+  //
+  // Solutia REALA, NESCHIMBATA de aceasta extindere: INLOCUIRE, NICIODATA ADAOS (acelasi principiu
+  // documentat repetat mai jos, in tot fisierul, pentru exact acest motiv) — formele SCURTE ale
+  // currentInstruction() (instructionWithSenderShort/instructionNoSenderShort) sunt cele care ajung
+  // EFECTIV la Suno in practica pentru aproape orice comanda reala cu expeditor numit (formele FULL,
+  // cu 236+ caractere mai lungi, nu incap niciodata langa un styleTags de 100+ caractere). Acele
+  // doua forme SCURTE inlocuiesc fragmentul "Verse intro" (11 caractere) cu "Short lines" (11
+  // caractere) — swap de lungime IDENTICA, deci zero impact asupra oricarui buget/test existent,
+  // pentru orice gen sau scenariu — vezi definitiile lor si folosirea lor in currentInstruction()
+  // mai jos. "Verse intro" (timing-ul intrarii vocale) ramane oricum reinforced separat, per gen,
+  // prin propriul indiciu de timing din GENRE_STYLE_MAP (ex. "short intro, vocals enter early" la
+  // manele_suflet) acolo unde exista — nu se pierde nicio garantie, doar o mentiune redundanta e
+  // inlocuita cu cea mai importanta lipsa reala (lungimea liniei), acum pentru toate genurile.
+  //
+  // SCOPE RAMAS (neschimbat de aceasta extindere, cerinta explicita — vezi raportul): formele FULL
+  // (instructionWithSenderFull/instructionNoSenderFull, folosite STRICT in scenariul cel mai usor,
+  // fara expeditor SI ocazie/gen foarte scurte) nu contin NICIO mentiune de linii, nici inainte,
+  // nici acum — nu exista in ele un fragment de lungime egala de inlocuit fara sa restructurezi
+  // propozitia (ar fi un ADAOS, respins mai sus). GENRE_STYLE_MAP, buildExactLyricsRequest()
+  // (customMode:true, versuri deja fixate/exacte), durata/startul preview-ului, dictia/pronuntia
+  // numelor, checkout/funnel/Admin/recovery/Meta Ads raman toate complet neatinse.
   // MODIFICARE STRICTĂ — pagina de ocazie (hotfix 2026-08-08): relatia EXACTA (recipientRole/
   // senderRole), aleasa explicit de client la creare — NICIODATA dedusa aici din nume/voce.
   // Fallback pentru comenzi vechi cu occasion='bunici' create in fereastra scurta cat a existat
@@ -10065,26 +10084,22 @@ function buildPrompt(order, feedback, genreOverride) {
   // regresia +17/+30 caractere deja documentata) — degradarea ramane graduala, nu brusca: FULL
   // (rar, comenzi foarte usoare) > SHORT cu anti-repetitie (comun) > SHORT fara nimic (niciodata,
   // dupa aceasta corectie).
-  const instructionWithSenderShort = ' Verse intro; story details throughout, never invented/repeated; complete words, no shortening; name recipient early+chorus; sender once.';
+  // EXTINDERE LA TOATE GENURILE (2026-09-26, cerinta explicita — vezi comentariul complet langa
+  // fosta declaratie isManeleSufletGenre, mai sus, pentru audit/cauza/motivatie): "Verse intro" ->
+  // "Short lines" (swap de lungime IDENTICA, 11 caractere -> 11 caractere, zero impact asupra
+  // bugetului) — inainte STRICT pentru manele_suflet (prin variante separate, ...ManeleSuflet),
+  // acum parte din formele SHORT insesi, pentru orice gen. Formele FULL raman NEATINSE (fara nicio
+  // mentiune de linii, ca inainte).
+  const instructionWithSenderShort = ' Short lines; story details throughout, never invented/repeated; complete words, no shortening; name recipient early+chorus; sender once.';
   const instructionNoSenderFull = ' Weave real, specific, never-invented story details throughout — never generic or repeated, natural over forced rhyme. Use only complete, grammatically correct words — never shortened. Start the vocals around 8-10 seconds, like the verse. Address the recipient by name naturally in the lyrics.';
-  const instructionNoSenderShort = ' Verse intro; story details throughout, never invented/repeated. Address by name naturally, complete words, no shortening.';
-  // TASK (2026-09-25, regresie versuri manele_suflet) — vezi comentariul de la isManeleSufletGenre
-  // (langa styleTags, mai sus) pentru cauza/motivatia completa. Swap de lungime IDENTICA fata de
-  // formele SHORT de mai sus — "Verse intro" (11 caractere) -> "Short lines" (11 caractere),
-  // restul byte-identic — zero impact asupra bugetului. Folosite STRICT cand isManeleSufletGenre,
-  // in currentInstruction() mai jos; formele FULL raman NEATINSE (folosite pentru orice gen, inclusiv
-  // manele_suflet, atunci cand bugetul chiar permite forma completa).
-  const instructionWithSenderShortManeleSuflet = ' Short lines; story details throughout, never invented/repeated; complete words, no shortening; name recipient early+chorus; sender once.';
-  const instructionNoSenderShortManeleSuflet = ' Short lines; story details throughout, never invented/repeated. Address by name naturally, complete words, no shortening.';
+  const instructionNoSenderShort = ' Short lines; story details throughout, never invented/repeated. Address by name naturally, complete words, no shortening.';
 
   let useShortInstruction = false;
   function currentInstruction() {
     if (hasSender) {
-      if (!useShortInstruction) return instructionWithSenderFull;
-      return isManeleSufletGenre ? instructionWithSenderShortManeleSuflet : instructionWithSenderShort;
+      return useShortInstruction ? instructionWithSenderShort : instructionWithSenderFull;
     }
-    if (!useShortInstruction) return instructionNoSenderFull;
-    return isManeleSufletGenre ? instructionNoSenderShortManeleSuflet : instructionNoSenderShort;
+    return useShortInstruction ? instructionNoSenderShort : instructionNoSenderFull;
   }
 
   // CORECȚIE (2026-08-24, "coerenta gramaticala/narativa a versurilor" — ex. real, raportat live:
@@ -10427,6 +10442,27 @@ function buildPrompt(order, feedback, genreOverride) {
   const bracketLanguageClause = lyricsLanguage !== 'English'
     ? ` Bracketed tags/notes also in ${lyricsLanguage}, not English.`
     : '';
+  // VOCALS ENTER EARLY (2026-09-26, insotitoare a extinderii "randuri scurte" la toate genurile —
+  // vezi comentariul complet de la fostul isManeleSufletGenre, mai sus): formele SCURTE ale
+  // currentInstruction() foloseau fragmentul "Verse intro" (11 caractere) atat pentru randuri
+  // scurte CAT SI ca ultima reintarire, pentru ORICE gen, a unei corectii ANTERIOARE si SEPARATE
+  // (2026-09-14, "intro-ul vocal suna artificial fata de Verse 1" — productie reala, deja
+  // livrata): fara acel indiciu, sectiunea [Intro] risca din nou o densitate de cuvinte mult mai
+  // mica decat [Verse 1] (cateva cuvinte intinse pe note lungi/sustinute). Inlocuirea cu "Short
+  // lines" (swap de lungime IDENTICA, cerut explicit) pastreaza randurile scurte dar elimina acea
+  // reintarire — pentru manele_suflet, GENRE_STYLE_MAP.manele_suflet o compenseaza deja separat
+  // ("short intro, vocals enter early"); pentru celelalte 22 de genuri, nu exista NICIO
+  // compensare. Masurat direct (cerinta explicita, audit): adaugarea GARANTATA a acestui indiciu
+  // in GENRE_STYLE_MAP, pentru toate genurile, ar depasi bugetul de 600 caractere in scenariul deja
+  // documentat ca cel mai incarcat (nunta, nume maxime protejate, duet, feedback) — marja libera
+  // masurata acolo e de DOAR 1-7 caractere, in functie de gen/limba, mult sub cele ~20 de
+  // caractere necesare. Solutia REALA: clauza GENERICA (nu per-gen, NICIODATA in GENRE_STYLE_MAP),
+  // STRICT OPORTUNISTA — acelasi mecanism si aceeasi prioritate (cea mai joasa dintre toate
+  // extra-urile) ca durationTargetClause de mai sus — adaugata DOAR daca mai incape dupa ce
+  // povestea/dictia/durata/parantezele si-au rezervat deja tot ce le trebuie, niciodata pe seama
+  // lor. Omisa complet pentru manele_suflet (deja compensat separat, in GENRE_STYLE_MAP — o a doua
+  // mentiune ar fi redundanta, risipind exact bugetul pe care aceasta clauza il protejeaza).
+  const vocalsEarlyClause = ((genreOverride || order.genre) !== 'manele_suflet') ? ' Vocals enter early.' : '';
   // BUG REAL (2026-09-13, "povestea clientului nu se mai regaseste in versuri" — gasit prin
   // MASURARE directa, nu presupunere): comentariul de mai sus promite explicit ca dictia/eticheta
   // de paranteze nu sunt rezervate "NICIODATA in detrimentul rezervei garantate pentru poveste
@@ -10530,6 +10566,13 @@ function buildPrompt(order, feedback, genreOverride) {
   // complet pentru comenzile in engleza, unde nu exista nimic de corectat.
   if (canReserveForBoth && bracketLanguageClause && prompt.length + bracketLanguageClause.length <= SUNO_PROMPT_MAX_LEN) {
     prompt += bracketLanguageClause;
+  }
+
+  // VOCALS ENTER EARLY — vezi comentariul complet de la declararea vocalsEarlyClause, mai sus.
+  // STRICT ultima prioritate dintre toate extra-urile (dupa dictie/durata/paranteze), fara nicio
+  // rezervare anticipata — daca nu mai incape, e omisa complet, niciodata pe seama povestii.
+  if (vocalsEarlyClause && prompt.length + vocalsEarlyClause.length <= SUNO_PROMPT_MAX_LEN) {
+    prompt += vocalsEarlyClause;
   }
 
   // plasa de siguranta — in teorie nu ar trebui sa se intample, dat fiind bugetul calculat mai sus,

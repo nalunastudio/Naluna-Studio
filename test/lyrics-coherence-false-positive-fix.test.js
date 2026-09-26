@@ -208,15 +208,18 @@ test('7b) alt gen (pop): reformularea naturala e ACCEPTATA identic cu manele_suf
   assert.equal(result.ok, true);
 });
 
-test('7c) manele_jale NU primeste instructiunea de linii scurte — genul "perfect", neatins de aceasta corectie', () => {
+// CORECTIE (2026-09-26, "randuri scurte" extins la TOATE genurile — cerinta explicita): manele_jale
+// primeste acum SI el "Short lines", ca orice alt gen — vezi
+// test/lyrics-short-lines-all-genres.test.js pentru mecanismul complet al acestei extinderi.
+test('7c) manele_jale primeste ACUM instructiunea de linii scurte (extindere deliberata la toate genurile) — identitatea lui (GENRE_STYLE_MAP) ramane neatinsa', () => {
   const order = {
     occasion: 'zi_de_nastere', genre: 'manele_jale', lang: 'ro', plan: 'standard',
     recipient: 'Andrei', senderName: 'Maria', relationship: 'sora', voicePreference: 'auto',
     story: 'Ne-am cunoscut acum 10 ani la facultate si de atunci suntem inseparabili.'
   };
   const prompt = buildPrompt(order, '', undefined);
-  assert.ok(!prompt.includes('Short lines;'));
-  assert.ok(prompt.includes('Verse intro'));
+  assert.ok(prompt.includes('Short lines;'));
+  assert.ok(!prompt.includes('Verse intro'));
 });
 
 // ===================================================================================================

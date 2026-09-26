@@ -121,12 +121,23 @@ function loadGenreStyleMap() {
 }
 const GENRE_STYLE_MAP = loadGenreStyleMap();
 
-// Clauza de continuitate apare fie ca "like the verse" (forma FULL), fie ca "Verse intro"
-// (forma SHORT, folosita cand cascada de scurtare intra in actiune) — AMBELE sunt manifestari
-// corecte ale ACELUIASI fix; care dintre ele apare depinde STRICT de bugetul disponibil pentru
-// acea comanda specifica (comportament preexistent, neschimbat de aceasta corectie).
+// CORECTIE (2026-09-26, "randuri scurte" extins la toate genurile — vezi
+// test/lyrics-short-lines-all-genres.test.js, sectiunea 12, pentru mecanismul complet): "Verse
+// intro" (forma SHORT) a fost INLOCUIT cu "Short lines" (swap de lungime IDENTICA, cerut explicit
+// pentru linii scurte, in toate genurile) — pierzand, pentru cele 22 de genuri fara propriul
+// indiciu in GENRE_STYLE_MAP, reintarirea de continuitate in forma SHORT. Compensat printr-o
+// clauza NOUA, generica, STRICT OPORTUNISTA ("Vocals enter early." — aceeasi prioritate ca
+// durationTargetClause) — spre deosebire de fostul "Verse intro" (parte a formei SHORT, deci
+// GARANTATA), aceasta NU e garantata: apare doar daca mai ramane loc dupa ce povestea/dictia/
+// durata/parantezele si-au rezervat deja tot ce le trebuie (masurat direct: NU apare pentru
+// comenzi cu expeditor numit, care oricum epuizeaza deja bugetul — vezi TEST 1/11/12 actualizate
+// mai jos). Clauza de continuitate recunoaste acum: "like the verse" (forma FULL), "Verse intro"
+// (istoric — nu mai poate aparea, pastrat STRICT pentru robustete daca vreo cale veche il mai
+// produce undeva neasteptat) SAU "vocals enter early" (case-insensitive — acopera atat noua
+// clauza generica "Vocals enter early." CAT SI mentiunea proprie, byte-identica, a
+// GENRE_STYLE_MAP.manele_suflet: "...short intro, vocals enter early").
 function hasContinuityClause(text) {
-  return text.includes('like the verse') || text.includes('Verse intro');
+  return text.includes('like the verse') || text.includes('Verse intro') || /vocals enter early/i.test(text);
 }
 
 function typicalOrder(overrides) {
@@ -140,9 +151,25 @@ function typicalOrder(overrides) {
 // ===============================================================================================
 // TEST 1/2 — noua clauza ajunge corect in buildPrompt() SI buildExactLyricsRequest().
 // ===============================================================================================
-test('TEST 1: buildPrompt() contine noua clauza de continuitate ("like the verse" sau "Verse intro", dupa cum decide cascada de scurtare) pentru o comanda tipica', () => {
-  const prompt = buildPrompt(typicalOrder(), '', undefined);
+// CORECTIE (2026-09-26): typicalOrder() (CU expeditor numit) NU mai garanteaza clauza de
+// continuitate — masurat direct, "Vocals enter early." (21 caractere) nu mai incape dupa
+// dictie+durata+paranteze pentru acest scenariu (588-599/600 caractere deja folosite, in toate
+// cele 8 limbi si toate cele 3 pachete). Comportament NOU, deliberat (vezi comentariul de la
+// hasContinuityClause) — testat explicit mai jos (TEST 1b), nu ascuns. O comanda cu adevarat
+// USOARA (poveste scurta, fara expeditor/relatie) e scenariul in care clauza oportunista chiar
+// are loc — masurat direct, robust in toate cele 8 limbi (vezi TEST 11 mai jos).
+function lightOrder(overrides) {
+  return Object.assign({ occasion: 'zi_de_nastere', genre: 'pop', lang: 'ro', recipient: 'Ana', story: 'O poveste scurta.' }, overrides);
+}
+test('TEST 1: buildPrompt() contine noua clauza de continuitate ("like the verse" sau "vocals enter early") pentru o comanda USOARA (fara expeditor — scenariul in care clauza oportunista chiar are loc)', () => {
+  const prompt = buildPrompt(lightOrder(), '', undefined);
   assert.ok(hasContinuityClause(prompt), `clauza de continuitate lipseste din prompt: ${prompt}`);
+});
+
+test('TEST 1b) buildPrompt() (comanda TIPICA, CU expeditor numit) NU mai garanteaza clauza de continuitate — schimbare deliberata, documentata (clauza generica e STRICT oportunista, cu cea mai mica prioritate)', () => {
+  const prompt = buildPrompt(typicalOrder(), '', undefined);
+  assert.ok(!hasContinuityClause(prompt), `clauza NU ar trebui sa incapa pentru acest scenariu (regresie fata de asteptarea documentata aici): ${prompt}`);
+  assert.ok(prompt.includes('Short lines;'), 'randurile scurte raman garantate, indiferent de clauza de continuitate');
 });
 
 test('TEST 2: buildExactLyricsRequest() contine noua clauza de continuitate ("like the verse") in style', () => {
@@ -155,12 +182,16 @@ test('TEST 2: buildExactLyricsRequest() contine noua clauza de continuitate ("li
 // ===============================================================================================
 // TEST 3 — FULL si SHORT pastreaza aceeasi intentie (continuitate cu versul urmator).
 // ===============================================================================================
-test('TEST 3: forma FULL ("Start the vocals around 8-10 seconds, like the verse.") si forma SHORT ("Verse intro") exista ambele in cod, cu aceeasi intentie', () => {
+// CORECTIE (2026-09-26, "randuri scurte" extins la toate genurile): forma FULL ramane byte-
+// identica; forma SHORT foloseste acum "Short lines" (nu mai "Verse intro") — vezi
+// test/lyrics-short-lines-all-genres.test.js pentru mecanismul complet al acestei schimbari.
+test('TEST 3: forma FULL ("Start the vocals around 8-10 seconds, like the verse.") ramane byte-identica; forma SHORT foloseste acum "Short lines" (linii scurte, extins la toate genurile)', () => {
   assert.ok(server.includes('Start the vocals around 8-10 seconds, like the verse.'), 'forma FULL trebuie sa existe verbatim');
-  // CORECTIE (2026-09-22, TASK naturalete versuri): formele SHORT au primit si ele cerinta
-  // anti-repetitie ("not invented" -> "never invented/repeated"), vezi test/lyrics-naturalness.test.js
-  assert.ok(server.includes(" Verse intro; story details throughout, never invented/repeated; complete words, no shortening; name recipient early+chorus; sender once.'"), 'instructionWithSenderShort trebuie sa foloseasca noua formulare');
-  assert.ok(server.includes(" Verse intro; story details throughout, never invented/repeated. Address by name naturally, complete words, no shortening.'"), 'instructionNoSenderShort trebuie sa foloseasca noua formulare');
+  assert.ok(server.includes(" Short lines; story details throughout, never invented/repeated; complete words, no shortening; name recipient early+chorus; sender once.'"), 'instructionWithSenderShort trebuie sa foloseasca noua formulare (linii scurte)');
+  assert.ok(server.includes(" Short lines; story details throughout, never invented/repeated. Address by name naturally, complete words, no shortening.'"), 'instructionNoSenderShort trebuie sa foloseasca noua formulare (linii scurte)');
+  const idx = server.indexOf('function currentInstruction() {');
+  const end = server.indexOf('\n  }', idx);
+  assert.ok(!server.slice(idx, end).includes('Verse intro'), '"Verse intro" nu mai trebuie sa existe in currentInstruction() (mentiuni istorice raman STRICT in comentarii, nu in cod)');
 });
 
 // ===============================================================================================
@@ -230,9 +261,12 @@ test('TEST 8/10: VOICE_INSTRUCTIONS_FULL si VOICE_INSTRUCTIONS_SHORT raman BYTE-
 // TEST 11 — EN/RO/DE/ES/IT/FR/BG/TR: clauza hardcodata (nu depinde de order.lang), aplicata
 // identic pentru toate cele 8 limbi.
 // ===============================================================================================
+// CORECTIE (2026-09-26): verificat pe comanda USOARA (fara expeditor, poveste scurta) — scenariul
+// in care clauza oportunista chiar are loc, masurat direct in toate cele 8 limbi (vezi comentariul
+// de la TEST 1/1b).
 for (const lang of LANGS) {
-  test(`TEST 11 [${lang}]: clauza de continuitate ajunge in prompt pentru o comanda tipica`, () => {
-    const prompt = buildPrompt(typicalOrder({ lang }), '', undefined);
+  test(`TEST 11 [${lang}]: clauza de continuitate ajunge in prompt pentru o comanda USOARA (fara expeditor)`, () => {
+    const prompt = buildPrompt(lightOrder({ lang }), '', undefined);
     assert.ok(hasContinuityClause(prompt), `[${lang}] clauza lipseste: ${prompt}`);
   });
 }
@@ -241,9 +275,10 @@ for (const lang of LANGS) {
 // TEST 12 — Standard/Premium/Video Gift: aceeasi logica (buildPrompt/buildExactLyricsRequest nu
 // ramifica dupa order.plan pentru aceasta clauza).
 // ===============================================================================================
+// CORECTIE (2026-09-26): verificat pe comanda USOARA — vezi comentariul de la TEST 1/1b.
 for (const plan of PLANS) {
-  test(`TEST 12 [${plan}]: clauza de continuitate ajunge in prompt indiferent de pachet`, () => {
-    const prompt = buildPrompt(typicalOrder({ plan }), '', undefined);
+  test(`TEST 12 [${plan}]: clauza de continuitate ajunge in prompt indiferent de pachet (comanda usoara)`, () => {
+    const prompt = buildPrompt(lightOrder({ plan }), '', undefined);
     assert.ok(hasContinuityClause(prompt), `[${plan}] clauza lipseste: ${prompt}`);
   });
 }
@@ -252,10 +287,13 @@ for (const plan of PLANS) {
 // TEST 13 — initial generation (buildPrompt, customMode:false) + edit/regenerare
 // (buildExactLyricsRequest, customMode:true) — ambele cai.
 // ===============================================================================================
+// CORECTIE (2026-09-26): calea initiala (buildPrompt) verificata pe comanda USOARA — vezi
+// comentariul de la TEST 1/1b (calea CU expeditor nu mai garanteaza clauza, testat separat).
+// Calea de editare/regenerare (buildExactLyricsRequest) foloseste buget generos (1000 caractere),
+// deci ramane neschimbata, testata pe typicalOrder() ca inainte.
 test('TEST 13: ambele cai de generare (initiala + edit/regenerare) primesc clauza de continuitate', () => {
-  const order = typicalOrder();
-  const promptInitial = buildPrompt(order, '', undefined);
-  const { style: styleRegen } = buildExactLyricsRequest(order, 'Vers editat manual', undefined, 'auto', '');
+  const promptInitial = buildPrompt(lightOrder(), '', undefined);
+  const { style: styleRegen } = buildExactLyricsRequest(typicalOrder(), 'Vers editat manual', undefined, 'auto', '');
   assert.ok(hasContinuityClause(promptInitial));
   assert.ok(hasContinuityClause(styleRegen));
 });
