@@ -803,6 +803,26 @@ async function initDb() {
   `);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_meta_capi_events_status_next_attempt ON meta_capi_events(status, next_attempt_at);`);
 
+  // FIX (2026-09-27, audit incident productie — "null value in column next_attempt_at... violates
+  // not-null constraint"): coloana fusese declarata NOT NULL mai sus, dar arhitectura INTENTIONEAZA
+  // explicit NULL ca stare TERMINALA valida — "nu mai exista o urmatoare reincercare programata"
+  // — pentru AMBELE stari terminale: 'sent' (succes, attemptClaimedEvent trimite nextAttemptAt:
+  // null in lib/meta-capi/capi-worker.js) SI 'abandoned' (max_attempts epuizat, computeNextAttempt()
+  // in lib/meta-capi/capi-retry.js returneaza explicit null "plafonul de incercari a fost atins").
+  // Exact acelasi tipar (NULL = fara reincercare programata) e deja folosit CORECT, cu coloana
+  // NULLABLE, la video_render_jobs.next_attempt_at (mai sus in acest fisier) — NOT NULL de aici a
+  // fost o inconsecventa de schema, nu o cerinta reala de business; codul (finalizeMetaCapiEvent,
+  // db.js, si attemptClaimedEvent, capi-worker.js) NU s-a schimbat, era deja corect. Efectul
+  // constraintului gresit: orice eveniment care ajungea la o stare terminala (succes SAU esec
+  // definitiv) nu putea fi NICIODATA persistat — UPDATE-ul arunca eroare, randul ramanea blocat in
+  // 'sending', recuperat ca STALE la fiecare 5 minute (recoverStaleMetaCapiEvents) si reincercat
+  // la nesfarsit — risc real de Purchase duplicat trimis catre Meta pentru orice eveniment care ar
+  // fi reusit sa se trimita (verificat direct pe productie: cele 3 evenimente reale gasite blocate
+  // nu au reusit niciodata sa se trimita — sent_at ramane NULL pentru toate trei — deci NU exista
+  // risc de duplicare din istoricul deja existent). DROP NOT NULL e idempotent (sigur de rulat la
+  // fiecare pornire, ca restul migratiilor din acest fisier).
+  await pool.query(`ALTER TABLE meta_capi_events ALTER COLUMN next_attempt_at DROP NOT NULL;`);
+
   // ==================================================================================
   // RECOVERY EMAILS (2026-09-25, IMPLEMENTARE — vezi lib/recovery-emails/) — outbox ACELASI
   // tipar exact ca meta_capi_events (claim atomic FOR UPDATE SKIP LOCKED, retry cu backoff,
