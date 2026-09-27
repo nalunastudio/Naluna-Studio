@@ -126,6 +126,58 @@ test('2/3/4. sandbox: click pe "Continua" cu email INVALID nu declanseaza NICIUN
   assert.notEqual(elements['gate-choice-screen'].style.display, 'block', 'nu trebuie sa avanseze la ecranul de alegere');
 });
 
+// ===============================================================================================
+// REGRESIE (2026-09-27, "URGENT PRODUCTION FIX") — checkbox-ul de opt-out NU trebuie sa influenteze
+// NICIODATA tranzitia Continua, indiferent daca e bifat sau nu. Handler-ul real citeste STRICT
+// elements.email.value (vezi loadGateSandbox mai sus) — acest test verifica explicit ca bifarea
+// checkbox-ului (simuland exact interactiunea reala din browser) nu schimba deloc comportamentul.
+// ===============================================================================================
+test('7. sandbox: click pe "Continua" cu email valid SI checkbox-ul de opt-out BIFAT avanseaza identic la gate-choice-screen (checkbox-ul nu blocheaza si nu influenteaza tranzitia)', () => {
+  const { elements, listeners, calls } = loadGateSandbox();
+  elements.email.value = 'client@exemplu.com';
+  elements['email-marketing-optout'] = { checked: true };
+  listeners.emailContinue();
+  assert.equal(calls.fetch, 0);
+  assert.equal(calls.saveDraft, 1);
+  assert.equal(elements['gate-choice-screen'].style.display, 'block');
+});
+
+test('7. sandbox: click pe "Continua" cu email valid SI checkbox-ul de opt-out NEBIFAT avanseaza identic la gate-choice-screen (acelasi rezultat ca bifat — checkbox-ul e complet independent)', () => {
+  const { elements, listeners, calls } = loadGateSandbox();
+  elements.email.value = 'client@exemplu.com';
+  elements['email-marketing-optout'] = { checked: false };
+  listeners.emailContinue();
+  assert.equal(calls.fetch, 0);
+  assert.equal(calls.saveDraft, 1);
+  assert.equal(elements['gate-choice-screen'].style.display, 'block');
+});
+
+// ===============================================================================================
+// REGRESIE (2026-09-27) — "click/tap functioneaza fara submit/reload accidental": butonul Continua
+// e type="button" (nu type="submit"), deci un click pe el NU poate declansa submit-ul formularului
+// (#order-form). In plus, chiar daca Enter implicit intr-un camp de text ar declansa submit-ul
+// formularului (exista butoane type="submit" mai jos in wizard), handler-ul de submit incepe STRICT
+// cu e.preventDefault() — deci reload-ul paginii nu se poate intampla NICIODATA, indiferent de pas.
+// Verificat manual si live intr-un Chrome real (Enter in #email pe gate-email-screen): pagina nu
+// navigheaza, nu apare niciun request de retea, ecranul ramane neschimbat.
+// ===============================================================================================
+test('4. comanda.html: butonul "Continua" al gate-ului (#gate-email-continue-btn) si "Creeaza o melodie noua" (#gate-new-song-btn) sunt STRICT type="button" — un click pe ele nu poate declansa niciodata submit-ul/reload-ul formularului', () => {
+  const gateBlock = html.slice(html.indexOf('id="gate-email-screen"'), html.indexOf('class="step-card" data-step="1"'));
+  assert.match(gateBlock, /id="gate-email-continue-btn"[^>]*type="button"|type="button"[^>]*id="gate-email-continue-btn"/);
+  const btnTag = html.slice(html.indexOf('id="gate-email-continue-btn"') - 60, html.indexOf('id="gate-email-continue-btn"') + 20);
+  assert.match(btnTag, /type="button"/);
+  const newSongTag = html.slice(html.indexOf('id="gate-new-song-btn"') - 60, html.indexOf('id="gate-new-song-btn"') + 20);
+  assert.match(newSongTag, /type="button"/);
+});
+
+test('4. comanda.html: handler-ul de submit al #order-form incepe STRICT cu e.preventDefault() (prima instructiune) — niciun submit implicit (ex. Enter intr-un camp de text) nu poate cauza vreodata un reload/navigare, indiferent de pasul curent', () => {
+  const idx = html.indexOf("form.addEventListener('submit', async (e) => {");
+  assert.ok(idx !== -1, 'handler-ul de submit trebuie sa existe');
+  const body = html.slice(idx, idx + 300);
+  const firstStatement = body.split('{').slice(1).join('{').trim().split('\n')[0].trim();
+  assert.match(firstStatement, /^e\.preventDefault\(\);$/, `prima instructiune din handler trebuie sa fie e.preventDefault(), gasit: "${firstStatement}"`);
+});
+
 test('sandbox: sursa blocului gate NU contine niciun apel fetch/XMLHttpRequest — garantie structurala suplimentara, independenta de simulare', () => {
   const { snippet } = loadGateSandbox();
   assert.ok(!/fetch\(/.test(snippet));
@@ -225,6 +277,40 @@ test('14. comanda.html: NalunaAnalytics.track(...) nu e apelat niciodata cu valo
 test('14. sandbox: blocul gate-ului nu apeleaza NalunaAnalytics/track niciodata cu emailul — introducerea emailului e complet netrackuita catre GA/Meta', () => {
   const { snippet } = loadGateSandbox();
   assert.ok(!/NalunaAnalytics/.test(snippet), 'blocul gate nu trebuie sa apeleze analytics deloc — order_page_viewed/form_started acopera deja momentul, la incarcarea paginii');
+});
+
+// ===============================================================================================
+// SECTIUNEA 2 (2026-09-27, "URGENT PRODUCTION FIX") — ierarhia vizuala a opt-out-ului: text mai
+// mic decat #email/CTA, checkbox proportional mai mic, DAR fara sa schimbe semantica (nu ascuns,
+// nu prebifat, ramane opt-out, ramane optional). Verificat STRUCTURAL mai jos + vizual, live,
+// intr-un Chrome real (screenshot desktop 1568px si test manual mobil) — vezi raportul final.
+// ===============================================================================================
+test('2. comanda.html: labelul checkbox-ului de opt-out are font-size STRICT mai mic decat labelul campului Email (13px) si decat CTA-ul Continua (14px) — ierarhie vizuala secundara, cerinta explicita', () => {
+  const labelTag = html.slice(html.indexOf('class="field-checkbox"') - 10, html.indexOf('class="field-checkbox"') + 260);
+  const m = labelTag.match(/font-size:\s*(\d+)px/);
+  assert.ok(m, 'labelul opt-out trebuie sa aiba un font-size explicit');
+  const optOutSize = Number(m[1]);
+  assert.ok(optOutSize < 13, `font-size opt-out (${optOutSize}px) trebuie sa fie sub labelul Email (13px)`);
+  assert.ok(optOutSize < 14, `font-size opt-out (${optOutSize}px) trebuie sa fie sub CTA-ul Continua (14px, din .btn)`);
+});
+
+test('2. comanda.html: checkbox-ul #email-marketing-optout are un width/height proportional mai mic decat reset-ul generic pentru checkbox-uri (18px) — vizual secundar, dar tot vizibil/functional', () => {
+  const idx = html.indexOf('#email-marketing-optout{');
+  assert.ok(idx !== -1, 'trebuie sa existe o regula CSS dedicata pentru dimensiunea checkbox-ului de opt-out');
+  const rule = html.slice(idx, html.indexOf('}', idx) + 1);
+  const w = Number(rule.match(/width:\s*(\d+)px/)[1]);
+  const h = Number(rule.match(/height:\s*(\d+)px/)[1]);
+  assert.ok(w > 0 && w < 18, `width-ul checkbox-ului (${w}px) trebuie sa fie sub dimensiunea generica (18px), dar > 0 (vizibil)`);
+  assert.ok(h > 0 && h < 18, `height-ul checkbox-ului (${h}px) trebuie sa fie sub dimensiunea generica (18px), dar > 0 (vizibil)`);
+});
+
+test('2. comanda.html: checkbox-ul de opt-out ramane VIZIBIL (nu display:none/visibility:hidden/opacity:0) si NEBIFAT implicit (fara atributul checked) — doar mai mic vizual, niciodata ascuns sau prebifat (fara dark patterns)', () => {
+  const labelTag = html.slice(html.indexOf('class="field-checkbox"') - 10, html.indexOf('class="field-checkbox"') + 260);
+  assert.ok(!/display:\s*none/.test(labelTag));
+  assert.ok(!/visibility:\s*hidden/.test(labelTag));
+  assert.ok(!/opacity:\s*0[^.]/.test(labelTag));
+  const inputTag = html.slice(html.indexOf('id="email-marketing-optout"') - 20, html.indexOf('id="email-marketing-optout"') + 60);
+  assert.ok(!/\bchecked\b/.test(inputTag), 'checkbox-ul nu trebuie sa fie prebifat (ar transforma opt-out in opt-in)');
 });
 
 // ===============================================================================================

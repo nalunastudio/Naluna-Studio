@@ -68,6 +68,10 @@
   input[type="checkbox"]{
     width:18px; height:18px; padding:0; flex:0 0 auto; accent-color:var(--gold);
   }
+  /* IERARHIE VIZUALA opt-out email (2026-09-27) — checkbox proportional mai mic decat reset-ul
+     generic de mai sus (18px), STRICT pentru #email-marketing-optout (singurul checkbox din
+     fisier, vezi testul care garanteaza asta) — nu afecteaza alte checkbox-uri viitoare. */
+  #email-marketing-optout{ width:13px; height:13px; }
   input:focus, select:focus, textarea:focus{ outline:2px solid var(--gold); outline-offset:1px; border-color:var(--gold); }
   input.field-invalid, select.field-invalid, textarea.field-invalid{ border-color:var(--error); }
   .field-error{ color:var(--error); font-size:12px; margin-top:6px; min-height:14px; }
@@ -325,9 +329,13 @@
              emailul (2026-09-27), semantica si comportamentul complet neschimbate: optiune CLARA,
              SIMPLA, OPTIONALA, COMPLET SEPARATA de Analytics/Marketing (cookie consent Meta
              Pixel/CAPI, neatinse). Necompletata/nebifata = eligibil (soft opt-in implicit) —
-             bifarea NU blocheaza in niciun fel trimiterea comenzii. -->
-        <label class="field-checkbox" for="email-marketing-optout" style="display:flex; align-items:flex-start; gap:8px; margin-top:8px; font-weight:normal; cursor:pointer;">
-          <input type="checkbox" id="email-marketing-optout" style="margin-top:3px;">
+             bifarea NU blocheaza in niciun fel trimiterea comenzii.
+             IERARHIE VIZUALA (2026-09-27, cerinta explicita) — DOAR stil, NU semantica: font mai
+             mic decat #email/CTA, contrast secundar, checkbox proportional mai mic; ramane vizibil
+             si accesibil (nu display:none, nu opacitate aproape-invizibila), nu e prebifat, ramane
+             opt-out (nu opt-in). -->
+        <label class="field-checkbox" for="email-marketing-optout" style="display:flex; align-items:flex-start; gap:6px; margin-top:6px; margin-bottom:0; font-weight:normal; font-size:11px; line-height:1.4; color:var(--text-secondary); cursor:pointer;">
+          <input type="checkbox" id="email-marketing-optout" style="margin-top:2px;">
           <span data-i18n="label_email_marketing_optout">Nu vreau emailuri de reamintire dacă nu finalizez comanda</span>
         </label>
       </div>
@@ -1056,7 +1064,8 @@
       note_free: 'Nu plătești acum. Plătești doar dacă îți place rezultatul',
       msg_conn_error: 'Eroare de conexiune. Încearcă din nou',
       msg_error_prefix: 'Eroare: ',
-      msg_try_again: 'încearcă din nou',      wizard_step1_title: 'Pentru ce moment vrei cântecul?',
+      msg_try_again: 'încearcă din nou',
+      wizard_step1_title: 'Pentru ce moment vrei cântecul?',
       wizard_step2_title: 'Spune-ne pentru cine este cântecul',
       wizard_step3_title: 'Alege genul muzical',
       wizard_step_voice_title: 'Ce voce să cânte?',
@@ -1223,7 +1232,8 @@
       sum_total: 'Total',
       btn_generate: 'Generate your free preview →',
       btn_generate_starting: 'Starting composition...',
-      note_free: 'You don\'t pay now. You only pay if you like the result.',      msg_conn_error: 'Connection error. Please try again.',
+      note_free: 'You don\'t pay now. You only pay if you like the result.',
+      msg_conn_error: 'Connection error. Please try again.',
       msg_error_prefix: 'Error: ',
       msg_try_again: 'please try again.',
       wizard_step1_title: 'What moment is the song for?',
@@ -1392,7 +1402,8 @@
       sum_total: 'Gesamt',
       btn_generate: 'Kostenlose Vorschau erstellen →',
       btn_generate_starting: 'Komposition wird gestartet...',
-      note_free: 'Du zahlst jetzt noch nicht. Nur wenn dir das Ergebnis gefällt.',      msg_conn_error: 'Verbindungsfehler. Bitte versuche es erneut.',
+      note_free: 'Du zahlst jetzt noch nicht. Nur wenn dir das Ergebnis gefällt.',
+      msg_conn_error: 'Verbindungsfehler. Bitte versuche es erneut.',
       msg_error_prefix: 'Fehler: ',
       msg_try_again: 'bitte versuche es erneut.',
       wizard_step1_title: 'Für welchen Moment ist das Lied?',
@@ -1561,7 +1572,8 @@
       sum_total: 'Total',
       btn_generate: 'Generar previsualización gratis →',
       btn_generate_starting: 'Iniciando la composición...',
-      note_free: 'No pagas ahora. Solo pagas si te gusta el resultado.',      msg_conn_error: 'Error de conexión. Inténtalo de nuevo.',
+      note_free: 'No pagas ahora. Solo pagas si te gusta el resultado.',
+      msg_conn_error: 'Error de conexión. Inténtalo de nuevo.',
       msg_error_prefix: 'Error: ',
       msg_try_again: 'inténtalo de nuevo.',
       wizard_step1_title: '¿Para qué momento es la canción?',
@@ -1730,7 +1742,8 @@
       sum_total: 'Totale',
       btn_generate: 'Genera l\'anteprima gratis →',
       btn_generate_starting: 'Avvio della composizione...',
-      note_free: 'Non paghi ora. Paghi solo se ti piace il risultato.',      msg_conn_error: 'Errore di connessione. Riprova.',
+      note_free: 'Non paghi ora. Paghi solo se ti piace il risultato.',
+      msg_conn_error: 'Errore di connessione. Riprova.',
       msg_error_prefix: 'Errore: ',
       msg_try_again: 'riprova.',
       wizard_step1_title: 'Per quale momento è la canzone?',
@@ -1899,7 +1912,8 @@
       sum_total: 'Total',
       btn_generate: 'Générer l\'aperçu gratuit →',
       btn_generate_starting: 'Démarrage de la composition...',
-      note_free: 'Vous ne payez pas maintenant. Seulement si le résultat vous plaît.',      msg_conn_error: 'Erreur de connexion. Veuillez réessayer.',
+      note_free: 'Vous ne payez pas maintenant. Seulement si le résultat vous plaît.',
+      msg_conn_error: 'Erreur de connexion. Veuillez réessayer.',
       msg_error_prefix: 'Erreur : ',
       msg_try_again: 'veuillez réessayer.',
       wizard_step1_title: 'Pour quel moment est la chanson ?',
@@ -2068,7 +2082,8 @@
       sum_total: 'Общо',
       btn_generate: 'Генерирай безплатен преглед →',
       btn_generate_starting: 'Стартираме композирането...',
-      note_free: 'Не плащаш сега. Плащаш само ако ти хареса резултатът.',      msg_conn_error: 'Грешка във връзката. Опитай отново.',
+      note_free: 'Не плащаш сега. Плащаш само ако ти хареса резултатът.',
+      msg_conn_error: 'Грешка във връзката. Опитай отново.',
       msg_error_prefix: 'Грешка: ',
       msg_try_again: 'опитай отново.',
       wizard_step1_title: 'За кой момент е песента?',
@@ -2237,7 +2252,8 @@
       sum_total: 'Toplam',
       btn_generate: 'Ücretsiz ön izlemeyi oluştur →',
       btn_generate_starting: 'Beste başlıyor...',
-      note_free: 'Şimdi ödemezsiniz. Sadece sonucu beğenirseniz ödersiniz.',      msg_conn_error: 'Bağlantı hatası. Lütfen tekrar deneyin.',
+      note_free: 'Şimdi ödemezsiniz. Sadece sonucu beğenirseniz ödersiniz.',
+      msg_conn_error: 'Bağlantı hatası. Lütfen tekrar deneyin.',
       msg_error_prefix: 'Hata: ',
       msg_try_again: 'lütfen tekrar deneyin.',
       wizard_step1_title: 'Şarkı hangi an için?',
