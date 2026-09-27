@@ -136,8 +136,8 @@ test('comanda-mea.html: randul "Pentru X" foloseste stripRedundantForPrefix(o.re
   assert.match(comandaMea, /\$\{t\.for_label\} \$\{escapeHtml\(stripRedundantForPrefix\(o\.recipient, lang\)\)\}/);
 });
 
-test('comenzile-mele.html: randul "Pentru: X" foloseste stripRedundantForPrefix(order.recipient, lang)', () => {
-  assert.match(comenzileMele, /\$\{escapeHtml\(t\.for_label\)\}: \$\{escapeHtml\(stripRedundantForPrefix\(order\.recipient, lang\)\)\}/);
+test('comenzile-mele.html: randul "Pentru X" foloseste stripRedundantForPrefix(order.recipient, lang) (redesign 2026-09-28 — fara ":" , acelasi format ca "Pentru [destinatar]" cerut explicit)', () => {
+  assert.match(comenzileMele, /\$\{escapeHtml\(t\.for_label\)\} \$\{escapeHtml\(stripRedundantForPrefix\(order\.recipient, lang\)\)\}/);
 });
 
 // ===============================================================================================

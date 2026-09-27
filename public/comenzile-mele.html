@@ -28,41 +28,53 @@
     padding:16px 18px; margin-bottom:24px; font-size:15px; line-height:1.5;
   }
   .order{
-    background:var(--bg-secondary); border:1px solid var(--line); border-radius:14px;
-    padding:20px; margin-bottom:16px;
+    display:block; background:var(--bg-secondary); border:1px solid var(--line); border-radius:14px;
+    padding:20px; margin-bottom:16px; text-decoration:none; color:inherit;
+    transition:border-color .2s ease, transform .15s ease;
   }
-  .order .top{ display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; }
+  .order:hover{ border-color:var(--gold); transform:translateY(-1px); }
   .order .title{ font-weight:600; font-family:'Fraunces', serif; font-size:17px; }
-  .order .price{ color:var(--gold-deep); font-weight:600; font-size:14px; }
   .order .for-line{ color:var(--text-secondary); font-size:14px; margin-top:4px; }
+  .order .count-line{ color:var(--text-secondary); font-size:14px; margin-top:2px; }
   .status{
     font-size:11px; padding:4px 10px; border-radius:999px; text-transform:uppercase;
     letter-spacing:.06em; font-family:'Sora',sans-serif; display:inline-block; margin-top:8px;
   }
   .status-ready{ background:rgba(95,143,110,.14); color:var(--success); }
   .status-progress{ background:rgba(168,131,75,.14); color:var(--gold-deep); }
-  audio{ width:100%; margin-top:10px; display:block; }
-  .variant-label{ font-size:12px; color:var(--text-secondary); margin-top:12px; margin-bottom:2px; }
-  .variant-title{ font-family:'Fraunces', serif; font-style:italic; font-size:14px; color:var(--text); margin-bottom:4px; }
   .empty{ color:var(--text-secondary); font-size:14px; }
-  .cta-row{ margin-top:16px; }
-  button, a.btn{
+  button{
     background:var(--text); color:var(--bg); border:none; border-radius:10px;
     padding:12px 20px; font-weight:500; font-size:14px; cursor:pointer;
     transition:background-color .25s ease; font-family:'Sora',sans-serif;
-    display:inline-block; text-decoration:none;
+    display:inline-block;
   }
-  button:hover, a.btn:hover{ background:var(--gold-deep); }
+  button:hover{ background:var(--gold-deep); }
   button:disabled{ opacity:.5; cursor:not-allowed; }
+  /* IERARHIE VIZUALA (2026-09-28, cerinta explicita) — recovery-ul prin email ramane DOAR
+     mecanism secundar (alt browser/dispozitiv, sau tokenuri locale pierdute): titlu mai mic,
+     font sans-serif obisnuit (nu Fraunces ca titlurile principale), contrast secundar, buton
+     discret tip "ghost" (nu CTA-ul solid, dominant, folosit pentru comenzi) — DOAR stil, NU
+     functionalitate: ramane complet vizibil/accesibil, niciodata ascuns. */
   .recovery-box{
-    margin-top:32px; padding-top:24px; border-top:1px solid var(--line);
+    margin-top:32px; padding-top:20px; border-top:1px solid var(--line);
   }
+  .recovery-box h2{
+    font-family:'Sora', sans-serif; font-weight:600; font-size:14px;
+    color:var(--text-secondary); margin:0 0 4px;
+  }
+  .recovery-box p.sub{ font-size:12px; margin-bottom:12px; }
   .recovery-box input[type="email"]{
     width:100%; background:var(--surface); border:1px solid var(--line); border-radius:10px;
-    padding:12px 14px; color:var(--text); font-family:'Sora', sans-serif; font-size:14px;
+    padding:10px 12px; color:var(--text); font-family:'Sora', sans-serif; font-size:13px;
     margin-bottom:10px;
   }
-  .recovery-result{ font-size:13px; color:var(--text-secondary); margin-top:10px; }
+  .recovery-box button{
+    background:transparent; color:var(--text-secondary); border:1px solid var(--line);
+    font-size:13px; padding:10px 16px;
+  }
+  .recovery-box button:hover{ background:var(--bg-secondary); color:var(--gold-deep); border-color:var(--gold); }
+  .recovery-result{ font-size:12px; color:var(--text-secondary); margin-top:10px; }
 </style>
 </head>
 <body>
@@ -89,10 +101,12 @@
   const T = {
     ro: {
       title: 'Comenzile mele', sub: 'Comenzile la care ai acces din acest browser.',
+      order_label: 'Comandă',
+      song_count: (n) => `${n} ${n === 1 ? 'melodie' : 'melodii'}`,
       blocked: 'Ai deja melodii create pentru tine. Alege una dintre comenzile tale pentru a continua.',
+      blocked_empty: 'Ai atins limita de melodii gratuite pentru acest email. Dacă ai comenzi existente, folosește recuperarea prin email de mai jos ca să le accesezi.',
       loading: 'Se încarcă...', for_label: 'Pentru', continue_btn: 'Continuă cu această comandă',
       status_progress: 'Se compune', status_ready: 'Gata',
-      no_player_yet: 'Melodia se compune încă — revino în câteva minute.', song_label: 'Melodia',
       recovery_title: 'Nu găsești o comandă?', recovery_sub: 'Primești pe email linkurile către comenzile tale.',
       recovery_placeholder: 'email@exemplu.com', recovery_btn: 'Trimite-mi acces pe email', recovery_sending: 'Se trimite...',
       recovery_sent: 'Dacă adresa introdusă are comenzi eligibile, vei primi în scurt timp un email cu linkurile de acces.',
@@ -101,10 +115,12 @@
     },
     en: {
       title: 'My orders', sub: 'The orders you can access from this browser.',
+      order_label: 'Order',
+      song_count: (n) => `${n} ${n === 1 ? 'song' : 'songs'}`,
       blocked: 'You already have songs created for you. Choose one of your existing orders to continue.',
+      blocked_empty: "You've reached the free-song limit for this email. If you have existing orders, use the email recovery below to access them.",
       loading: 'Loading...', for_label: 'For', continue_btn: 'Continue with this order',
       status_progress: 'Being composed', status_ready: 'Ready',
-      no_player_yet: 'Your song is still being composed — check back in a few minutes.', song_label: 'Song',
       recovery_title: "Can't find an order?", recovery_sub: "We'll email you the links to your orders.",
       recovery_placeholder: 'email@example.com', recovery_btn: 'Email me access', recovery_sending: 'Sending...',
       recovery_sent: "If that email has any eligible orders, you'll receive an email shortly with the access links.",
@@ -113,10 +129,12 @@
     },
     de: {
       title: 'Meine Bestellungen', sub: 'Die Bestellungen, auf die du von diesem Browser aus zugreifen kannst.',
+      order_label: 'Bestellung',
+      song_count: (n) => `${n} ${n === 1 ? 'Lied' : 'Lieder'}`,
       blocked: 'Für dich wurden bereits Lieder erstellt. Wähle eine deiner bestehenden Bestellungen, um fortzufahren.',
+      blocked_empty: 'Du hast das Limit kostenloser Lieder für diese E-Mail-Adresse erreicht. Falls du bestehende Bestellungen hast, nutze die E-Mail-Wiederherstellung unten, um darauf zuzugreifen.',
       loading: 'Wird geladen...', for_label: 'Für', continue_btn: 'Mit dieser Bestellung fortfahren',
       status_progress: 'Wird komponiert', status_ready: 'Fertig',
-      no_player_yet: 'Dein Lied wird noch komponiert — schau in ein paar Minuten wieder vorbei.', song_label: 'Lied',
       recovery_title: 'Findest du eine Bestellung nicht?', recovery_sub: 'Wir senden dir die Links zu deinen Bestellungen per E-Mail.',
       recovery_placeholder: 'email@beispiel.com', recovery_btn: 'Zugang per E-Mail zusenden', recovery_sending: 'Wird gesendet...',
       recovery_sent: 'Falls diese E-Mail-Adresse berechtigte Bestellungen hat, erhältst du in Kürze eine E-Mail mit den Zugangslinks.',
@@ -125,10 +143,12 @@
     },
     es: {
       title: 'Mis pedidos', sub: 'Los pedidos a los que puedes acceder desde este navegador.',
+      order_label: 'Pedido',
+      song_count: (n) => `${n} ${n === 1 ? 'canción' : 'canciones'}`,
       blocked: 'Ya tienes canciones creadas para ti. Elige uno de tus pedidos existentes para continuar.',
+      blocked_empty: 'Has alcanzado el límite de canciones gratuitas para este email. Si tienes pedidos existentes, usa la recuperación por email de abajo para acceder a ellos.',
       loading: 'Cargando...', for_label: 'Para', continue_btn: 'Continuar con este pedido',
       status_progress: 'En composición', status_ready: 'Listo',
-      no_player_yet: 'Tu canción todavía se está componiendo — vuelve en unos minutos.', song_label: 'Canción',
       recovery_title: '¿No encuentras un pedido?', recovery_sub: 'Te enviaremos por email los enlaces a tus pedidos.',
       recovery_placeholder: 'email@ejemplo.com', recovery_btn: 'Enviarme el acceso por email', recovery_sending: 'Enviando...',
       recovery_sent: 'Si esa dirección tiene pedidos elegibles, recibirás en breve un email con los enlaces de acceso.',
@@ -137,10 +157,12 @@
     },
     it: {
       title: 'I miei ordini', sub: 'Gli ordini a cui puoi accedere da questo browser.',
+      order_label: 'Ordine',
+      song_count: (n) => `${n} ${n === 1 ? 'canzone' : 'canzoni'}`,
       blocked: 'Hai già delle canzoni create per te. Scegli uno dei tuoi ordini esistenti per continuare.',
+      blocked_empty: 'Hai raggiunto il limite di canzoni gratuite per questa email. Se hai ordini esistenti, usa il recupero via email qui sotto per accedervi.',
       loading: 'Caricamento...', for_label: 'Per', continue_btn: 'Continua con questo ordine',
       status_progress: 'In composizione', status_ready: 'Pronto',
-      no_player_yet: 'La tua canzone è ancora in composizione — torna tra qualche minuto.', song_label: 'Canzone',
       recovery_title: 'Non trovi un ordine?', recovery_sub: 'Ti invieremo via email i link ai tuoi ordini.',
       recovery_placeholder: 'email@esempio.com', recovery_btn: 'Inviami accesso via email', recovery_sending: 'Invio in corso...',
       recovery_sent: 'Se quell\'indirizzo ha ordini idonei, riceverai a breve un\'email con i link di accesso.',
@@ -149,10 +171,12 @@
     },
     fr: {
       title: 'Mes commandes', sub: 'Les commandes auxquelles vous pouvez accéder depuis ce navigateur.',
+      order_label: 'Commande',
+      song_count: (n) => `${n} ${n === 1 ? 'chanson' : 'chansons'}`,
       blocked: 'Des chansons ont déjà été créées pour toi. Choisis l’une de tes commandes existantes pour continuer.',
+      blocked_empty: 'Tu as atteint la limite de chansons gratuites pour cet email. Si tu as des commandes existantes, utilise la récupération par email ci-dessous pour y accéder.',
       loading: 'Chargement...', for_label: 'Pour', continue_btn: 'Continuer avec cette commande',
       status_progress: 'En composition', status_ready: 'Prête',
-      no_player_yet: 'Votre chanson est encore en composition — revenez dans quelques minutes.', song_label: 'Chanson',
       recovery_title: 'Vous ne trouvez pas une commande ?', recovery_sub: 'Nous vous enverrons par email les liens vers vos commandes.',
       recovery_placeholder: 'email@exemple.com', recovery_btn: 'M\'envoyer l\'accès par email', recovery_sending: 'Envoi en cours...',
       recovery_sent: 'Si cette adresse a des commandes éligibles, vous recevrez bientôt un email avec les liens d\'accès.',
@@ -161,10 +185,12 @@
     },
     bg: {
       title: 'Моите поръчки', sub: 'Поръчките, до които имаш достъп от този браузър.',
+      order_label: 'Поръчка',
+      song_count: (n) => `${n} ${n === 1 ? 'песен' : 'песни'}`,
       blocked: 'Вече имаш създадени песни за теб. Избери една от съществуващите си поръчки, за да продължиш.',
+      blocked_empty: 'Достигна лимита на безплатните песни за този имейл. Ако имаш съществуващи поръчки, използвай възстановяването по имейл по-долу, за да получиш достъп до тях.',
       loading: 'Зареждане...', for_label: 'За', continue_btn: 'Продължи с тази поръчка',
       status_progress: 'Композира се', status_ready: 'Готова',
-      no_player_yet: 'Песента ти все още се композира — провери отново след няколко минути.', song_label: 'Песен',
       recovery_title: 'Не намираш поръчка?', recovery_sub: 'Ще ти изпратим по имейл линковете към поръчките ти.',
       recovery_placeholder: 'email@primer.com', recovery_btn: 'Изпрати ми достъп по имейл', recovery_sending: 'Изпраща се...',
       recovery_sent: 'Ако този имейл има допустими поръчки, ще получиш скоро писмо с линкове за достъп.',
@@ -173,10 +199,12 @@
     },
     tr: {
       title: 'Siparişlerim', sub: 'Bu tarayıcıdan erişebildiğiniz siparişler.',
+      order_label: 'Sipariş',
+      song_count: (n) => `${n} şarkı`,
       blocked: 'Senin için zaten şarkılar oluşturuldu. Devam etmek için mevcut siparişlerinden birini seç.',
+      blocked_empty: 'Bu e-posta için ücretsiz şarkı sınırına ulaştın. Mevcut siparişlerin varsa, bunlara erişmek için aşağıdaki e-posta kurtarma seçeneğini kullan.',
       loading: 'Yükleniyor...', for_label: 'Kime', continue_btn: 'Bu siparişe devam et',
       status_progress: 'Besteleniyor', status_ready: 'Hazır',
-      no_player_yet: 'Şarkınız hâlâ besteleniyor — birkaç dakika sonra tekrar kontrol edin.', song_label: 'Şarkı',
       recovery_title: 'Bir sipariş bulamıyor musunuz?', recovery_sub: 'Siparişlerinizin bağlantılarını e-posta ile göndereceğiz.',
       recovery_placeholder: 'email@ornek.com', recovery_btn: 'Erişimi e-postama gönder', recovery_sending: 'Gönderiliyor...',
       recovery_sent: 'Bu adresin uygun siparişleri varsa, kısa süre içinde erişim bağlantılarını içeren bir e-posta alacaksınız.',
@@ -282,11 +310,15 @@
     window.history.replaceState(null, '', clean.toString());
   }
 
-  if (params.get('blocked') === '1') {
-    const banner = document.getElementById('blocked-banner');
-    banner.textContent = t.blocked;
-    banner.style.display = '';
-  }
+  // AUDIT (2026-09-28, "mesajele trebuie sa reflecte starea reala"): mai inainte, acest banner
+  // era afisat AICI, sincron, STRICT pe baza parametrului din URL — inainte sa se stie daca
+  // lista reala de comenzi (mai jos, asincron) contine ceva. Rezultat REAL posibil: quota (403,
+  // vezi comanda.html) e verificata server-side dupa EMAIL, nu dupa acest browser — un client
+  // care a mai comandat de pe alt dispozitiv/browser cu acelasi email poate ajunge aici
+  // (?blocked=1) chiar daca ACEST browser nu are niciun token local — banner-ul ar fi afirmat
+  // fals "ai deja melodii create" langa o lista goala. Decizia se ia acum STRICT in
+  // loadAndRenderOrders(), dupa ce se stie numarul real de comenzi eligibile.
+  const wasBlocked = params.get('blocked') === '1';
 
   async function resolveIncomingTokens() {
     for (const token of incomingTokens) {
@@ -305,56 +337,59 @@
     return (t.plan && t.plan[plan]) || plan;
   }
 
+  // NUMARUL REAL de melodii disponibile/autorizate pentru aceasta comanda (2026-09-28, cerinta
+  // explicita) — STRICT din datele reale primite de la server, nicio presupunere:
+  //  - dupa plata (status='ready'): melodia principala (mereu 1) + melodia cadou (hasGiftAudio)
+  //    + bonusul surpriza Premium (hasPremiumBonusAudio) — EXACT aceeasi regula (lib/entitlements.js)
+  //    ca pagina de ascultare (comanda-mea.html), acum expusa si de GET /api/orders/:id.
+  //  - inainte de plata (status!=='ready'): numarul de variante cu previzualizare reala disponibila
+  //    (order.variants[].previewUrl) — poate fi 0 daca melodia se compune inca.
+  function realSongCount(order) {
+    if (order.status === 'ready') {
+      return 1 + (order.hasGiftAudio ? 1 : 0) + (order.hasPremiumBonusAudio ? 1 : 0);
+    }
+    if (Array.isArray(order.variants)) {
+      return order.variants.filter((v) => v.previewUrl).length;
+    }
+    return 0;
+  }
+
+  // DESTINATIE (2026-09-28, audit "reutilizeaza pagina corecta, nu crea un al doilea sistem"):
+  // melodia-mea.html arata STRICT starea de "melodia ta a fost livrata deja pe email" pentru
+  // comenzi 'ready' — NU redă niciun player pentru comenzi platite (verificat direct in cod,
+  // showState('paid-state'), fara niciun <audio>). Pagina care CHIAR reda/descarca melodiile
+  // platite (principala + cadou + bonus), folosind ACELASI accessToken, e comanda-mea.html
+  // (?token=, acelasi GET /api/orders/access/:token) — construita STRICT pentru asta. Pentru
+  // orice alta stare (inca in compunere/preview/editare), melodia-mea.html ramane pagina corecta
+  // (gestioneaza deja toate gate-urile Standard/Premium/Video, inclusiv redirectul propriu catre
+  // se-compune.html cand generarea e inca in curs).
+  function continueUrlFor(order, token) {
+    if (order.status === 'ready') {
+      return `/comanda-mea.html?token=${encodeURIComponent(token)}`;
+    }
+    return `/melodia-mea.html?id=${encodeURIComponent(order.id)}&token=${encodeURIComponent(token)}`;
+  }
+
+  // Cardul intreg e un link (<a>) catre propria comanda — clientul apasa oriunde pe card ca sa
+  // intre si sa asculte variantele deja disponibile/autorizate (pe pagina corecta, de mai sus).
+  // NU mai redam playere audio AICI (ar fi un al doilea sistem de redare, duplicat) — STRICT un
+  // sumar clar: "Comanda N — Pachet" / "Pentru destinatar" / "N melodii" (date reale, niciodata
+  // inventate), plus statusul (Gata/Se compune).
   function renderOrderCard(order, index, token) {
-    const card = document.createElement('div');
+    const card = document.createElement('a');
     card.className = 'order';
+    card.href = continueUrlFor(order, token);
     const isReady = order.status === 'ready';
     const accessExpired = isReady && !!order.hostedAccessExpired;
     const statusLabel = isReady ? t.status_ready : t.status_progress;
     const statusClass = isReady ? 'status-ready' : 'status-progress';
-
-    let playersHtml = '';
-    if (accessExpired) {
-      // Acelasi tratament ca la comanda-mea.html — nu incercam sa aratam un player/link stricat.
-      playersHtml = '';
-    } else if (isReady) {
-      // Dupa plata: melodia principala, plus a doua melodie/bonus surpriza acolo unde exista
-      // (Premium/Video) — acelasi tipar de URL-uri deja folosit de comanda-mea.html.
-      let n = 1;
-      const fullUrl = `/media/full/${order.id}?token=${encodeURIComponent(token)}`;
-      playersHtml = `<div class="variant-label">${escapeHtml(t.song_label)} ${n++}</div><audio controls src="${fullUrl}"></audio>`;
-      if (order.hasGiftAudio) {
-        const giftUrl = `/media/full/${order.id}/gift?token=${encodeURIComponent(token)}`;
-        playersHtml += `<div class="variant-label">${escapeHtml(t.song_label)} ${n++}</div><audio controls src="${giftUrl}"></audio>`;
-      }
-      if (order.hasPremiumBonusAudio) {
-        const bonusUrl = `/media/full/${order.id}/bonus?token=${encodeURIComponent(token)}`;
-        playersHtml += `<div class="variant-label">${escapeHtml(t.song_label)} ${n++}</div><audio controls src="${bonusUrl}"></audio>`;
-      }
-    } else if (Array.isArray(order.variants) && order.variants.length > 0) {
-      const withPreview = order.variants.filter((v) => v.previewUrl);
-      // TITLU (2026-09-28, sistem emotional story-aware) — STRICT daca serverul l-a calculat
-      // (v.title, JSONB additiv) — comenzile istorice fara titlu nu primesc niciun rand nou aici.
-      playersHtml = withPreview
-        .map((v, i) => `<div class="variant-label">${escapeHtml(t.song_label)} ${i + 1}</div>${(v.title && String(v.title).trim()) ? `<div class="variant-title">${escapeHtml(String(v.title).trim())}</div>` : ''}<audio controls src="${escapeHtml(v.previewUrl)}"></audio>`)
-        .join('');
-      if (!playersHtml) playersHtml = `<p class="empty" style="margin-top:10px;">${t.no_player_yet}</p>`;
-    } else {
-      playersHtml = `<p class="empty" style="margin-top:10px;">${t.no_player_yet}</p>`;
-    }
-
-    const continueUrl = `/melodia-mea.html?id=${encodeURIComponent(order.id)}&token=${encodeURIComponent(token)}`;
+    const count = realSongCount(order);
 
     card.innerHTML = `
-      <div class="top">
-        <div class="title">${escapeHtml(String(index))}. ${escapeHtml(planName(order.plan))} — £${escapeHtml(String(order.price))}</div>
-      </div>
-      <div class="for-line">${escapeHtml(t.for_label)}: ${escapeHtml(stripRedundantForPrefix(order.recipient, lang))}</div>
+      <div class="title">${escapeHtml(t.order_label)} ${escapeHtml(String(index))} — ${escapeHtml(planName(order.plan))}</div>
+      <div class="for-line">${escapeHtml(t.for_label)} ${escapeHtml(stripRedundantForPrefix(order.recipient, lang))}</div>
+      ${count > 0 ? `<div class="count-line">${escapeHtml(t.song_count(count))}</div>` : ''}
       ${accessExpired ? '' : `<span class="status ${statusClass}">${escapeHtml(statusLabel)}</span>`}
-      ${playersHtml}
-      <div class="cta-row">
-        <a class="btn" href="${continueUrl}">${escapeHtml(t.continue_btn)}</a>
-      </div>
     `;
     return card;
   }
@@ -368,6 +403,11 @@
 
     if (known.length === 0) {
       loadingEl.style.display = 'none';
+      if (wasBlocked) {
+        const banner = document.getElementById('blocked-banner');
+        banner.textContent = t.blocked_empty;
+        banner.style.display = '';
+      }
       recoveryBox.style.display = '';
       return;
     }
@@ -395,6 +435,14 @@
       .sort((a, b) => new Date(a.order.createdAt) - new Date(b.order.createdAt));
 
     loadingEl.style.display = 'none';
+
+    // Mesajul de sus reflecta STRICT starea reala, cunoscuta ABIA acum (nu la parsare, vezi
+    // wasBlocked mai sus) — niciodata "ai deja melodii" langa o lista goala.
+    if (wasBlocked) {
+      const banner = document.getElementById('blocked-banner');
+      banner.textContent = eligible.length > 0 ? t.blocked : t.blocked_empty;
+      banner.style.display = '';
+    }
 
     if (eligible.length === 0) {
       const p = document.createElement('p');

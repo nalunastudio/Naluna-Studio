@@ -217,18 +217,19 @@ test('E18. Title-ul e PER VARIANT — buildVariantFromTrack primeste un songTitl
 test('E19. Comenzile ISTORICE fara title functioneaza — buildVariantFromTrack seteaza explicit null (niciodata arunca), UI-urile trateaza title lipsa fara sa afiseze nimic inventat', () => {
   const body = extractFn(server, 'async function buildVariantFromTrack(orderId, variantId, track, taskId, genre, songTitle) {');
   assert.match(body, /songTitle \|\| null/);
-  const comenzileMele = fs.readFileSync(path.join(__dirname, '..', 'public', 'comenzile-mele.html'), 'utf8');
-  assert.match(comenzileMele, /v\.title && String\(v\.title\)\.trim\(\)\)\s*\?/);
   const melodiaMea = fs.readFileSync(path.join(__dirname, '..', 'public', 'melodia-mea.html'), 'utf8');
   assert.match(melodiaMea, /v\.title && String\(v\.title\)\.trim\(\)\)/);
 });
 
-test('E20. Titlul e afisat pe suprafetele client relevante: melodia-mea.html, comenzile-mele.html, comanda-mea.html contin toate randarea .variant-title/.song-title', () => {
+// REDESIGN (2026-09-28, "Comenzile mele" — cerinta explicita): comenzile-mele.html a fost
+// simplificata la un rezumat clar per comanda (Comanda N — Pachet / Pentru destinatar / N
+// melodii), fara sa mai reda titluri/playere per-varianta inline (ar fi fost un al doilea
+// sistem de redare, duplicat fata de melodia-mea.html/comanda-mea.html — vezi audit-ul din
+// comenzile-mele-page.test.js). Titlul ramane afisat pe suprafetele care CHIAR reda melodia.
+test('E20. Titlul e afisat pe suprafetele client care CHIAR reda melodia: melodia-mea.html (.variant-title), comanda-mea.html (.song-title) — comenzile-mele.html e STRICT un rezumat/index, titlul se vede dupa click, pe pagina corecta', () => {
   const melodiaMea = fs.readFileSync(path.join(__dirname, '..', 'public', 'melodia-mea.html'), 'utf8');
-  const comenzileMele = fs.readFileSync(path.join(__dirname, '..', 'public', 'comenzile-mele.html'), 'utf8');
   const comandaMea = fs.readFileSync(path.join(__dirname, '..', 'public', 'comanda-mea.html'), 'utf8');
   assert.match(melodiaMea, /variant-title/);
-  assert.match(comenzileMele, /variant-title/);
   assert.match(comandaMea, /song-title/);
 });
 

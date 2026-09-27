@@ -4276,6 +4276,17 @@ app.get('/api/orders/:orderId', async (req, res, next) => {
       relationship: v.relationship || order.relationship || null
     }));
 
+    // AUDIT (2026-09-28, "Comenzile mele" — numarul real de melodii): pana acum, hasGiftAudio/
+    // hasPremiumBonusAudio erau calculate STRICT in GET /api/orders/access/:token (pagina
+    // comanda-mea.html) — acest endpoint (folosit de comenzile-mele.html pentru propriile
+    // comenzi cunoscute local) nu le expunea deloc, desi comenzile-mele.html le citea deja
+    // (order.hasGiftAudio/order.hasPremiumBonusAudio erau mereu undefined => falsy). Rezultat
+    // REAL, confirmat: numarul de melodii afisat pentru comenzi Premium/Video cu bonus era
+    // sistematic subestimat. Aceeasi logica PURA (lib/entitlements.js), nicio schimbare de
+    // regula — doar expusa consecvent si aici.
+    const giftVariantForCount = getGiftVariant(order);
+    const premiumBonusVariantForCount = getPremiumBonusVariant(order);
+
     // Stare video derivata, expusa explicit clientului — vezi cerinta "A. Arhitectura si
     // starile comenzii" (starea videoclipului separata de starea platii). 'stale' ia
     // prioritate (chiar daca un videoKey vechi mai exista pe alta varianta, nu mai e
@@ -4353,6 +4364,10 @@ app.get('/api/orders/:orderId', async (req, res, next) => {
       // indiferent de orice schimbare viitoare in acea logica — "nu trebuie prezentata sau
       // promisa inainte de plata" e o cerinta explicita.
       premiumBonusVariantId: order.status === 'ready' ? (order.premiumBonusVariantId || null) : null,
+      // vezi comentariul de la giftVariantForCount/premiumBonusVariantForCount mai sus — acelasi
+      // tipar exact ca in GET /api/orders/access/:token (fullKey, niciodata cheia insasi expusa).
+      hasGiftAudio: !!(giftVariantForCount && giftVariantForCount.fullKey),
+      hasPremiumBonusAudio: !!(premiumBonusVariantForCount && premiumBonusVariantForCount.fullKey),
       error: order.error,
       price: order.price,
       genre: order.genre || null,
