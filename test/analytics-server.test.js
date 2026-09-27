@@ -409,16 +409,22 @@ async function withMockDbClient(rowsQueue, fn) {
 }
 
 test('recordPaidOrderAtomically: acelasi event.id Stripe (retry webhook) -> a doua incercare NU insereaza (ON CONFLICT DO NOTHING), isNewEvent=false — nicio a doua procesare financiara/GA4 posibila', async () => {
-  // Prima livrare: INSERT reuseste (1 rand), apoi SELECT ... FOR UPDATE gaseste comanda (status != 'ready')
+  // Prima livrare: INSERT reuseste (1 rand), apoi SELECT ... FOR UPDATE gaseste comanda (status != 'ready'),
+  // apoi UPSERT-ul client_generation_cycles (protectie generari gratuite, 2026-09-26), apoi UPDATE RETURNING
   await withMockDbClient(
     [
       { rows: [{ event_id: 'evt_123' }] }, // dedup INSERT reuseste
-      { rows: [{ id: 'order-9', status: 'preview_ready', plan: 'standard', variants: '[]', uploaded_media: '[]', regenerate_edit_variant_ids: '[]' }] }, // SELECT FOR UPDATE
+      { rows: [{ id: 'order-9', status: 'preview_ready', plan: 'standard', email: 'client@exemplu.ro', variants: '[]', uploaded_media: '[]', regenerate_edit_variant_ids: '[]' }] }, // SELECT FOR UPDATE
+      { rows: [] }, // INSERT client_generation_cycles ... ON CONFLICT DO UPDATE (fara RETURNING)
       { rows: [{ id: 'order-9', status: 'ready', plan: 'standard', variants: '[]', uploaded_media: '[]', regenerate_edit_variant_ids: '[]' }] } // UPDATE RETURNING
     ],
-    async () => {
+    async (calls) => {
       const result = await db.recordPaidOrderAtomically('evt_123', 'order-9', { status: 'ready' });
       assert.equal(result.isNewEvent, true, 'prima livrare trebuie sa fie procesata (isNewEvent=true)');
+      assert.equal(result.order.status, 'ready', 'randul final trebuie sa reflecte UPDATE RETURNING, nu un rand gol dintr-o interogare nealiniata');
+      const cycleCall = calls.find((c) => c.sql.includes('client_generation_cycles'));
+      assert.ok(cycleCall, 'o plata noua reala trebuie sa deschida/resetaze ciclul de generari gratuite');
+      assert.deepEqual(cycleCall.params, ['client@exemplu.ro']);
     }
   );
 

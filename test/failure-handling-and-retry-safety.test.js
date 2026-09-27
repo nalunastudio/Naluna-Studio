@@ -60,7 +60,9 @@ test("P5: retry-ul de coerenta a versurilor (obtainAcceptableVariant) e SARIT co
 });
 
 test('P5: rezervarea atomica (claimOrderForRegeneration/claimOrderForInitialGeneration) previne doua generari simultane pentru aceeasi comanda — verificat ca ambele cai (generare initiala SI regenerare) folosesc un claim atomic inainte de a porni jobul asincron', () => {
-  assert.match(server, /db\.claimOrderForInitialGeneration\(order\.id, credits\.MAX_GENERATION_ATTEMPTS\)/);
+  // Semnatura extinsa (2026-09-26, protectia de cota generari gratuite) cu emailKey/skipQuota —
+  // claim-ul atomic in sine (UPDATE ... WHERE ... RETURNING) ramane neschimbat, vezi db.js.
+  assert.match(server, /db\.claimOrderForInitialGeneration\(\s*order\.id, credits\.MAX_GENERATION_ATTEMPTS, emailKey, skipQuota\s*\)/);
   assert.match(server, /db\.claimOrderForRegeneration\(order\.id, FREE_EDITS, requestedVoice, credits\.MAX_GENERATION_ATTEMPTS\)/);
 });
 

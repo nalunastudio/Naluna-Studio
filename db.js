@@ -802,7 +802,6 @@ async function initDb() {
     );
   `);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_meta_capi_events_status_next_attempt ON meta_capi_events(status, next_attempt_at);`);
-
   // FIX (2026-09-27, audit incident productie — "null value in column next_attempt_at... violates
   // not-null constraint"): coloana fusese declarata NOT NULL mai sus, dar arhitectura INTENTIONEAZA
   // explicit NULL ca stare TERMINALA valida — "nu mai exista o urmatoare reincercare programata"
@@ -822,6 +821,28 @@ async function initDb() {
   // risc de duplicare din istoricul deja existent). DROP NOT NULL e idempotent (sigur de rulat la
   // fiecare pornire, ca restul migratiilor din acest fisier).
   await pool.query(`ALTER TABLE meta_capi_events ALTER COLUMN next_attempt_at DROP NOT NULL;`);
+
+  // ==================================================================================
+  // PROTECTIE GENERARI GRATUITE REPETATE (2026-09-27, cerinta explicita; REGULA FINALA
+  // actualizata acelasi zi — 3/7, nu 2/14) — maximum 3 comenzi NOI cu generare audio NEPLATITA,
+  // per client (identificat prin email normalizat, lower(trim(email)) — ACELASI mecanism folosit
+  // deja pentru Nr. client/getDistinctCustomerRanks in Admin), intr-o fereastra MOBILA de 7 zile,
+  // intre Standard+Premium+Video (NU per pachet).
+  //
+  // client_generation_cycles: UN SINGUR rand per client (email_key = PRIMARY KEY), NU un istoric —
+  // cycle_started_at marcheaza momentul de la care comenzile chiar conteaza pentru fereastra
+  // CURENTA. O plata REALA (recordPaidOrderAtomically, mai jos) muta acest moment la `now()`,
+  // "deschizand un ciclu nou" (cerinta explicita: dupa ORICE plata eligibila, clientul primeste
+  // din nou o alocatie completa de 3, INDIFERENT daca mai are alte comenzi neplatite anterioare
+  // ramase in fereastra) — fara acest rand (client nou, niciodata platit), fereastra mobila de 7
+  // zile ramane singura limita (vezi claimOrderForInitialGeneration mai jos, GREATEST(now() - 7
+  // zile, cycle_started_at)).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS client_generation_cycles (
+      email_key TEXT PRIMARY KEY,
+      cycle_started_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `);
 
   // ==================================================================================
   // RECOVERY EMAILS (2026-09-25, IMPLEMENTARE — vezi lib/recovery-emails/) — outbox ACELASI
@@ -1207,19 +1228,109 @@ async function claimOrderForRegeneration(orderId, maxEdits, voicePreference, max
 // credite reale, indiferent de rezultat — vezi credits.js). Verificarile de status
 // facute deja in ruta /generate raman ca prima linie de aparare; asta e a doua,
 // atomica, la nivel de baza de date.
+//
+// PROTECTIE GENERARI GRATUITE REPETATE (2026-09-27, cerinta explicita) — extinsa AICI, in
+// ACELASI punct atomic care oricum tranzitioneaza 'draft' -> 'generating' (nu la creare
+// comanda, care ramane libera/gratuita — vezi audit, POST /api/orders NU porneste nicio
+// generare reala). "Consuma" una dintre cele maximum 3 generari NEPLATITE per client STRICT
+// din momentul in care acest UPDATE reuseste (status devine 'generating') — o comanda care
+// esueaza tehnic revine la 'generation_failed' (markGenerationFailed, server.js) si NU mai
+// conteaza (exclusa explicit mai jos), deci o eroare reala de generare NU consuma definitiv
+// alocatia; retrimiterea aceleiasi comenzi esuate ramane oricum plafonata de
+// generation_attempts (neschimbat). Comenzile PLATITE (status='ready') nu mai conteaza
+// niciodata ca "neplatite" — ies din fereastra curenta automat, in clipa in care platesc
+// (recordPaidOrderAtomically, mai jos, deschide un CICLU NOU pentru tot emailul, nu doar
+// scade cu 1 — cerinta explicita).
+//
+// RACE CONDITION (cerinta explicita, "doua requesturi simultane nu trebuie sa treaca de
+// limita"): numararea (peste ALTE randuri, pentru acelasi email) si consumarea (UPDATE-ul
+// acestui rand) NU pot fi facute atomic printr-o singura instructiune SQL obisnuita — Postgres
+// nu blocheaza automat randurile "numarate" de un subquery. Solutia: pg_advisory_xact_lock,
+// cheiat pe email-ul normalizat, tinut STRICT pana la COMMIT/ROLLBACK-ul acestei tranzactii —
+// o a doua cerere pentru ACELASI email asteapta la acest lock pana cand prima tranzactie se
+// incheie complet (numaratoarea EI vede deja rezultatul primei), deci nu pot trece amandoua
+// de limita simultan. Emailuri DIFERITE folosesc chei de lock diferite — zero interferenta
+// intre clienti diferiti, nicio blocare globala.
+//
+// emailKey: STRICT lower(trim(email)) — ACELASI mecanism de identificare deja folosit pentru
+// Nr. client (Admin), nu o normalizare noua. skipQuota=true (emailuri de test, vezi
+// isTestCustomerEmail/ANALYTICS_EXCLUDED_EMAILS, server.js) sare COMPLET peste verificare —
+// comportament identic cu inainte de aceasta protectie, pentru acele adrese.
 // ==================================================================================
-async function claimOrderForInitialGeneration(orderId, maxAttempts) {
+// REGULA FINALA (2026-09-27, schimbare explicita fata de runda anterioara 2/14): 3 comenzi NOI
+// cu generare audio NEPLATITA, fereastra MOBILA de 7 zile — restul mecanismului (advisory lock,
+// GREATEST cu cycle_started_at, reset complet la plata) ramane identic, doar cele doua cifre se
+// schimba.
+const FREE_GENERATION_LIMIT = 3;
+const FREE_GENERATION_WINDOW_DAYS = 7;
+
+async function claimOrderForInitialGeneration(orderId, maxAttempts, emailKey, skipQuota) {
+  return withTransaction(async (client) => {
+    if (!skipQuota && emailKey) {
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [emailKey]);
+
+      const cycleRes = await client.query(
+        'SELECT cycle_started_at FROM client_generation_cycles WHERE email_key = $1',
+        [emailKey]
+      );
+      const cycleStartedAt = cycleRes.rows[0] ? cycleRes.rows[0].cycle_started_at : null;
+
+      const countRes = await client.query(
+        `SELECT COUNT(*) AS n FROM orders
+         WHERE lower(trim(email)) = $1
+           AND id != $2
+           AND status NOT IN ('draft', 'generation_failed')
+           AND created_at >= GREATEST(now() - ($3 || ' days')::interval, COALESCE($4, '-infinity'::timestamptz))`,
+        [emailKey, orderId, FREE_GENERATION_WINDOW_DAYS, cycleStartedAt]
+      );
+      if (Number(countRes.rows[0].n) >= FREE_GENERATION_LIMIT) {
+        return { order: null, quotaBlocked: true };
+      }
+    }
+
+    const result = await client.query(
+      `UPDATE orders
+       SET status = 'generating',
+           generation_attempts = generation_attempts + 1
+       WHERE id = $1
+         AND status NOT IN ('generating', 'processing_provider_result', 'ready')
+         AND generation_attempts < $2
+       RETURNING *`,
+      [orderId, maxAttempts]
+    );
+    // null daca deja in curs, deja platita, sau limita de incercari atinsa
+    return { order: rowToOrder(result.rows[0]), quotaBlocked: false };
+  });
+}
+
+// RECUPERARE SECURIZATA A COMENZILOR (2026-09-27, cerinta explicita) — folosita STRICT de
+// POST /api/orders/recover-access (server.js), care NU intoarce niciodata randurile de aici in
+// raspunsul HTTP — le trimite doar pe email, la adresa introdusa (vezi acel handler pentru
+// garda anti-enumerare). Eligibilitate = EXACT acelasi status folosit la numararea cotei
+// (status NOT IN ('draft','generation_failed')) — o comanda 'draft' nu are inca niciun continut
+// de diferentiat/continuat, iar 'generation_failed' e un esec definitiv, fara nimic de reluat.
+//
+// AUDIT (2026-09-27): status='ready' (platita) NU poate aparea NICIODATA aici — demonstrabil,
+// nu doar presupus. recordPaidOrderAtomically (mai jos) seteaza necondiționat
+// client_generation_cycles.cycle_started_at = now() la ORICE plata reala/noua a acestui email,
+// iar created_at al comenzii platite e STRICT anterior propriei plati (deci anterior oricarui
+// cycle_started_at care ar putea rezulta din acea plata sau dintr-o plata ulterioara a
+// ACELUIASI email) — GREATEST(...) exclude deci automat orice comanda 'ready' din fereastra
+// curenta, indiferent de cat de recenta e plata. Pastram totusi garda explicita
+// final_media_expired_at IS NULL mai jos, defensiv (documenteaza intentia si ramane corecta
+// daca mecanismul de reset se schimba vreodata) — vezi si findOrdersEligibleForFinalMediaExpiry
+// mai jos in fisier, aceeasi coloana.
+async function getEligibleOrdersForAccessRecovery(emailKey) {
   const result = await pool.query(
-    `UPDATE orders
-     SET status = 'generating',
-         generation_attempts = generation_attempts + 1
-     WHERE id = $1
-       AND status NOT IN ('generating', 'processing_provider_result', 'ready')
-       AND generation_attempts < $2
-     RETURNING *`,
-    [orderId, maxAttempts]
+    `SELECT * FROM orders
+     WHERE lower(trim(email)) = $1
+       AND status NOT IN ('draft', 'generation_failed')
+       AND (status <> 'ready' OR final_media_expired_at IS NULL)
+     ORDER BY created_at ASC
+     LIMIT 20`,
+    [emailKey]
   );
-  return rowToOrder(result.rows[0]); // null daca deja in curs, deja platita, sau limita de incercari atinsa
+  return result.rows.map(rowToOrder);
 }
 
 // ==================================================================================
@@ -1757,6 +1868,21 @@ async function recordPaidOrderAtomically(eventId, orderId, patch) {
     // garanteaza "prima si singura data"), niciodata suprascrie o alegere deja persistata.
     if (current.plan === 'premium' && !current.premiumBonusVariantId) {
       patch = { ...patch, premiumBonusVariantId: pickPremiumBonusVariantId(current) };
+    }
+
+    // FIX (2026-09-26, protectie generari gratuite repetate): o plata REALA si NOUA (am trecut deja
+    // de dedup-ul processed_stripe_events de mai sus SI de guard-ul "already ready" de mai sus) trebuie
+    // sa deschida un ciclu nou complet de 3 generari gratuite pentru acest client — nu doar sa "elibereze
+    // un loc". Facut AICI, in ACEEASI tranzactie care marcheaza comanda "ready" (randul e deja blocat
+    // FOR UPDATE mai sus, deci nicio alta plata concurenta pentru acelasi client nu poate re-intra),
+    // dedup-ul de mai sus garanteaza ca acelasi eveniment Stripe nu poate reseta ciclul de doua ori.
+    const payerEmailKey = String(current.email || '').trim().toLowerCase();
+    if (payerEmailKey) {
+      await client.query(
+        `INSERT INTO client_generation_cycles (email_key, cycle_started_at) VALUES ($1, now())
+         ON CONFLICT (email_key) DO UPDATE SET cycle_started_at = now()`,
+        [payerEmailKey]
+      );
     }
 
     const keys = Object.keys(patch).filter(k => COLUMN_MAP[k]);
@@ -3446,6 +3572,7 @@ module.exports = {
   updateGenerationPhaseIfLater,
   startRegenerationJob, updateRegenerationPhaseIfLater, markRegenerationStatus,
   claimOrderForProviderFinalization, claimOrderForRegeneration, claimOrderForInitialGeneration,
+  getEligibleOrdersForAccessRecovery,
   refundEditIfReserved,
   claimVideoRender, releaseVideoRender, recordStripeEventIfNew, recordPaidOrderAtomically,
   recordResendEventIfNew, addEmailSuppression, isEmailSuppressed,

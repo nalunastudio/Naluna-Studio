@@ -473,14 +473,16 @@ test('comanda.html: numarul pasului salvat (STEP_KEY) foloseste getTotalSteps() 
 // ---------------------------------------------------------------------------------------------
 // TEST 13: dublul click nu creeaza joburi duplicate.
 // ---------------------------------------------------------------------------------------------
-test('server.js: claimOrderForInitialGeneration (preluare atomica) ramane neschimbata — protejeaza si comenzile Premium noi', () => {
-  assert.match(server, /const claimed = await db\.claimOrderForInitialGeneration\(order\.id, credits\.MAX_GENERATION_ATTEMPTS\);\s*if \(!claimed\) \{\s*return res\.status\(409\)/);
+test('server.js: claimOrderForInitialGeneration (preluare atomica) ramane atomica — protejeaza si comenzile Premium noi (2026-09-26, extinsa cu protectia de cota, aceeasi garda de "deja in desfasurare")', () => {
+  assert.match(server, /db\.claimOrderForInitialGeneration\(\s*order\.id, credits\.MAX_GENERATION_ATTEMPTS, emailKey, skipQuota\s*\)/);
+  assert.match(server, /if \(!claimedOrder\) \{\s*return res\.status\(409\)/);
 });
 
-test('db.js: claimOrderForInitialGeneration foloseste UPDATE...WHERE...RETURNING atomic, exclude comenzi deja in curs/gata', () => {
-  assert.match(dbjs, /async function claimOrderForInitialGeneration\(orderId, maxAttempts\) \{/);
+test('db.js: claimOrderForInitialGeneration foloseste UPDATE...WHERE...RETURNING atomic, exclude comenzi deja in curs/gata (semnatura extinsa cu emailKey/skipQuota pentru protectia de cota, 2026-09-26)', () => {
+  assert.match(dbjs, /async function claimOrderForInitialGeneration\(orderId, maxAttempts, emailKey, skipQuota\) \{/);
   const start = dbjs.indexOf('async function claimOrderForInitialGeneration');
-  const snippet = dbjs.slice(start, start + 500);
+  const end = dbjs.indexOf('\n}', start) + 2;
+  const snippet = dbjs.slice(start, end);
   assert.match(snippet, /WHERE id = \$1\s*AND status NOT IN \('generating', 'processing_provider_result', 'ready'\)/);
 });
 

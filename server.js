@@ -704,6 +704,45 @@ function invalidPlanMessage(lang) {
   return INVALID_PLAN_MESSAGES[safe];
 }
 
+// PROTECTIE GENERARI GRATUITE REPETATE (2026-09-26): mesaj FIX, identic in toate cele 8 limbi
+// ca structura (nu se schimba dupa cate comenzi are clientul, nu contine niciun numar, nicio
+// fereastra de timp, nicio data de resetare) — clientul nu trebuie sa poata deduce vreodata
+// regula din mesaj. Traduceri naturale, nu traducere literala a romanei.
+const GENERATION_QUOTA_BLOCKED_MESSAGES = {
+  ro: 'Ai deja melodii create pentru tine. Alege una dintre comenzile tale pentru a continua.',
+  en: 'You already have songs created for you. Choose one of your existing orders to continue.',
+  de: 'Für dich wurden bereits Lieder erstellt. Wähle eine deiner bestehenden Bestellungen, um fortzufahren.',
+  es: 'Ya tienes canciones creadas para ti. Elige uno de tus pedidos existentes para continuar.',
+  it: 'Hai già delle canzoni create per te. Scegli uno dei tuoi ordini esistenti per continuare.',
+  fr: 'Des chansons ont déjà été créées pour toi. Choisis l’une de tes commandes existantes pour continuer.',
+  bg: 'Вече имаш създадени песни за теб. Избери една от съществуващите си поръчки, за да продължиш.',
+  tr: 'Senin için zaten şarkılar oluşturuldu. Devam etmek için mevcut siparişlerinden birini seç.'
+};
+function generationQuotaBlockedMessage(lang) {
+  const safe = ALLOWED_LANGS.includes(lang) ? lang : 'ro';
+  return GENERATION_QUOTA_BLOCKED_MESSAGES[safe];
+}
+
+// RECUPERARE SECURIZATA A COMENZILOR (2026-09-27, cerinta explicita) — raspunsul public al
+// POST /api/orders/recover-access. STRICT identic indiferent daca emailul exista, nu exista,
+// are 0/1/mai multe comenzi eligibile, sau daca cererea a fost limitata silentios de
+// recoveryEmailTargetLimiter (vezi acel middleware) — niciun enumeration posibil din continutul
+// raspunsului. Nu mentioneaza niciodata daca s-a trimis efectiv un email.
+const RECOVERY_REQUEST_ACCEPTED_MESSAGES = {
+  ro: 'Dacă adresa introdusă are comenzi eligibile, vei primi în scurt timp un email cu linkurile de acces.',
+  en: "If that email has any eligible orders, you'll receive an email shortly with the access links.",
+  de: 'Falls diese E-Mail-Adresse berechtigte Bestellungen hat, erhältst du in Kürze eine E-Mail mit den Zugangslinks.',
+  es: 'Si esa dirección tiene pedidos elegibles, recibirás en breve un email con los enlaces de acceso.',
+  it: "Se quell'indirizzo ha ordini idonei, riceverai a breve un'email con i link di accesso.",
+  fr: "Si cette adresse a des commandes éligibles, vous recevrez bientôt un email avec les liens d'accès.",
+  bg: 'Ако този имейл има допустими поръчки, ще получиш скоро писмо с линкове за достъп.',
+  tr: 'Bu adresin uygun siparişleri varsa, kısa süre içinde erişim bağlantılarını içeren bir e-posta alacaksınız.'
+};
+function recoveryRequestAcceptedMessage(lang) {
+  const safe = ALLOWED_LANGS.includes(lang) ? lang : 'ro';
+  return RECOVERY_REQUEST_ACCEPTED_MESSAGES[safe];
+}
+
 // Validare E.164 STRICT independenta de tara — NU presupune si NU forteaza niciodata un
 // prefix anume (ex. +44). Accepta orice tara valida: "+" urmat de 7-15 cifre, prima cifra
 // nefiind 0 (asa cum cere standardul E.164). Numarul trebuie sa fi fost deja normalizat de
@@ -1587,6 +1626,28 @@ const lookupLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false,
   keyGenerator: realClientIp,
   message: { error: 'Prea multe încercări. Încearcă din nou mai târziu' }
+});
+// RECUPERARE SECURIZATA A COMENZILOR (2026-09-27) — DOUA limite distincte, necesare impreuna:
+// 1. recoveryIpLimiter: opreste o singura sursa sa incerce mii de adrese diferite (enumerare
+//    prin volum). Comportament STANDARD (raspuns 429 propriu) — un 429 aici nu dezvaluie nimic
+//    despre o adresa anume, doar despre volumul de cereri al ACESTUI IP.
+// 2. recoveryEmailTargetLimiter: opreste hartuirea UNEI singure adrese (emailul altcuiva),
+//    inclusiv de pe IP-uri rotite — cheia e emailul normalizat din body, NU IP-ul. STRICT
+//    diferit de toate celelalte limitatoare de mai sus: `handler` NU trimite un raspuns propriu
+//    (asta AR crea un canal de enumerare — raspuns diferit dupa a 3-a cerere pentru ACEEASI
+//    adresa) — seteaza doar un flag pe request si continua (`next()`), ruta de mai jos
+//    (POST /api/orders/recover-access) trimite oricum raspunsul generic normal, dar SARE peste
+//    interogarea DB + trimiterea reala a emailului cand flag-ul e activ. Raspunsul HTTP ramane
+//    astfel IDENTIC (status, corp, timp) indiferent daca aceasta limita a fost atinsa sau nu.
+const recoveryIpLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, max: 8, standardHeaders: true, legacyHeaders: false,
+  keyGenerator: realClientIp,
+  message: { error: 'Prea multe încercări. Încearcă din nou mai târziu' }
+});
+const recoveryEmailTargetLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, max: 3, standardHeaders: false, legacyHeaders: false,
+  keyGenerator: (req) => String(req.body?.email || '').trim().toLowerCase() || 'no-email',
+  handler: (req, res, next) => { req.recoveryEmailThrottled = true; next(); }
 });
 // LAUNCH SAFETY (2026-09-01, Faza 3 — vector DoS evident): endpoint-urile de upload media
 // (Cadou video) erau protejate doar de requireOrderToken (imposibil de ghicit, dar odata
@@ -3451,8 +3512,31 @@ app.post('/api/orders/:orderId/generate', generationLimiter, requireOrderToken, 
 
     const feedback = typeof req.body?.feedback === 'string' ? req.body.feedback.slice(0, 500) : null;
 
-    const claimed = await db.claimOrderForInitialGeneration(order.id, credits.MAX_GENERATION_ATTEMPTS);
-    if (!claimed) {
+    // PROTECTIE GENERARI GRATUITE REPETATE (2026-09-26): emailKey e STRICT lower(trim(email)) —
+    // acelasi mecanism folosit deja pentru Nr. client (Admin). skipQuota=true (emailuri de test,
+    // ANALYTICS_EXCLUDED_EMAILS/isTestCustomerEmail, deja folosit identic pentru excluderea din
+    // analytics/KPI) sare COMPLET peste verificare, comportament identic cu inainte de protectie.
+    const emailKey = String(order.email || '').trim().toLowerCase();
+    const skipQuota = isTestCustomerEmail(order.email);
+    const { order: claimedOrder, quotaBlocked } = await db.claimOrderForInitialGeneration(
+      order.id, credits.MAX_GENERATION_ATTEMPTS, emailKey, skipQuota
+    );
+    if (quotaBlocked) {
+      // Observabilitate FARA PII (2026-09-26): funnel_events e deja event-level analytics anonim,
+      // fara consimtamant separat (nu e Meta/Google) — orderId leaga blocarea de comanda, fara sa
+      // trimita vreodata adresa de email. Exclus explicit pentru emailuri de test, ca sa nu polueze
+      // statisticile reale ale protectiei.
+      if (!skipQuota) {
+        db.insertFunnelEvent({
+          eventName: 'generation_quota_blocked',
+          visitorId: null,
+          orderId: order.id,
+          meta: { plan: order.plan }
+        }).catch((err) => console.error('insertFunnelEvent(generation_quota_blocked) failed (non-fatal):', err.message));
+      }
+      return res.status(403).json({ error: generationQuotaBlockedMessage(order.lang) });
+    }
+    if (!claimedOrder) {
       return res.status(409).json({ error: 'Generarea este deja în desfășurare.' });
     }
     res.json({ started: true });
@@ -3469,6 +3553,42 @@ app.post('/api/orders/:orderId/generate', generationLimiter, requireOrderToken, 
         console.error('Eroare suplimentara la salvarea starii de esec:', dbErr.message);
       }
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ==========================================================================================
+// RECUPERARE SECURIZATA A COMENZILOR (2026-09-27, cerinta explicita) — public, FARA
+// requireOrderToken (clientul nu are inca niciun token la indemana in acest punct — de-aia are
+// nevoie de recuperare). SECURITATE CRITICA: raspunsul HTTP e STRICT identic (status 202,
+// acelasi corp JSON) indiferent daca emailul exista, cate comenzi eligibile are, sau daca
+// recoveryEmailTargetLimiter a sarit silentios peste trimiterea reala — niciun enumeration
+// posibil. accessToken-ul fiecarei comenzi NU apare NICIODATA in acest raspuns — ajunge la
+// client STRICT prin email, la adresa introdusa (sendAccessRecoveryEmail mai jos in fisier).
+// Raspunsul se trimite INAINTE de orice interogare DB/apel Resend (fire-and-forget, .catch()
+// izolat) — elimina si un canal de timing (altfel, un raspuns mai lent ar putea trada indirect
+// "emailul exista, server-ul a mai facut si apelul catre Resend").
+// ==========================================================================================
+app.post('/api/orders/recover-access', recoveryIpLimiter, recoveryEmailTargetLimiter, async (req, res, next) => {
+  try {
+    const rawEmail = typeof req.body?.email === 'string' ? req.body.email.trim() : '';
+    const lang = ALLOWED_LANGS.includes(req.body?.lang) ? req.body.lang : 'ro';
+    if (!rawEmail) {
+      return res.status(400).json({ error: invalidEmailMessage(lang) });
+    }
+
+    res.status(202).json({ ok: true, message: recoveryRequestAcceptedMessage(lang) });
+
+    if (req.recoveryEmailThrottled) return;
+
+    const emailKey = rawEmail.toLowerCase();
+    db.getEligibleOrdersForAccessRecovery(emailKey)
+      .then(async (orders) => {
+        if (orders.length === 0) return;
+        await sendAccessRecoveryEmail({ email: rawEmail, lang, orders });
+      })
+      .catch((err) => console.error('recover-access: eroare interna (non-fatal, raspunsul deja trimis):', err.message));
   } catch (err) {
     next(err);
   }
@@ -10905,6 +11025,88 @@ async function sendDeliveryEmail(order) {
   if (!res.ok) {
     const body = await res.text();
     throw new Error(`Resend a raspuns cu status ${res.status}: ${body}`);
+  }
+}
+
+// ==================================================================================
+// RECUPERARE SECURIZATA A COMENZILOR (2026-09-27, cerinta explicita) — email OPERATIONAL,
+// solicitat explicit de client (apasare de buton), STRICT independent de sistemul automat
+// lib/recovery-emails/ (RECOVERY_EMAILS_ENABLED ramane neatins, aceasta functie NU il verifica
+// si NU trece prin acel worker/eligibility) — foloseste DIRECT Resend, acelasi tipar ca
+// sendDeliveryEmail() de mai sus. Fara promotii/reduceri/upsell — DOAR linkurile comenzilor
+// eligibile deja gasite de apelant (db.getEligibleOrdersForAccessRecovery).
+// ==================================================================================
+const PLAN_DISPLAY_NAMES = {
+  standard: { ro: 'Standard', en: 'Standard', de: 'Standard', es: 'Estándar', it: 'Standard', fr: 'Standard', bg: 'Стандартен', tr: 'Standart' },
+  premium: { ro: 'Premium', en: 'Premium', de: 'Premium', es: 'Premium', it: 'Premium', fr: 'Premium', bg: 'Премиум', tr: 'Premium' },
+  video: { ro: 'Cadou video', en: 'Video gift', de: 'Video-Geschenk', es: 'Regalo en video', it: 'Regalo video', fr: 'Cadeau vidéo', bg: 'Видео подарък', tr: 'Video hediye' }
+};
+function planDisplayName(plan, lang) {
+  const safeLang = ALLOWED_LANGS.includes(lang) ? lang : 'ro';
+  const entry = PLAN_DISPLAY_NAMES[plan];
+  return (entry && entry[safeLang]) || plan;
+}
+
+const RECOVERY_ACCESS_EMAIL_TEXT = {
+  ro: { subject: 'Comenzile tale la Naluna', intro: 'Iată comenzile tale la care poți continua:', cta: 'Continuă comanda', recipientLabel: 'Pentru' },
+  en: { subject: 'Your Naluna orders', intro: 'Here are your orders you can continue with:', cta: 'Continue order', recipientLabel: 'For' },
+  de: { subject: 'Deine Naluna-Bestellungen', intro: 'Hier sind deine Bestellungen, mit denen du fortfahren kannst:', cta: 'Bestellung fortsetzen', recipientLabel: 'Für' },
+  es: { subject: 'Tus pedidos en Naluna', intro: 'Estos son los pedidos con los que puedes continuar:', cta: 'Continuar pedido', recipientLabel: 'Para' },
+  it: { subject: 'I tuoi ordini Naluna', intro: 'Ecco i tuoi ordini con cui puoi continuare:', cta: 'Continua ordine', recipientLabel: 'Per' },
+  fr: { subject: 'Vos commandes Naluna', intro: 'Voici vos commandes que vous pouvez continuer :', cta: 'Continuer la commande', recipientLabel: 'Pour' },
+  bg: { subject: 'Твоите поръчки в Naluna', intro: 'Ето поръчките, с които можеш да продължиш:', cta: 'Продължи поръчката', recipientLabel: 'За' },
+  tr: { subject: 'Naluna siparişleriniz', intro: 'Devam edebileceğiniz siparişleriniz:', cta: 'Siparişe devam et', recipientLabel: 'Kime' }
+};
+
+// email: adresa EXACTA introdusa de client (deja normalizata de apelant pentru lookup, dar
+// trimisa aici ca a fost primita — Resend accepta orice format valid). orders: randurile REALE
+// (db.getEligibleOrdersForAccessRecovery), niciodata filtrate/validate din nou aici (apelantul
+// raspunde deja de eligibilitate). accessToken-ul fiecarei comenzi NU paraseste niciodata acest
+// email catre altcineva — vezi apelantul (POST /api/orders/recover-access): niciodata logat,
+// niciodata in raspunsul API, niciodata in analytics.
+async function sendAccessRecoveryEmail({ email, lang, orders }) {
+  if (!process.env.RESEND_API_KEY) {
+    console.warn('RESEND_API_KEY lipsa din .env — email de recuperare acces NU a fost trimis.');
+    return;
+  }
+  const suppressed = await db.isEmailSuppressed(email).catch(() => false);
+  if (suppressed) {
+    console.warn(`Email de recuperare acces NETRIMIS catre ${maskEmailForLog(email)} — adresa e in email_suppressions.`);
+    return;
+  }
+
+  const safeLang = ALLOWED_LANGS.includes(lang) ? lang : 'ro';
+  const text = RECOVERY_ACCESS_EMAIL_TEXT[safeLang];
+
+  const cards = orders.map((order, idx) => {
+    const accessUrl = `${DOMAIN}/comanda-mea.html?token=${order.accessToken}`;
+    const safeRecipient = escapeHtmlForEmail(order.recipient || '');
+    const planName = planDisplayName(order.plan, safeLang);
+    return `<div style="margin:16px 0;padding:14px 16px;border:1px solid #e8e2d6;border-radius:8px;">
+      <p style="margin:0 0 6px;font-weight:600;">${idx + 1}. ${planName}</p>
+      <p style="margin:0 0 10px;color:#4a4a4a;">${text.recipientLabel}: ${safeRecipient}</p>
+      <a href="${accessUrl}" style="color:#8B6D3F;text-decoration:underline;">${text.cta} →</a>
+    </div>`;
+  }).join('');
+
+  const rawFromAddress = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
+  const fromWithDisplayName = rawFromAddress.includes('<') ? rawFromAddress : `Naluna Studio <${rawFromAddress}>`;
+  const html = `<p>${text.intro}</p>${cards}`;
+
+  const res = await fetchWithTimeout('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      from: fromWithDisplayName,
+      reply_to: 'contact@nalunastudio.com',
+      to: email, subject: text.subject, html,
+      text: htmlToPlainText(html)
+    })
+  }, 15000);
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Resend (recuperare acces) a raspuns cu status ${res.status}: ${body}`);
   }
 }
 

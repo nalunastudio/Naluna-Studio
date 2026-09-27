@@ -644,6 +644,10 @@
       </button>
       <div class="price-note" style="margin-top:10px; text-align:center;" data-i18n="note_free">Nu plătești acum. Plătești doar dacă îți place rezultatul</div>
       <div id="status-msg"></div>
+      <div id="quota-recovery-box" style="display:none; margin-top:14px; text-align:center;">
+        <button type="button" class="btn btn-ghost" id="quota-recovery-btn" style="width:100%; justify-content:center;" data-i18n="quota_recovery_btn">Trimite-mi acces pe email</button>
+        <div id="quota-recovery-result" style="display:none; margin-top:8px; font-size:14px; color:#6b6b6b;"></div>
+      </div>
 
       <div class="wizard-nav">
         <button type="button" class="btn btn-ghost btn-back" data-prev="4" data-i18n="btn_back">Înapoi</button>
@@ -996,6 +1000,9 @@
       msg_conn_error: 'Eroare de conexiune. Încearcă din nou',
       msg_error_prefix: 'Eroare: ',
       msg_try_again: 'încearcă din nou',
+      quota_recovery_btn: 'Trimite-mi acces pe email',
+      quota_recovery_sending: 'Se trimite...',
+      quota_recovery_sent: 'Dacă adresa introdusă are comenzi eligibile, vei primi în scurt timp un email cu linkurile de acces.',
       wizard_step1_title: 'Pentru ce moment vrei cântecul?',
       wizard_step2_title: 'Spune-ne pentru cine este cântecul',
       wizard_step3_title: 'Alege genul muzical',
@@ -1156,6 +1163,9 @@
       btn_generate: 'Generate your free preview →',
       btn_generate_starting: 'Starting composition...',
       note_free: 'You don\'t pay now. You only pay if you like the result.',
+      quota_recovery_btn: 'Email me access',
+      quota_recovery_sending: 'Sending...',
+      quota_recovery_sent: "If that email has any eligible orders, you'll receive an email shortly with the access links.",
       msg_conn_error: 'Connection error. Please try again.',
       msg_error_prefix: 'Error: ',
       msg_try_again: 'please try again.',
@@ -1318,6 +1328,9 @@
       btn_generate: 'Kostenlose Vorschau erstellen →',
       btn_generate_starting: 'Komposition wird gestartet...',
       note_free: 'Du zahlst jetzt noch nicht. Nur wenn dir das Ergebnis gefällt.',
+      quota_recovery_btn: 'Zugang per E-Mail zusenden',
+      quota_recovery_sending: 'Wird gesendet...',
+      quota_recovery_sent: 'Falls diese E-Mail-Adresse berechtigte Bestellungen hat, erhältst du in Kürze eine E-Mail mit den Zugangslinks.',
       msg_conn_error: 'Verbindungsfehler. Bitte versuche es erneut.',
       msg_error_prefix: 'Fehler: ',
       msg_try_again: 'bitte versuche es erneut.',
@@ -1480,6 +1493,9 @@
       btn_generate: 'Generar previsualización gratis →',
       btn_generate_starting: 'Iniciando la composición...',
       note_free: 'No pagas ahora. Solo pagas si te gusta el resultado.',
+      quota_recovery_btn: 'Enviarme el acceso por email',
+      quota_recovery_sending: 'Enviando...',
+      quota_recovery_sent: 'Si esa dirección tiene pedidos elegibles, recibirás en breve un email con los enlaces de acceso.',
       msg_conn_error: 'Error de conexión. Inténtalo de nuevo.',
       msg_error_prefix: 'Error: ',
       msg_try_again: 'inténtalo de nuevo.',
@@ -1642,6 +1658,9 @@
       btn_generate: 'Genera l\'anteprima gratis →',
       btn_generate_starting: 'Avvio della composizione...',
       note_free: 'Non paghi ora. Paghi solo se ti piace il risultato.',
+      quota_recovery_btn: 'Inviami accesso via email',
+      quota_recovery_sending: 'Invio in corso...',
+      quota_recovery_sent: 'Se quell\'indirizzo ha ordini idonei, riceverai a breve un\'email con i link di accesso.',
       msg_conn_error: 'Errore di connessione. Riprova.',
       msg_error_prefix: 'Errore: ',
       msg_try_again: 'riprova.',
@@ -1804,6 +1823,9 @@
       btn_generate: 'Générer l\'aperçu gratuit →',
       btn_generate_starting: 'Démarrage de la composition...',
       note_free: 'Vous ne payez pas maintenant. Seulement si le résultat vous plaît.',
+      quota_recovery_btn: 'M\'envoyer l\'accès par email',
+      quota_recovery_sending: 'Envoi en cours...',
+      quota_recovery_sent: 'Si cette adresse a des commandes éligibles, vous recevrez bientôt un email avec les liens d\'accès.',
       msg_conn_error: 'Erreur de connexion. Veuillez réessayer.',
       msg_error_prefix: 'Erreur : ',
       msg_try_again: 'veuillez réessayer.',
@@ -1966,6 +1988,9 @@
       btn_generate: 'Генерирай безплатен преглед →',
       btn_generate_starting: 'Стартираме композирането...',
       note_free: 'Не плащаш сега. Плащаш само ако ти хареса резултатът.',
+      quota_recovery_btn: 'Изпрати ми достъп по имейл',
+      quota_recovery_sending: 'Изпраща се...',
+      quota_recovery_sent: 'Ако този имейл има допустими поръчки, ще получиш скоро писмо с линкове за достъп.',
       msg_conn_error: 'Грешка във връзката. Опитай отново.',
       msg_error_prefix: 'Грешка: ',
       msg_try_again: 'опитай отново.',
@@ -2128,6 +2153,9 @@
       btn_generate: 'Ücretsiz ön izlemeyi oluştur →',
       btn_generate_starting: 'Beste başlıyor...',
       note_free: 'Şimdi ödemezsiniz. Sadece sonucu beğenirseniz ödersiniz.',
+      quota_recovery_btn: 'Erişimi e-postama gönder',
+      quota_recovery_sending: 'Gönderiliyor...',
+      quota_recovery_sent: 'Bu adresin uygun siparişleri varsa, kısa süre içinde erişim bağlantılarını içeren bir e-posta alacaksınız.',
       msg_conn_error: 'Bağlantı hatası. Lütfen tekrar deneyin.',
       msg_error_prefix: 'Hata: ',
       msg_try_again: 'lütfen tekrar deneyin.',
@@ -3624,6 +3652,36 @@
 
   const statusMsg = document.getElementById('status-msg');
   const statusMsgSong2 = document.getElementById('status-msg-song2');
+  const quotaRecoveryBox = document.getElementById('quota-recovery-box');
+  const quotaRecoveryBtn = document.getElementById('quota-recovery-btn');
+  const quotaRecoveryResult = document.getElementById('quota-recovery-result');
+
+  // PROTECTIE GENERARI GRATUITE REPETATE (2026-09-27): /generate raspunde 403 STRICT cand
+  // clientul a atins protectia — arata actiunea de recuperare securizata prin email SUB
+  // mesajul serverului (deja localizat, fara nicio cifra). Emailul e cel deja completat de
+  // client in acest formular (niciun camp nou) — endpoint-ul e generic/indistinct indiferent
+  // de rezultat (vezi POST /api/orders/recover-access), deci butonul poate fi apasat oricand
+  // fara sa dezvaluie nimic in plus.
+  if (quotaRecoveryBtn) {
+    quotaRecoveryBtn.addEventListener('click', async () => {
+      quotaRecoveryBtn.disabled = true;
+      const originalLabel = quotaRecoveryBtn.textContent;
+      quotaRecoveryBtn.textContent = t('quota_recovery_sending');
+      const emailVal = (document.getElementById('email') && document.getElementById('email').value || '').trim();
+      try {
+        await fetch('/api/orders/recover-access', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: emailVal, lang: currentLang })
+        });
+      } catch (err) { /* raspunsul generic ramane acelasi, indiferent de reteaua clientului */ }
+      quotaRecoveryResult.textContent = t('quota_recovery_sent');
+      quotaRecoveryResult.style.display = '';
+      quotaRecoveryBtn.textContent = originalLabel;
+      // ramane dezactivat — o singura solicitare per aparitie a blocajului e suficienta,
+      // reincercarile repetate nu schimba raspunsul (deja generic) si sunt oricum limitate server-side.
+    });
+  }
   function setStatusMsg(text, cls) {
     statusMsg.textContent = text;
     statusMsg.className = cls;
@@ -3844,7 +3902,21 @@
       if (!generateRes.ok && generateRes.status !== 409) {
         let serverMsg = '';
         try { const data = await generateRes.json(); serverMsg = data && data.error; } catch (err) { /* ignoram */ }
-        setStatusMsg(t('msg_error_prefix') + (serverMsg || t('msg_try_again')), 'status-err');
+        // 403 STRICT = protectia impotriva generarilor gratuite repetate (mesajul serverului,
+        // deja localizat, fara nicio cifra) — afisat CA ATARE, fara vreun prefix "Eroare: ",
+        // insotit de actiunea de recuperare securizata. Orice alt status pastreaza comportamentul
+        // vechi neschimbat si ascunde/reseteaza aceasta cutie (ramasa deschisa dintr-o incercare anterioara).
+        if (generateRes.status === 403) {
+          setStatusMsg(serverMsg || t('msg_try_again'), 'status-err');
+          if (quotaRecoveryBox) {
+            quotaRecoveryBox.style.display = '';
+            quotaRecoveryResult.style.display = 'none';
+            quotaRecoveryBtn.disabled = false;
+          }
+        } else {
+          setStatusMsg(t('msg_error_prefix') + (serverMsg || t('msg_try_again')), 'status-err');
+          if (quotaRecoveryBox) quotaRecoveryBox.style.display = 'none';
+        }
         activeBtn.disabled = false;
         activeBtnLabel.textContent = originalBtnText;
         // pendingOrderId ramane setat — urmatorul submit reincearca /generate pe aceeasi
