@@ -163,8 +163,8 @@ test('SUNO_PROMPT_MAX_LEN NU a fost marit (risc documentat: prompturi mai lungi 
   assert.match(server, /const SUNO_PROMPT_MAX_LEN = 600;/);
 });
 
-test('instructiunea FULL cere in continuare "story details throughout" (detalii reale din poveste, raspandite in tot textul) — povestea ramane prioritara fata de filler', () => {
-  assert.match(server, /never-invented story details throughout/);
+test('instructiunea FULL cere in continuare detalii reale din poveste, incepand devreme si raspandite in tot textul — povestea ramane prioritara fata de filler (2026-09-27: reformulata sa ceara explicit plasarea timpurie, vezi test/p1-story-preservation-8-languages.test.js)', () => {
+  assert.match(server, /never-invented story detail, then weaving more throughout/);
 });
 
 // ===============================================================================================

@@ -935,16 +935,34 @@
     bg: { wedding: name => `Сватбена песен за ${name}`, baptism: name => `Кръщелна песен за ${name}` },
     tr: { wedding: name => `${name} için düğün şarkısı`, baptism: name => `${name} için vaftiz şarkısı` }
   };
+  // CORECTIE (2026-09-27, "Melodia pentru Pentru sotia mea" — bug REAL raportat): campul liber
+  // "recipient" poate contine deja, scris de client, un prefix natural echivalent cu eticheta
+  // folosita in antet ("pentru"/"for"/etc. — vezi templateurile de mai jos si de mai sus) — cand
+  // eticheta e adaugata DIN NOU, rezultatul devine vizibil dublat. NU modifica valoarea din DB —
+  // STRICT normalizare de prezentare, identica cu cea din server.js/comanda-mea.html/
+  // comenzile-mele.html.
+  const FOR_WORD_BY_LANG = { ro: 'pentru', en: 'for', de: 'für', es: 'para', it: 'per', fr: 'pour', bg: 'за', tr: 'için' };
+  function stripRedundantForPrefix(value, activeLang) {
+    const v = String(value || '').trim();
+    if (!v) return v;
+    const word = (FOR_WORD_BY_LANG[activeLang] || FOR_WORD_BY_LANG.ro).toLowerCase();
+    const lower = v.toLowerCase();
+    if (lower === word) return '';
+    if (lower.startsWith(word + ' ')) return v.slice(word.length).trim();
+    return v;
+  }
+
   // Comenzile fara recipientRole (vechi, sau ocazie fara relatie structurata) intorc null —
   // apelantul (renderContent) foloseste atunci EXACT antetul generic actual, neschimbat.
   function composePersonalizedHeading(order, activeLang) {
     const nouns = RELATION_DISPLAY_NOUNS[activeLang] || RELATION_DISPLAY_NOUNS.en;
+    const recipientForHeading = stripRedundantForPrefix(order.recipient, activeLang);
 
     // "Nuntă/Botez" — antet simplu, bazat pe weddingType. senderRole nu mai exista pentru
     // comenzile NOI (eliminat la corectia anterioara), deci nicio dedicatie aici.
     if (order.occasion === 'nunta' && (order.weddingType === 'wedding' || order.weddingType === 'baptism')) {
       const templates = WEDDING_TYPE_HEADING_TEMPLATE[activeLang] || WEDDING_TYPE_HEADING_TEMPLATE.en;
-      return { heading: templates[order.weddingType](order.recipient || ''), dedication: null };
+      return { heading: templates[order.weddingType](recipientForHeading), dedication: null };
     }
 
     // "Amândoi" pentru parinti/matusa-unchi/socri — DOUA substantive, cate unul pentru fiecare
@@ -970,7 +988,7 @@
     const recipientNoun = order.recipientRole && nouns.recipient[order.recipientRole];
     if (!recipientNoun) return null;
     const headingFn = HEADING_PERSONALIZED_TEMPLATE[activeLang] || HEADING_PERSONALIZED_TEMPLATE.en;
-    const heading = headingFn(recipientNoun, order.recipient || '');
+    const heading = headingFn(recipientNoun, recipientForHeading);
     const senderNoun = order.senderRole && nouns.sender[order.senderRole];
     if (!senderNoun || !order.senderName) return { heading, dedication: null };
     const dedicationFn = DEDICATION_PERSONALIZED_TEMPLATE[activeLang] || DEDICATION_PERSONALIZED_TEMPLATE.en;
@@ -3938,7 +3956,7 @@
         dedicationEl.style.display = 'none';
       }
     } else {
-      document.getElementById('song-heading').textContent = t.heading(order.recipient || '');
+      document.getElementById('song-heading').textContent = t.heading(stripRedundantForPrefix(order.recipient, lang));
       if (order.senderName) {
         dedicationEl.textContent = t.dedication(order.senderName);
         dedicationEl.style.display = 'block';

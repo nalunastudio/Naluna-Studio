@@ -2163,6 +2163,84 @@ app.post('/api/admin/retention/expire-final-media', async (req, res, next) => {
 });
 
 // ==========================================================================================
+// RETENTIE COMENZI NEPLATITE (2026-09-27, cerinta explicita) — DIFERITA si INDEPENDENTA de
+// retentia comenzilor platite de mai sus (CONTENT_RETENTION_DAYS=30, de la paid_at) SI de
+// generation quota (client_generation_cycles/claimOrderForInitialGeneration — un mecanism
+// complet separat, niciodata atins de acest job). O comanda NEPLATITA (status != 'ready') e
+// pastrata maximum UNPAID_ORDER_RETENTION_DAYS (7) de la CREARE (created_at, singura data
+// relevanta — o comanda neplatita nu are paid_at) — dupa care fisierele reale (variante audio/
+// video + materiale sursa incarcate pentru Cadou Video) sunt sterse din storage, iar comanda e
+// marcata unpaid_expired_at (soft — randul NU e sters niciodata, zero risc de eroare FK cu
+// video_render_jobs/meta_capi_events/order_notifications, care raman valide referind acelasi
+// id — vezi audit). requireOrderToken si cele doua rute GET de acces (mai jos) trateaza o
+// comanda cu unpaid_expired_at setat identic cu "nu exista" (404 generic) — vechile linkuri nu
+// mai acorda acces la continut expirat.
+const UNPAID_ORDER_RETENTION_DAYS = 7;
+async function expireStaleUnpaidOrders() {
+  const cutoff = new Date(Date.now() - UNPAID_ORDER_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+  let candidates = [];
+  try {
+    candidates = await db.findOrdersEligibleForUnpaidExpiry(cutoff);
+  } catch (err) {
+    console.error('Retentie: nu am putut interoga comenzile neplatite eligibile pentru expirare:', err.message);
+    return { checked: 0, expired: 0, skipped: 0 };
+  }
+
+  let expired = 0, skipped = 0;
+  for (const order of candidates) {
+    if (await isVideoRenderActiveForOrder(order)) { skipped++; continue; }
+
+    const keysToDelete = [];
+    const newVariants = (order.variants || []).map(v => {
+      if (v.fullKey) keysToDelete.push(v.fullKey);
+      if (v.previewKey) keysToDelete.push(v.previewKey);
+      if (v.videoKey) keysToDelete.push(v.videoKey);
+      if (v.videoPreviewKey) keysToDelete.push(v.videoPreviewKey);
+      if (v.wavKey) keysToDelete.push(v.wavKey);
+      const { fullKey, previewKey, videoKey, videoPreviewKey, wavKey, ...rest } = v;
+      return rest;
+    });
+    // Materiale sursa incarcate (Cadou Video, pre-plata) — spre deosebire de
+    // purgeStaleSourceMedia (STRICT post-plata), aici comanda insasi nu va mai exista vizibil
+    // dupa acest job, deci materialele sursa trebuie curatate ODATA cu variantele, nu separat.
+    for (const m of (order.uploadedMedia || [])) {
+      if (m.key) keysToDelete.push(m.key);
+    }
+
+    for (const key of keysToDelete) {
+      try {
+        await storage.deletePrivateFile(key);
+      } catch (err) {
+        // izolat, ca la restul joburilor de retentie — nu opreste restul, nu blocheaza marcarea
+        // comenzii ca expirata (cheile sunt oricum golite mai jos)
+      }
+    }
+    try {
+      await db.expireUnpaidOrder(order.id, newVariants);
+      expired++;
+    } catch (err) {
+      console.error(`Retentie: nu am putut marca comanda neplatita ${order.id} ca expirata:`, err.message);
+    }
+  }
+  if (expired > 0 || skipped > 0) {
+    console.warn(`Retentie: ${expired} comenzi neplatite expirate (>${UNPAID_ORDER_RETENTION_DAYS} zile), ${skipped} sarite (randare inca activa), din ${candidates.length} eligibile.`);
+  }
+  return { checked: candidates.length, expired, skipped };
+}
+
+// Pornirea (apel imediat + setInterval) e langa initializarea schemei DB, la finalul fisierului
+// — vezi comentariul de la purgeStaleSourceMedia mai sus.
+
+app.post('/api/admin/retention/expire-unpaid-orders', async (req, res, next) => {
+  try {
+    const result = await expireStaleUnpaidOrders();
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ==========================================================================================
 // Retentie poveste/text de personalizare (decizie de business 2026-09-06, runda 3 —
 // simplificare la o singura regula) — foloseste ACEEASI CONTENT_RETENTION_DAYS (30 zile) ca
 // produsul final si materialele sursa. Runda anterioara folosea 60 de zile (30 acces + 30
@@ -3454,6 +3532,15 @@ async function requireOrderToken(req, res, next) {
     if (!order || !token || !safeCompare(token, order.accessToken)) {
       return res.status(404).json({ error: 'Comanda nu există' });
     }
+    // RETENTIE COMENZI NEPLATITE (2026-09-27): o comanda neplatita expirata (>7 zile, vezi
+    // expireStaleUnpaidOrders) nu mai acorda acces prin accessToken-ul ei vechi — tratata
+    // identic cu "nu exista" (acelasi raspuns generic ca token gresit/comanda inexistenta,
+    // niciun semnal in plus). status==='ready' e exclus structural de eligibilitatea jobului
+    // (nu poate avea niciodata unpaid_expired_at setat), dar verificarea explicita ramane
+    // defensiva/corecta indiferent de orice schimbare viitoare a acelei garanti.
+    if (order.unpaidExpiredAt && order.status !== 'ready') {
+      return res.status(404).json({ error: 'Comanda nu există' });
+    }
 
     req.order = order; // evita un al doilea SELECT in handler-ul care urmeaza
     next();
@@ -4141,6 +4228,10 @@ app.get('/api/orders/:orderId', async (req, res, next) => {
     const providedToken = typeof req.query.token === 'string' ? req.query.token : '';
     const expectedToken = order ? order.accessToken : DUMMY_TOKEN_FOR_TIMING;
     if (!order || !safeCompare(providedToken, expectedToken)) {
+      return res.status(404).json({ error: 'Comanda nu există.' });
+    }
+    // RETENTIE COMENZI NEPLATITE (2026-09-27) — vezi comentariul identic de la requireOrderToken.
+    if (order.unpaidExpiredAt && order.status !== 'ready') {
       return res.status(404).json({ error: 'Comanda nu există.' });
     }
 
@@ -5624,6 +5715,10 @@ app.get('/api/orders/access/:token', lookupLimiter, async (req, res, next) => {
 
     const order = await db.getOrderByToken(token);
     if (!order) return res.status(404).json({ error: 'Nicio comandă găsită pentru acest cod.' });
+    // RETENTIE COMENZI NEPLATITE (2026-09-27) — vezi comentariul identic de la requireOrderToken.
+    if (order.unpaidExpiredAt && order.status !== 'ready') {
+      return res.status(404).json({ error: 'Nicio comandă găsită pentru acest cod.' });
+    }
 
     // hasWav/hasVideo ale variantei ALESE — niciodata cheile de storage insele — necesare
     // ca pagina "comanda mea" sa poata arata extrasele de pachet (WAV/video) cand sunt gata,
@@ -6898,8 +6993,30 @@ async function finalizeVariantsIfNeeded(orderId, requestsInfo, options = {}) {
 // previewStart = 0 (comportamentul de dinainte) — nicio generare nu esueaza din cauza asta.
 // ==========================================================================================
 const TIMESTAMPED_LYRICS_TIMEOUT_MS = 8000; // timeout scurt — nu tinem procesarea in loc
-const TARGET_VOICE_POSITION_S = 9;          // pozitia dorita a vocii IN preview (secunda 8-10)
+// CORECȚIE (2026-09-27, "preview gratuit: 2-3 secunde instrumental, apoi voce" — cerinta
+// explicita): era 9 (voce in jurul secundei 8-10) — masurat direct ca lasa prea putin timp
+// util din preview (40s) pentru versuri/poveste la genurile cu intro lung. Mecanismul de
+// pozitionare insusi (findFirstRealWordStartS + alinierea reala Suno, mai jos) ramane
+// neschimbat — STRICT punctul tinta se muta mai devreme.
+const TARGET_VOICE_POSITION_S = 3;          // pozitia dorita a vocii IN preview (~2-3 sec)
 const PREVIEW_START_MAX_S = 25;             // plafon dur — niciodata mai mult de 25 sec sarite
+// CORECȚIE (2026-09-27, cauza REALA a "intro-ul instrumental consuma 29-30 sec din preview" —
+// gasita prin audit, nu presupusa): raspunsul furnizorului poate fi HTTP 200 valid structural,
+// dar cu alignedWords GOL, cand alinierea cuvant-cu-cuvant inca nu s-a terminat de calculat
+// (vezi EMPTY_ALIGNED_WORDS_RETRY_SECONDS mai jos, deja documentat ca fenomen REAL, observat
+// direct). Codul anterior trata acest caz ca un esec definitiv (cadea imediat pe
+// previewStart=0, adica exact fara nicio corectie), desi semnalul REAL (alinierea Suno) exista
+// si e valid — doar nu e inca gata. Nu inventam o euristica noua: reincercam STRICT acelasi
+// apel autoritativ (get-timestamped-lyrics), de cateva ori, cu pauze scurte — bugetul total ramas
+// STRICT marginit (MAX_EMPTY_ALIGNED_RETRIES x EMPTY_ALIGNED_RETRY_DELAY_MS), mult sub cele 45s
+// documentate pentru coada video-worker (acolo drumul critic al livrarii preview-ului NU e
+// afectat, aici DA — vezi Promise.all in buildVariantFromTrack, care oricum asteapta si
+// descarcarea fisierului complet in paralel).
+const MAX_EMPTY_ALIGNED_RETRIES = 3;
+const EMPTY_ALIGNED_RETRY_DELAY_MS = 4000;
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 // CORECȚIE (2026-09-13, esec real de productie confirmat direct — comanda Cadou Video,
 // alignedWords gol de 9 ori la rand, apoi INTERROGAT DIN NOU manual, direct la furnizor, cu
 // exact acelasi taskId/audioId — de data asta raspunsul a venit COMPLET): un raspuns HTTP 200
@@ -7006,30 +7123,45 @@ async function getPreviewStartFromLyrics(taskId, audioId, orderId) {
     return fallback('taskId sau audioId lipsa');
   }
 
-  let outcome;
-  try {
-    outcome = await fetchTimestampedLyricsOnce(taskId, audioId);
-  } catch (err) {
-    return fallback(`eroare neasteptata: ${err.message}`);
-  }
-  if (!outcome.ok) {
-    return fallback(outcome.reason);
-  }
+  // CORECȚIE (2026-09-27, vezi comentariul de la MAX_EMPTY_ALIGNED_RETRIES mai sus): alignedWords
+  // gol nu mai e tratat ca esec definitiv la prima incercare — reincercam ACELASI apel
+  // autoritativ, de cateva ori, cu pauze scurte, inainte sa cadem pe fallback. Orice ALT motiv
+  // de esec (raspuns invalid, HTTP nereusit, taskId lipsa) ramane fallback IMEDIAT, neschimbat.
+  let words = null;
+  for (let attempt = 0; attempt <= MAX_EMPTY_ALIGNED_RETRIES; attempt++) {
+    let outcome;
+    try {
+      outcome = await fetchTimestampedLyricsOnce(taskId, audioId);
+    } catch (err) {
+      return fallback(`eroare neasteptata: ${err.message}`);
+    }
+    if (!outcome.ok) {
+      return fallback(outcome.reason);
+    }
 
-  let body;
-  try {
-    body = await outcome.res.json();
-  } catch (err) {
-    return fallback('raspuns invalid (nu e JSON)');
-  }
+    let body;
+    try {
+      body = await outcome.res.json();
+    } catch (err) {
+      return fallback('raspuns invalid (nu e JSON)');
+    }
 
-  if (!body || body.code !== 200 || !body.data || !Array.isArray(body.data.alignedWords)) {
-    return fallback('structura raspuns neasteptata');
-  }
+    if (!body || body.code !== 200 || !body.data || !Array.isArray(body.data.alignedWords)) {
+      return fallback('structura raspuns neasteptata');
+    }
 
-  const words = body.data.alignedWords;
-  if (words.length === 0) {
-    return fallback('alignedWords gol');
+    if (body.data.alignedWords.length > 0) {
+      words = body.data.alignedWords;
+      break;
+    }
+
+    if (attempt < MAX_EMPTY_ALIGNED_RETRIES) {
+      console.log(`${logPrefix}: alignedWords gol (incercarea ${attempt + 1}/${MAX_EMPTY_ALIGNED_RETRIES + 1}) — reincerc dupa ${EMPTY_ALIGNED_RETRY_DELAY_MS}ms`);
+      await delay(EMPTY_ALIGNED_RETRY_DELAY_MS);
+    }
+  }
+  if (!words) {
+    return fallback('alignedWords gol dupa toate reincercarile');
   }
 
   const firstRealStartS = findFirstRealWordStartS(words);
@@ -10186,7 +10318,16 @@ function buildPrompt(order, feedback, genreOverride) {
   // (-38/-24 caractere), niciodata mai lunga — buget real ELIBERAT pentru poveste, nu furat.
   // "natural phrasing over forced rhyme" acopera direct cerinta explicita "nu sacrifica
   // naturalete/sens/gramatica pentru o rima perfecta".
-  const instructionWithSenderFull = ' Write this as a personal song from the sender to the recipient, weaving real, specific, never-invented story details throughout — never generic or repeated, natural over forced rhyme. Use only complete, grammatically correct words — never shortened. Start the vocals around 8-10 seconds, like the verse. Name the recipient early and in the chorus; mention the sender once.';
+  // CORECȚIE (2026-09-27, "povestea nu se regaseste in versuri INCA DE LA INCEPUT" — cerinta
+  // CRITICA, raportata dupa test real): audit a demonstrat ca instructiunea ceruse candva explicit
+  // un detaliu real in "verse 1" (vezi comentariul istoric de la buildHeadPart1/2, mai jos), dar
+  // corectia de buget din 2026-09-13 (runda 3, P1) a inlocuit "verse 1" cu "throughout" AICI SI
+  // in storyLabelFull/Short (mai jos) — pierzand garantia de plasare timpurie in ambele locuri
+  // simultan, fara sa fie observat. Reparat prin INLOCUIRE ("weaving...throughout" ->
+  // "opening on...then weaving more throughout"), acelasi principiu ca restul acestei sectiuni —
+  // NU o clauza noua separata (o clauza oportunista, cu prioritate mica, masurat direct ca nu
+  // incape aproape niciodata in comenzile TIPICE cu expeditor — vezi audit).
+  const instructionWithSenderFull = ' Write this as a personal song from the sender to the recipient, opening on a real, specific, never-invented story detail, then weaving more throughout — never generic or repeated, natural over forced rhyme. Use only complete, grammatically correct words — never shortened. Start the vocals around 8-10 seconds, like the verse. Name the recipient early and in the chorus; mention the sender once.';
   // fereastra SCURTA — masurat empiric (vezi raportul fazei): NU e un caz rar/de margine — orice
   // comanda cu expeditor numit SI un gen/ocazie de lungime obisnuita (verificat direct: chiar
   // "pop"/"aniversare", cele mai usoare combinatii tipice) DEPASESTE deja budgetForFixedPart cu
@@ -10210,9 +10351,16 @@ function buildPrompt(order, feedback, genreOverride) {
   // bugetului) — inainte STRICT pentru manele_suflet (prin variante separate, ...ManeleSuflet),
   // acum parte din formele SHORT insesi, pentru orice gen. Formele FULL raman NEATINSE (fara nicio
   // mentiune de linii, ca inainte).
-  const instructionWithSenderShort = ' Short lines; story details throughout, never invented/repeated; complete words, no shortening; name recipient early+chorus; sender once.';
-  const instructionNoSenderFull = ' Weave real, specific, never-invented story details throughout — never generic or repeated, natural over forced rhyme. Use only complete, grammatically correct words — never shortened. Start the vocals around 8-10 seconds, like the verse. Address the recipient by name naturally in the lyrics.';
-  const instructionNoSenderShort = ' Short lines; story details throughout, never invented/repeated. Address by name naturally, complete words, no shortening.';
+  // CORECȚIE (2026-09-27, aceeasi cerinta CRITICA de mai sus): "story details throughout" ->
+  // "story detail early+throughout" (+5, acelasi stil telegrafic ca "early+chorus" deja existent
+  // alaturi), COMPENSAT prin "complete words, no shortening" -> "no shortened words" (-12,
+  // acelasi inteles, forma mai telegrafica) — NET mai scurt decat inainte (-6/-6 caractere),
+  // deci nu doar "nu fura buget", chiar elibereaza putin — sigur si in cazurile extreme deja
+  // documentate (test/story-floor-occasion-fallback-fix.test.js, "PLASA DE SIGURANTA RAMANE
+  // NECESARA" — verificat direct, ramane exact la fel de protejat ca inainte).
+  const instructionWithSenderShort = ' Short lines; story detail early+throughout, never invented/repeated; no shortened words; name recipient early+chorus; sender once.';
+  const instructionNoSenderFull = ' Open on a real, specific, never-invented story detail, then weave more throughout — never generic or repeated, natural over forced rhyme. Use only complete, grammatically correct words — never shortened. Start the vocals around 8-10 seconds, like the verse. Address the recipient by name naturally in the lyrics.';
+  const instructionNoSenderShort = ' Short lines; story detail early+throughout, never invented/repeated. Address by name naturally, no shortened words.';
 
   let useShortInstruction = false;
   function currentInstruction() {
@@ -10829,6 +10977,28 @@ function buildExactLyricsRequest(order, exactLyrics, genreOverride, voicePrefere
   return { style, title, lyrics };
 }
 
+// CORECTIE (2026-09-27, "Pentru Pentru sotia mea" / dublarea prefixului de eticheta — bug REAL
+// raportat dupa testare in productie): campul liber "recipient" poate contine deja, scris de
+// client, un prefix natural echivalent cu eticheta folosita ulterior la afisare (ex. clientul a
+// raspuns cu propozitia completa "Pentru sotia mea" la campul "Pentru cine e melodia?", nu doar
+// un nume) — cand eticheta e adaugata DIN NOU la afisare ("Pentru: X" / "...pentru X..."),
+// rezultatul devine vizibil dublat ("Pentru: Pentru sotia mea" in email, "Pentru Pentru sotia
+// mea" pe pagina comenzii). NU modifica NICIODATA valoarea stocata in DB — STRICT o normalizare
+// de PREZENTARE, aplicata identic peste tot unde recipient e combinat cu o eticheta similara
+// (acest email, emailul de recuperare, comanda-mea.html, comenzile-mele.html, antetul
+// personalizat din melodia-mea.html). O valoare care NU incepe cu acest cuvant (ex. "Maria")
+// ramane complet neatinsa — afisata exact ca inainte.
+const FOR_WORD_BY_LANG = { ro: 'pentru', en: 'for', de: 'für', es: 'para', it: 'per', fr: 'pour', bg: 'за', tr: 'için' };
+function stripRedundantForPrefix(value, lang) {
+  const v = String(value || '').trim();
+  if (!v) return v;
+  const word = (FOR_WORD_BY_LANG[lang] || FOR_WORD_BY_LANG.ro).toLowerCase();
+  const lower = v.toLowerCase();
+  if (lower === word) return '';
+  if (lower.startsWith(word + ' ')) return v.slice(word.length).trim();
+  return v;
+}
+
 // ==========================================================================================
 // EMAIL DE LIVRARE — Resend. Link cu access token, nu doar "cauta cu emailul tau".
 // ==========================================================================================
@@ -10851,7 +11021,8 @@ async function sendDeliveryEmail(order) {
 
   const downloadUrl = `${DOMAIN}/media/full/${order.id}?token=${order.accessToken}`;
   const accessUrl = `${DOMAIN}/comanda-mea.html?token=${order.accessToken}`;
-  const safeRecipient = escapeHtmlForEmail(order.recipient);
+  const displayRecipient = stripRedundantForPrefix(order.recipient, order.lang);
+  const safeRecipient = escapeHtmlForEmail(displayRecipient);
 
   // "Melodia cadou" (cealalta varianta, nealeasa ca principala) — livrata la TOATE cele trei
   // pachete, nu doar Premium/Video (vezi getGiftVariant si /media/full/:orderId/gift). Ambele
@@ -10978,21 +11149,21 @@ async function sendDeliveryEmail(order) {
   const legalLine = LEGAL_NOTE[order.lang] || LEGAL_NOTE.ro;
 
   const templates = {
-    ro: { subject: `Cântecul tău pentru ${order.recipient} e gata`,
+    ro: { subject: `Cântecul tău pentru ${displayRecipient} e gata`,
       html: `<p>Salut,</p><p>Cântecul tău personalizat pentru <strong>${safeRecipient}</strong> e gata.</p><p><a href="${downloadUrl}">Descarcă melodia</a></p>${giftLine}${premiumBonusLine}${videoLine}<p>Le poți regăsi oricând la <a href="${accessUrl}">acest link</a>.${extrasNote}${downloadReminder}</p>${legalLine}<p>— NALUNA</p>` },
-    en: { subject: `Your song for ${order.recipient} is ready`,
+    en: { subject: `Your song for ${displayRecipient} is ready`,
       html: `<p>Hi,</p><p>Your personalised song for <strong>${safeRecipient}</strong> is ready.</p><p><a href="${downloadUrl}">Download your song</a></p>${giftLine}${premiumBonusLine}${videoLine}<p>You can find them anytime at <a href="${accessUrl}">this link</a>.${extrasNote}${downloadReminder}</p>${legalLine}<p>— NALUNA</p>` },
-    de: { subject: `Dein Lied für ${order.recipient} ist fertig`,
+    de: { subject: `Dein Lied für ${displayRecipient} ist fertig`,
       html: `<p>Hallo,</p><p>Dein persönliches Lied für <strong>${safeRecipient}</strong> ist fertig.</p><p><a href="${downloadUrl}">Lied herunterladen</a></p>${giftLine}${premiumBonusLine}${videoLine}<p>Du findest sie jederzeit über <a href="${accessUrl}">diesen Link</a>.${extrasNote}${downloadReminder}</p>${legalLine}<p>— NALUNA</p>` },
-    es: { subject: `Tu canción para ${order.recipient} está lista`,
+    es: { subject: `Tu canción para ${displayRecipient} está lista`,
       html: `<p>Hola,</p><p>Tu canción personalizada para <strong>${safeRecipient}</strong> está lista.</p><p><a href="${downloadUrl}">Descargar la canción</a></p>${giftLine}${premiumBonusLine}${videoLine}<p>Puedes encontrarlas siempre en <a href="${accessUrl}">este enlace</a>.${extrasNote}${downloadReminder}</p>${legalLine}<p>— NALUNA</p>` },
-    it: { subject: `La tua canzone per ${order.recipient} è pronta`,
+    it: { subject: `La tua canzone per ${displayRecipient} è pronta`,
       html: `<p>Ciao,</p><p>La tua canzone personalizzata per <strong>${safeRecipient}</strong> è pronta.</p><p><a href="${downloadUrl}">Scarica la canzone</a></p>${giftLine}${premiumBonusLine}${videoLine}<p>Puoi trovarle sempre su <a href="${accessUrl}">questo link</a>.${extrasNote}${downloadReminder}</p>${legalLine}<p>— NALUNA</p>` },
-    fr: { subject: `Votre chanson pour ${order.recipient} est prête`,
+    fr: { subject: `Votre chanson pour ${displayRecipient} est prête`,
       html: `<p>Bonjour,</p><p>Votre chanson personnalisée pour <strong>${safeRecipient}</strong> est prête.</p><p><a href="${downloadUrl}">Télécharger la chanson</a></p>${giftLine}${premiumBonusLine}${videoLine}<p>Vous pouvez les retrouver à tout moment via <a href="${accessUrl}">ce lien</a>.${extrasNote}${downloadReminder}</p>${legalLine}<p>— NALUNA</p>` },
-    bg: { subject: `Твоята песен за ${order.recipient} е готова`,
+    bg: { subject: `Твоята песен за ${displayRecipient} е готова`,
       html: `<p>Здравей,</p><p>Твоята персонализирана песен за <strong>${safeRecipient}</strong> е готова.</p><p><a href="${downloadUrl}">Изтегли песента</a></p>${giftLine}${premiumBonusLine}${videoLine}<p>Можеш да ги намериш винаги на <a href="${accessUrl}">този линк</a>.${extrasNote}${downloadReminder}</p>${legalLine}<p>— NALUNA</p>` },
-    tr: { subject: `${order.recipient} için şarkınız hazır`,
+    tr: { subject: `${displayRecipient} için şarkınız hazır`,
       html: `<p>Merhaba,</p><p><strong>${safeRecipient}</strong> için kişiselleştirilmiş şarkınız hazır.</p><p><a href="${downloadUrl}">Şarkınızı indirin</a></p>${giftLine}${premiumBonusLine}${videoLine}<p><a href="${accessUrl}">Bu bağlantıdan</a> her zaman ulaşabilirsiniz.${extrasNote}${downloadReminder}</p>${legalLine}<p>— NALUNA</p>` }
   };
 
@@ -11078,9 +11249,22 @@ async function sendAccessRecoveryEmail({ email, lang, orders }) {
   const safeLang = ALLOWED_LANGS.includes(lang) ? lang : 'ro';
   const text = RECOVERY_ACCESS_EMAIL_TEXT[safeLang];
 
+  // CORECTIE (2026-09-27, bug REAL raportat — sectiunea M): linkul trimitea catre
+  // comanda-mea.html, o pagina construita STRICT pentru "reafiseaza fisierul deja livrat unei
+  // comenzi PLATITE" (randeaza player/descarcari DOAR daca order.status==='ready' — pentru
+  // orice alta stare afiseaza STRICT antetul, fara player, fara variante, fara actiune de
+  // continuare) — motivul exact pentru care clientul "nu mai gasea comenzile/melodiile", desi
+  // API-ul raspundea corect. Toate cardurile trimit acum catre ACEEASI pagina noua,
+  // comenzile-mele.html, cu TOATE token-urile eligibile gasite acum (?tokens=a,b,c) — un singur
+  // clic, de pe orice dispozitiv nou, adauga local toate comenzile si le afiseaza pe toate
+  // (variante audio + player + actiunea corecta de continuare), nu doar cea a cardului apasat.
+  const allTokens = orders.map((o) => o.accessToken).join(',');
+  const accessUrl = `${DOMAIN}/comenzile-mele.html?tokens=${encodeURIComponent(allTokens)}`;
+
   const cards = orders.map((order, idx) => {
-    const accessUrl = `${DOMAIN}/comanda-mea.html?token=${order.accessToken}`;
-    const safeRecipient = escapeHtmlForEmail(order.recipient || '');
+    // stripRedundantForPrefix foloseste safeLang (limba ETICHETEI afisate aici, "Pentru"), nu
+    // order.lang — corect chiar daca aceasta comanda a fost creata in alta limba.
+    const safeRecipient = escapeHtmlForEmail(stripRedundantForPrefix(order.recipient || '', safeLang));
     const planName = planDisplayName(order.plan, safeLang);
     return `<div style="margin:16px 0;padding:14px 16px;border:1px solid #e8e2d6;border-radius:8px;">
       <p style="margin:0 0 6px;font-weight:600;">${idx + 1}. ${planName}</p>
@@ -11432,6 +11616,8 @@ if (require.main === module) {
       setInterval(() => { anonymizeStaleStories().catch(() => {}); }, 24 * 60 * 60 * 1000).unref();
       purgeStaleFunnelEvents().catch(() => {});
       setInterval(() => { purgeStaleFunnelEvents().catch(() => {}); }, 24 * 60 * 60 * 1000).unref();
+      expireStaleUnpaidOrders().catch(() => {});
+      setInterval(() => { expireStaleUnpaidOrders().catch(() => {}); }, 24 * 60 * 60 * 1000).unref();
 
       // Worker-ul de social publishing (scheduling + retry + lifecycle token Instagram) — vezi
       // lib/social/social-worker.js. Ruleaza o data imediat (recupereaza orice a ramas 'publishing'

@@ -187,8 +187,8 @@ test('TEST 2: buildExactLyricsRequest() contine noua clauza de continuitate ("li
 // test/lyrics-short-lines-all-genres.test.js pentru mecanismul complet al acestei schimbari.
 test('TEST 3: forma FULL ("Start the vocals around 8-10 seconds, like the verse.") ramane byte-identica; forma SHORT foloseste acum "Short lines" (linii scurte, extins la toate genurile)', () => {
   assert.ok(server.includes('Start the vocals around 8-10 seconds, like the verse.'), 'forma FULL trebuie sa existe verbatim');
-  assert.ok(server.includes(" Short lines; story details throughout, never invented/repeated; complete words, no shortening; name recipient early+chorus; sender once.'"), 'instructionWithSenderShort trebuie sa foloseasca noua formulare (linii scurte)');
-  assert.ok(server.includes(" Short lines; story details throughout, never invented/repeated. Address by name naturally, complete words, no shortening.'"), 'instructionNoSenderShort trebuie sa foloseasca noua formulare (linii scurte)');
+  assert.ok(server.includes(" Short lines; story detail early+throughout, never invented/repeated; no shortened words; name recipient early+chorus; sender once.'"), 'instructionWithSenderShort trebuie sa foloseasca noua formulare (linii scurte)');
+  assert.ok(server.includes(" Short lines; story detail early+throughout, never invented/repeated. Address by name naturally, no shortened words.'"), 'instructionNoSenderShort trebuie sa foloseasca noua formulare (linii scurte)');
   const idx = server.indexOf('function currentInstruction() {');
   const end = server.indexOf('\n  }', idx);
   assert.ok(!server.slice(idx, end).includes('Verse intro'), '"Verse intro" nu mai trebuie sa existe in currentInstruction() (mentiuni istorice raman STRICT in comentarii, nu in cod)');

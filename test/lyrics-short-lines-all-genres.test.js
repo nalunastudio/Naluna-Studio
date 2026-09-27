@@ -329,9 +329,12 @@ test('server.js: instructionWithSenderShort/instructionNoSenderShort contin STRI
   assert.ok(!m2[1].includes('Verse intro'));
 });
 
-test('server.js: formele FULL (instructionWithSenderFull/instructionNoSenderFull) raman BYTE-IDENTICE — neatinse de aceasta extindere', () => {
-  assert.match(server, /const instructionWithSenderFull = ' Write this as a personal song from the sender to the recipient, weaving real, specific, never-invented story details throughout — never generic or repeated, natural over forced rhyme\. Use only complete, grammatically correct words — never shortened\. Start the vocals around 8-10 seconds, like the verse\. Name the recipient early and in the chorus; mention the sender once\.';/);
-  assert.match(server, /const instructionNoSenderFull = ' Weave real, specific, never-invented story details throughout — never generic or repeated, natural over forced rhyme\. Use only complete, grammatically correct words — never shortened\. Start the vocals around 8-10 seconds, like the verse\. Address the recipient by name naturally in the lyrics\.';/);
+test('server.js: formele FULL (instructionWithSenderFull/instructionNoSenderFull) raman fara nicio mentiune de linii ("Short lines") — neatinse de aceasta extindere (o corectie ULTERIOARA, separata, 2026-09-27, le-a reformulat pentru plasarea timpurie a povestii — vezi test/p1-story-preservation-8-languages.test.js pentru textul actual exact)', () => {
+  const m1 = server.match(/const instructionWithSenderFull = '([^']*)';/);
+  const m2 = server.match(/const instructionNoSenderFull = '([^']*)';/);
+  assert.ok(m1 && m2);
+  assert.ok(!m1[1].includes('Short lines'));
+  assert.ok(!m2[1].includes('Short lines'));
 });
 
 test('server.js: currentInstruction() nu mai face NICIO ramificare pe gen — STRICT pe hasSender/useShortInstruction', () => {

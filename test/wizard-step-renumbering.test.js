@@ -22,9 +22,15 @@ function extractFn(source, signature) {
 // ===============================================================================================
 // Structura HTML — exact 8 pasi, in ordine, fara duplicate.
 // ===============================================================================================
-test('comanda.html: exista EXACT 8 step-card-uri, cu data-step de la 1 la 8, fara duplicate', () => {
+test('comanda.html: exista EXACT 8 step-card-uri numerotate (wizard-ul propriu-zis), cu data-step de la 1 la 8, fara duplicate — plus EXACT 2 ecrane gate (data-step="0", "Comenzile mele inainte de generare", 2026-09-27), INAINTEA lor, neschimband numerotarea 1-8', () => {
   const steps = [...html.matchAll(/class="step-card" data-step="(\d+)"/g)].map(m => Number(m[1]));
-  assert.deepEqual(steps, [1, 2, 3, 4, 5, 6, 7, 8]);
+  const gateSteps = steps.filter((n) => n === 0);
+  const numberedSteps = steps.filter((n) => n !== 0);
+  assert.equal(gateSteps.length, 2, 'gate-email-screen + gate-choice-screen, ambele data-step="0" (showStep(n>=1) le ascunde automat)');
+  assert.deepEqual(numberedSteps, [1, 2, 3, 4, 5, 6, 7, 8]);
+  // Gate-ul apare STRICT inaintea pasului 1 in sursa (ordinea DOM conteaza — primul lucru vazut).
+  assert.ok(html.indexOf('id="gate-email-screen"') < html.indexOf('class="step-card" data-step="1"'));
+  assert.ok(html.indexOf('id="gate-choice-screen"') < html.indexOf('class="step-card" data-step="1"'));
 });
 
 test('comanda.html: pasul 3 e EXCLUSIV gen (fara nicio urma de voice-grid/voice_label)', () => {

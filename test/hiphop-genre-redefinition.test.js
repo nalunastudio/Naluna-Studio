@@ -110,7 +110,7 @@ test('PROTECTIE: VOICE_INSTRUCTIONS_FULL/SHORT raman byte-identice', () => {
 // intro") — vezi test/lyrics-short-lines-all-genres.test.js pentru mecanismul complet.
 test('PROTECTIE: clauza de vocal-onset — forma FULL ("like the verse") ramane neatinsa; forma SHORT foloseste acum "Short lines"', () => {
   assert.ok(server.includes('Start the vocals around 8-10 seconds, like the verse.'));
-  assert.ok(server.includes(" Short lines; story details throughout, never invented/repeated; complete words, no shortening; name recipient early+chorus; sender once.'"));
+  assert.ok(server.includes(" Short lines; story detail early+throughout, never invented/repeated; no shortened words; name recipient early+chorus; sender once.'"));
 });
 
 test('PROTECTIE: durationTargetClause ramane byte-identic', () => {

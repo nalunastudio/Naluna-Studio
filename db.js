@@ -844,6 +844,15 @@ async function initDb() {
     );
   `);
 
+  // RETENTIE COMENZI NEPLATITE (2026-09-27, cerinta explicita) — DIFERITA si INDEPENDENTA de
+  // generation quota (client_generation_cycles, mai sus) SI de retentia comenzilor PLATITE
+  // (CONTENT_RETENTION_DAYS=30, final_media_expired_at/source_media_purged_at/story_anonymized_at,
+  // neschimbate). O comanda NEPLATITA (status != 'ready') e pastrata maximum 7 zile de la creare —
+  // dupa care fisierele ei sunt curatate (vezi expireStaleUnpaidOrders, server.js) si comanda nu
+  // mai apare/nu mai acorda acces prin accessToken. Additiv, idempotent — nicio comanda existenta
+  // nu e atinsa la introducerea coloanei (NULL implicit).
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS unpaid_expired_at TIMESTAMPTZ;`);
+
   // ==================================================================================
   // RECOVERY EMAILS (2026-09-25, IMPLEMENTARE — vezi lib/recovery-emails/) — outbox ACELASI
   // tipar exact ca meta_capi_events (claim atomic FOR UPDATE SKIP LOCKED, retry cu backoff,
@@ -1028,7 +1037,13 @@ function rowToOrder(row) {
       ? null
       : !!row.email_marketing_opt_out,
     emailMarketingChoiceAt: row.email_marketing_choice_at || null,
-    emailMarketingPolicyVersion: row.email_marketing_policy_version || null
+    emailMarketingPolicyVersion: row.email_marketing_policy_version || null,
+    // RETENTIE COMENZI NEPLATITE (2026-09-27, 7 zile) — vezi expireStaleUnpaidOrders (server.js).
+    // Expus, spre deosebire de final_media_expired_at/source_media_purged_at/story_anonymized_at
+    // (raman STRICT interne, citite doar prin SQL brut in functiile lor dedicate) — necesar aici
+    // ca requireOrderToken/rutele GET sa poata verifica direct pe obiectul order deja incarcat,
+    // fara un SELECT suplimentar.
+    unpaidExpiredAt: row.unpaid_expired_at || null
   };
 }
 
@@ -1326,6 +1341,7 @@ async function getEligibleOrdersForAccessRecovery(emailKey) {
      WHERE lower(trim(email)) = $1
        AND status NOT IN ('draft', 'generation_failed')
        AND (status <> 'ready' OR final_media_expired_at IS NULL)
+       AND unpaid_expired_at IS NULL
      ORDER BY created_at ASC
      LIMIT 20`,
     [emailKey]
@@ -1772,6 +1788,39 @@ async function findOrdersEligibleForFinalMediaExpiry(cutoffDate) {
 async function expireOrderFinalMedia(id, newVariants) {
   await pool.query(
     `UPDATE orders SET variants = $2::jsonb, final_media_expired_at = now() WHERE id = $1`,
+    [id, JSON.stringify(newVariants)]
+  );
+}
+
+// RETENTIE COMENZI NEPLATITE (2026-09-27, 7 zile, cerinta explicita) — complet SEPARATA de
+// retentia comenzilor PLATITE de mai sus (30 zile de la paid_at). Eligibila: STRICT status
+// diferit de 'ready' (o comanda platita nu intra NICIODATA aici, indiferent de varsta —
+// urmeaza EXCLUSIV politica de retentie a comenzilor platite), inca ne-expirata, si mai veche
+// de `cutoffDate` (created_at, singura data relevanta — o comanda neplatita nu are paid_at).
+// regeneration_status 'running' exclus, aceeasi garda defensiva ca la retentia platita (un
+// admin poate rula rar o corectie chiar si pe o comanda inca neplatita).
+async function findOrdersEligibleForUnpaidExpiry(cutoffDate) {
+  const result = await pool.query(
+    `SELECT * FROM orders
+     WHERE status <> 'ready'
+       AND unpaid_expired_at IS NULL
+       AND regeneration_status IS DISTINCT FROM 'running'
+       AND created_at < $1
+     ORDER BY created_at ASC`,
+    [cutoffDate]
+  );
+  return result.rows.map(rowToOrder);
+}
+
+// Goleste STRICT variants+uploaded_media (fisierele reale sunt sterse din storage DE APELANT,
+// server.js, INAINTE de acest apel, exact acelasi tipar ca expireOrderFinalMedia/
+// purgeOrderSourceMedia mai sus) — NICIODATA sterge randul comenzii (fara risc de FK/orphan:
+// video_render_jobs/meta_capi_events/order_notifications raman valide, referind acelasi id).
+// story/recipient/email raman NEATINSE — nu e o cerere GDPR (acelea folosesc anonymizeOrder,
+// separat), STRICT curatare de continut audio/materiale devenit inaccesibil dupa 7 zile.
+async function expireUnpaidOrder(id, newVariants) {
+  await pool.query(
+    `UPDATE orders SET variants = $2::jsonb, uploaded_media = '[]'::jsonb, unpaid_expired_at = now() WHERE id = $1`,
     [id, JSON.stringify(newVariants)]
   );
 }
@@ -3573,6 +3622,7 @@ module.exports = {
   startRegenerationJob, updateRegenerationPhaseIfLater, markRegenerationStatus,
   claimOrderForProviderFinalization, claimOrderForRegeneration, claimOrderForInitialGeneration,
   getEligibleOrdersForAccessRecovery,
+  findOrdersEligibleForUnpaidExpiry, expireUnpaidOrder,
   refundEditIfReserved,
   claimVideoRender, releaseVideoRender, recordStripeEventIfNew, recordPaidOrderAtomically,
   recordResendEventIfNew, addEmailSuppression, isEmailSuppressed,

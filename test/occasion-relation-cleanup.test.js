@@ -135,10 +135,11 @@ test('comanda.html: collectPayload trimite recipient exact cum l-a introdus clie
   assert.ok(!/name[12]Input\.value\.(slice|charAt|substring)/.test(html), 'nu trebuie sa existe nicio prescurtare a numelor in frontend');
 });
 
-test('melodia-mea.html: antetul foloseste order.recipient COMPLET, fara nicio trunchiere client-side', () => {
+test('melodia-mea.html: antetul foloseste order.recipient COMPLET, fara nicio trunchiere client-side (normalizat prin stripRedundantForPrefix — corectie "Pentru Pentru", 2026-09-27 — dar niciodata trunchiat)', () => {
   const html = read('public/melodia-mea.html');
-  assert.ok(html.includes('const heading = headingFn(recipientNoun, order.recipient || \'\');'));
+  assert.ok(html.includes('const heading = headingFn(recipientNoun, recipientForHeading);'));
   assert.ok(!/order\.recipient\.(slice|charAt|substring)/.test(html), 'antetul nu trebuie sa trunchieze niciodata order.recipient');
+  assert.ok(!/recipientForHeading\.(slice|charAt|substring)/.test(html), 'stripRedundantForPrefix nu trebuie sa trunchieze — doar elimina un prefix redundant de INCEPUT');
 });
 // Verificarea EXECUTABILA (rulare reala a buildPrompt cu date worst-case) e in
 // test/nunta-both-names-no-truncation.test.js — 7 teste dedicate, inclusiv nume de 60 caractere,

@@ -525,6 +525,22 @@
     return div.innerHTML;
   }
 
+  // CORECTIE (2026-09-27, "Pentru Pentru sotia mea" — bug REAL raportat): campul liber
+  // "recipient" poate contine deja, scris de client, un prefix natural echivalent cu eticheta
+  // afisata aici ("Pentru"/"For"/etc.) — cand eticheta e adaugata DIN NOU, rezultatul devine
+  // vizibil dublat. NU modifica valoarea din DB — STRICT normalizare de prezentare, identica cu
+  // cea din server.js (stripRedundantForPrefix) si din comenzile-mele.html/melodia-mea.html.
+  const FOR_WORD_BY_LANG = { ro: 'pentru', en: 'for', de: 'für', es: 'para', it: 'per', fr: 'pour', bg: 'за', tr: 'için' };
+  function stripRedundantForPrefix(value, activeLang) {
+    const v = String(value || '').trim();
+    if (!v) return v;
+    const word = (FOR_WORD_BY_LANG[activeLang] || FOR_WORD_BY_LANG.ro).toLowerCase();
+    const lower = v.toLowerCase();
+    if (lower === word) return '';
+    if (lower.startsWith(word + ' ')) return v.slice(word.length).trim();
+    return v;
+  }
+
   let currentToken = null;
   // RELANSARE (2026-08-14, "un singur FormData cu toate fisierele intr-un singur POST nu e
   // incarcare directa/fragmentata/reluabila"): inlocuit stagedFiles + un buton "Incarca" manual
@@ -1461,7 +1477,7 @@
       results.innerHTML = `
         <div class="order">
           <div class="top">
-            <div class="name">${t.for_label} ${escapeHtml(o.recipient)}</div>
+            <div class="name">${t.for_label} ${escapeHtml(stripRedundantForPrefix(o.recipient, lang))}</div>
             <div class="status status-${o.status}">${t.status[o.status] || o.status}</div>
           </div>
           ${planBadgeHtml}

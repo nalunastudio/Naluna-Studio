@@ -195,9 +195,18 @@ test('server.js: sendAccessRecoveryEmail respecta email_suppressions (isEmailSup
   assert.match(body, /db\.isEmailSuppressed\(email\)/);
 });
 
-test('server.js: link-ul din emailul de recuperare foloseste EXACT acelasi mecanism de acces (comanda-mea.html?token=) ca livrarea normala — nicio ruta/bypass noua', () => {
+// CORECTIE (2026-09-27, bug REAL raportat, sectiunea M): linkul catre comanda-mea.html a fost
+// inlocuit — acea pagina afiseaza player/variante STRICT pentru status==='ready' (comanda
+// PLATITA), motiv exact pentru care clientul "nu mai gasea comenzile/melodiile" cand dadea
+// click din email pe o comanda inca neplatita. Linkul foloseste acum /comenzile-mele.html (noua
+// pagina, arata toate variantele/playerele indiferent de status), cu TOATE token-urile
+// eligibile (?tokens=a,b,c) — un singur click adauga local toate comenzile. Ramane acelasi
+// mecanism de acces (accessToken-uri individuale, deja auditate), NICIO ruta/bypass noua.
+test('server.js: link-ul din emailul de recuperare foloseste comenzile-mele.html (nu comanda-mea.html, care afiseaza player STRICT pentru comenzi platite) cu TOATE accessToken-urile eligibile', () => {
   const body = extractBraced(serverSrc, 'async function sendAccessRecoveryEmail(');
-  assert.match(body, /\$\{DOMAIN\}\/comanda-mea\.html\?token=\$\{order\.accessToken\}/);
+  assert.match(body, /const allTokens = orders\.map\(\(o\) => o\.accessToken\)\.join\(','\);/);
+  assert.match(body, /\$\{DOMAIN\}\/comenzile-mele\.html\?tokens=\$\{encodeURIComponent\(allTokens\)\}/);
+  assert.ok(!/const accessUrl = `\$\{DOMAIN\}\/comanda-mea\.html/.test(body), 'linkul construit nu mai trebuie sa fie comanda-mea.html (comentariul explicativ poate mentiona numele paginii vechi, doar codul viu conteaza)');
 });
 
 test('server.js: niciun console.log/warn/error din sendAccessRecoveryEmail NU interpoleaza accessToken — tokenul nu ajunge niciodata in loguri', () => {

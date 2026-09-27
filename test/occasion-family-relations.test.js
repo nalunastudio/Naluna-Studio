@@ -212,10 +212,10 @@ test('melodia-mea.html: antetul personalizat compune "Melodia pentru {relatie} {
   assert.ok(html.includes('ro: (sn, name) => `Din partea ${sn} ${name}`,'));
 });
 
-test('melodia-mea.html: renderContent() foloseste antetul personalizat DOAR cand order.recipientRole exista, altfel EXACT antetul generic vechi', () => {
+test('melodia-mea.html: renderContent() foloseste antetul personalizat DOAR cand order.recipientRole exista, altfel antetul generic vechi (acum trecut prin stripRedundantForPrefix — corectie "Pentru Pentru", 2026-09-27, vezi test/recipient-prefix-duplication-fix.test.js)', () => {
   const html = read('public/melodia-mea.html');
   assert.ok(html.includes('const personalized = composePersonalizedHeading(order, lang);'));
-  assert.ok(html.includes("document.getElementById('song-heading').textContent = t.heading(order.recipient || '');"), 'fallback-ul generic vechi trebuie sa ramana neschimbat');
+  assert.ok(html.includes("document.getElementById('song-heading').textContent = t.heading(stripRedundantForPrefix(order.recipient, lang));"), 'fallback-ul generic ramane, dar normalizat prin stripRedundantForPrefix (nu mai foloseste order.recipient brut)');
 });
 
 // -------------------------------------------------------------------------------------------

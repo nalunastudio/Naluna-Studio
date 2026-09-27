@@ -60,6 +60,14 @@
     transition:border-color .2s ease;
   }
   textarea{ min-height:110px; resize:vertical; }
+  /* CORECȚIE (2026-09-27, checkbox rupt pe mobil): regula generica de mai sus ("input, select,
+     textarea") se aplica si lui <input type="checkbox"> — width:100%/padding:13px 15px il
+     transforma intr-un dreptunghi mare, bordurat, care ocupa aproape tot randul flex
+     (.field-checkbox), impingand textul optiunii spre marginea din dreapta. Reset explicit,
+     STRICT pentru checkbox-uri — nu schimba nimic la input/select/textarea normale. */
+  input[type="checkbox"]{
+    width:18px; height:18px; padding:0; flex:0 0 auto; accent-color:var(--gold);
+  }
   input:focus, select:focus, textarea:focus{ outline:2px solid var(--gold); outline-offset:1px; border-color:var(--gold); }
   input.field-invalid, select.field-invalid, textarea.field-invalid{ border-color:var(--error); }
   .field-error{ color:var(--error); font-size:12px; margin-top:6px; min-height:14px; }
@@ -284,14 +292,66 @@
     <a href="/index.html" class="back-link" data-i18n="back_link">← Înapoi la pagina principală</a>
   </div>
 
-  <div class="progress-wrap">
+  <div class="progress-wrap" id="progress-wrap" style="display:none;">
     <div class="progress-track"><div class="progress-fill" id="progress-fill" style="width:25%;"></div></div>
     <div class="progress-label" id="progress-label">Pasul 1 din 4</div>
   </div>
 
   <form id="order-form" novalidate>
 
-    <div class="step-card" data-step="1">
+    <!-- GATE (2026-09-27, "Comenzile mele inainte de generare", cerinta explicita) — ecran
+         preliminar, INAINTEA wizard-ului numerotat (pasii 1-8 de mai jos, NESCHIMBATI). Emailul e
+         cerut acum ca prim contact, inainte de restul formularului; imediat dupa, clientul alege
+         explicit intre "Comenzile mele" (acces la comenzile deja create, NICIODATA conditionat de
+         limita 3/7) si "Creeaza o melodie noua" (continua wizard-ul normal, neschimbat, de la
+         pasul 1). Foloseste class="step-card" pentru identic acelasi aspect vizual ca un pas
+         normal (cerinta explicita: "nu vreau un modal improvizat") — dar data-step="0" (niciodata
+         un numar valid de pas 1-8), deci showStep(n>=1) le ascunde automat pe amandoua (vezi
+         bucla din showStep, mai jos), fara cod suplimentar de curatare. #email si
+         #email-marketing-optout raman EXACT aceleasi elemente (acelasi id, doar mutate fizic aici
+         din fostul pas 2) — toata logica existenta (saveDraft/restoreDraft/collectPayload/
+         validateStep) continua sa functioneze neschimbata. Pana la acest ecran nu exista niciun
+         fetch catre server — introducerea emailului NU creeaza order, NU consuma quota, NU
+         apeleaza Suno, NU creeaza sesiune Stripe. -->
+    <div class="step-card" data-step="0" id="gate-email-screen">
+      <h1 data-i18n="gate_email_title">Hai să începem</h1>
+      <p class="price-note" style="margin-bottom:20px;" data-i18n="gate_email_subtitle">Îți trimitem melodia pe acest email — și tot aici poți reveni oricând la comenzile tale</p>
+
+      <div class="field">
+        <label for="email" data-i18n="label_email">Emailul tău (primești melodia și aici)</label>
+        <input type="email" id="email" placeholder="nume@exemplu.com">
+        <div class="field-error" id="err-email"></div>
+        <!-- EMAIL MARKETING OPT-OUT (2026-09-25, corectie PECR soft opt-in) — MUTAT aici odata cu
+             emailul (2026-09-27), semantica si comportamentul complet neschimbate: optiune CLARA,
+             SIMPLA, OPTIONALA, COMPLET SEPARATA de Analytics/Marketing (cookie consent Meta
+             Pixel/CAPI, neatinse). Necompletata/nebifata = eligibil (soft opt-in implicit) —
+             bifarea NU blocheaza in niciun fel trimiterea comenzii. -->
+        <label class="field-checkbox" for="email-marketing-optout" style="display:flex; align-items:flex-start; gap:8px; margin-top:8px; font-weight:normal; cursor:pointer;">
+          <input type="checkbox" id="email-marketing-optout" style="margin-top:3px;">
+          <span data-i18n="label_email_marketing_optout">Nu vreau emailuri de reamintire dacă nu finalizez comanda</span>
+        </label>
+      </div>
+
+      <div class="wizard-nav single">
+        <button type="button" class="btn btn-primary btn-continue" id="gate-email-continue-btn" data-i18n="btn_continue">Continuă</button>
+      </div>
+    </div>
+
+    <div class="step-card" data-step="0" id="gate-choice-screen" style="display:none;">
+      <h1 data-i18n="gate_choice_title">Ce vrei să faci?</h1>
+
+      <div class="field" style="border:1px solid var(--line); border-radius:14px; padding:18px;">
+        <label style="font-weight:600; display:block; margin-bottom:6px;" data-i18n="gate_my_orders_title">Comenzile mele</label>
+        <p class="price-note" id="gate-my-orders-desc" style="margin-bottom:14px;" data-i18n="gate_my_orders_desc">Vezi și ascultă melodiile pe care le-ai creat deja.</p>
+        <a href="/comenzile-mele.html" class="btn btn-ghost" id="gate-my-orders-link" data-i18n="gate_my_orders_btn" style="width:100%;">Comenzile mele</a>
+      </div>
+
+      <div class="wizard-nav single" style="margin-top:18px;">
+        <button type="button" class="btn btn-primary btn-continue" id="gate-new-song-btn" data-i18n="gate_new_song_btn">Creează o melodie nouă</button>
+      </div>
+    </div>
+
+    <div class="step-card" data-step="1" style="display:none;">
       <h1 data-i18n="wizard_step1_title">Pentru ce moment vrei cântecul?</h1>
       <div class="theme-grid" id="theme-grid">
         <div class="theme-card active" data-theme="dor">
@@ -473,21 +533,12 @@
         <div class="price-note" style="margin-top:6px;" data-i18n="story_hint">Poți scrie în orice limbă — versurile vor fi generate în limba aleasă mai sus</div>
         <div class="field-error" id="err-story"></div>
       </div>
-      <div class="field">
-        <label for="email" data-i18n="label_email">Emailul tău (primești melodia și aici)</label>
-        <input type="email" id="email" placeholder="nume@exemplu.com">
-        <div class="field-error" id="err-email"></div>
-        <!-- EMAIL MARKETING OPT-OUT (2026-09-25, corectie PECR soft opt-in) — optiune CLARA,
-             SIMPLA, OPTIONALA, la locul exact unde se colecteaza emailul, COMPLET SEPARATA de
-             Analytics/Marketing (cookie consent Meta Pixel/CAPI, neatinse — vezi consimtamant
-             separat la nivel de site). Necompletata/nebifata = eligibil (soft opt-in implicit) —
-             bifarea NU blocheaza in niciun fel trimiterea comenzii (fara "required", fara validare
-             la data-validate="2"). -->
-        <label class="field-checkbox" for="email-marketing-optout" style="display:flex; align-items:flex-start; gap:8px; margin-top:8px; font-weight:normal; cursor:pointer;">
-          <input type="checkbox" id="email-marketing-optout" style="margin-top:3px;">
-          <span data-i18n="label_email_marketing_optout">Nu vreau emailuri de reamintire dacă nu finalizez comanda</span>
-        </label>
-      </div>
+      <!-- EMAIL (2026-09-27, "Comenzile mele inainte de generare") — campul #email si checkbox-ul
+           #email-marketing-optout au fost MUTATE in gate-email-screen (primul ecran, inaintea
+           acestui pas — vezi markup-ul de dupa <form id="order-form">), colectate acum ca prim
+           contact, imediat dupa "Comandă acum". Element identic, acelasi id, doar reamplasat
+           fizic — validarea (validateStep), saveDraft/restoreDraft si collectPayload raman
+           neschimbate (citesc/scriu acelasi #email, indiferent de locatia lui in DOM). -->
       <div class="field">
         <label for="phone" data-i18n="label_phone">Număr WhatsApp (opțional)</label>
         <input type="tel" id="phone" placeholder="+44 7920 728215" data-i18n-placeholder="ph_phone">
@@ -644,10 +695,6 @@
       </button>
       <div class="price-note" style="margin-top:10px; text-align:center;" data-i18n="note_free">Nu plătești acum. Plătești doar dacă îți place rezultatul</div>
       <div id="status-msg"></div>
-      <div id="quota-recovery-box" style="display:none; margin-top:14px; text-align:center;">
-        <button type="button" class="btn btn-ghost" id="quota-recovery-btn" style="width:100%; justify-content:center;" data-i18n="quota_recovery_btn">Trimite-mi acces pe email</button>
-        <div id="quota-recovery-result" style="display:none; margin-top:8px; font-size:14px; color:#6b6b6b;"></div>
-      </div>
 
       <div class="wizard-nav">
         <button type="button" class="btn btn-ghost btn-back" data-prev="4" data-i18n="btn_back">Înapoi</button>
@@ -934,6 +981,16 @@
       ph_relationship: 'ex: soție și soț, mamă și fiică, prieteni',
       label_email: 'Emailul tău (primești melodia și aici)',
       label_email_marketing_optout: 'Nu vreau emailuri de reamintire dacă nu finalizez comanda',
+      // GATE (2026-09-27, "Comenzile mele inainte de generare") — cele doua ecrane preliminare
+      // (email, apoi alegerea Comenzile mele/Creeaza o melodie noua), inaintea wizard-ului.
+      gate_email_title: 'Hai să începem',
+      gate_email_subtitle: 'Îți trimitem melodia pe acest email — și tot aici poți reveni oricând la comenzile tale',
+      gate_choice_title: 'Ce vrei să faci?',
+      gate_my_orders_title: 'Comenzile mele',
+      gate_my_orders_desc: 'Vezi și ascultă melodiile pe care le-ai creat deja.',
+      gate_my_orders_btn: 'Comenzile mele',
+      gate_my_orders_count: (n) => `Ai ${n} ${n === 1 ? 'comandă salvată' : 'comenzi salvate'} în acest browser.`,
+      gate_new_song_btn: 'Creează o melodie nouă',
       label_phone: 'Număr WhatsApp (opțional)',
       ph_phone: '+44 7xxx xxxxxx',
       label_story: 'Povestea / detalii de inclus în versuri',
@@ -999,11 +1056,7 @@
       note_free: 'Nu plătești acum. Plătești doar dacă îți place rezultatul',
       msg_conn_error: 'Eroare de conexiune. Încearcă din nou',
       msg_error_prefix: 'Eroare: ',
-      msg_try_again: 'încearcă din nou',
-      quota_recovery_btn: 'Trimite-mi acces pe email',
-      quota_recovery_sending: 'Se trimite...',
-      quota_recovery_sent: 'Dacă adresa introdusă are comenzi eligibile, vei primi în scurt timp un email cu linkurile de acces.',
-      wizard_step1_title: 'Pentru ce moment vrei cântecul?',
+      msg_try_again: 'încearcă din nou',      wizard_step1_title: 'Pentru ce moment vrei cântecul?',
       wizard_step2_title: 'Spune-ne pentru cine este cântecul',
       wizard_step3_title: 'Alege genul muzical',
       wizard_step_voice_title: 'Ce voce să cânte?',
@@ -1103,6 +1156,14 @@
       ph_relationship: 'e.g. wife and husband, mother and daughter, friends',
       label_email: 'Your email (you\'ll also receive the song here)',
       label_email_marketing_optout: "I don't want reminder emails if I don't complete my order",
+      gate_email_title: "Let's get started",
+      gate_email_subtitle: "We'll send your song to this email — and you can always come back here to see your orders",
+      gate_choice_title: 'What would you like to do?',
+      gate_my_orders_title: 'My orders',
+      gate_my_orders_desc: 'See and listen to the songs you already created.',
+      gate_my_orders_btn: 'My orders',
+      gate_my_orders_count: (n) => `You have ${n} ${n === 1 ? 'order' : 'orders'} saved in this browser.`,
+      gate_new_song_btn: 'Create a new song',
       label_phone: 'WhatsApp number (optional)',
       ph_phone: '+44 7xxx xxxxxx',
       label_story: 'The story / details to include in the lyrics',
@@ -1162,11 +1223,7 @@
       sum_total: 'Total',
       btn_generate: 'Generate your free preview →',
       btn_generate_starting: 'Starting composition...',
-      note_free: 'You don\'t pay now. You only pay if you like the result.',
-      quota_recovery_btn: 'Email me access',
-      quota_recovery_sending: 'Sending...',
-      quota_recovery_sent: "If that email has any eligible orders, you'll receive an email shortly with the access links.",
-      msg_conn_error: 'Connection error. Please try again.',
+      note_free: 'You don\'t pay now. You only pay if you like the result.',      msg_conn_error: 'Connection error. Please try again.',
       msg_error_prefix: 'Error: ',
       msg_try_again: 'please try again.',
       wizard_step1_title: 'What moment is the song for?',
@@ -1268,6 +1325,14 @@
       ph_relationship: 'z.B. Ehefrau und Ehemann, Mutter und Tochter, Freunde',
       label_email: 'Deine E-Mail (du erhältst das Lied auch hier)',
       label_email_marketing_optout: 'Ich möchte keine Erinnerungs-E-Mails, falls ich meine Bestellung nicht abschließe',
+      gate_email_title: 'Legen wir los',
+      gate_email_subtitle: 'Wir senden dein Lied an diese E-Mail — und du kannst hier jederzeit zu deinen Bestellungen zurückkehren',
+      gate_choice_title: 'Was möchtest du tun?',
+      gate_my_orders_title: 'Meine Bestellungen',
+      gate_my_orders_desc: 'Sieh dir die Lieder an, die du bereits erstellt hast, und höre sie dir an.',
+      gate_my_orders_btn: 'Meine Bestellungen',
+      gate_my_orders_count: (n) => `Du hast ${n} ${n === 1 ? 'Bestellung' : 'Bestellungen'} in diesem Browser gespeichert.`,
+      gate_new_song_btn: 'Ein neues Lied erstellen',
       label_phone: 'WhatsApp-Nummer (optional)',
       ph_phone: '+44 7xxx xxxxxx',
       label_story: 'Die Geschichte / Details für den Text',
@@ -1327,11 +1392,7 @@
       sum_total: 'Gesamt',
       btn_generate: 'Kostenlose Vorschau erstellen →',
       btn_generate_starting: 'Komposition wird gestartet...',
-      note_free: 'Du zahlst jetzt noch nicht. Nur wenn dir das Ergebnis gefällt.',
-      quota_recovery_btn: 'Zugang per E-Mail zusenden',
-      quota_recovery_sending: 'Wird gesendet...',
-      quota_recovery_sent: 'Falls diese E-Mail-Adresse berechtigte Bestellungen hat, erhältst du in Kürze eine E-Mail mit den Zugangslinks.',
-      msg_conn_error: 'Verbindungsfehler. Bitte versuche es erneut.',
+      note_free: 'Du zahlst jetzt noch nicht. Nur wenn dir das Ergebnis gefällt.',      msg_conn_error: 'Verbindungsfehler. Bitte versuche es erneut.',
       msg_error_prefix: 'Fehler: ',
       msg_try_again: 'bitte versuche es erneut.',
       wizard_step1_title: 'Für welchen Moment ist das Lied?',
@@ -1433,6 +1494,14 @@
       ph_relationship: 'ej: esposa y esposo, madre e hija, amigos',
       label_email: 'Tu email (también recibirás la canción aquí)',
       label_email_marketing_optout: 'No quiero recibir correos de recordatorio si no completo mi pedido',
+      gate_email_title: 'Empecemos',
+      gate_email_subtitle: 'Te enviaremos tu canción a este email — y siempre puedes volver aquí para ver tus pedidos',
+      gate_choice_title: '¿Qué quieres hacer?',
+      gate_my_orders_title: 'Mis pedidos',
+      gate_my_orders_desc: 'Mira y escucha las canciones que ya has creado.',
+      gate_my_orders_btn: 'Mis pedidos',
+      gate_my_orders_count: (n) => `Tienes ${n} ${n === 1 ? 'pedido guardado' : 'pedidos guardados'} en este navegador.`,
+      gate_new_song_btn: 'Crear una canción nueva',
       label_phone: 'Número de WhatsApp (opcional)',
       ph_phone: '+44 7xxx xxxxxx',
       label_story: 'La historia / detalles para la letra',
@@ -1492,11 +1561,7 @@
       sum_total: 'Total',
       btn_generate: 'Generar previsualización gratis →',
       btn_generate_starting: 'Iniciando la composición...',
-      note_free: 'No pagas ahora. Solo pagas si te gusta el resultado.',
-      quota_recovery_btn: 'Enviarme el acceso por email',
-      quota_recovery_sending: 'Enviando...',
-      quota_recovery_sent: 'Si esa dirección tiene pedidos elegibles, recibirás en breve un email con los enlaces de acceso.',
-      msg_conn_error: 'Error de conexión. Inténtalo de nuevo.',
+      note_free: 'No pagas ahora. Solo pagas si te gusta el resultado.',      msg_conn_error: 'Error de conexión. Inténtalo de nuevo.',
       msg_error_prefix: 'Error: ',
       msg_try_again: 'inténtalo de nuevo.',
       wizard_step1_title: '¿Para qué momento es la canción?',
@@ -1598,6 +1663,14 @@
       ph_relationship: 'es: moglie e marito, madre e figlia, amici',
       label_email: 'La tua email (riceverai la canzone anche qui)',
       label_email_marketing_optout: 'Non voglio email di promemoria se non completo il mio ordine',
+      gate_email_title: 'Iniziamo',
+      gate_email_subtitle: 'Ti invieremo la canzone a questa email — e potrai sempre tornare qui per vedere i tuoi ordini',
+      gate_choice_title: 'Cosa vuoi fare?',
+      gate_my_orders_title: 'I miei ordini',
+      gate_my_orders_desc: 'Guarda e ascolta le canzoni che hai già creato.',
+      gate_my_orders_btn: 'I miei ordini',
+      gate_my_orders_count: (n) => `Hai ${n} ${n === 1 ? 'ordine salvato' : 'ordini salvati'} in questo browser.`,
+      gate_new_song_btn: 'Crea una nuova canzone',
       label_phone: 'Numero WhatsApp (facoltativo)',
       ph_phone: '+44 7xxx xxxxxx',
       label_story: 'La storia / dettagli per il testo',
@@ -1657,11 +1730,7 @@
       sum_total: 'Totale',
       btn_generate: 'Genera l\'anteprima gratis →',
       btn_generate_starting: 'Avvio della composizione...',
-      note_free: 'Non paghi ora. Paghi solo se ti piace il risultato.',
-      quota_recovery_btn: 'Inviami accesso via email',
-      quota_recovery_sending: 'Invio in corso...',
-      quota_recovery_sent: 'Se quell\'indirizzo ha ordini idonei, riceverai a breve un\'email con i link di accesso.',
-      msg_conn_error: 'Errore di connessione. Riprova.',
+      note_free: 'Non paghi ora. Paghi solo se ti piace il risultato.',      msg_conn_error: 'Errore di connessione. Riprova.',
       msg_error_prefix: 'Errore: ',
       msg_try_again: 'riprova.',
       wizard_step1_title: 'Per quale momento è la canzone?',
@@ -1763,6 +1832,14 @@
       ph_relationship: 'ex : épouse et mari, mère et fille, amis',
       label_email: 'Votre email (vous recevrez aussi la chanson ici)',
       label_email_marketing_optout: "Je ne veux pas recevoir d'e-mails de rappel si je ne finalise pas ma commande",
+      gate_email_title: 'Commençons',
+      gate_email_subtitle: "Nous t'enverrons ta chanson à cet email — et tu peux toujours revenir ici pour voir tes commandes",
+      gate_choice_title: 'Que veux-tu faire ?',
+      gate_my_orders_title: 'Mes commandes',
+      gate_my_orders_desc: 'Regarde et écoute les chansons que tu as déjà créées.',
+      gate_my_orders_btn: 'Mes commandes',
+      gate_my_orders_count: (n) => `Tu as ${n} ${n === 1 ? 'commande enregistrée' : 'commandes enregistrées'} dans ce navigateur.`,
+      gate_new_song_btn: 'Créer une nouvelle chanson',
       label_phone: 'Numéro WhatsApp (facultatif)',
       ph_phone: '+44 7xxx xxxxxx',
       label_story: 'L\'histoire / détails à inclure dans les paroles',
@@ -1822,11 +1899,7 @@
       sum_total: 'Total',
       btn_generate: 'Générer l\'aperçu gratuit →',
       btn_generate_starting: 'Démarrage de la composition...',
-      note_free: 'Vous ne payez pas maintenant. Seulement si le résultat vous plaît.',
-      quota_recovery_btn: 'M\'envoyer l\'accès par email',
-      quota_recovery_sending: 'Envoi en cours...',
-      quota_recovery_sent: 'Si cette adresse a des commandes éligibles, vous recevrez bientôt un email avec les liens d\'accès.',
-      msg_conn_error: 'Erreur de connexion. Veuillez réessayer.',
+      note_free: 'Vous ne payez pas maintenant. Seulement si le résultat vous plaît.',      msg_conn_error: 'Erreur de connexion. Veuillez réessayer.',
       msg_error_prefix: 'Erreur : ',
       msg_try_again: 'veuillez réessayer.',
       wizard_step1_title: 'Pour quel moment est la chanson ?',
@@ -1928,6 +2001,14 @@
       ph_relationship: 'напр. съпруга и съпруг, майка и дъщеря, приятели',
       label_email: 'Твоят имейл (ще получиш песента и тук)',
       label_email_marketing_optout: 'Не искам напомнящи имейли, ако не завърша поръчката си',
+      gate_email_title: 'Да започваме',
+      gate_email_subtitle: 'Ще изпратим песента ти на този имейл — а тук винаги можеш да се върнеш към поръчките си',
+      gate_choice_title: 'Какво искаш да направиш?',
+      gate_my_orders_title: 'Моите поръчки',
+      gate_my_orders_desc: 'Виж и слушай песните, които вече си създал.',
+      gate_my_orders_btn: 'Моите поръчки',
+      gate_my_orders_count: (n) => `Имаш ${n} ${n === 1 ? 'запазена поръчка' : 'запазени поръчки'} в този браузър.`,
+      gate_new_song_btn: 'Създай нова песен',
       label_phone: 'WhatsApp номер (по желание)',
       ph_phone: '+44 7xxx xxxxxx',
       label_story: 'Историята / детайли за текста',
@@ -1987,11 +2068,7 @@
       sum_total: 'Общо',
       btn_generate: 'Генерирай безплатен преглед →',
       btn_generate_starting: 'Стартираме композирането...',
-      note_free: 'Не плащаш сега. Плащаш само ако ти хареса резултатът.',
-      quota_recovery_btn: 'Изпрати ми достъп по имейл',
-      quota_recovery_sending: 'Изпраща се...',
-      quota_recovery_sent: 'Ако този имейл има допустими поръчки, ще получиш скоро писмо с линкове за достъп.',
-      msg_conn_error: 'Грешка във връзката. Опитай отново.',
+      note_free: 'Не плащаш сега. Плащаш само ако ти хареса резултатът.',      msg_conn_error: 'Грешка във връзката. Опитай отново.',
       msg_error_prefix: 'Грешка: ',
       msg_try_again: 'опитай отново.',
       wizard_step1_title: 'За кой момент е песента?',
@@ -2093,6 +2170,14 @@
       ph_relationship: 'örn: eş ve eş, anne ve kız, arkadaşlar',
       label_email: 'E-posta adresiniz (şarkıyı buraya da alacaksınız)',
       label_email_marketing_optout: 'Siparişimi tamamlamazsam hatırlatma e-postası almak istemiyorum',
+      gate_email_title: 'Hadi başlayalım',
+      gate_email_subtitle: 'Şarkını bu e-postaya göndereceğiz — ve siparişlerini görmek için her zaman buraya dönebilirsin',
+      gate_choice_title: 'Ne yapmak istersin?',
+      gate_my_orders_title: 'Siparişlerim',
+      gate_my_orders_desc: 'Daha önce oluşturduğun şarkıları gör ve dinle.',
+      gate_my_orders_btn: 'Siparişlerim',
+      gate_my_orders_count: (n) => `Bu tarayıcıda kayıtlı ${n} siparişin var.`,
+      gate_new_song_btn: 'Yeni bir şarkı oluştur',
       label_phone: 'WhatsApp numarası (isteğe bağlı)',
       ph_phone: '+44 7xxx xxxxxx',
       label_story: 'Hikaye / sözlere eklenecek detaylar',
@@ -2152,11 +2237,7 @@
       sum_total: 'Toplam',
       btn_generate: 'Ücretsiz ön izlemeyi oluştur →',
       btn_generate_starting: 'Beste başlıyor...',
-      note_free: 'Şimdi ödemezsiniz. Sadece sonucu beğenirseniz ödersiniz.',
-      quota_recovery_btn: 'Erişimi e-postama gönder',
-      quota_recovery_sending: 'Gönderiliyor...',
-      quota_recovery_sent: 'Bu adresin uygun siparişleri varsa, kısa süre içinde erişim bağlantılarını içeren bir e-posta alacaksınız.',
-      msg_conn_error: 'Bağlantı hatası. Lütfen tekrar deneyin.',
+      note_free: 'Şimdi ödemezsiniz. Sadece sonucu beğenirseniz ödersiniz.',      msg_conn_error: 'Bağlantı hatası. Lütfen tekrar deneyin.',
       msg_error_prefix: 'Hata: ',
       msg_try_again: 'lütfen tekrar deneyin.',
       wizard_step1_title: 'Şarkı hangi an için?',
@@ -2284,6 +2365,14 @@
     // ANALYTICS (2026-09-18, Funnel Analytics) — form_step_viewed: STRICT pentru pasii 2+ (pasul 1
     // e deja acoperit de order_page_viewed/form_started, mai sus) — masoara progresia reala prin
     // formular, indiferent daca pasul a fost atins prin click "Continua" sau restaurare din draft.
+    // MODIFICARE MINIMA (2026-09-27, "Comenzile mele inainte de generare"): desi gate-ul
+    // (email + alegere Comenzile mele/Creeaza melodie noua) precede acum pasul 1, vocabularul de
+    // evenimente NU s-a schimbat — nu am adaugat niciun eveniment funnel nou pentru gate (ar fi
+    // necesitat extinderea allowlist-ului server-side TRACKABLE_EVENTS/TRACK_META_ALLOWLIST,
+    // schimbare mai ampla, in afara cerintei explicite de "modificare minima"). order_page_viewed
+    // si form_started (mai sus, la incarcarea paginii) raman singurele evenimente care acopera
+    // gate-ul — identic cu rolul lor dinainte pentru pasul 1, deci n===1 ramane exceptat aici,
+    // neschimbat, indiferent daca pasul 1 e atins direct (draft existent) sau dupa gate.
     if (n > 1 && typeof window !== 'undefined' && window.NalunaAnalytics) {
       window.NalunaAnalytics.track('form_step_viewed', { step: n, occasion: occasionInput.value || undefined });
     }
@@ -2374,25 +2463,24 @@
     let firstInvalid = null;
     let ok = true;
 
+    // EMAIL (2026-09-27): validat acum STRICT la gate-email-screen (inainte de acest wizard) —
+    // #email nu mai e editabil in pasul 2, deci nu mai e revalidat aici.
     if (n === 2) {
       const recipient = document.getElementById('recipient').value.trim();
       const sender = document.getElementById('sender').value.trim();
       const relationship = document.getElementById('relationship').value.trim();
       const story = document.getElementById('story').value.trim();
-      const email = document.getElementById('email').value.trim();
 
       setFieldError('recipient', recipient ? '' : t('val_recipient'));
       setFieldError('sender', sender ? '' : t('val_sender'));
       setFieldError('relationship', relationship ? '' : t('val_relationship'));
       setFieldError('story', story ? '' : t('val_story'));
-      setFieldError('email', isValidEmailClient(email) ? '' : t('val_email'));
       const phoneOk = validatePhoneField();
 
       if (!recipient) { ok = false; firstInvalid = firstInvalid || 'recipient'; }
       if (!sender) { ok = false; firstInvalid = firstInvalid || 'sender'; }
       if (!relationship) { ok = false; firstInvalid = firstInvalid || 'relationship'; }
       if (!story) { ok = false; firstInvalid = firstInvalid || 'story'; }
-      if (!isValidEmailClient(email)) { ok = false; firstInvalid = firstInvalid || 'email'; }
       if (!phoneOk) { ok = false; firstInvalid = firstInvalid || 'phone'; }
     }
 
@@ -3648,40 +3736,73 @@
   renderBenefits(selectedPlan.id);
   updateGenerateButtonLabel();
   updateGenre2Visibility();
-  showStep(restoredStep);
+
+  // GATE (2026-09-27, "Comenzile mele inainte de generare") — vezi comentariul de la markup-ul
+  // gate-email-screen/gate-choice-screen, chiar dupa <form id="order-form">. #email a fost deja
+  // restaurat mai sus (restoreDraft()), inainte de acest punct — daca browserul are un draft cu
+  // email deja completat, campul apare pre-completat chiar daca gate-ul se arata din nou.
+  const gateEmailScreen = document.getElementById('gate-email-screen');
+  const gateChoiceScreen = document.getElementById('gate-choice-screen');
+  const progressWrap = document.getElementById('progress-wrap');
+
+  function computeLocalKnownOrderCount() {
+    // Acelasi mecanism/cheie ca in comenzile-mele.html (naluna_my_order_keys) — STRICT ownership
+    // local (id+token detinute de acest browser), NICIODATA derivat din email (cerinta explicita:
+    // "Nu afisa numarul de comenzi bazandu-te doar pe email").
+    try {
+      const raw = localStorage.getItem('naluna_my_order_keys');
+      const arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr.filter((o) => o && o.id && o.token).length : 0;
+    } catch (err) { return 0; }
+  }
+
+  function showGateChoiceScreen() {
+    gateEmailScreen.style.display = 'none';
+    const count = computeLocalKnownOrderCount();
+    const desc = document.getElementById('gate-my-orders-desc');
+    desc.textContent = count > 0 ? t('gate_my_orders_count')(count) : t('gate_my_orders_desc');
+    gateChoiceScreen.style.display = 'block';
+  }
+
+  function enterWizardAfterGate() {
+    gateEmailScreen.style.display = 'none';
+    gateChoiceScreen.style.display = 'none';
+    progressWrap.style.display = '';
+    showStep(restoredStep);
+  }
+
+  document.getElementById('gate-email-continue-btn').addEventListener('click', () => {
+    // SECURITATE/PRODUS (cerinta explicita): simpla introducere a emailului NU creeaza order, NU
+    // consuma quota, NU apeleaza Suno, NU creeaza sesiune Stripe — niciun fetch catre server are
+    // loc aici, STRICT validare de format client-side (identica cu validarea anterioara a
+    // pasului 2) si salvare locala in draft.
+    const emailVal = document.getElementById('email').value.trim();
+    const emailOk = isValidEmailClient(emailVal);
+    setFieldError('email', emailOk ? '' : t('val_email'));
+    if (!emailOk) return;
+    saveDraft();
+    showGateChoiceScreen();
+  });
+
+  document.getElementById('gate-new-song-btn').addEventListener('click', enterWizardAfterGate);
+
+  // Sarim gate-ul STRICT daca acest browser a ajuns deja o data in interiorul wizard-ului
+  // numerotat (STEP_KEY exista in localStorage — setat de showStep(), mai sus) — un refresh/
+  // navigare inapoi cat timp clientul completeaza activ formularul nu trebuie sa il intrerupa,
+  // cerandu-i din nou emailul. Un browser complet nou (sau unul al carui draft anterior a fost
+  // deja trimis/sters — vezi localStorage.removeItem(DRAFT_KEY) la trimiterea reusita) vede
+  // intotdeauna gate-ul, indiferent de istoricul lui de comenzi — cerinta explicita: emailul e
+  // cerut ca prim contact de fiecare data cand incepe o comanda noua, de la zero.
+  let gateAlreadyPassed = false;
+  try { gateAlreadyPassed = localStorage.getItem(STEP_KEY) !== null; } catch (err) { /* ignoram */ }
+
+  if (gateAlreadyPassed) {
+    enterWizardAfterGate();
+  }
 
   const statusMsg = document.getElementById('status-msg');
   const statusMsgSong2 = document.getElementById('status-msg-song2');
-  const quotaRecoveryBox = document.getElementById('quota-recovery-box');
-  const quotaRecoveryBtn = document.getElementById('quota-recovery-btn');
-  const quotaRecoveryResult = document.getElementById('quota-recovery-result');
 
-  // PROTECTIE GENERARI GRATUITE REPETATE (2026-09-27): /generate raspunde 403 STRICT cand
-  // clientul a atins protectia — arata actiunea de recuperare securizata prin email SUB
-  // mesajul serverului (deja localizat, fara nicio cifra). Emailul e cel deja completat de
-  // client in acest formular (niciun camp nou) — endpoint-ul e generic/indistinct indiferent
-  // de rezultat (vezi POST /api/orders/recover-access), deci butonul poate fi apasat oricand
-  // fara sa dezvaluie nimic in plus.
-  if (quotaRecoveryBtn) {
-    quotaRecoveryBtn.addEventListener('click', async () => {
-      quotaRecoveryBtn.disabled = true;
-      const originalLabel = quotaRecoveryBtn.textContent;
-      quotaRecoveryBtn.textContent = t('quota_recovery_sending');
-      const emailVal = (document.getElementById('email') && document.getElementById('email').value || '').trim();
-      try {
-        await fetch('/api/orders/recover-access', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: emailVal, lang: currentLang })
-        });
-      } catch (err) { /* raspunsul generic ramane acelasi, indiferent de reteaua clientului */ }
-      quotaRecoveryResult.textContent = t('quota_recovery_sent');
-      quotaRecoveryResult.style.display = '';
-      quotaRecoveryBtn.textContent = originalLabel;
-      // ramane dezactivat — o singura solicitare per aparitie a blocajului e suficienta,
-      // reincercarile repetate nu schimba raspunsul (deja generic) si sunt oricum limitate server-side.
-    });
-  }
   function setStatusMsg(text, cls) {
     statusMsg.textContent = text;
     statusMsg.className = cls;
@@ -3869,6 +3990,16 @@
         currentAccessToken = createData.accessToken || '';
         pendingOrderId = currentOrderId;
         pendingAccessToken = currentAccessToken;
+        // "COMENZILE MELE" (2026-09-27): retinem STRICT {id, token} local — acelasi accessToken
+        // deja auditat per comanda, nicio credentiala noua — ca acest browser sa poata vedea
+        // direct comenzile proprii pe /comenzile-mele.html, fara sa treaca prin email.
+        try {
+          const KEY = 'naluna_my_order_keys';
+          const known = JSON.parse(localStorage.getItem(KEY) || '[]');
+          const list = Array.isArray(known) ? known : [];
+          list.push({ id: currentOrderId, token: currentAccessToken });
+          localStorage.setItem(KEY, JSON.stringify(list.slice(-50)));
+        } catch (e) { /* localStorage indisponibil — fluxul normal al comenzii nu e afectat */ }
         // ANALYTICS (2026-09-14): form_completed — trimis STRICT aici, o singura data per
         // comanda (ramura "!currentOrderId" ruleaza o singura data — un retry ulterior al
         // /generate, mai jos, reutilizeaza pendingOrderId, deci nu re-intra pe aceasta ramura,
@@ -3900,23 +4031,18 @@
       });
 
       if (!generateRes.ok && generateRes.status !== 409) {
+        // 403 STRICT = protectia impotriva generarilor gratuite repetate — traseul normal e
+        // acum "Comenzile mele" (2026-09-27, cerinta explicita), nu un mesaj inline pe aceasta
+        // pagina: acolo clientul isi vede DIRECT (fara email) toate comenzile deja autorizate
+        // pentru acest browser (localStorage populat mai sus, la fiecare creare de comanda),
+        // cu toate variantele audio deja generate, gata de ascultat/continuat.
+        if (generateRes.status === 403) {
+          window.location.href = '/comenzile-mele.html?blocked=1';
+          return;
+        }
         let serverMsg = '';
         try { const data = await generateRes.json(); serverMsg = data && data.error; } catch (err) { /* ignoram */ }
-        // 403 STRICT = protectia impotriva generarilor gratuite repetate (mesajul serverului,
-        // deja localizat, fara nicio cifra) — afisat CA ATARE, fara vreun prefix "Eroare: ",
-        // insotit de actiunea de recuperare securizata. Orice alt status pastreaza comportamentul
-        // vechi neschimbat si ascunde/reseteaza aceasta cutie (ramasa deschisa dintr-o incercare anterioara).
-        if (generateRes.status === 403) {
-          setStatusMsg(serverMsg || t('msg_try_again'), 'status-err');
-          if (quotaRecoveryBox) {
-            quotaRecoveryBox.style.display = '';
-            quotaRecoveryResult.style.display = 'none';
-            quotaRecoveryBtn.disabled = false;
-          }
-        } else {
-          setStatusMsg(t('msg_error_prefix') + (serverMsg || t('msg_try_again')), 'status-err');
-          if (quotaRecoveryBox) quotaRecoveryBox.style.display = 'none';
-        }
+        setStatusMsg(t('msg_error_prefix') + (serverMsg || t('msg_try_again')), 'status-err');
         activeBtn.disabled = false;
         activeBtnLabel.textContent = originalBtnText;
         // pendingOrderId ramane setat — urmatorul submit reincearca /generate pe aceeasi

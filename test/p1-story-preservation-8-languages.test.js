@@ -108,13 +108,19 @@ const LANGS = ['ro', 'en', 'de', 'es', 'it', 'fr', 'bg', 'tr'];
 // "sender once" — vezi test/lyrics-naturalness.test.js pentru acoperirea completa a acestei
 // descoperiri si a deciziei rezultate.
 test('server.js: instructiunile noi ("throughout", anti-repetitie/naturalete) nu depasesc niciodata lungimea celor vechi — nu a fost furat buget din poveste', () => {
-  assert.ok(server.includes("' Write this as a personal song from the sender to the recipient, weaving real, specific, never-invented story details throughout — never generic or repeated, natural over forced rhyme. Use only complete, grammatically correct words — never shortened. Start the vocals around 8-10 seconds, like the verse. Name the recipient early and in the chorus; mention the sender once.'"), 'instructionWithSenderFull trebuie sa foloseasca noua formulare');
+  // CORECTIE (2026-09-27, "povestea trebuie sa se regaseasca INCA DE LA INCEPUTUL partii cantate"
+  // — cerinta CRITICA): "weaving...story details throughout" -> "opening on...story detail, then
+  // weaving more throughout" (FULL); "story details throughout" -> "story detail early+throughout"
+  // + "complete words, no shortening" -> "no shortened words" (SHORT, NET mai scurt ca inainte —
+  // vezi test/story-floor-occasion-fallback-fix.test.js pentru dovada ca plasa de siguranta a
+  // cazurilor extreme ramane la fel de protejata).
+  assert.ok(server.includes("' Write this as a personal song from the sender to the recipient, opening on a real, specific, never-invented story detail, then weaving more throughout — never generic or repeated, natural over forced rhyme. Use only complete, grammatically correct words — never shortened. Start the vocals around 8-10 seconds, like the verse. Name the recipient early and in the chorus; mention the sender once.'"), 'instructionWithSenderFull trebuie sa foloseasca noua formulare');
   // CORECTIE (2026-09-26, "randuri scurte" extins la TOATE genurile — cerinta explicita): "Verse
   // intro" -> "Short lines" (swap de lungime IDENTICA, vezi test/lyrics-short-lines-all-genres.test.js)
   // — formele SHORT contin acum STRICT "Short lines", pentru orice gen, nu doar manele_suflet.
-  assert.ok(server.includes("' Short lines; story details throughout, never invented/repeated; complete words, no shortening; name recipient early+chorus; sender once.'"), 'instructionWithSenderShort trebuie sa foloseasca noua formulare (anti-repetitie + linii scurte)');
-  assert.ok(server.includes("' Weave real, specific, never-invented story details throughout — never generic or repeated, natural over forced rhyme. Use only complete, grammatically correct words — never shortened. Start the vocals around 8-10 seconds, like the verse. Address the recipient by name naturally in the lyrics.'"), 'instructionNoSenderFull trebuie sa foloseasca noua formulare');
-  assert.ok(server.includes("' Short lines; story details throughout, never invented/repeated. Address by name naturally, complete words, no shortening.'"), 'instructionNoSenderShort trebuie sa foloseasca noua formulare (anti-repetitie + linii scurte)');
+  assert.ok(server.includes("' Short lines; story detail early+throughout, never invented/repeated; no shortened words; name recipient early+chorus; sender once.'"), 'instructionWithSenderShort trebuie sa foloseasca noua formulare (anti-repetitie + linii scurte + detaliu timpuriu)');
+  assert.ok(server.includes("' Open on a real, specific, never-invented story detail, then weave more throughout — never generic or repeated, natural over forced rhyme. Use only complete, grammatically correct words — never shortened. Start the vocals around 8-10 seconds, like the verse. Address the recipient by name naturally in the lyrics.'"), 'instructionNoSenderFull trebuie sa foloseasca noua formulare');
+  assert.ok(server.includes("' Short lines; story detail early+throughout, never invented/repeated. Address by name naturally, no shortened words.'"), 'instructionNoSenderShort trebuie sa foloseasca noua formulare (anti-repetitie + linii scurte + detaliu timpuriu)');
   assert.ok(server.includes("' Use real story details throughout — invent nothing beyond them. Story: '"), 'storyLabelShort trebuie sa foloseasca noua formulare');
   assert.ok(server.includes("' Weave real details from this story throughout, never one generic line;"), 'storyLabelFull trebuie sa foloseasca noua formulare');
   // niciuna dintre formularile vechi, centrate STRICT pe "verse 1"/"opening the first verse", nu
