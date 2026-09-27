@@ -6606,6 +6606,12 @@ function orderTracksByCoherence(tracks, order, recipientSnapshot) {
 // declara cererea esuata.
 const MAX_COHERENCE_RETRIES = 2;
 async function obtainAcceptableVariant(orderId, tracks, taskId, genre, order, recipientSnapshot, canonicalLyrics) {
+  // TITLU (2026-09-28) — calculat O SINGURA DATA per apel (nu per piesa incercata — determinist,
+  // acelasi indiferent de care piesa reusesc tehnic), din datele EFECTIVE ale acestei melodii
+  // (order + recipientSnapshot, exact aceleasi date folosite si de buildPrompt() pentru aceasta
+  // varianta — vezi apelurile catre buildPrompt cu `{ ...order, ...recipientSnapshot }` in tot
+  // fisierul, acelasi tipar).
+  const songTitle = composeSongTitle({ ...order, ...(recipientSnapshot || {}) });
   async function attempt(candidateTracks, candidateTaskId, phase) {
     const ordered = canonicalLyrics ? (candidateTracks || []).slice(0, 2) : orderTracksByCoherence(candidateTracks, order, recipientSnapshot);
     let lastErr = null;
@@ -6613,7 +6619,7 @@ async function obtainAcceptableVariant(orderId, tracks, taskId, genre, order, re
     for (const track of ordered) {
       let candidate;
       try {
-        candidate = await buildVariantFromTrack(orderId, randomUUID().slice(0, 8), track, candidateTaskId, genre);
+        candidate = await buildVariantFromTrack(orderId, randomUUID().slice(0, 8), track, candidateTaskId, genre, songTitle);
       } catch (err) {
         lastErr = err;
         trackIndex++;
@@ -7228,7 +7234,7 @@ async function verifyPreviewReachable(orderId, variantId, previewUrl) {
   }
 }
 
-async function buildVariantFromTrack(orderId, variantId, track, taskId, genre) {
+async function buildVariantFromTrack(orderId, variantId, track, taskId, genre, songTitle) {
   if (!track.audioUrl) {
     throw new Error(`Piesa primita de la Suno (id: ${track.id || 'necunoscut'}) nu are audioUrl/audio_url.`);
   }
@@ -7309,6 +7315,11 @@ async function buildVariantFromTrack(orderId, variantId, track, taskId, genre) {
 
   return {
     id: variantId,
+    // TITLU (2026-09-28, sistem emotional story-aware, sectiunile 9-10) — determinist, calculat
+    // de apelant (composeSongTitle) inainte de acest apel si trecut aici — ADDITIV: null pentru
+    // orice cod vechi/comanda foarte veche care nu-l seteaza, tratat sigur peste tot in UI (vezi
+    // fallback-ul din melodia-mea.html/comenzile-mele.html/comanda-mea.html).
+    title: songTitle || null,
     previewUrl,
     durationSeconds,
     fullKey: storedFullKey,       // null in fallback local; folosit de /media/full cand storage.CLOUD_ENABLED
@@ -9509,6 +9520,243 @@ const OCCASION_INSTRUCTIONS = {
     short: 'Sibling bond — closeness, trust, support; only the story\'s own memories, never invented; never romantic.'
   }
 };
+
+// SISTEM EMOTIONAL STORY-AWARE (2026-09-28, cerinta explicita) — directie emotionala SPECIFICA
+// relatiei aleasa, NU doar tonul generic "warm family tribute" folosit pana acum pentru orice
+// occasion='parinti'. Mama si tata primesc acum unghiuri emotionale DIFERITE (cerinta explicita,
+// sectiunea 1) — mama: sacrificiu/iubire neconditionata; tata: protectie/sacrificiu discret.
+// NICIODATA fapte specifice (deces/boala/despartire/saracie/parinte singur/copii/casatorie/
+// distanta) — STRICT o LENTILA emotionala.
+//
+// CONSTATARE CRITICA (masurata direct, nu presupusa — vezi audit): buildPrompt() opereaza la
+// buget ZERO SLACK — testat exhaustiv (toate cele 16 genuri x poveste de 3 caractere x fara
+// expeditor x ocazie minimala "altceva"), promptul ATINGE 600 caractere ÎN ORICE CAZ (dictia +
+// "Target song length" + "Bracketed tags" + "Vocals enter early", adaugate DUPA `head`, umplu
+// intotdeauna tot spatiul ramas). Rezultat: cascada de scurtare (shrinkSteps) NU e niciodata
+// "poate sa nu se activeze pentru comenzi usoare" — se activeaza ÎNTOTDEAUNA, complet, indiferent
+// de comanda. Un adaos SHEDDABLE (incercarea initiala a acestei modificari) e deci COD MORT — cade
+// mereu, inainte sa ajunga vreodata la Suno. Motiv pentru care aceasta tabela foloseste STRICT
+// INLOCUIRE neconditionata (exact principiul deja stabilit in tot fisierul, "REPLACE, NEVER ADD"),
+// cu lungimi MASURATE, NICIODATA mai mari decat originalul inlocuit — garanteaza ca enrichment-ul
+// chiar ajunge la Suno, pentru orice comanda, nu doar teoretic. Foloseste STRICT prin
+// resolveOccasionInstructionSet() (mai jos) — CADE pe fallback-ul generic OCCASION_INSTRUCTIONS.
+// parinti STRICT pentru effectiveRecipientRole necunoscut (comenzi vechi/'parents'/"Amândoi").
+const PARENT_ROLE_OCCASION_INSTRUCTIONS = {
+  // originalul inlocuit (OCCASION_INSTRUCTIONS.parinti): full=126, short=79 caractere — versiunile
+  // de mai jos raman STRICT la sau sub aceste lungimi (107/76), niciodata peste.
+  mother: {
+    full: 'A mother\'s sacrifice and unconditional love — express gratitude using only the story below, never invented.',
+    short: 'Mother\'s sacrifice and love — only the story\'s own memories, never invented.'
+  },
+  father: {
+    full: 'A father\'s protection and quiet sacrifice — express gratitude using only the story below, never invented.',
+    short: 'Father\'s protection, sacrifice — only the story\'s own memories, never invented.'
+  }
+};
+// Aceeasi idee (lentila emotionala specifica, garantata prin INLOCUIRE neconditionata), pentru
+// occasion='declaratie' — relatia romantica (sot/sotie/partener/o relatie noua, "declaratie" NU
+// presupune NICIODATA casatorie/copii). Originalul inlocuit: full=226, short=62 caractere.
+const DECLARATIE_ENRICHED = {
+  full: 'The idea, mood and chorus must be a sincere, direct romantic declaration — closeness and loyalty, personal and direct, like a real confession, not a generic love song.',
+  short: 'Sincere, direct romantic declaration; never invented.'
+};
+
+// ==========================================================================================
+// TITLU EMOTIONAL PERSONALIZAT (2026-09-28, "sistem emotional story-aware", sectiunile 9-10 —
+// cerinta explicita) — generat SERVER-SIDE, determinist, STRICT din campuri STRUCTURATE deja
+// colectate (occasion/recipientRole/weddingType/recipientMode/recipient/lang) — NICIODATA din
+// textul liber al povestii (order.story), ca sa nu poata "inventa" niciodata un fapt neconfirmat
+// (cerinta explicita, sectiunea 1: "relatia determina lentila emotionala, povestea determina
+// faptele" — titlul foloseste STRICT lentila, niciodata faptele povestii). Independent de Suno —
+// NU asteapta/foloseste niciun titlu intors de furnizor (extractSunoTracks extrage deja t.title,
+// dar nu l-am folosit NICIODATA pana acum — ramane asa, un titlu determinist, testabil, garantat
+// in limba corecta, e mult mai sigur decat un titlu opac, neverificabil, al unui furnizor extern).
+// Cate 1-2 variante per categorie (2 STRICT pentru mama/tata/declaratie — categoriile cu
+// directie emotionala DETALIATĂ explicit de user), alese determinist dupa order.id (acelasi titlu
+// la reincercari ale ACELEIASI comenzi, variat intre comenzi diferite) — niciodata hardcodat
+// pentru "orice mama", cerinta explicita.
+function hashStringToIndex(str, mod) {
+  let h = 0;
+  const s = String(str || '');
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return mod > 1 ? h % mod : 0;
+}
+const TITLE_TEMPLATES = {
+  mother: {
+    ro: ['Mama care a dat totul', 'Mama, dragostea dintâi'],
+    en: ['The Mother Who Gave Everything', 'Mom, My First Love'],
+    de: ['Die Mutter, die alles gab', 'Mama, meine erste Liebe'],
+    es: ['La madre que lo dio todo', 'Mamá, mi primer amor'],
+    it: ['La madre che ha dato tutto', 'Mamma, il mio primo amore'],
+    fr: ['La mère qui a tout donné', 'Maman, mon premier amour'],
+    bg: ['Майката, която даде всичко', 'Мамо, първата ми любов'],
+    tr: ['Her Şeyini Veren Anne', 'Anne, İlk Aşkım']
+  },
+  father: {
+    ro: ['Tata, umărul meu tare', 'Tata, liniștea din furtună'],
+    en: ['Dad, My Steady Shoulder', 'Dad, My Calm in the Storm'],
+    de: ['Papa, meine starke Schulter', 'Papa, meine Ruhe im Sturm'],
+    es: ['Papá, mi hombro fuerte', 'Papá, mi calma en la tormenta'],
+    it: ['Papà, la mia spalla forte', 'Papà, la mia calma nella tempesta'],
+    fr: ['Papa, mon épaule solide', 'Papa, mon calme dans la tempête'],
+    bg: ['Татко, силното ми рамо', 'Татко, спокойствието ми в бурята'],
+    tr: ['Baba, Güçlü Omzum', 'Baba, Fırtınadaki Sükunetim']
+  },
+  parents: {
+    ro: ['Părinții mei, acasă'], en: ['My Parents, My Home'], de: ['Meine Eltern, mein Zuhause'],
+    es: ['Mis padres, mi hogar'], it: ['I miei genitori, la mia casa'], fr: ['Mes parents, mon foyer'],
+    bg: ['Моите родители, моят дом'], tr: ['Ailem, Evim']
+  },
+  grandmother: {
+    ro: ['Bunica, poveste și dor'], en: ['Grandma, Stories and Longing'], de: ['Oma, Geschichten und Sehnsucht'],
+    es: ['Abuela, historias y añoranza'], it: ['Nonna, storie e nostalgia'], fr: ['Grand-mère, histoires et tendresse'],
+    bg: ['Бабо, спомени и обич'], tr: ['Anneanne, Hikayeler ve Özlem']
+  },
+  grandfather: {
+    ro: ['Bunicul, mâini bune'], en: ['Grandpa, Steady Hands'], de: ['Opa, ruhige Hände'],
+    es: ['Abuelo, manos firmes'], it: ['Nonno, mani buone'], fr: ['Grand-père, mains sûres'],
+    bg: ['Дядо, добри ръце'], tr: ['Dede, Güvenilir Eller']
+  },
+  grandparents: {
+    ro: ['Bunicii mei, rădăcina mea'], en: ['My Grandparents, My Roots'], de: ['Meine Großeltern, meine Wurzeln'],
+    es: ['Mis abuelos, mis raíces'], it: ['I miei nonni, le mie radici'], fr: ['Mes grands-parents, mes racines'],
+    bg: ['Моите баби и дядовци, корените ми'], tr: ['Büyükannem ve Büyükbabam, Köklerim']
+  },
+  aunt: {
+    ro: ['Mătușa mea, aripă caldă'], en: ['My Aunt, a Warm Wing'], de: ['Meine Tante, ein warmer Flügel'],
+    es: ['Mi tía, un ala cálida'], it: ["Mia zia, un'ala calda"], fr: ['Ma tante, une aile chaleureuse'],
+    bg: ['Леля ми, топло крило'], tr: ['Teyzem, Sıcak Bir Kanat']
+  },
+  uncle: {
+    ro: ['Unchiul meu, sprijin tăcut'], en: ['My Uncle, Quiet Support'], de: ['Mein Onkel, stille Stütze'],
+    es: ['Mi tío, apoyo silencioso'], it: ['Mio zio, sostegno silenzioso'], fr: ['Mon oncle, un soutien discret'],
+    bg: ['Чичо ми, тиха опора'], tr: ['Amcam, Sessiz Destek']
+  },
+  aunt_uncle: {
+    ro: ['Mătușa și unchiul meu'], en: ['My Aunt and Uncle'], de: ['Meine Tante und mein Onkel'],
+    es: ['Mi tía y mi tío'], it: ['Mia zia e mio zio'], fr: ['Ma tante et mon oncle'],
+    bg: ['Леля ми и чичо ми'], tr: ['Teyzem ve Amcam']
+  },
+  mother_in_law: {
+    ro: ['Soacra mea, familie aleasă'], en: ['My Mother-in-Law, Chosen Family'], de: ['Meine Schwiegermutter, gewählte Familie'],
+    es: ['Mi suegra, familia elegida'], it: ['Mia suocera, famiglia scelta'], fr: ['Ma belle-mère, une famille choisie'],
+    bg: ['Свекърва ми, избрано семейство'], tr: ['Kayınvalidem, Seçilmiş Aile']
+  },
+  father_in_law: {
+    ro: ['Socrul meu, familie aleasă'], en: ['My Father-in-Law, Chosen Family'], de: ['Mein Schwiegervater, gewählte Familie'],
+    es: ['Mi suegro, familia elegida'], it: ['Mio suocero, famiglia scelta'], fr: ['Mon beau-père, une famille choisie'],
+    bg: ['Свекър ми, избрано семейство'], tr: ['Kayınpederim, Seçilmiş Aile']
+  },
+  parents_in_law: {
+    ro: ['Socrii mei, familie aleasă'], en: ['My Parents-in-Law, Chosen Family'], de: ['Meine Schwiegereltern, gewählte Familie'],
+    es: ['Mis suegros, familia elegida'], it: ['I miei suoceri, famiglia scelta'], fr: ['Mes beaux-parents, une famille choisie'],
+    bg: ['Свекърите ми, избрано семейство'], tr: ['Kayınvalidem ve Kayınpederim, Seçilmiş Ailem']
+  },
+  sister: {
+    ro: ['Sora mea, pentru totdeauna'], en: ['My Sister, Always'], de: ['Meine Schwester, für immer'],
+    es: ['Mi hermana, para siempre'], it: ['Mia sorella, per sempre'], fr: ['Ma sœur, pour toujours'],
+    bg: ['Сестра ми, завинаги'], tr: ['Kız Kardeşim, Sonsuza Dek']
+  },
+  brother: {
+    ro: ['Fratele meu, pentru totdeauna'], en: ['My Brother, Always'], de: ['Mein Bruder, für immer'],
+    es: ['Mi hermano, para siempre'], it: ['Mio fratello, per sempre'], fr: ['Mon frère, pour toujours'],
+    bg: ['Брат ми, завинаги'], tr: ['Erkek Kardeşim, Sonsuza Dek']
+  },
+  declaratie: {
+    ro: ['Inima mea te-a ales', 'Alături de tine, mereu'],
+    en: ['My Heart Chose You', 'Beside You, Always'],
+    de: ['Mein Herz hat dich gewählt', 'An deiner Seite, für immer'],
+    es: ['Mi corazón te eligió', 'A tu lado, siempre'],
+    it: ['Il mio cuore ti ha scelto', 'Al tuo fianco, sempre'],
+    fr: ["Mon cœur t'a choisi", 'À tes côtés, toujours'],
+    bg: ['Сърцето ми избра теб', 'До теб, завинаги'],
+    tr: ['Kalbim Seni Seçti', 'Yanında, Her Zaman']
+  },
+  wedding: {
+    ro: ['Ziua voastră, pentru totdeauna'], en: ['Your Day, Forever'], de: ['Euer Tag, für immer'],
+    es: ['Vuestro día, para siempre'], it: ['Il vostro giorno, per sempre'], fr: ['Votre jour, pour toujours'],
+    bg: ['Вашият ден, завинаги'], tr: ['Sizin Gününüz, Sonsuza Dek']
+  },
+  baptism: {
+    ro: ['Binecuvântarea ta de azi'], en: ['Your Blessing Today'], de: ['Dein Segen heute'],
+    es: ['Tu bendición de hoy'], it: ['La tua benedizione oggi'], fr: ["Ta bénédiction aujourd'hui"],
+    bg: ['Твоята благословия днес'], tr: ['Bugünkü Kutsamanız']
+  },
+  godparent: {
+    ro: ['Nașii noștri, mulțumim'], en: ['Our Godparents, Thank You'], de: ['Unsere Paten, danke'],
+    es: ['Nuestros padrinos, gracias'], it: ['I nostri padrini, grazie'], fr: ['Nos parrains, merci'],
+    bg: ['Нашите кръстници, благодарим'], tr: ['Vaftiz Ebeveynlerimiz, Teşekkürler']
+  },
+  pierdere: {
+    ro: ['Vei rămâne mereu aici'], en: ['You Will Always Stay Here'], de: ['Du bleibst für immer hier'],
+    es: ['Siempre te quedarás aquí'], it: ['Resterai sempre qui'], fr: ['Tu resteras toujours ici'],
+    bg: ['Винаги ще останеш тук'], tr: ['Her Zaman Burada Kalacaksın']
+  },
+  'pentru-mine': {
+    ro: ['Pentru cine sunt eu'], en: ['For Who I Am'], de: ['Für die, die ich bin'],
+    es: ['Para quien soy'], it: ['Per chi sono'], fr: ['Pour qui je suis'],
+    bg: ['За това, което съм'], tr: ['Olduğum Kişi İçin']
+  },
+  aniversare: {
+    ro: ['Anul tău cel mai frumos'], en: ['Your Most Beautiful Year'], de: ['Dein schönstes Jahr'],
+    es: ['Tu año más bonito'], it: ['Il tuo anno più bello'], fr: ['Ta plus belle année'],
+    bg: ['Твоята най-красива година'], tr: ['En Güzel Yılın']
+  },
+  onomastica: {
+    ro: ['Ziua numelui tău'], en: ['The Day of Your Name'], de: ['Der Tag deines Namens'],
+    es: ['El día de tu nombre'], it: ['Il giorno del tuo nome'], fr: ['Le jour de ton nom'],
+    bg: ['Денят на твоето име'], tr: ['İsim Gününüz']
+  },
+  dor: {
+    ro: ['Dorul care nu trece'], en: ['A Longing That Stays'], de: ['Eine Sehnsucht, die bleibt'],
+    es: ['Una añoranza que no pasa'], it: ['Una nostalgia che resta'], fr: ['Un manque qui persiste'],
+    bg: ['Копнеж, който не отминава'], tr: ['Geçmeyen Özlem']
+  },
+  generic: {
+    ro: ['Cântecul tău'], en: ['Your Song'], de: ['Dein Lied'],
+    es: ['Tu canción'], it: ['La tua canzone'], fr: ['Ta chanson'],
+    bg: ['Твоята песен'], tr: ['Senin Şarkın']
+  }
+};
+// Mapeaza datele STRUCTURATE ale comenzii (occasion/recipientRole efectiv/weddingType/
+// recipientMode) catre o categorie de titlu — NICIODATA din order.story. effectiveRecipientRole
+// foloseste ACELASI fallback ca in buildPrompt (grandparentType pentru comenzi f. vechi 'bunici').
+function resolveTitleCategory(order) {
+  const role = order.recipientRole
+    || (order.occasion === 'bunici' ? (order.grandparentType === 'grandfather' ? 'grandfather' : 'grandmother') : null);
+  if (order.occasion === 'parinti') return TITLE_TEMPLATES[role] ? role : 'parents';
+  if (order.occasion === 'bunici') return TITLE_TEMPLATES[role] ? role : 'grandparents';
+  if (order.occasion === 'matusa-unchi') return TITLE_TEMPLATES[role] ? role : 'aunt_uncle';
+  if (order.occasion === 'socri') return TITLE_TEMPLATES[role] ? role : 'parents_in_law';
+  if (order.occasion === 'frati') return TITLE_TEMPLATES[role] ? role : 'generic';
+  if (order.occasion === 'declaratie') return 'declaratie';
+  if (order.occasion === 'nunta') {
+    if (WEDDING_NONCOUPLE_ROLES.includes(role)) return 'godparent';
+    if (order.weddingType === 'baptism') return 'baptism';
+    return 'wedding'; // weddingType==='wedding', SAU comanda veche fara weddingType (fallback rezonabil, neschimbat de sistemul emotional)
+  }
+  if (TITLE_TEMPLATES[order.occasion]) return order.occasion; // pierdere / pentru-mine / aniversare / onomastica / dor
+  return 'generic'; // altceva, sau orice ocazie necunoscuta/veche
+}
+// composeSongTitle(order): determinist, STRICT din campuri structurate — vezi comentariul mare
+// de mai sus. Nu arunca niciodata (fallback complet sigur), folosit atat pentru varianta INITIALA
+// (buildVariantFromTrack, la generarea gratuita) cat si pentru cererea customMode:true
+// (buildExactLyricsRequest, editare/regenerare) — ACELASI titlu pentru aceeasi comanda (seed
+// stabil: order.id), niciodata recalculat diferit intre cele doua cai.
+function composeSongTitle(order) {
+  try {
+    const lang = LYRICS_LANGUAGE_NAMES[order.lang] ? order.lang : 'ro';
+    const category = resolveTitleCategory(order) || 'generic';
+    const table = TITLE_TEMPLATES[category] || TITLE_TEMPLATES.generic;
+    const variants = table[lang] || table.ro;
+    const idx = hashStringToIndex(String(order.id || '') + '|' + category, variants.length);
+    const title = truncateSafely(String(variants[idx] || variants[0] || 'Naluna').trim(), 80);
+    return title || 'Naluna';
+  } catch (err) {
+    return 'Naluna';
+  }
+}
+
 // CONTINUARE — personalizarea reala a versurilor (hotfix 2026-08-08): "Nuntă" si "Botez" sunt
 // acum teme COMPLET DISTINCTE (weddingType obligatoriu la creare) — niciodata amestecate.
 // Fiecare cere explicit o formulare naturala de tipul "astazi este nunta ta/voastra" respectiv
@@ -10069,9 +10317,22 @@ function buildPrompt(order, feedback, genreOverride) {
   // nunta/botez — vezi WEDDING_TYPE_INSTRUCTIONS_NONCOUPLE mai sus), folosim varianta care nu
   // ii adreseaza gresit ca si cum EI s-ar casatori/boteza.
   const isWeddingNonCoupleRecipient = order.occasion === 'nunta' && WEDDING_NONCOUPLE_ROLES.includes(effectiveRecipientRole);
-  const occasionInstructionSet = (order.occasion === 'nunta' && WEDDING_TYPE_INSTRUCTIONS[order.weddingType])
-    ? (isWeddingNonCoupleRecipient ? WEDDING_TYPE_INSTRUCTIONS_NONCOUPLE[order.weddingType] : WEDDING_TYPE_INSTRUCTIONS[order.weddingType])
-    : (OCCASION_INSTRUCTIONS[order.occasion] || OCCASION_INSTRUCTION_FALLBACK);
+  // SISTEM EMOTIONAL STORY-AWARE (2026-09-28): occasionInstructionSet devine o FUNCTIE (nu un
+  // const calculat o singura data), consecvent cu restul (resolveOccasionInstructionSet e apelata
+  // din currentOccasionInstruction() la fiecare pas al cascadei) — dar enrichment-ul mama/tata/
+  // declaratie de mai jos e NECONDITIONAT (nu un flag sheddable — vezi comentariul mare de la
+  // PARENT_ROLE_OCCASION_INSTRUCTIONS pentru motiv: bugetul opereaza la zero slack, un adaos
+  // sheddable ar fi cod mort, cade mereu inainte sa ajunga la Suno).
+  function resolveOccasionInstructionSet() {
+    if (order.occasion === 'nunta' && WEDDING_TYPE_INSTRUCTIONS[order.weddingType]) {
+      return isWeddingNonCoupleRecipient ? WEDDING_TYPE_INSTRUCTIONS_NONCOUPLE[order.weddingType] : WEDDING_TYPE_INSTRUCTIONS[order.weddingType];
+    }
+    if (order.occasion === 'parinti' && PARENT_ROLE_OCCASION_INSTRUCTIONS[effectiveRecipientRole]) {
+      return PARENT_ROLE_OCCASION_INSTRUCTIONS[effectiveRecipientRole];
+    }
+    if (order.occasion === 'declaratie') return DECLARATIE_ENRICHED;
+    return OCCASION_INSTRUCTIONS[order.occasion] || OCCASION_INSTRUCTION_FALLBACK;
+  }
   let useShortOccasionInstruction = false;
   let includeOccasionInstruction = true;
   // CORECȚIE (2026-09-14, comanda reala 400d4a20): ultima plasa de siguranta a cascadei de mai
@@ -10182,7 +10443,8 @@ function buildPrompt(order, feedback, genreOverride) {
   }
   function currentOccasionInstruction() {
     if (!includeOccasionInstruction) return '';
-    return ' ' + (useShortOccasionInstruction ? occasionInstructionSet.short : occasionInstructionSet.full) + relationClause();
+    const set = resolveOccasionInstructionSet();
+    return ' ' + (useShortOccasionInstruction ? set.short : set.full) + relationClause();
   }
 
   // Comenzile vechi (dinainte de sender/relationship) nu au aceste campuri — tratate optional.
@@ -10363,11 +10625,25 @@ function buildPrompt(order, feedback, genreOverride) {
   const instructionNoSenderShort = ' Short lines; story detail early+throughout, never invented/repeated. Address by name naturally, no shortened words.';
 
   let useShortInstruction = false;
+  // SISTEM EMOTIONAL STORY-AWARE (2026-09-28, sectiunea 5, hook/refren memorabil) — MASURAT DIRECT
+  // (nu presupus): o clauza noua explicita de hook (ex. "Chorus carries one clear, memorable
+  // emotional line"), fie ea si SHEDDABLE, e cod mort in acest buget — buildPrompt() opereaza la
+  // ZERO SLACK (verificat exhaustiv: toate cele 16 genuri x poveste minimala x fara expeditor x
+  // ocazie minimala ating tot 600 caractere) — cascada de scurtare se activeaza INTOTDEAUNA,
+  // complet, deci orice adaos shed inainte de pasii deja existenti cade mereu, fara sa ajunga
+  // vreodata la Suno. O INLOCUIRE de lungime egala ("name recipient early+chorus" -> ceva care
+  // mentioneaza si "hook") a fost incercata si masurata (+14/+18 caractere, ambele forme) — peste
+  // buget, deci ar fi necesitat eliminarea altui text deja esential (numele/scurtarea liniilor),
+  // netestabil in siguranta fara generari Suno reale (explicit interzise pentru acest task).
+  // DECIZIE (documentata explicit in raportul final, punctul 8): hook-ul e satisfacut de
+  // mecanismul DEJA EXISTENT, neconditionat — "name recipient early+chorus"/"name recipient early
+  // and in the chorus" — refrenul TREBUIE sa contina numele destinatarului, ceea ce e deja
+  // samanta unui hook personal, memorabil; nicio clauza noua, separata, nu s-a putut adauga in
+  // siguranta in acest buget fara teste reale de calitate Suno.
   function currentInstruction() {
-    if (hasSender) {
-      return useShortInstruction ? instructionWithSenderShort : instructionWithSenderFull;
-    }
-    return useShortInstruction ? instructionNoSenderShort : instructionNoSenderFull;
+    return hasSender
+      ? (useShortInstruction ? instructionWithSenderShort : instructionWithSenderFull)
+      : (useShortInstruction ? instructionNoSenderShort : instructionNoSenderFull);
   }
 
   // CORECȚIE (2026-08-24, "coerenta gramaticala/narativa a versurilor" — ex. real, raportat live:
@@ -10969,10 +11245,11 @@ function buildExactLyricsRequest(order, exactLyrics, genreOverride, voicePrefere
   }
   style = truncateSafely(style, 1000);
 
-  // Titlu scurt (max. 80 caractere pentru V4_5ALL) — derivat din destinatar, fara sa expuna
-  // niciun detaliu din poveste; simplu fallback daca destinatarul lipseste.
-  const recipient = String(order.recipient || '').trim();
-  const title = truncateSafely(recipient ? `Song for ${recipient}` : 'Naluna', 80);
+  // TITLU (2026-09-28, sistem emotional story-aware) — composeSongTitle(), vezi definitia mare
+  // de mai sus (langa OCCASION_INSTRUCTIONS): determinist, STRICT din campuri structurate, NU
+  // din poveste, ACELASI titlu ca varianta initiala (buildVariantFromTrack) pentru aceeasi comanda
+  // (seed stabil: order.id) — inlocuieste fallback-ul generic anterior ("Song for X").
+  const title = composeSongTitle(order);
 
   return { style, title, lyrics };
 }

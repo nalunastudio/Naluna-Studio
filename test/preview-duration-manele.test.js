@@ -73,14 +73,14 @@ test('gen lipsa/necunoscut (undefined, string gol, gen inventat) -> ramane la 40
 });
 
 test('buildVariantFromTrack primeste genre ca parametru NOU, si il transmite catre trimAudio EXCLUSIV prin previewMaxSeconds — restul apelului (previewStart, fisiere) neschimbat', () => {
-  const fn = extractFn(server, 'async function buildVariantFromTrack(orderId, variantId, track, taskId, genre) {');
+  const fn = extractFn(server, 'async function buildVariantFromTrack(orderId, variantId, track, taskId, genre, songTitle) {');
   assert.match(fn, /const previewMaxSeconds = resolvePreviewMaxSeconds\(genre\);/);
   assert.match(fn, /trimAudio\(tempFull, tempPreview, previewMaxSeconds, previewStart\)/, 'trimAudio trebuie apelat cu previewMaxSeconds (variabil) si previewStart (neschimbat)');
   assert.doesNotMatch(fn, /trimAudio\(tempFull, tempPreview, PREVIEW_SECONDS,/, 'nu mai trebuie sa ramana vreun apel cu constanta fixa PREVIEW_SECONDS');
 });
 
 test('CRITIC — punctul de START al preview-ului (previewStart) e CALCULAT identic, neschimbat: acelasi apel getPreviewStartFromLyrics(taskId, track.id, orderId), inaintea oricarei logici de durata', () => {
-  const fn = extractFn(server, 'async function buildVariantFromTrack(orderId, variantId, track, taskId, genre) {');
+  const fn = extractFn(server, 'async function buildVariantFromTrack(orderId, variantId, track, taskId, genre, songTitle) {');
   assert.match(fn, /getPreviewStartFromLyrics\(taskId, track\.id, orderId\)/);
   const idxPreviewStart = fn.indexOf('getPreviewStartFromLyrics(taskId, track.id, orderId)');
   const idxPreviewMax = fn.indexOf('const previewMaxSeconds = resolvePreviewMaxSeconds(genre);');
@@ -104,7 +104,7 @@ test('CRITIC — trimAudio() (functia care taie efectiv fisierul, ffmpeg) e comp
 
 test('apelul catre buildVariantFromTrack (din attempt(), in interiorul obtainAcceptableVariant) transmite genre-ul REAL al cererii curente — corect si pentru Premium (genre vs genre2, per melodie)', () => {
   const fn = extractFn(server, 'async function obtainAcceptableVariant(orderId, tracks, taskId, genre, order, recipientSnapshot, canonicalLyrics) {');
-  assert.match(fn, /buildVariantFromTrack\(orderId, randomUUID\(\)\.slice\(0, 8\), track, candidateTaskId, genre\)/);
+  assert.match(fn, /buildVariantFromTrack\(orderId, randomUUID\(\)\.slice\(0, 8\), track, candidateTaskId, genre, songTitle\)/);
 });
 
 test('nicio alta constanta/logica de preview NEATINSA de aceasta cerinta (VIDEO_PREVIEW_SECONDS, pretul pachetelor, PLAN_PRICES) — verificare structurala ca nimic altceva nu a fost modificat din greseala', () => {

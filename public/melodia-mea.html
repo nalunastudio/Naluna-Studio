@@ -197,6 +197,7 @@
   .variant-card.selected{ border-color:var(--gold); background:rgba(168,131,75,.07); }
   .variant-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
   .variant-label{ font-weight:600; font-size:14px; }
+  .variant-title{ font-family:'Fraunces', serif; font-style:italic; font-size:15px; color:var(--text); margin:-4px 0 10px; }
   .variant-progress{ font-size:12px; color:var(--text-secondary); margin-top:8px; letter-spacing:.02em; }
   .variant-gift-note{ font-size:12px; color:var(--text-secondary); margin:8px 0 0; }
   .variant-genre-tag{
@@ -2115,8 +2116,16 @@
       // dedicata de sub carduri (renderStandardChoiceButtons — titlu, subtext, doua butoane
       // etichetate cu genurile reale). Cardul insusi ramane clickabil (comportament existent,
       // pastrat) si primeste in continuare chenarul portocaliu la selectie (.standard-selected).
+      // TITLU (2026-09-28, sistem emotional story-aware) — afisat STRICT daca serverul l-a
+      // calculat (v.title, JSONB, additiv — comenzile vechi nu il au deloc). Niciodata inventat
+      // client-side (cerinta explicita) — variantTitleHtml ramane string gol daca v.title lipseste,
+      // deci nu adauga niciun element/spatiu vizual pentru comenzile istorice fara titlu.
+      const variantTitleHtml = (v.title && String(v.title).trim())
+        ? `<div class="variant-title">${escapeHtml(String(v.title).trim())}</div>`
+        : '';
       card.innerHTML = `
         <div class="variant-head"><span class="variant-label">${label}</span>${genreTagHtml}</div>
+        ${variantTitleHtml}
         <div class="variant-audio-wrap"></div>
         <p class="variant-audio-error" style="display:none;"></p>
         <div class="variant-progress">${t.listened('0:00', formatTime(v.durationSeconds))}</div>
@@ -3437,6 +3446,15 @@
       head.className = 'variant-head';
       head.innerHTML = `<span class="variant-label">${escapeHtml(label)}</span>${genreTag}`;
       card.appendChild(head);
+      // TITLU (2026-09-28, sistem emotional story-aware) — STRICT daca serverul l-a calculat
+      // (v.title); Premium poate avea titluri DIFERITE per melodie, pentru ca fiecare melodie
+      // poate avea o relatie/ocazie diferita (a doua melodie Premium). Niciodata inventat aici.
+      if (v.title && String(v.title).trim()) {
+        const titleEl = document.createElement('div');
+        titleEl.className = 'variant-title';
+        titleEl.textContent = String(v.title).trim();
+        card.appendChild(titleEl);
+      }
       card.appendChild(createPremiumAudioPlayer(v.previewUrl, v.durationSeconds, v.id, v.previewStartSeconds, v.previewSelectionReason));
       const lyricsWrap = document.createElement('div');
       lyricsWrap.innerHTML = lyricsHtml;

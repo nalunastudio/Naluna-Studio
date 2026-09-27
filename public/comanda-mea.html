@@ -44,6 +44,7 @@
   }
   .order .top{ display:flex; justify-content:space-between; align-items:center; }
   .order .name{ font-weight:600; }
+  .order .song-title{ font-style:italic; color:#4a4a4a; margin-top:2px; font-size:14px; }
   .status{
     font-size:11px; padding:4px 10px; border-radius:999px; text-transform:uppercase;
     letter-spacing:.06em; font-family:'Sora',sans-serif;
@@ -1474,12 +1475,22 @@
       const planBadgeHtml = (o.plan === 'standard' || o.plan === 'premium' || o.plan === 'video')
         ? `<div class="plan-badge">${t['plan_' + o.plan]}</div>` : '';
 
+      // TITLU (2026-09-28, sistem emotional story-aware) — STRICT daca serverul l-a calculat
+      // (variants[].title, JSONB additiv) — comenzile istorice fara titlu nu primesc niciun rand
+      // nou aici. Foloseste varianta SELECTATA (o.selectedVariantId) daca exista, altfel prima.
+      const mainVariant = Array.isArray(o.variants)
+        ? (o.variants.find((v) => v.id === o.selectedVariantId) || o.variants[0])
+        : null;
+      const mainTitleHtml = (mainVariant && mainVariant.title && String(mainVariant.title).trim())
+        ? `<div class="song-title">${escapeHtml(String(mainVariant.title).trim())}</div>` : '';
+
       results.innerHTML = `
         <div class="order">
           <div class="top">
             <div class="name">${t.for_label} ${escapeHtml(stripRedundantForPrefix(o.recipient, lang))}</div>
             <div class="status status-${o.status}">${t.status[o.status] || o.status}</div>
           </div>
+          ${mainTitleHtml}
           ${planBadgeHtml}
           ${accessExpired ? `
             <div class="empty" style="text-align:left;">

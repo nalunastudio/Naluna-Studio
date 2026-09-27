@@ -89,6 +89,34 @@ function loadBuildExactLyricsRequest() {
   for (; k < server.length; k++) { if (server[k] === '{') d3++; else if (server[k] === '}') { d3--; if (d3 === 0) break; } }
   const truncateSafelySnippet = server.slice(truncateSafelyStart, k + 1);
 
+  // SISTEM EMOTIONAL STORY-AWARE (2026-09-28) — buildExactLyricsRequest() acum calculeaza title
+  // prin composeSongTitle(order) — extragem aceleasi piese necesare (acelasi tipar deja folosit
+  // mai sus pentru restul dependentelor izolate).
+  const wedNoncoupleStart = server.indexOf('const WEDDING_NONCOUPLE_ROLES = [');
+  const wedNoncoupleEnd = server.indexOf(';', wedNoncoupleStart) + 1;
+  const wedNoncoupleSnippet = server.slice(wedNoncoupleStart, wedNoncoupleEnd);
+  const hashFnStart = server.indexOf('function hashStringToIndex(str, mod) {');
+  let d4 = 0, m = server.indexOf('{', hashFnStart);
+  for (; m < server.length; m++) { if (server[m] === '{') d4++; else if (server[m] === '}') { d4--; if (d4 === 0) break; } }
+  const hashFnSnippet = server.slice(hashFnStart, m + 1);
+  const titleTemplatesStart = server.indexOf('const TITLE_TEMPLATES = {');
+  const titleTemplatesEnd = server.indexOf('\n};', titleTemplatesStart) + 3;
+  const titleTemplatesSnippet = server.slice(titleTemplatesStart, titleTemplatesEnd);
+  const parentRoleStart = server.indexOf('const PARENT_ROLE_OCCASION_INSTRUCTIONS = {');
+  const parentRoleEnd = server.indexOf('\n};', parentRoleStart) + 3;
+  const parentRoleSnippet = server.slice(parentRoleStart, parentRoleEnd);
+  const declaratieStart = server.indexOf('const DECLARATIE_ENRICHED = {');
+  const declaratieEnd = server.indexOf('\n};', declaratieStart) + 3;
+  const declaratieSnippet = server.slice(declaratieStart, declaratieEnd);
+  const resolveTitleCatStart = server.indexOf('function resolveTitleCategory(order) {');
+  let d5 = 0, n = server.indexOf('{', resolveTitleCatStart);
+  for (; n < server.length; n++) { if (server[n] === '{') d5++; else if (server[n] === '}') { d5--; if (d5 === 0) break; } }
+  const resolveTitleCatSnippet = server.slice(resolveTitleCatStart, n + 1);
+  const composeSongTitleStart = server.indexOf('function composeSongTitle(order) {');
+  let d6 = 0, o = server.indexOf('{', composeSongTitleStart);
+  for (; o < server.length; o++) { if (server[o] === '{') d6++; else if (server[o] === '}') { d6--; if (d6 === 0) break; } }
+  const composeSongTitleSnippet = server.slice(composeSongTitleStart, o + 1);
+
   const sandboxSrc = `
     const { normalizeSingingText, getDictionInstruction } = require('../lib/diction.js');
     const VOICE_PREFERENCES = ['female', 'male', 'duet', 'auto'];
@@ -100,6 +128,13 @@ function loadBuildExactLyricsRequest() {
     ${brightenClauseSnippet}
     ${videoLabelSnippet}
     ${priorityClauseSnippet}
+    ${wedNoncoupleSnippet}
+    ${hashFnSnippet}
+    ${titleTemplatesSnippet}
+    ${parentRoleSnippet}
+    ${declaratieSnippet}
+    ${resolveTitleCatSnippet}
+    ${composeSongTitleSnippet}
     ${snippet}
     return buildExactLyricsRequest;
   `;

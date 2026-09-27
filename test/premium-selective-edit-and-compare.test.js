@@ -372,7 +372,7 @@ test('melodia-mea.html: toate cele 9 chei noi de traducere Premium exista exact 
 
 test('melodia-mea.html: textele Premium reutilizeaza cheile existente (edit_lyrics_btn, checkout_btn_standard pe rezultat; edit_genre_label/explain, editor_title/hint pe editare) — deja traduse in 8 limbi, nicio duplicare', () => {
   const idx = melodia.indexOf('function renderPremiumResultView(order) {');
-  const resultBody = melodia.slice(idx, idx + 2500);
+  const resultBody = melodia.slice(idx, idx + 2800);
   // REVIZUIT (2026-09-24, buton mare pe 3 randuri): eticheta nu mai vine direct din t.edit_lyrics_btn
   // (acum rezervat STRICT CTA-ului mic) — vine din editLyricsBtnStackHtml(), care foloseste la randul
   // ei t.edit_lyrics_btn_line1/2/3, traduse in toate cele 8 limbi (vezi test dedicat).

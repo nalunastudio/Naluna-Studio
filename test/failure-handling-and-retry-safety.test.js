@@ -55,7 +55,7 @@ test('P5: markGenerationFailed() pastreaza variantele existente (status "preview
 
 test("P5: retry-ul de coerenta a versurilor (obtainAcceptableVariant) e SARIT complet pentru versuri canonice/locked ('un esec tehnic ramane final') — nu incearca niciodata sa REscrie versuri explicit blocate de client, in nicio limba", () => {
   const idx = server.indexOf('async function obtainAcceptableVariant(orderId, tracks, taskId, genre, order, recipientSnapshot, canonicalLyrics) {');
-  const body = server.slice(idx, idx + 2200);
+  const body = server.slice(idx, idx + 2600);
   assert.match(body, /if \(first\.built \|\| canonicalLyrics\) return first;/);
 });
 
