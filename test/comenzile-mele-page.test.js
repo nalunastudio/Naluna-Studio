@@ -146,13 +146,24 @@ test('comenzile-mele.html: pagina nu apeleaza niciodata NalunaAnalytics/console.
 // ===============================================================================================
 test('comenzile-mele.html: parametrul ?blocked=1 e STRICT capturat intr-un flag (wasBlocked) la parsare — continutul banner-ului NU mai e scris in DOM decat DUPA ce lista reala (eligible) e cunoscuta', () => {
   assert.match(page, /const wasBlocked = params\.get\('blocked'\) === '1';/);
-  // nicio scriere in banner INAINTE de definitia lui loadAndRenderOrders (adica la parsare)
-  const beforeLoad = page.slice(0, page.indexOf('async function loadAndRenderOrders'));
-  assert.ok(!/blocked-banner['"]\)\.textContent/.test(beforeLoad) && !/banner\.textContent = t\.blocked/.test(beforeLoad.replace(/\/\/.*$/gm, '')), 'niciun banner.textContent asignat inainte de loadAndRenderOrders');
+  // "la parsare" = cod care ruleaza IMEDIAT, in afara oricarei definitii de functie — verificam
+  // STRICT segmentul dintre definitia lui wasBlocked si INCEPUTUL primei functii care scrie
+  // efectiv in banner (handleNoVisibleOrders/loadAndRenderOrders) — o DEFINITIE de functie
+  // (function ... { ... }) nu executa nimic la parsare, doar apelarea ei mai tarziu conteaza.
+  const wasBlockedIdx = page.indexOf("const wasBlocked = params.get('blocked') === '1';");
+  const firstWriterIdx = page.indexOf('function handleNoVisibleOrders');
+  assert.ok(wasBlockedIdx !== -1 && firstWriterIdx > wasBlockedIdx);
+  const betweenDefinitionAndFirstWriter = page.slice(wasBlockedIdx, firstWriterIdx);
+  assert.ok(!/banner\.textContent = t\.blocked/.test(betweenDefinitionAndFirstWriter.replace(/\/\/.*$/gm, '')), 'niciun banner.textContent asignat la parsare, in afara unei functii — DOAR in interiorul handleNoVisibleOrders/loadAndRenderOrders, apelate STRICT dupa rezolvarea listei reale');
 });
 
-test('comenzile-mele.html: banner-ul foloseste t.blocked STRICT cand eligible.length > 0, si noul t.blocked_empty (mesaj DIFERIT, care NU afirma ca exista melodii) cand lista e goala', () => {
-  assert.match(page, /banner\.textContent = eligible\.length > 0 \? t\.blocked : t\.blocked_empty;/);
+test('comenzile-mele.html: banner-ul foloseste t.blocked STRICT cand exista comenzi eligibile reale (dupa if (eligible.length === 0) ... return), si t.blocked_empty (mesaj DIFERIT, care NU afirma ca exista melodii) STRICT prin handleNoVisibleOrders() cand lista e goala', () => {
+  const eligibleIdx = page.indexOf("if (eligible.length === 0)");
+  const afterEligible = page.slice(eligibleIdx, page.indexOf('async function loadAndRenderOrders') === -1 ? page.length : eligibleIdx + 800);
+  assert.match(afterEligible, /banner\.textContent = t\.blocked;/, 'banner-ul t.blocked trebuie scris STRICT dupa garda de "eligible.length === 0"');
+  assert.match(page, /function handleNoVisibleOrders\(\) \{/);
+  const noOrdersBody = page.slice(page.indexOf('function handleNoVisibleOrders'), page.indexOf('async function triggerAutoRecovery'));
+  assert.match(noOrdersBody, /banner\.textContent = t\.blocked_empty;/);
 });
 
 // ===============================================================================================
@@ -174,7 +185,7 @@ const T = extractTranslationsObject();
 for (const lang of ALLOWED_LANGS) {
   test(`comenzile-mele.html: limba ${lang} are toate cheile obligatorii noi (order_label/song_count/blocked_empty) plus cele existente`, () => {
     assert.ok(T[lang], `bloc de traduceri lipsa pentru ${lang}`);
-    for (const key of ['title', 'order_label', 'blocked', 'blocked_empty', 'continue_btn', 'status_progress', 'status_ready', 'recovery_btn', 'recovery_sent', 'empty_no_orders']) {
+    for (const key of ['title', 'order_label', 'blocked', 'blocked_empty', 'continue_btn', 'status_progress', 'status_ready', 'recovery_btn', 'recovery_sent', 'auto_recovery_sent', 'use_other_email', 'empty_no_orders']) {
       assert.ok(typeof T[lang][key] !== 'undefined', `[${lang}] cheia lipsa: ${key}`);
     }
     assert.equal(typeof T[lang].song_count, 'function', `[${lang}] song_count trebuie sa fie o functie (n) => string`);
@@ -359,11 +370,12 @@ test('sandbox (click pe comanda -> acces la variantele audio): continueUrlFor() 
   }
 });
 
-test('sandbox (browser fara tokenuri, ex. Incognito nou): NU se face niciun fetch, NU se afiseaza nicio comanda inventata — STRICT starea goala + recovery vizibil', async () => {
+test('sandbox (browser fara tokenuri, ex. Incognito nou): NU se face niciun fetch catre server pentru orders, NU se afiseaza niciun card de comanda inventat — STRICT mesajul "nicio comanda" + recovery vizibil', async () => {
   const { api, elements, fetchCalls } = buildSandbox({ storedOrders: [] });
   await api.__loadPromise;
   assert.equal(fetchCalls.length, 0, 'un browser fara tokenuri nu trebuie sa apeleze deloc serverul pentru orders');
-  assert.equal(elements['orders-list'].children.length, 0);
+  const cardCount = elements['orders-list'].children.filter((c) => c.className === 'order').length;
+  assert.equal(cardCount, 0, 'niciun card de comanda inventat');
   assert.equal(elements['recovery-box'].style.display, '', 'recovery trebuie sa fie STRICT optiunea disponibila');
   assert.equal(elements['blocked-banner'].style.display, 'none', 'niciun banner fals cand nu exista niciun context de blocare');
 });

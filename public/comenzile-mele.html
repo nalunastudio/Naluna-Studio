@@ -51,6 +51,15 @@
   }
   button:hover{ background:var(--gold-deep); }
   button:disabled{ opacity:.5; cursor:not-allowed; }
+  /* IESIRE CLARA (2026-09-28, cerinta explicita, "BACK / NAVIGATION") — "Foloseste alt email":
+     link discret (nu CTA-ul dominant al comenzilor), dar clar si accesibil — revine la email
+     gate pe comanda.html, fara sa stearga naluna_my_order_keys/comenzile deja autorizate. */
+  .link-btn{
+    background:none; border:none; color:var(--text-secondary); font-size:13px;
+    text-decoration:underline; text-underline-offset:2px; padding:0; cursor:pointer;
+    font-family:'Sora',sans-serif; display:inline-block; margin-bottom:20px;
+  }
+  .link-btn:hover{ color:var(--gold-deep); }
   /* IERARHIE VIZUALA (2026-09-28, cerinta explicita) — recovery-ul prin email ramane DOAR
      mecanism secundar (alt browser/dispozitiv, sau tokenuri locale pierdute): titlu mai mic,
      font sans-serif obisnuit (nu Fraunces ca titlurile principale), contrast secundar, buton
@@ -83,6 +92,7 @@
   <h1 id="h1-title">Comenzile mele</h1>
   <div id="blocked-banner" class="blocked-banner" style="display:none;"></div>
   <p class="sub" id="p-sub">Comenzile la care ai acces din acest browser.</p>
+  <button type="button" id="use-other-email-btn" class="link-btn">Foloseşte alt email</button>
 
   <div id="orders-list"></div>
   <p class="empty" id="loading-msg">Se încarcă...</p>
@@ -110,6 +120,8 @@
       recovery_title: 'Nu găsești o comandă?', recovery_sub: 'Primești pe email linkurile către comenzile tale.',
       recovery_placeholder: 'email@exemplu.com', recovery_btn: 'Trimite-mi acces pe email', recovery_sending: 'Se trimite...',
       recovery_sent: 'Dacă adresa introdusă are comenzi eligibile, vei primi în scurt timp un email cu linkurile de acces.',
+      auto_recovery_sent: 'Ţi-am trimis pe email accesul securizat la comenzile tale existente.',
+      use_other_email: 'Foloseşte alt email',
       empty_no_orders: 'Nu am găsit nicio comandă în acest browser.',
       plan: { standard: 'Standard', premium: 'Premium', video: 'Cadou video' }
     },
@@ -124,6 +136,8 @@
       recovery_title: "Can't find an order?", recovery_sub: "We'll email you the links to your orders.",
       recovery_placeholder: 'email@example.com', recovery_btn: 'Email me access', recovery_sending: 'Sending...',
       recovery_sent: "If that email has any eligible orders, you'll receive an email shortly with the access links.",
+      auto_recovery_sent: "We've emailed you secure access to your existing orders.",
+      use_other_email: 'Use a different email',
       empty_no_orders: 'We could not find any order in this browser.',
       plan: { standard: 'Standard', premium: 'Premium', video: 'Video gift' }
     },
@@ -138,6 +152,8 @@
       recovery_title: 'Findest du eine Bestellung nicht?', recovery_sub: 'Wir senden dir die Links zu deinen Bestellungen per E-Mail.',
       recovery_placeholder: 'email@beispiel.com', recovery_btn: 'Zugang per E-Mail zusenden', recovery_sending: 'Wird gesendet...',
       recovery_sent: 'Falls diese E-Mail-Adresse berechtigte Bestellungen hat, erhältst du in Kürze eine E-Mail mit den Zugangslinks.',
+      auto_recovery_sent: 'Wir haben dir den sicheren Zugang zu deinen bestehenden Bestellungen per E-Mail geschickt.',
+      use_other_email: 'Andere E-Mail verwenden',
       empty_no_orders: 'Wir konnten in diesem Browser keine Bestellung finden.',
       plan: { standard: 'Standard', premium: 'Premium', video: 'Video-Geschenk' }
     },
@@ -152,6 +168,8 @@
       recovery_title: '¿No encuentras un pedido?', recovery_sub: 'Te enviaremos por email los enlaces a tus pedidos.',
       recovery_placeholder: 'email@ejemplo.com', recovery_btn: 'Enviarme el acceso por email', recovery_sending: 'Enviando...',
       recovery_sent: 'Si esa dirección tiene pedidos elegibles, recibirás en breve un email con los enlaces de acceso.',
+      auto_recovery_sent: 'Te hemos enviado por email el acceso seguro a tus pedidos existentes.',
+      use_other_email: 'Usar otro email',
       empty_no_orders: 'No encontramos ningún pedido en este navegador.',
       plan: { standard: 'Estándar', premium: 'Premium', video: 'Regalo en video' }
     },
@@ -166,6 +184,8 @@
       recovery_title: 'Non trovi un ordine?', recovery_sub: 'Ti invieremo via email i link ai tuoi ordini.',
       recovery_placeholder: 'email@esempio.com', recovery_btn: 'Inviami accesso via email', recovery_sending: 'Invio in corso...',
       recovery_sent: 'Se quell\'indirizzo ha ordini idonei, riceverai a breve un\'email con i link di accesso.',
+      auto_recovery_sent: 'Ti abbiamo inviato via email l\'accesso sicuro ai tuoi ordini esistenti.',
+      use_other_email: 'Usa un\'altra email',
       empty_no_orders: 'Non abbiamo trovato nessun ordine in questo browser.',
       plan: { standard: 'Standard', premium: 'Premium', video: 'Regalo video' }
     },
@@ -180,6 +200,8 @@
       recovery_title: 'Vous ne trouvez pas une commande ?', recovery_sub: 'Nous vous enverrons par email les liens vers vos commandes.',
       recovery_placeholder: 'email@exemple.com', recovery_btn: 'M\'envoyer l\'accès par email', recovery_sending: 'Envoi en cours...',
       recovery_sent: 'Si cette adresse a des commandes éligibles, vous recevrez bientôt un email avec les liens d\'accès.',
+      auto_recovery_sent: 'Nous t\'avons envoyé par email l\'accès sécurisé à tes commandes existantes.',
+      use_other_email: 'Utiliser un autre email',
       empty_no_orders: 'Nous n\'avons trouvé aucune commande dans ce navigateur.',
       plan: { standard: 'Standard', premium: 'Premium', video: 'Cadeau vidéo' }
     },
@@ -194,6 +216,8 @@
       recovery_title: 'Не намираш поръчка?', recovery_sub: 'Ще ти изпратим по имейл линковете към поръчките ти.',
       recovery_placeholder: 'email@primer.com', recovery_btn: 'Изпрати ми достъп по имейл', recovery_sending: 'Изпраща се...',
       recovery_sent: 'Ако този имейл има допустими поръчки, ще получиш скоро писмо с линкове за достъп.',
+      auto_recovery_sent: 'Изпратихме ти по имейл сигурен достъп до съществуващите ти поръчки.',
+      use_other_email: 'Използвай друг имейл',
       empty_no_orders: 'Не намерихме нито една поръчка в този браузър.',
       plan: { standard: 'Стандартен', premium: 'Премиум', video: 'Видео подарък' }
     },
@@ -208,6 +232,8 @@
       recovery_title: 'Bir sipariş bulamıyor musunuz?', recovery_sub: 'Siparişlerinizin bağlantılarını e-posta ile göndereceğiz.',
       recovery_placeholder: 'email@ornek.com', recovery_btn: 'Erişimi e-postama gönder', recovery_sending: 'Gönderiliyor...',
       recovery_sent: 'Bu adresin uygun siparişleri varsa, kısa süre içinde erişim bağlantılarını içeren bir e-posta alacaksınız.',
+      auto_recovery_sent: 'Mevcut siparişlerine güvenli erişimi e-posta ile gönderdik.',
+      use_other_email: 'Başka bir e-posta kullan',
       empty_no_orders: 'Bu tarayıcıda hiçbir sipariş bulamadık.',
       plan: { standard: 'Standart', premium: 'Premium', video: 'Video hediye' }
     }
@@ -227,6 +253,7 @@
   document.getElementById('recovery-sub').textContent = t.recovery_sub;
   document.getElementById('recovery-email').placeholder = t.recovery_placeholder;
   document.getElementById('recovery-btn').textContent = t.recovery_btn;
+  document.getElementById('use-other-email-btn').textContent = t.use_other_email;
 
   function escapeHtml(str) {
     const div = document.createElement('div');
@@ -320,6 +347,18 @@
   // loadAndRenderOrders(), dupa ce se stie numarul real de comenzi eligibile.
   const wasBlocked = params.get('blocked') === '1';
 
+  // RECOVERY AUTOMAT SECURIZAT (2026-09-28, cerinta explicita, "BLOCKER URGENT") — emailul e
+  // transmis STRICT prin sessionStorage (niciodata URL/query), de la comanda.html, DOAR pe
+  // traseul de blocare quota (vezi acel fisier) — citit O SINGURA DATA aici si sters imediat, ca
+  // sa nu ramana disponibil pentru o vizita ulterioara neinrudita a acestei pagini. Absenta lui
+  // (sessionStorage indisponibil, sau clientul a ajuns aici altfel decat prin redirectul de
+  // blocare) e un caz normal, tratat identic cu inainte — recovery manual, neschimbat.
+  let pendingRecoveryEmail = '';
+  try {
+    pendingRecoveryEmail = sessionStorage.getItem('naluna_pending_recovery_email') || '';
+    sessionStorage.removeItem('naluna_pending_recovery_email');
+  } catch (e) { /* sessionStorage indisponibil — recovery ramane STRICT manual */ }
+
   async function resolveIncomingTokens() {
     for (const token of incomingTokens) {
       if (!/^[0-9a-f]{48}$/i.test(token)) continue;
@@ -394,6 +433,54 @@
     return card;
   }
 
+  // SUPRIMAREA MESAJULUI REDUNDANT (2026-09-28, cerinta explicita, "Nu vreau mesaje
+  // contradictorii") — cand quota tocmai a blocat clientul (wasBlocked), banner-ul de sus
+  // (t.blocked_empty) explica DEJA situatia reala ("nu vezi comenzi in acest browser") — a mai
+  // afisa si "Nu am gasit nicio comanda in acest browser" DEDESUBT era redundant/confuz (exact
+  // problema raportata). Mesajul empty_no_orders ramane STRICT pentru cazul FARA niciun context
+  // de blocare (browser nou, fara tokenuri, fara quota implicata) — recovery discret, secundar.
+  //
+  // RECOVERY AUTOMAT (cerinta explicita) — daca avem si emailul tocmai folosit (pendingRecoveryEmail,
+  // vezi mai sus), il folosim IMEDIAT pentru a porni recovery-ul securizat, fara sa cerem
+  // clientului sa il retasteze — prioritate: tokenuri locale (verificate mai sus, inaintea acestei
+  // functii) > email tocmai furnizat (aici) > formular manual (fallback, ramane intotdeauna
+  // disponibil si functional).
+  function handleNoVisibleOrders() {
+    const recoveryBox = document.getElementById('recovery-box');
+    if (wasBlocked) {
+      const banner = document.getElementById('blocked-banner');
+      banner.textContent = t.blocked_empty;
+      banner.style.display = '';
+      if (pendingRecoveryEmail) {
+        triggerAutoRecovery(pendingRecoveryEmail);
+      }
+    } else {
+      const listEl = document.getElementById('orders-list');
+      const p = document.createElement('p');
+      p.className = 'empty';
+      p.textContent = t.empty_no_orders;
+      listEl.appendChild(p);
+    }
+    recoveryBox.style.display = '';
+  }
+
+  // Acelasi endpoint public, generic/indistinct (POST /api/orders/recover-access), deja auditat —
+  // STRICT o invocare automata a ACELUIASI mecanism pe care butonul manual il declanseaza mai jos.
+  // Raspunsul ramane generic indiferent de rezultat (nicio enumerare posibila) — mesajul afisat
+  // clientului confirma STRICT ca a fost initiat, niciodata daca emailul chiar are comenzi.
+  async function triggerAutoRecovery(email) {
+    const resultEl = document.getElementById('recovery-result');
+    try {
+      await fetch('/api/orders/recover-access', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, lang })
+      });
+    } catch (e) { /* raspunsul ramane generic, indiferent de reteaua clientului */ }
+    resultEl.textContent = t.auto_recovery_sent;
+    resultEl.style.display = '';
+  }
+
   async function loadAndRenderOrders() {
     await resolveIncomingTokens();
 
@@ -403,12 +490,7 @@
 
     if (known.length === 0) {
       loadingEl.style.display = 'none';
-      if (wasBlocked) {
-        const banner = document.getElementById('blocked-banner');
-        banner.textContent = t.blocked_empty;
-        banner.style.display = '';
-      }
-      recoveryBox.style.display = '';
+      handleNoVisibleOrders();
       return;
     }
 
@@ -436,21 +518,16 @@
 
     loadingEl.style.display = 'none';
 
-    // Mesajul de sus reflecta STRICT starea reala, cunoscuta ABIA acum (nu la parsare, vezi
-    // wasBlocked mai sus) — niciodata "ai deja melodii" langa o lista goala.
-    if (wasBlocked) {
-      const banner = document.getElementById('blocked-banner');
-      banner.textContent = eligible.length > 0 ? t.blocked : t.blocked_empty;
-      banner.style.display = '';
+    if (eligible.length === 0) {
+      handleNoVisibleOrders();
+      return;
     }
 
-    if (eligible.length === 0) {
-      const p = document.createElement('p');
-      p.className = 'empty';
-      p.textContent = t.empty_no_orders;
-      listEl.appendChild(p);
-      recoveryBox.style.display = '';
-      return;
+    // Mesajul de sus reflecta STRICT starea reala — aici stim ca exista comenzi vizibile reale.
+    if (wasBlocked) {
+      const banner = document.getElementById('blocked-banner');
+      banner.textContent = t.blocked;
+      banner.style.display = '';
     }
 
     eligible.forEach((r, i) => {
@@ -462,6 +539,17 @@
   loadAndRenderOrders().catch(() => {
     document.getElementById('loading-msg').style.display = 'none';
     document.getElementById('recovery-box').style.display = '';
+  });
+
+  // IESIRE CLARA (2026-09-28, cerinta explicita, "BACK / NAVIGATION") — revine la email gate pe
+  // comanda.html: sterge STRICT STEP_KEY (aceeasi cheie 'currentStep' folosita acolo) — asta face
+  // gate-ul sa apara din nou la incarcare — NICIODATA naluna_my_order_keys (comenzile deja
+  // autorizate ale acestui browser raman intacte, vizibile aici oricand) si NICIODATA draftul de
+  // formular (nds_form_draft — clientul nu trebuie sa retasteze povestea/destinatarul daca alege
+  // sa continue cu alt email).
+  document.getElementById('use-other-email-btn').addEventListener('click', () => {
+    try { localStorage.removeItem('currentStep'); } catch (e) { /* ignoram */ }
+    window.location.href = '/comanda.html';
   });
 
   // RECUPERARE PRIN EMAIL (mecanism SECUNDAR — pentru alt browser/dispozitiv, sau cand lista

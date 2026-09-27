@@ -924,6 +924,20 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.19/js/intlTelInput.min.js"></script>
 <script>
+  // BACK/NAVIGATION (2026-09-28, "BLOCKER URGENT" — cerinta explicita, audit confirmat): mobile
+  // Chrome/Safari (si, in masura mai mica, desktop) restaureaza aceasta pagina din back-forward
+  // cache (bfcache) la Back/Forward — DOM-ul si variabilele JS raman EXACT cum erau la parasire,
+  // scriptul NU se re-executa, deci orice schimbare facuta STRICT in localStorage intre timp
+  // (ex. localStorage.removeItem(STEP_KEY) mai jos, la blocarea de quota) nu se reflecta in
+  // pagina restaurata pana la un reload real. `pageshow` cu `event.persisted === true` e semnalul
+  // standard, verificat, pentru exact acest caz — un reload fortat garanteaza ca gate-ul/wizard-ul
+  // se re-evalueaza de la zero, citind starea REALA/curenta din localStorage (STEP_KEY etc.).
+  window.addEventListener('pageshow', (event) => {
+    if (event.persisted) {
+      window.location.reload();
+    }
+  });
+
   const translations = {
     ro: {
       back_link: 'Înapoi la pagina principală',
@@ -4053,6 +4067,24 @@
         // pentru acest browser (localStorage populat mai sus, la fiecare creare de comanda),
         // cu toate variantele audio deja generate, gata de ascultat/continuat.
         if (generateRes.status === 403) {
+          // DEAD-END REZOLVAT (2026-09-28, "BLOCKER URGENT" — audit confirmat): STEP_KEY NU era
+          // curatat pe acest traseu (era curatat STRICT la succes, cateva randuri mai jos) — un
+          // Back/reload ulterior gasea STEP_KEY inca setat, sarea gate-ul din nou si arunca
+          // clientul EXACT inapoi in acelasi pas blocat al wizard-ului, fara nicio cale de a
+          // introduce alt email. DRAFT_KEY (povestea/destinatarul/etc.) ramane INTACT — clientul
+          // nu trebuie sa retasteze nimic daca alege sa continue cu alt email.
+          try { localStorage.removeItem(STEP_KEY); } catch (err) { /* ignoram */ }
+          // RECOVERY AUTOMAT SECURIZAT (cerinta explicita) — emailul TOCMAI folosit de server
+          // pentru verificarea quota e transmis, STRICT prin sessionStorage (NICIODATA URL/query,
+          // NICIODATA localStorage persistent), catre comenzile-mele.html, care il consuma O
+          // SINGURA DATA (citeste + sterge imediat) pentru a porni recovery-ul prin ACELASI
+          // endpoint public deja auditat (POST /api/orders/recover-access) — fara sa ceara
+          // clientului sa retasteze adresa. sessionStorage (nu localStorage) — sters automat la
+          // inchiderea tab-ului, niciodata persistat mai mult decat acest handoff.
+          try {
+            const emailForRecovery = document.getElementById('email').value.trim();
+            if (emailForRecovery) sessionStorage.setItem('naluna_pending_recovery_email', emailForRecovery);
+          } catch (err) { /* sessionStorage indisponibil — comenzile-mele.html revine la recovery manual */ }
           window.location.href = '/comenzile-mele.html?blocked=1';
           return;
         }

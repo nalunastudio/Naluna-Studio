@@ -10,8 +10,10 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
+// vezi comentariul identic din private/admin/orders.js — 'draft' nu are nicio generare
+// pornita (niciodata apelat Suno), eticheta veche "Neplătită" sugera fals o melodie deja gata.
 const ORDER_STATUS_LABEL = {
-  draft: 'Neplătită', generating: 'Se compune', processing_provider_result: 'Se finalizează',
+  draft: 'Nefinalizată (fără generare pornită)', generating: 'Se compune', processing_provider_result: 'Se finalizează',
   preview_ready: 'Previzualizare gata', ready: 'Plătită și livrată', generation_failed: 'Eroare'
 };
 const SOCIAL_STATUS_LABEL = {

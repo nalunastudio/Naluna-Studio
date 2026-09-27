@@ -442,8 +442,16 @@ async function loadFunnelSummary({ silent = false } = {}) {
 // restrange automat la perioada selectata in Period Selector de mai sus.
 // ==========================================================================================
 
+// CORECTIE (2026-09-28, "BLOCKER URGENT" — audit confirmat, semantica Admin/funnel): 'draft' era
+// etichetata "Neplătită" — identic cu cum ar suna o comanda REALA, cu melodie deja generata, care
+// doar asteapta plata. Un 'draft' nu are NIMIC generat (nicio variantă, niciun apel Suno — vezi
+// db.claimOrderForInitialGeneration, care NU modifica niciodata statusul cand quota blocheaza
+// generarea) — eticheta veche putea face un admin sa creada gresit ca exista o melodie compusa,
+// gata de vazut/retrimis, cand de fapt clientul a fost blocat de quota inainte sa inceapa vreo
+// generare (sau a abandonat formularul inainte de /generate). Eticheta noua e STRICT text —
+// nicio schimbare de logica/numarare KPI (ordersCreated ramane neschimbat, vezi db.js).
 const statusLabel = {
-  draft: 'Neplătită',
+  draft: 'Nefinalizată (fără generare pornită)',
   generating: 'Se compune',
   processing_provider_result: 'Se finalizează',
   preview_ready: 'Previzualizare gata',
