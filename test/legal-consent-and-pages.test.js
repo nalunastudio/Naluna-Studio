@@ -581,9 +581,12 @@ test('storage.js: getSignedDownloadUrl accepta un al treilea parametru contentDi
 });
 
 test('GET /api/orders/access/:token si GET /api/orders/:orderId expun hostedAccessExpiresAt/hostedAccessExpired — calculat live, nu doar dupa ce maturarea zilnica a rulat', () => {
-  const accessFn = extractFn(server, "app.get('/api/orders/access/:token', lookupLimiter, async (req, res, next) => {");
-  assert.match(accessFn, /hostedAccessExpiresAt\(order\)/);
-  assert.match(accessFn, /hostedAccessExpired: isHostedAccessExpired\(order\)/);
+  // "Continua cu aceasta comanda" (2026-09-28) — GET /api/orders/access/:token a fost extins cu o
+  // ramura noua (?id=, resume-token) care partajeaza acelasi raspuns cu traseul vechi prin
+  // sendOrderAccessDto (extrasa explicit ca sa nu duplice campurile expuse) — verificam acolo.
+  const accessDtoFn = extractFn(server, 'function sendOrderAccessDto(order, res) {');
+  assert.match(accessDtoFn, /hostedAccessExpiresAt\(order\)/);
+  assert.match(accessDtoFn, /hostedAccessExpired: isHostedAccessExpired\(order\)/);
   const orderFn = extractFn(server, "app.get('/api/orders/:orderId', async (req, res, next) => {");
   assert.match(orderFn, /hostedAccessExpiresAt\(order\)/);
   assert.match(orderFn, /hostedAccessExpired: isHostedAccessExpired\(order\)/);
@@ -615,7 +618,7 @@ test('server.js: expireStaleFinalMedia() sterge REAL toate cele 5 chei media (fu
 
 test('comanda-mea.html: cand hostedAccessExpired e true, se afiseaza STRICT starea curata de expirare (access_expired_title/body) — NICIODATA playerul/linkurile de descarcare (ar fi sparte)', () => {
   const html = read('public/comanda-mea.html');
-  const fn = extractFn(html, 'async function lookup(token) {');
+  const fn = extractFn(html, 'async function lookup(token, orderId) {');
   assert.match(fn, /const accessExpired = o\.status === 'ready' && !!o\.hostedAccessExpired;/);
   assert.match(fn, /accessExpired \? `/);
   assert.match(fn, /t\.access_expired_title/);

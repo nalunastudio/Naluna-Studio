@@ -1149,6 +1149,126 @@ function safeCompare(a, b) {
   return timingSafeEqual(bufA, bufB);
 }
 
+// ==========================================================================================
+// TOKEN DE CONTINUARE ("Continua cu aceasta comanda", 2026-09-28; RESTRUCTURAT 2026-09-30 dupa
+// audit explicit — runda 1 crease un TOKEN PERMANENT, DETERMINIST, CU AUTORITATE COMPLETA
+// (identic cu accessToken-ul original, fara expirare) — practic un al doilea accessToken emis
+// prin simpla proba de email. Corectat structural:
+//   - EXPIRA — payload-ul semnat contine issuedAt/expiresAt; verificarea respinge orice token
+//     cu expiresAt in trecut, calculat server-side (Date.now()), niciodata incredere in client.
+//   - NU MAI E DETERMINIST intre cereri (chiar pentru acelasi orderId+email) — expiresAt (deci
+//     tot payload-ul, deci semnatura) difera la fiecare emitere, pentru ca fiecare emitere are
+//     alt moment de emitere.
+//   - SCOPE explicit versionat (RESUME_TOKEN_SCOPE) — semnat impreuna cu restul payloadului, ca
+//     o schimbare viitoare a autoritatii acordate sa poata invalida tokenurile vechi, in loc sa
+//     le mosteneasca tacit o autoritate noua.
+//   - AUTORITATE LIMITATA, NU IDENTICA CU accessToken — vezi classifyOrderCredential/
+//     requireOrderToken/denyResumeCredential mai jos: un resume-token valid e clasificat distinct
+//     de accessToken ('resume' vs 'access'), iar POST /generate si POST /regenerate (SINGURELE
+//     doua rute din tot sistemul care apeleaza efectiv SunoAPI — verificat exhaustiv, toate
+//     apelurile catre callMusicProvider() pornesc STRICT din pipeline-ul de generare declansat de
+//     aceste doua rute) resping explicit un credential de tip 'resume', indiferent cat de proaspat
+//     ar fi. Toate celelalte actiuni ale calatoriei normale (citire, selectie, checkout — STRICT
+//     crearea sesiunii Stripe, nu miscarea de bani —, editare versuri/materiale video, upload/
+//     stergere/reordonare materiale, creare videoclip, continut platit complet dupa livrare)
+//     raman accesibile — vezi raportul pentru justificarea explicita per ruta.
+// Semnatura ramane HMAC-SHA256 cu ACELASI RECOVERY_EMAIL_UNSUBSCRIBE_SECRET (niciun secret nou),
+// cu un prefix de mesaj distinct ("resume-v2:") fata de buildUnsubscribeToken — separare de
+// domeniu neschimbata. STATELESS — nimic nou in DB, totul verificabil din payload-ul propriu +
+// emailul STOCAT al comenzii.
+// ==========================================================================================
+function normalizeEmailKey(email) {
+  return String(email || '').trim().toLowerCase();
+}
+
+// TTL — 60 de minute. Justificare (vezi raportul complet pentru detalii): trebuie sa acopere o
+// SINGURA sesiune realista de continuare, nu sa fie permanent. Etapele posibile dupa "Continua cu
+// aceasta comanda" includ incarcarea a pana la 30 de materiale video (poate dura, pe o conexiune
+// mobila lenta, cateva zeci de minute) si asteptarea unei regenerari reale (raspuns SunoAPI, de
+// obicei sub cateva minute, dar nu instant) — un TTL de ordinul minutelor (ex. 10-15) ar crea
+// deconectari false in mijlocul unui upload legitim. Un TTL de ordinul zilelor ar reintroduce
+// exact problema corectata (o credentiala de-facto permanenta). 60 de minute e suficient pentru
+// ORICE etapa unica descrisa in auditul de stari, dar ramane cu un ordin de marime sub "permanent"
+// — daca sesiunea expira in mijlocul unei sarcini neobisnuit de lungi, clientul apasa din nou
+// "Continua cu aceasta comanda" (acelasi flux, niciun cod/link nou de retinut).
+const RESUME_TOKEN_TTL_MS = 60 * 60 * 1000;
+const RESUME_TOKEN_SCOPE = 'order-resume-v1';
+
+function buildResumeToken(orderId, emailKey) {
+  if (!RECOVERY_EMAIL_UNSUBSCRIBE_SECRET) return '';
+  const issuedAt = Date.now();
+  const expiresAt = issuedAt + RESUME_TOKEN_TTL_MS;
+  // Amprenta emailului (SHA-256, trunchiata) — NU secreta prin ea insasi (oricine stie emailul
+  // poate recalcula aceeasi amprenta), dar legata de restul payload-ului prin semnatura HMAC de
+  // mai jos, ca sa nu poata fi inlocuita fara sa invalideze tokenul. Niciodata emailul in clar.
+  const emailFingerprint = createHash('sha256').update(emailKey).digest('hex').slice(0, 16);
+  const payload = `${orderId}:${emailFingerprint}:${issuedAt}:${expiresAt}:${RESUME_TOKEN_SCOPE}`;
+  const payloadB64 = Buffer.from(payload, 'utf8').toString('base64url');
+  const signature = createHmac('sha256', RECOVERY_EMAIL_UNSUBSCRIBE_SECRET).update(`resume-v2:${payloadB64}`).digest('hex');
+  return `${payloadB64}.${signature}`;
+}
+
+function parseResumeToken(token) {
+  if (typeof token !== 'string' || !token) return null;
+  const dot = token.lastIndexOf('.');
+  if (dot <= 0 || dot === token.length - 1) return null;
+  const payloadB64 = token.slice(0, dot);
+  const signature = token.slice(dot + 1);
+  let payload;
+  try {
+    payload = Buffer.from(payloadB64, 'base64url').toString('utf8');
+  } catch (e) {
+    return null;
+  }
+  const parts = payload.split(':');
+  if (parts.length !== 5) return null;
+  const [orderId, emailFingerprint, issuedAtStr, expiresAtStr, scope] = parts;
+  const issuedAt = Number(issuedAtStr);
+  const expiresAt = Number(expiresAtStr);
+  if (!orderId || !emailFingerprint || !Number.isFinite(issuedAt) || !Number.isFinite(expiresAt)) return null;
+  return { orderId, emailFingerprint, issuedAt, expiresAt, scope, payloadB64, signature };
+}
+
+// Verifica STRICT un resume-token (nu accessToken-ul) — semnatura (timing-safe, safeCompare
+// ruleaza MEREU, chiar si cu payload/token lipsa/invalid, cu DUMMY_TOKEN_FOR_TIMING ca umplutura),
+// apoi scope/orderId/expirare/amprenta emailului. Odata verificata semnatura, restul verificarilor
+// (scope/orderId/expirare/amprenta) NU mai sunt comparatii impotriva unui secret — sunt proprietati
+// ale unui payload deja autentificat — deci pot scurtcircuita normal (acelasi tipar ca verificarile
+// de status/plan de dupa safeCompare in rutele /media/*, neschimbate).
+function isValidResumeToken(order, providedToken) {
+  const parsed = parseResumeToken(providedToken);
+  const payloadForCompare = parsed ? parsed.payloadB64 : DUMMY_TOKEN_FOR_TIMING;
+  const expectedSignature = createHmac('sha256', RECOVERY_EMAIL_UNSUBSCRIBE_SECRET || DUMMY_TOKEN_FOR_TIMING)
+    .update(`resume-v2:${payloadForCompare}`).digest('hex');
+  const signatureForCompare = parsed ? parsed.signature : DUMMY_TOKEN_FOR_TIMING;
+  const signatureValid = RECOVERY_EMAIL_UNSUBSCRIBE_SECRET ? safeCompare(signatureForCompare, expectedSignature) : false;
+  if (!parsed || !signatureValid) return false;
+  if (parsed.scope !== RESUME_TOKEN_SCOPE) return false;
+  if (!order || parsed.orderId !== order.id) return false;
+  if (Date.now() > parsed.expiresAt) return false;
+  const expectedFingerprint = createHash('sha256').update(normalizeEmailKey(order.email)).digest('hex').slice(0, 16);
+  if (parsed.emailFingerprint !== expectedFingerprint) return false;
+  return true;
+}
+
+// Clasifica credentialul: 'access' (accessToken real, autoritate completa, neschimbat), 'resume'
+// (resume-token, autoritate LIMITATA — vezi denyResumeCredential mai jos), sau null (invalid).
+// safeCompare pentru accessToken ruleaza MEREU, indiferent de rezultatul resume-token-ului.
+function classifyOrderCredential(order, providedToken) {
+  const expectedAccessToken = order ? order.accessToken : DUMMY_TOKEN_FOR_TIMING;
+  const accessTokenValid = safeCompare(providedToken, expectedAccessToken);
+  const resumeTokenValid = isValidResumeToken(order, providedToken);
+  if (accessTokenValid) return 'access';
+  if (resumeTokenValid) return 'resume';
+  return null;
+}
+// Boolean simplu, pentru rutele GET care nu au nevoie sa distinga TIPUL de credential (citire de
+// stare, continut platit complet dupa livrare — vezi raportul pentru justificarea explicita a
+// fiecarei rute care foloseste aceasta forma in loc de classifyOrderCredential).
+function isValidOrderCredential(order, providedToken) {
+  return classifyOrderCredential(order, providedToken) !== null;
+}
+
 // -------- validatori simpli, fara dependinte externe --------
 function isValidEmail(str) {
   return typeof str === 'string' && str.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(str);
@@ -3528,8 +3648,9 @@ async function requireOrderToken(req, res, next) {
 
     const order = await db.getOrderById(req.params.orderId);
     const token = req.get('X-Access-Token') || (req.body && req.body.accessToken) || null;
+    const credentialKind = (order && token) ? classifyOrderCredential(order, token) : null;
 
-    if (!order || !token || !safeCompare(token, order.accessToken)) {
+    if (!order || !token || !credentialKind) {
       return res.status(404).json({ error: 'Comanda nu există' });
     }
     // RETENTIE COMENZI NEPLATITE (2026-09-27): o comanda neplatita expirata (>7 zile, vezi
@@ -3543,16 +3664,30 @@ async function requireOrderToken(req, res, next) {
     }
 
     req.order = order; // evita un al doilea SELECT in handler-ul care urmeaza
+    // 'access' (accessToken real) sau 'resume' (token de continuare, autoritate LIMITATA — vezi
+    // denyResumeCredential mai jos, aplicata explicit pe /generate si /regenerate).
+    req.credentialKind = credentialKind;
     next();
   } catch (err) {
     next(err);
   }
 }
 
+// Aplicata STRICT pe /generate si /regenerate — SINGURELE doua rute din tot sistemul care
+// apeleaza efectiv SunoAPI (callMusicProvider) — vezi comentariul de la definitia resume-tokenului
+// mai sus pentru verificarea exhaustiva. Un resume-token, oricat de proaspat, nu poate niciodata
+// declansa o generare/regenerare — doar accessToken-ul real (linkul din email/local) poate.
+function denyResumeCredential(req, res, next) {
+  if (req.credentialKind === 'resume') {
+    return res.status(403).json({ error: 'Această acțiune necesită linkul complet primit pe email pentru această comandă.' });
+  }
+  next();
+}
+
 // ==========================================================================================
 // 2. Genereaza o PERECHE de variante — GRATUIT, inainte de plata
 // ==========================================================================================
-app.post('/api/orders/:orderId/generate', generationLimiter, requireOrderToken, async (req, res, next) => {
+app.post('/api/orders/:orderId/generate', generationLimiter, requireOrderToken, denyResumeCredential, async (req, res, next) => {
   try {
     const order = req.order;
     if (!order) return res.status(404).json({ error: 'Comanda nu există.' });
@@ -3682,6 +3817,89 @@ app.post('/api/orders/recover-access', recoveryIpLimiter, recoveryEmailTargetLim
 });
 
 // ==========================================================================================
+// STARE VIDEO DERIVATA (extrasa 2026-09-28 din GET /api/orders/:orderId, ca sa poata fi
+// refolosita si de resumeUrlFor mai jos — NICIO schimbare de logica, doar aceeasi functie
+// apelata din doua locuri in loc de duplicata). Vezi comentariile originale pastrate mai jos.
+// ==========================================================================================
+async function computeVideoStatus(order) {
+  // Stare video derivata, expusa explicit clientului — vezi cerinta "A. Arhitectura si
+  // starile comenzii" (starea videoclipului separata de starea platii). 'stale' ia
+  // prioritate (chiar daca un videoKey vechi mai exista pe alta varianta, nu mai e
+  // valabil pentru cea curenta); 'generating' reflecta rezervarea atomica persistenta
+  // (db.claimVideoRender), nu o stare doar in memorie.
+  const currentVariant = (order.variants || []).find(v => v.id === order.selectedVariantId);
+  let videoStatus = 'none';
+  if (order.plan === 'video') {
+    if (isVideoLockActive(order)) videoStatus = 'generating';
+    else if (order.videoStaleReason) videoStatus = 'stale';
+    // RELANSARE (2026-08-14, "previzualizarea gratuita de 25s"): 'ready' cere acum AMBELE
+    // fisiere — videoclipul complet SI previzualizarea (create in acelasi job, vezi
+    // generateLyricVideo) — o comanda veche cu doar videoKey (dinainte ca previzualizarea
+    // sa existe) nu trebuie sa arate "gata" cat timp nu exista inca nimic redabil pre-plata.
+    else if (currentVariant && currentVariant.videoKey && currentVariant.videoPreviewKey) videoStatus = 'ready';
+    else if (currentVariant && currentVariant.videoFailedReason) videoStatus = 'failed';
+    else if (order.videoRenderClaimedAt) videoStatus = 'failed'; // lock expirat fara rezultat -> recuperabil, nu "generating" etern
+    // Coada video-worker (vezi raportul de scalabilitate) — cablata la fluxul live de
+    // declansare (triggerVideoGeneration si create-video enqueueaza direct), deci aceasta
+    // interogare reflecta starea reala a randarii pentru orice comanda. Foloseste cel mai
+    // recent job (indiferent de status) ca sa poata expune corect si 'failed', nu doar
+    // 'pending'/'claimed' — fara ea, un job 'pending' (confirmat, asteapta un worker liber)
+    // ar aparea clientului identic cu "nicio randare ceruta", desi jobul e real si va fi
+    // preluat automat.
+    else if (videoStatus === 'none' && order.selectedVariantId) {
+      const job = await db.getLatestVideoRenderJobForOrder(order.id, order.selectedVariantId, order.mediaRevision);
+      if (job) {
+        if (job.status === 'pending') videoStatus = 'queued';
+        else if (job.status === 'claimed') videoStatus = 'generating';
+        else if (job.status === 'failed') videoStatus = 'failed';
+      }
+    }
+  }
+  return videoStatus;
+}
+
+// ==========================================================================================
+// "CONTINUA CU ACEASTA COMANDA" (2026-09-28, cerinta explicita) — rezolva STRICT din starea
+// reala a comenzii (niciodata din reguli aproximative gen "daca Premium si 4 melodii") pasul
+// urmator legitim, refolosind EXACT dispecerizarea client-side deja existenta si corecta:
+//   - melodia-mea.html/loadOrder() dispecerizeaza deja dupa order.status (draft/generating/
+//     processing_provider_result -> se-compune.html; generation_failed -> ecranul de eroare;
+//     preview_ready -> renderContent/renderPremiumFlow, care aleg singure ecranul potrivit
+//     pentru Standard/Premium/Video dupa variants.length si selectedVariantId);
+//   - comenzile.html/continueUrlFor (traseul cu token complet, neschimbat) trimite 'ready' la
+//     comanda-mea.html, orice altceva la melodia-mea.html.
+// Singura ramura care NU e deja acoperita de melodia-mea.html: comenzile Video cu materiale
+// neconfirmate inca — butonul de creare video a fost mutat STRUCTURAL pe /amintiri-video.html
+// (vezi comentariul "CORECȚIE 2026-08-29" din melodia-mea.html/updateVideoStatusUI); trimise pe
+// melodia-mea.html, aceste comenzi nu ar avea NICIUN control vizibil pentru pasul urmator.
+// resumeUrlFor reproduce, server-side, EXACT aceasta distinctie — nu inventeaza o stare noua.
+// ==========================================================================================
+function resolveOrderResumeStage(order) {
+  if (order.status === 'ready') return 'ready';
+  if (order.status === 'generating' || order.status === 'processing_provider_result' || order.status === 'draft') return 'generating';
+  if (order.status === 'preview_ready') return 'in_progress';
+  return null;
+}
+
+async function resumeUrlFor(order, token) {
+  const id = encodeURIComponent(order.id);
+  const tok = encodeURIComponent(token);
+  if (order.status === 'ready') {
+    return `/comanda-mea.html?token=${tok}&id=${id}`;
+  }
+  if (order.plan === 'video') {
+    const pendingVariantChoice = !order.selectedVariantId && (order.variants || []).length > 1;
+    if (order.selectedVariantId && !pendingVariantChoice && order.status === 'preview_ready') {
+      const videoStatus = await computeVideoStatus(order);
+      if (videoStatus === 'none' || videoStatus === 'failed') {
+        return `/amintiri-video.html?id=${id}&token=${tok}`;
+      }
+    }
+  }
+  return `/melodia-mea.html?id=${id}&token=${tok}`;
+}
+
+// ==========================================================================================
 // EMAIL SUFICIENT PENTRU "COMENZILE MELE" (2026-09-30, decizie explicita de produs — audit
 // "Comenzile mele goala desi quota stie ca exista melodii"): clientul nu mai trebuie sa detina
 // un token local sau sa deschida un link din email ca sa-si vada/asculte comenzile — introduce
@@ -3728,7 +3946,13 @@ function buildOrderSummaryDto(order) {
     hostedAccessExpired: isHostedAccessExpired(order),
     // STRICT id-uri de variante — nu URL-uri, nu chei de storage. Clientul construieste local
     // /media/preview/:orderId/:variantId (deja publica, neautentificata) — niciun credential nou.
-    previewVariantIds: (order.variants || []).filter((v) => v.previewUrl).map((v) => v.id)
+    previewVariantIds: (order.variants || []).filter((v) => v.previewUrl).map((v) => v.id),
+    // "Continua cu aceasta comanda" (2026-09-28): STRICT o eticheta de afisaj (nu un URL, nu un
+    // token) — vezi resolveOrderResumeStage mai sus. Adresa REALA de continuare se cere separat,
+    // explicit, prin POST /api/orders/:orderId/resume-by-email, NICIODATA in acest raspuns in
+    // masa (care ramane, neschimbat, STRICT view/listen — fara tokenul de acces complet, fara resumeUrl).
+    canResume: resolveOrderResumeStage(order) !== null,
+    resumeStage: resolveOrderResumeStage(order)
   };
 }
 
@@ -3750,6 +3974,42 @@ app.post('/api/orders/by-email', recoveryIpLimiter, recoveryEmailTargetLimiter, 
 });
 
 // ==========================================================================================
+// "CONTINUA CU ACEASTA COMANDA" (2026-09-28, cerinta explicita) — emite un resume-token
+// STATELESS pentru O SINGURA comanda specifica, dupa exact aceeasi verificare de eligibilitate
+// (db.getEligibleOrdersForAccessRecovery) ca /api/orders/by-email de mai sus — nicio eligibilitate
+// noua/separata, nicio interogare SQL duplicata. Rate-limitat identic (recoveryIpLimiter +
+// recoveryEmailTargetLimiter) — cunoasterea unui id de comanda (obtinut oricum doar prin lista,
+// deja limitata) nu ocoleste limitarea. NU creeaza, nu genereaza, nu modifica, nu consuma quota,
+// nu trimite email — STRICT calculeaza si returneaza o adresa de continuare pentru starea deja
+// existenta a comenzii (resumeUrlFor mai sus). NU returneaza NICIODATA accessToken-ul real.
+// ==========================================================================================
+app.post('/api/orders/:orderId/resume-by-email', recoveryIpLimiter, recoveryEmailTargetLimiter, async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.orderId)) return res.json({ canResume: false });
+
+    const rawEmail = typeof req.body?.email === 'string' ? req.body.email.trim() : '';
+    if (!rawEmail || !rawEmail.includes('@')) return res.json({ canResume: false });
+
+    // Identic cu /by-email: throttling pe email = raspuns normal, negativ — niciodata un semnal
+    // distinct care ar permite enumerarea adreselor sau a comenzilor.
+    if (req.recoveryEmailThrottled) return res.json({ canResume: false });
+
+    const emailKey = rawEmail.toLowerCase();
+    const orders = await db.getEligibleOrdersForAccessRecovery(emailKey);
+    const order = orders.find((o) => o.id === req.params.orderId);
+    if (!order) return res.json({ canResume: false });
+
+    const resumeToken = buildResumeToken(order.id, normalizeEmailKey(order.email));
+    if (!resumeToken) return res.json({ canResume: false });
+
+    const resumeUrl = await resumeUrlFor(order, resumeToken);
+    res.json({ canResume: true, resumeUrl });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ==========================================================================================
 // 3. Regenereaza (editare) — o noua pereche de variante, limitat la FREE_EDITS
 // ==========================================================================================
 // MODIFICARE STRICTĂ — fluxul Premium: editare selectiva pe pagina dedicata (hotfix 2026-08-10
@@ -3760,7 +4020,7 @@ app.post('/api/orders/by-email', recoveryIpLimiter, recoveryEmailTargetLimiter, 
 // ACEEASI singura editare gratuita per comanda (db.claimOrderForRegeneration, un singur claim
 // indiferent daca se editeaza 1 sau 2 melodii in aceeasi cerere). Complet separat de ramura de
 // mai jos (variantId singular), folosita in continuare NESCHIMBAT de Standard si Video.
-app.post('/api/orders/:orderId/regenerate', generationLimiter, requireOrderToken, async (req, res, next) => {
+app.post('/api/orders/:orderId/regenerate', generationLimiter, requireOrderToken, denyResumeCredential, async (req, res, next) => {
   if (req.order.plan === 'premium' && Array.isArray(req.body?.songs)) {
     return handlePremiumSelectiveRegenerate(req, res, next);
   }
@@ -4294,8 +4554,7 @@ app.get('/api/orders/:orderId', async (req, res, next) => {
 
     const order = await db.getOrderById(req.params.orderId);
     const providedToken = typeof req.query.token === 'string' ? req.query.token : '';
-    const expectedToken = order ? order.accessToken : DUMMY_TOKEN_FOR_TIMING;
-    if (!order || !safeCompare(providedToken, expectedToken)) {
+    if (!order || !isValidOrderCredential(order, providedToken)) {
       return res.status(404).json({ error: 'Comanda nu există.' });
     }
     // RETENTIE COMENZI NEPLATITE (2026-09-27) — vezi comentariul identic de la requireOrderToken.
@@ -4360,39 +4619,7 @@ app.get('/api/orders/:orderId', async (req, res, next) => {
     const giftVariantForCount = getGiftVariant(order);
     const premiumBonusVariantForCount = getPremiumBonusVariant(order);
 
-    // Stare video derivata, expusa explicit clientului — vezi cerinta "A. Arhitectura si
-    // starile comenzii" (starea videoclipului separata de starea platii). 'stale' ia
-    // prioritate (chiar daca un videoKey vechi mai exista pe alta varianta, nu mai e
-    // valabil pentru cea curenta); 'generating' reflecta rezervarea atomica persistenta
-    // (db.claimVideoRender), nu o stare doar in memorie.
-    const currentVariant = (order.variants || []).find(v => v.id === order.selectedVariantId);
-    let videoStatus = 'none';
-    if (order.plan === 'video') {
-      if (isVideoLockActive(order)) videoStatus = 'generating';
-      else if (order.videoStaleReason) videoStatus = 'stale';
-      // RELANSARE (2026-08-14, "previzualizarea gratuita de 25s"): 'ready' cere acum AMBELE
-      // fisiere — videoclipul complet SI previzualizarea (create in acelasi job, vezi
-      // generateLyricVideo) — o comanda veche cu doar videoKey (dinainte ca previzualizarea
-      // sa existe) nu trebuie sa arate "gata" cat timp nu exista inca nimic redabil pre-plata.
-      else if (currentVariant && currentVariant.videoKey && currentVariant.videoPreviewKey) videoStatus = 'ready';
-      else if (currentVariant && currentVariant.videoFailedReason) videoStatus = 'failed';
-      else if (order.videoRenderClaimedAt) videoStatus = 'failed'; // lock expirat fara rezultat -> recuperabil, nu "generating" etern
-      // Coada video-worker (vezi raportul de scalabilitate) — cablata la fluxul live de
-      // declansare (triggerVideoGeneration si create-video enqueueaza direct), deci aceasta
-      // interogare reflecta starea reala a randarii pentru orice comanda. Foloseste cel mai
-      // recent job (indiferent de status) ca sa poata expune corect si 'failed', nu doar
-      // 'pending'/'claimed' — fara ea, un job 'pending' (confirmat, asteapta un worker liber)
-      // ar aparea clientului identic cu "nicio randare ceruta", desi jobul e real si va fi
-      // preluat automat.
-      else if (videoStatus === 'none' && order.selectedVariantId) {
-        const job = await db.getLatestVideoRenderJobForOrder(order.id, order.selectedVariantId, order.mediaRevision);
-        if (job) {
-          if (job.status === 'pending') videoStatus = 'queued';
-          else if (job.status === 'claimed') videoStatus = 'generating';
-          else if (job.status === 'failed') videoStatus = 'failed';
-        }
-      }
-    }
+    const videoStatus = await computeVideoStatus(order);
 
     // IMPORTANT: raspuns construit explicit, camp cu camp — NU facem spread pe `order`.
     // Un spread complet ar fi scurs accessToken si email-ul catre oricine stie/ghiceste
@@ -5611,8 +5838,7 @@ app.get('/media/full/:orderId', async (req, res, next) => {
 
     // comparam mereu — cu tokenul real daca ordinul exista, cu unul fals altfel —
     // ca timpul de executie sa fie acelasi in ambele cazuri
-    const expectedToken = order ? order.accessToken : DUMMY_TOKEN_FOR_TIMING;
-    const tokenValid = safeCompare(providedToken, expectedToken);
+    const tokenValid = isValidOrderCredential(order, providedToken);
 
     if (!order || !tokenValid) return denyGeneric();
 
@@ -5649,8 +5875,7 @@ app.get('/media/full/:orderId/gift', async (req, res, next) => {
 
     const order = await db.getOrderById(req.params.orderId);
     const providedToken = typeof req.query.token === 'string' ? req.query.token : '';
-    const expectedToken = order ? order.accessToken : DUMMY_TOKEN_FOR_TIMING;
-    const tokenValid = safeCompare(providedToken, expectedToken);
+    const tokenValid = isValidOrderCredential(order, providedToken);
 
     if (!order || !tokenValid) return denyGeneric();
 
@@ -5692,8 +5917,7 @@ app.get('/media/full/:orderId/bonus', async (req, res, next) => {
 
     const order = await db.getOrderById(req.params.orderId);
     const providedToken = typeof req.query.token === 'string' ? req.query.token : '';
-    const expectedToken = order ? order.accessToken : DUMMY_TOKEN_FOR_TIMING;
-    const tokenValid = safeCompare(providedToken, expectedToken);
+    const tokenValid = isValidOrderCredential(order, providedToken);
 
     if (!order || !tokenValid) return denyGeneric();
     if (order.plan !== 'premium') return denyGeneric();
@@ -5735,8 +5959,7 @@ app.get('/media/wav/:orderId', async (req, res, next) => {
 
     const order = await db.getOrderById(req.params.orderId);
     const providedToken = typeof req.query.token === 'string' ? req.query.token : '';
-    const expectedToken = order ? order.accessToken : DUMMY_TOKEN_FOR_TIMING;
-    if (!order || !safeCompare(providedToken, expectedToken)) return denyGeneric();
+    if (!order || !isValidOrderCredential(order, providedToken)) return denyGeneric();
 
     if (order.status !== 'ready') return res.status(403).send('Fișierul WAV se deblochează după plată');
     if (order.plan !== 'premium' && order.plan !== 'video') return denyGeneric();
@@ -5761,8 +5984,7 @@ app.get('/media/video/:orderId', async (req, res, next) => {
 
     const order = await db.getOrderById(req.params.orderId);
     const providedToken = typeof req.query.token === 'string' ? req.query.token : '';
-    const expectedToken = order ? order.accessToken : DUMMY_TOKEN_FOR_TIMING;
-    if (!order || !safeCompare(providedToken, expectedToken)) return denyGeneric();
+    if (!order || !isValidOrderCredential(order, providedToken)) return denyGeneric();
 
     // DECIZIE FINALA (hotfix 2026-08-08): videoclipul se GENEREAZA inainte de plata, dar NU
     // se poate reda inainte de plata — nicio previzualizare video. Incercarea anterioara de a
@@ -5794,9 +6016,63 @@ app.get('/media/video/:orderId', async (req, res, next) => {
 // comenzile si povestile private. Acum accesul se face DOAR cu token-ul primit pe email,
 // care e un sir aleator de 48 caractere hex — imposibil de ghicit.
 // ==========================================================================================
+// Extras (2026-09-28) din handler-ul de mai jos, ca sa poata fi refolosit si de ramura
+// "?id=" (resume-token) fara sa duplice campurile expuse — NICIO schimbare de continut.
+function sendOrderAccessDto(order, res) {
+  // hasWav/hasVideo ale variantei ALESE — niciodata cheile de storage insele — necesare
+  // ca pagina "comanda mea" sa poata arata extrasele de pachet (WAV/video) cand sunt gata,
+  // fara sa expuna nimic in plus fata de ce era deja expus aici. hasGiftAudio la fel, pentru
+  // "melodia cadou" (cealalta varianta) — livrata la toate cele trei pachete dupa plata.
+  const selectedVariant = (order.variants || []).find(v => v.id === order.selectedVariantId);
+  const giftVariant = getGiftVariant(order);
+  // CERINTA (2026-09-13, runda 2, "a treia melodie cadou pentru Premium"): la fel ca
+  // hasGiftAudio de mai sus — STRICT Premium, STRICT dupa plata (order.premiumBonusVariantId
+  // e null pana la recordPaidOrderAtomically, deci getPremiumBonusVariant() returneaza null
+  // automat inainte de plata, fara nicio verificare suplimentara aici).
+  const premiumBonusVariant = getPremiumBonusVariant(order);
+
+  res.json({
+    id: order.id, recipient: order.recipient, status: order.status,
+    createdAt: order.createdAt,
+    plan: order.plan,
+    hasWav: !!(selectedVariant && selectedVariant.wavKey),
+    hasVideo: !!(selectedVariant && selectedVariant.videoKey),
+    hasGiftAudio: !!(giftVariant && giftVariant.fullKey),
+    hasPremiumBonusAudio: !!(premiumBonusVariant && premiumBonusVariant.fullKey),
+    uploadedMedia: (order.uploadedMedia || []).map(m => ({ type: m.type, section: m.section || null })),
+    // Acces gazduit 30 de zile de la livrare (vezi CONTENT_RETENTION_DAYS) — expus AICI ca reper
+    // de TIMP, independent de daca stergerea fizica (expireStaleFinalMedia) a rulat deja sau
+    // nu, ca frontend-ul sa arate STRICT starea corecta de "acces expirat" chiar daca fisierul
+    // ar mai exista tehnic inca o vreme in storage (cursa cu maturarea zilnica).
+    hostedAccessExpiresAt: hostedAccessExpiresAt(order),
+    hostedAccessExpired: isHostedAccessExpired(order)
+  });
+}
+
 app.get('/api/orders/access/:token', lookupLimiter, async (req, res, next) => {
   try {
     const token = req.params.token;
+
+    // Traseul NOU (2026-09-28, "Continua cu aceasta comanda") — comanda deja identificata prin
+    // id explicit (venit dintr-un resumeUrl calculat server-side), token-ul poate fi accessToken-ul
+    // real SAU un resume-token (isValidOrderCredential accepta ambele — vezi comentariul de acolo).
+    // Traseul VECHI de mai jos (fara ?id=, format strict 48-hex) ramane COMPLET neschimbat, pentru
+    // linkurile reale primite pe email.
+    const explicitId = typeof req.query.id === 'string' ? req.query.id : '';
+    if (explicitId) {
+      if (!UUID_RE.test(explicitId) || typeof token !== 'string' || !token) {
+        return res.status(400).json({ error: 'Cod de acces invalid.' });
+      }
+      const order = await db.getOrderById(explicitId);
+      if (!order || !isValidOrderCredential(order, token)) {
+        return res.status(404).json({ error: 'Nicio comandă găsită pentru acest cod.' });
+      }
+      if (order.unpaidExpiredAt && order.status !== 'ready') {
+        return res.status(404).json({ error: 'Nicio comandă găsită pentru acest cod.' });
+      }
+      return sendOrderAccessDto(order, res);
+    }
+
     if (typeof token !== 'string' || !/^[0-9a-f]{48}$/i.test(token)) {
       return res.status(400).json({ error: 'Cod de acces invalid.' });
     }
@@ -5808,34 +6084,7 @@ app.get('/api/orders/access/:token', lookupLimiter, async (req, res, next) => {
       return res.status(404).json({ error: 'Nicio comandă găsită pentru acest cod.' });
     }
 
-    // hasWav/hasVideo ale variantei ALESE — niciodata cheile de storage insele — necesare
-    // ca pagina "comanda mea" sa poata arata extrasele de pachet (WAV/video) cand sunt gata,
-    // fara sa expuna nimic in plus fata de ce era deja expus aici. hasGiftAudio la fel, pentru
-    // "melodia cadou" (cealalta varianta) — livrata la toate cele trei pachete dupa plata.
-    const selectedVariant = (order.variants || []).find(v => v.id === order.selectedVariantId);
-    const giftVariant = getGiftVariant(order);
-    // CERINTA (2026-09-13, runda 2, "a treia melodie cadou pentru Premium"): la fel ca
-    // hasGiftAudio de mai sus — STRICT Premium, STRICT dupa plata (order.premiumBonusVariantId
-    // e null pana la recordPaidOrderAtomically, deci getPremiumBonusVariant() returneaza null
-    // automat inainte de plata, fara nicio verificare suplimentara aici).
-    const premiumBonusVariant = getPremiumBonusVariant(order);
-
-    res.json({
-      id: order.id, recipient: order.recipient, status: order.status,
-      createdAt: order.createdAt,
-      plan: order.plan,
-      hasWav: !!(selectedVariant && selectedVariant.wavKey),
-      hasVideo: !!(selectedVariant && selectedVariant.videoKey),
-      hasGiftAudio: !!(giftVariant && giftVariant.fullKey),
-      hasPremiumBonusAudio: !!(premiumBonusVariant && premiumBonusVariant.fullKey),
-      uploadedMedia: (order.uploadedMedia || []).map(m => ({ type: m.type, section: m.section || null })),
-      // Acces gazduit 30 de zile de la livrare (vezi CONTENT_RETENTION_DAYS) — expus AICI ca reper
-      // de TIMP, independent de daca stergerea fizica (expireStaleFinalMedia) a rulat deja sau
-      // nu, ca frontend-ul sa arate STRICT starea corecta de "acces expirat" chiar daca fisierul
-      // ar mai exista tehnic inca o vreme in storage (cursa cu maturarea zilnica).
-      hostedAccessExpiresAt: hostedAccessExpiresAt(order),
-      hostedAccessExpired: isHostedAccessExpired(order)
-    });
+    sendOrderAccessDto(order, res);
   } catch (err) {
     next(err);
   }

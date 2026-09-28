@@ -76,7 +76,7 @@ test('melodia-mea.html: node --check (indirect, sintaxa scriptului inline) trece
 // C. FIX — comanda-mea.html: aceeasi reinforce, dupa succesul GET /api/orders/access/:token.
 // ===============================================================================================
 test('comanda-mea.html: salvarea in naluna_my_order_keys se face STRICT dupa toate verificarile de esec (400/404/!res.ok), niciodata inainte', () => {
-  const idx = comandaMea.indexOf('async function lookup(token) {');
+  const idx = comandaMea.indexOf('async function lookup(token, orderId) {');
   const end = comandaMea.indexOf('const fullUrl = `/media/full/', idx);
   const body = comandaMea.slice(idx, end);
   const idx400 = body.indexOf("if (res.status === 400)");

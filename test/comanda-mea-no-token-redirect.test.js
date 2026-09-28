@@ -86,8 +86,8 @@ test('comanda-mea.html: formularul manual de introducere a codului a fost ELIMIN
   assert.ok(!/getElementById\('token'\)/.test(html), 'JS-ul nu mai trebuie sa citeasca un camp #token inexistent');
 });
 
-test('comanda-mea.html: lookup() nu mai are niciun fallback catre un camp de input — accepta STRICT un token transmis explicit (din URL)', () => {
-  assert.match(html, /async function lookup\(token\) \{/);
+test('comanda-mea.html: lookup() nu mai are niciun fallback catre un camp de input — accepta STRICT un token transmis explicit (din URL), plus un orderId optional pentru "Continua cu aceasta comanda" (2026-09-28)', () => {
+  assert.match(html, /async function lookup\(token, orderId\) \{/);
   assert.ok(!/tokenOverride/.test(html), 'parametrul vechi tokenOverride (cu fallback pe input) nu mai trebuie sa existe');
 });
 
@@ -151,7 +151,7 @@ test('comanda-mea.html: toate cele 8 limbi au cheia see_my_orders (labelul CTA-u
 // ===================================================================================================
 function buildLookupSandbox({ fetchImpl }) {
   const startMarker = '// BUG REAL (2026-09-29, audit "pagina cu cod de acces care nu exista", runda 2';
-  const endMarker = "const urlToken = new URLSearchParams(window.location.search).get('token');";
+  const endMarker = "const urlParams = new URLSearchParams(window.location.search);";
   const startIdx = html.indexOf(startMarker);
   const endIdx = html.indexOf(endMarker, startIdx);
   assert.ok(startIdx !== -1 && endIdx > startIdx, 'nu am gasit blocul lookup()/renderAccessError() in comanda-mea.html');
@@ -205,7 +205,7 @@ test('sandbox: eroare de server (5xx, raspuns care nu e 400/404 dar !res.ok) -> 
 });
 
 test('comanda-mea.html: renderAccessError() e apelat STRICT in cele 3 ramuri de esec (400/404/!res.ok) si in catch — NICIODATA pe fluxul de succes (dupa res.json()), care ramane cel existent, neschimbat', () => {
-  const lookupIdx = html.indexOf('async function lookup(token) {');
+  const lookupIdx = html.indexOf('async function lookup(token, orderId) {');
   const lookupEnd = html.indexOf('\n  }\n\n', lookupIdx);
   const fn = html.slice(lookupIdx, lookupEnd);
   const successIdx = fn.indexOf('const o = await res.json();');
@@ -224,11 +224,11 @@ test('comanda-mea.html: renderAccessError() e apelat STRICT in cele 3 ramuri de 
 // auto-lookup din urlToken, acelasi header X-Access-Token pentru actiunile ulterioare (amintiri
 // video), aceeasi persistenta same-browser — nimic din asta nu a fost atins.
 // ===================================================================================================
-test('comanda-mea.html: fluxul cu token (GET /api/orders/access/:token, auto-lookup din urlToken, X-Access-Token) ramane STRUCTURAL neschimbat', () => {
-  assert.match(html, /fetch\('\/api\/orders\/access\/' \+ encodeURIComponent\(token\)\)/);
-  assert.match(html, /const urlToken = new URLSearchParams\(window\.location\.search\)\.get\('token'\);/);
+test('comanda-mea.html: fluxul cu token (GET /api/orders/access/:token, auto-lookup din urlToken, X-Access-Token) ramane STRUCTURAL neschimbat — extins doar cu un orderId optional (?id=) pentru "Continua cu aceasta comanda" (2026-09-28)', () => {
+  assert.match(html, /fetch\('\/api\/orders\/access\/' \+ encodeURIComponent\(token\) \+ idSuffix\)/);
+  assert.match(html, /const urlToken = urlParams\.get\('token'\);/);
   assert.match(html, /if \(urlToken\) \{/);
-  assert.match(html, /lookup\(urlToken\);/);
+  assert.match(html, /lookup\(urlToken, urlId\);/);
   assert.match(html, /headers: \{ 'X-Access-Token': currentToken \|\| '' \}/);
 });
 

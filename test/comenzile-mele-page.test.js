@@ -58,8 +58,11 @@ test('AUDIT: melodia-mea.html arata STRICT "melodia a fost livrata deja" pentru 
 });
 
 test('AUDIT: comanda-mea.html reda EFECTIV melodia (principala + cadou + bonus) pentru status=ready, folosind GET /api/orders/access/:token si accessToken din URL — pagina corecta de reutilizat', () => {
-  assert.match(comandaMea, /const urlToken = new URLSearchParams\(window\.location\.search\)\.get\('token'\);/);
-  assert.match(comandaMea, /fetch\('\/api\/orders\/access\/' \+ encodeURIComponent\(token\)\)/);
+  // "Continua cu aceasta comanda" (2026-09-28) — urlToken citeste acum dintr-un urlParams comun
+  // (impreuna cu urlId, optional, pentru resumeUrl) — acelasi token din URL, acelasi comportament
+  // pentru linkul real din email (fara ?id=).
+  assert.match(comandaMea, /const urlToken = urlParams\.get\('token'\);/);
+  assert.match(comandaMea, /fetch\('\/api\/orders\/access\/' \+ encodeURIComponent\(token\) \+ idSuffix\)/);
   assert.match(comandaMea, /<audio controls src="\$\{fullUrl\}"><\/audio>/);
   assert.match(comandaMea, /if \(o\.status === 'ready' && !accessExpired && o\.hasGiftAudio\)/);
   assert.match(comandaMea, /if \(o\.status === 'ready' && !accessExpired && o\.hasPremiumBonusAudio\)/);
@@ -84,7 +87,12 @@ test('AUDIT: renderReadOnlyOrderCard (STRICT view/listen, comanda gasita prin em
   const body = page.slice(idx, end);
   assert.match(body, /<audio controls src="\/media\/preview\/\$\{encodeURIComponent\(order\.id\)\}\/\$\{encodeURIComponent\(variantId\)\}"><\/audio>/);
   assert.ok(!/\/media\/full|\/media\/wav|\/media\/video/.test(body), 'view/listen mode nu trebuie sa acceseze niciodata continutul platit');
-  assert.ok(!body.includes('href'), 'cardul view/listen nu trebuie sa fie clicabil (fara continueUrl/acces complet)');
+  // "Continua cu aceasta comanda" (2026-09-28) — cardul ramane STRICT un <div> necliclabil (nu
+  // primeste niciodata un href static/continueUrl) — navigarea reala (window.location.href) se
+  // intampla STRICT in interiorul handler-ului de click al butonului, STRICT dupa ce serverul a
+  // confirmat explicit (POST /resume-by-email, canResume:true) — nu e echivalenta cu un link static
+  // cu autoritate completa, gata clicabil imediat, cum interzicea testul original.
+  assert.ok(!/card\.href\s*=/.test(body), 'cardul view/listen nu trebuie sa primeasca niciodata un href static (continueUrl/acces complet)');
 });
 
 // ===============================================================================================

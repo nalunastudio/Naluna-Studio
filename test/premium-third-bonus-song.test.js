@@ -159,7 +159,9 @@ function extractFn(source, signature) {
 
 test("server.js: GET /media/full/:orderId/bonus exista, foloseste getPremiumBonusVariant si acelasi tipar de securitate ca /gift", () => {
   const fnBody = extractFn(server, "app.get('/media/full/:orderId/bonus', async (req, res, next) => {");
-  assert.ok(fnBody.includes('safeCompare('), 'trebuie sa foloseasca comparatie timing-safe a token-ului');
+  // "Continua cu aceasta comanda" (2026-09-28) — safeCompare direct a fost inlocuit cu
+  // isValidOrderCredential (accepta accessToken real SAU resume-token, ambele timing-safe intern).
+  assert.ok(fnBody.includes('isValidOrderCredential('), 'trebuie sa foloseasca verificarea de credential, timing-safe');
   assert.ok(fnBody.includes("if (order.status !== 'ready')"), 'trebuie sa refuze accesul inainte de confirmarea platii');
   assert.ok(fnBody.includes("if (order.plan !== 'premium') return denyGeneric();"), 'trebuie sa refuze explicit orice pachet diferit de Premium');
   assert.ok(fnBody.includes('getPremiumBonusVariant(order)'));
@@ -380,7 +382,9 @@ test('server.js: hasPremiumBonus e null-safe si condiționeaza linia — fara bo
 // sa ramana descarcabila oricand in cele 30 de zile de acces gazduit, nu doar la prima vizita.
 // ===============================================================================================
 test("server.js: GET /api/orders/access/:token expune hasPremiumBonusAudio prin getPremiumBonusVariant (acelasi tipar ca hasGiftAudio existent)", () => {
-  const fnBody = extractFn(server, "app.get('/api/orders/access/:token', lookupLimiter, async (req, res, next) => {");
+  // "Continua cu aceasta comanda" (2026-09-28) — campurile DTO au fost extrase in sendOrderAccessDto,
+  // partajata acum de ambele ramuri (traseul vechi cu token si traseul nou cu ?id=) — verificam acolo.
+  const fnBody = extractFn(server, 'function sendOrderAccessDto(order, res) {');
   assert.ok(fnBody.includes('const premiumBonusVariant = getPremiumBonusVariant(order);'));
   assert.ok(fnBody.includes('hasPremiumBonusAudio: !!(premiumBonusVariant && premiumBonusVariant.fullKey),'));
 });

@@ -43,7 +43,7 @@ test('AUDIT: POST /api/orders (creare comanda) NU contine niciun cod de verifica
 });
 
 test('AUDIT: ruta /generate verifica quotaBlocked SI returneaza 403 STRICT INAINTE de orice referinta la runGeneration() — Suno nu e apelat niciodata pentru o comanda blocata de quota', () => {
-  const idx = server.indexOf("app.post('/api/orders/:orderId/generate', generationLimiter, requireOrderToken, async (req, res, next) => {");
+  const idx = server.indexOf("app.post('/api/orders/:orderId/generate', generationLimiter, requireOrderToken, denyResumeCredential, async (req, res, next) => {");
   const end = server.indexOf("app.post('/api/orders/recover-access'", idx);
   const body = server.slice(idx, end);
   const quotaBlockIdx = body.indexOf('if (quotaBlocked) {');

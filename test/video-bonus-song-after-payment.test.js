@@ -165,10 +165,15 @@ test('server.js: nu exista nicio generare de videoclip/WAV special pentru varian
 // ===============================================================================================
 // PARTEA 4 — securitate: accesul ramane STRICT post-plata + token valid (endpoint neschimbat).
 // ===============================================================================================
-test('server.js: GET /media/full/:orderId/gift ramane gated STRICT pe order.status===\'ready\' (post-plata) SI token valid (safeCompare) — neschimbat de aceasta corectie', () => {
+test('server.js: GET /media/full/:orderId/gift ramane gated STRICT pe order.status===\'ready\' (post-plata) SI credential valid (isValidOrderCredential, care foloseste safeCompare intern) — neschimbat de aceasta corectie', () => {
   const idx = server.indexOf("app.get('/media/full/:orderId/gift'");
   const fnBody = extractFn(server, "app.get('/media/full/:orderId/gift', async (req, res, next) => {");
-  assert.ok(fnBody.includes('safeCompare('), 'trebuie sa foloseasca comparatie timing-safe a token-ului');
+  // "Continua cu aceasta comanda" (2026-09-28) — safeCompare(token, order.accessToken) a fost
+  // inlocuit cu isValidOrderCredential(order, providedToken) (accepta accessToken real SAU un
+  // resume-token, ambele verificate prin safeCompare INTERN, cu acelasi tipar anti-timing) — vezi
+  // server.js langa buildResumeToken. Poarta ramane STRICT aceeasi din exterior: fara credential
+  // valid, acces refuzat identic.
+  assert.ok(fnBody.includes('isValidOrderCredential('), 'trebuie sa foloseasca verificarea de credential (accessToken real sau resume-token), ambele timing-safe');
   assert.ok(fnBody.includes("if (order.status !== 'ready')"), 'trebuie sa refuze accesul inainte de confirmarea platii');
   assert.ok(fnBody.includes('getGiftVariant(order)'));
 });

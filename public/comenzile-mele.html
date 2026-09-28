@@ -37,13 +37,18 @@
   .order .song-title{ font-style:italic; color:#4a4a4a; margin-top:2px; font-size:14px; }
   .order .for-line{ color:var(--text-secondary); font-size:14px; margin-top:4px; }
   .order .count-line{ color:var(--text-secondary); font-size:14px; margin-top:2px; }
+  /* "Continua cu aceasta comanda" (2026-09-28) — eticheta vizibila in interiorul cardului-link
+     (traseul cu token complet, nicio schimbare de mecanism de click/navigare). */
+  .order .continue-cta{ color:var(--gold-deep); font-size:13px; font-weight:600; margin-top:10px; }
   /* VIEW/LISTEN MODE (2026-09-30, decizie explicita de produs, "email -> lista -> Play") — cardul
      unei comenzi gasite STRICT prin email (fara token local) NU e clicabil (nu ofera acces
      complet) — STRICT informativ + player(e) audio pentru preview-urile deja publice. */
   .order-readonly{ cursor:default; }
   .order-readonly:hover{ border-color:var(--line); transform:none; }
   .order-readonly audio{ width:100%; margin-top:10px; display:block; }
-  .order-readonly .view-only-note{ color:var(--text-secondary); font-size:12px; margin-top:10px; margin-bottom:0; }
+  .order-readonly .resume-unavailable-note{ color:var(--text-secondary); font-size:12px; margin-top:10px; margin-bottom:0; }
+  .order-readonly .continue-cta-btn{ margin-top:12px; width:100%; text-align:center; }
+  .order-readonly .resume-error{ color:var(--error); font-size:12px; margin-top:8px; margin-bottom:0; }
   .status{
     font-size:11px; padding:4px 10px; border-radius:999px; text-transform:uppercase;
     letter-spacing:.06em; font-family:'Sora',sans-serif; display:inline-block; margin-top:8px;
@@ -122,7 +127,7 @@
       title: 'Comenzile mele', sub: 'Comenzile la care ai acces din acest browser.',
       order_label: 'Comandă',
       song_count: (n) => `${n} ${n === 1 ? 'melodie' : 'melodii'}`,
-      view_only_note: 'Pentru plată sau editare, folosește linkul primit pe email.',
+      resume_unavailable: 'Această comandă nu poate fi continuată automat momentan.',
       blocked: 'Ai deja melodii create pentru tine. Alege una dintre comenzile tale pentru a continua.',
       blocked_empty: 'Ai atins limita de melodii gratuite pentru acest email. Dacă ai comenzi existente, folosește recuperarea prin email de mai jos ca să le accesezi.',
       loading: 'Se încarcă...', for_label: 'Pentru', continue_btn: 'Continuă cu această comandă',
@@ -141,7 +146,7 @@
       title: 'My orders', sub: 'The orders you can access from this browser.',
       order_label: 'Order',
       song_count: (n) => `${n} ${n === 1 ? 'song' : 'songs'}`,
-      view_only_note: 'For payment or editing, use the link you received by email.',
+      resume_unavailable: "This order can't be resumed automatically right now.",
       blocked: 'You already have songs created for you. Choose one of your existing orders to continue.',
       blocked_empty: "You've reached the free-song limit for this email. If you have existing orders, use the email recovery below to access them.",
       loading: 'Loading...', for_label: 'For', continue_btn: 'Continue with this order',
@@ -160,7 +165,7 @@
       title: 'Meine Bestellungen', sub: 'Die Bestellungen, auf die du von diesem Browser aus zugreifen kannst.',
       order_label: 'Bestellung',
       song_count: (n) => `${n} ${n === 1 ? 'Lied' : 'Lieder'}`,
-      view_only_note: 'Für Zahlung oder Bearbeitung nutze den Link, den du per E-Mail erhalten hast.',
+      resume_unavailable: 'Diese Bestellung kann momentan nicht automatisch fortgesetzt werden.',
       blocked: 'Für dich wurden bereits Lieder erstellt. Wähle eine deiner bestehenden Bestellungen, um fortzufahren.',
       blocked_empty: 'Du hast das Limit kostenloser Lieder für diese E-Mail-Adresse erreicht. Falls du bestehende Bestellungen hast, nutze die E-Mail-Wiederherstellung unten, um darauf zuzugreifen.',
       loading: 'Wird geladen...', for_label: 'Für', continue_btn: 'Mit dieser Bestellung fortfahren',
@@ -179,7 +184,7 @@
       title: 'Mis pedidos', sub: 'Los pedidos a los que puedes acceder desde este navegador.',
       order_label: 'Pedido',
       song_count: (n) => `${n} ${n === 1 ? 'canción' : 'canciones'}`,
-      view_only_note: 'Para pagar o editar, usa el enlace que recibiste por email.',
+      resume_unavailable: 'Este pedido no se puede continuar automáticamente en este momento.',
       blocked: 'Ya tienes canciones creadas para ti. Elige uno de tus pedidos existentes para continuar.',
       blocked_empty: 'Has alcanzado el límite de canciones gratuitas para este email. Si tienes pedidos existentes, usa la recuperación por email de abajo para acceder a ellos.',
       loading: 'Cargando...', for_label: 'Para', continue_btn: 'Continuar con este pedido',
@@ -198,7 +203,7 @@
       title: 'I miei ordini', sub: 'Gli ordini a cui puoi accedere da questo browser.',
       order_label: 'Ordine',
       song_count: (n) => `${n} ${n === 1 ? 'canzone' : 'canzoni'}`,
-      view_only_note: 'Per il pagamento o la modifica, usa il link ricevuto via email.',
+      resume_unavailable: 'Questo ordine non può essere continuato automaticamente al momento.',
       blocked: 'Hai già delle canzoni create per te. Scegli uno dei tuoi ordini esistenti per continuare.',
       blocked_empty: 'Hai raggiunto il limite di canzoni gratuite per questa email. Se hai ordini esistenti, usa il recupero via email qui sotto per accedervi.',
       loading: 'Caricamento...', for_label: 'Per', continue_btn: 'Continua con questo ordine',
@@ -217,7 +222,7 @@
       title: 'Mes commandes', sub: 'Les commandes auxquelles vous pouvez accéder depuis ce navigateur.',
       order_label: 'Commande',
       song_count: (n) => `${n} ${n === 1 ? 'chanson' : 'chansons'}`,
-      view_only_note: 'Pour le paiement ou la modification, utilisez le lien reçu par email.',
+      resume_unavailable: 'Cette commande ne peut pas être reprise automatiquement pour le moment.',
       blocked: 'Des chansons ont déjà été créées pour toi. Choisis l’une de tes commandes existantes pour continuer.',
       blocked_empty: 'Tu as atteint la limite de chansons gratuites pour cet email. Si tu as des commandes existantes, utilise la récupération par email ci-dessous pour y accéder.',
       loading: 'Chargement...', for_label: 'Pour', continue_btn: 'Continuer avec cette commande',
@@ -236,7 +241,7 @@
       title: 'Моите поръчки', sub: 'Поръчките, до които имаш достъп от този браузър.',
       order_label: 'Поръчка',
       song_count: (n) => `${n} ${n === 1 ? 'песен' : 'песни'}`,
-      view_only_note: 'За плащане или редактиране, използвай линка, получен по имейл.',
+      resume_unavailable: 'Тази поръчка не може да бъде продължена автоматично в момента.',
       blocked: 'Вече имаш създадени песни за теб. Избери една от съществуващите си поръчки, за да продължиш.',
       blocked_empty: 'Достигна лимита на безплатните песни за този имейл. Ако имаш съществуващи поръчки, използвай възстановяването по имейл по-долу, за да получиш достъп до тях.',
       loading: 'Зареждане...', for_label: 'За', continue_btn: 'Продължи с тази поръчка',
@@ -255,7 +260,7 @@
       title: 'Siparişlerim', sub: 'Bu tarayıcıdan erişebildiğiniz siparişler.',
       order_label: 'Sipariş',
       song_count: (n) => `${n} şarkı`,
-      view_only_note: 'Ödeme veya düzenleme için e-postayla aldığınız bağlantıyı kullanın.',
+      resume_unavailable: 'Bu sipariş şu anda otomatik olarak devam ettirilemiyor.',
       blocked: 'Senin için zaten şarkılar oluşturuldu. Devam etmek için mevcut siparişlerinden birini seç.',
       blocked_empty: 'Bu e-posta için ücretsiz şarkı sınırına ulaştın. Mevcut siparişlerin varsa, bunlara erişmek için aşağıdaki e-posta kurtarma seçeneğini kullan.',
       loading: 'Yükleniyor...', for_label: 'Kime', continue_btn: 'Bu siparişe devam et',
@@ -498,25 +503,77 @@
     const card = document.createElement('a');
     card.className = 'order';
     card.href = continueUrl;
-    card.innerHTML = orderCardBodyHtml(order, index);
+    card.innerHTML = orderCardBodyHtml(order, index) + `<div class="continue-cta">${escapeHtml(t.continue_btn)} →</div>`;
     return card;
+  }
+
+  // "CONTINUA CU ACEASTA COMANDA" PRIN EMAIL (2026-09-28, cerinta explicita) — cere serverul,
+  // pentru O SINGURA comanda, o adresa de continuare (POST /api/orders/:orderId/resume-by-email).
+  // NU trimite/primeste NICIODATA accessToken-ul real — serverul calculeaza si intoarce STRICT
+  // rezultatul (resumeUrl deja construit, cu un resume-token separat, limitat la aceasta comanda).
+  async function resumeOrderByEmail(orderId, email) {
+    try {
+      const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}/resume-by-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      });
+      if (!res.ok) return { canResume: false };
+      const data = await res.json();
+      return (data && typeof data === 'object') ? data : { canResume: false };
+    } catch (e) { return { canResume: false }; }
   }
 
   // CORECTIE CRITICA DE SECURITATE (2026-09-30, runda 2 — decizie explicita, dupa audit): cardul
   // pentru o comanda gasita STRICT prin email (fara token local) NU mai e un link catre o pagina
   // cu autoritate completa (accessToken) — simpla cunoastere a emailului cuiva NU trebuie sa ofere
-  // plata/editare/regenerare asupra comenzilor lui. E un <div> necliclabil, STRICT view/listen:
-  // sumarul comenzii + un player <audio> pentru fiecare varianta cu preview real disponibil,
-  // redat prin GET /media/preview/:orderId/:variantId — ruta deja PUBLICA/neautentificata,
-  // acelasi preview pe care clientul il putea asculta oricum inainte de plata. Fara previewuri
-  // disponibile (comanda inca in compunere), cardul ramane STRICT informativ.
-  function renderReadOnlyOrderCard(order, index, previewVariantIds) {
+  // plata/editare/regenerare asupra comenzilor lui. E un <div> necliclabil: sumarul comenzii +
+  // un player <audio> pentru fiecare varianta cu preview real disponibil (redat prin
+  // GET /media/preview/:orderId/:variantId, ruta deja PUBLICA/neautentificata, acelasi preview
+  // pe care clientul il putea asculta oricum inainte de plata) — NESCHIMBAT.
+  // "CONTINUA CU ACEASTA COMANDA" (2026-09-28, cerinta explicita): daca serverul a marcat comanda
+  // ca fiind continuabila (order.canResume, calculat de resolveOrderResumeStage — vezi server.js),
+  // aratam butonul de continuare, care cere separat, la apasare, resume-by-email (mai sus) — NU
+  // acorda nicio autoritate suplimentara doar prin afisarea butonului. Altfel, un mesaj corect
+  // (resume_unavailable), NICIODATA un CTA fals.
+  function renderReadOnlyOrderCard(order, index, previewVariantIds, email) {
     const card = document.createElement('div');
     card.className = 'order order-readonly';
     const players = (previewVariantIds || [])
       .map((variantId) => `<audio controls src="/media/preview/${encodeURIComponent(order.id)}/${encodeURIComponent(variantId)}"></audio>`)
       .join('');
-    card.innerHTML = orderCardBodyHtml(order, index) + players + `<p class="view-only-note">${escapeHtml(t.view_only_note)}</p>`;
+    card.innerHTML = orderCardBodyHtml(order, index) + players;
+
+    if (order.canResume) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'continue-cta-btn';
+      btn.textContent = t.continue_btn;
+      btn.addEventListener('click', async () => {
+        const originalLabel = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = t.loading;
+        const result = await resumeOrderByEmail(order.id, email);
+        if (result.canResume && result.resumeUrl) {
+          window.location.href = result.resumeUrl;
+          return;
+        }
+        btn.disabled = false;
+        btn.textContent = originalLabel;
+        if (!card.querySelector('.resume-error')) {
+          const msg = document.createElement('p');
+          msg.className = 'resume-error';
+          msg.textContent = t.resume_unavailable;
+          card.appendChild(msg);
+        }
+      });
+      card.appendChild(btn);
+    } else {
+      const note = document.createElement('p');
+      note.className = 'resume-unavailable-note';
+      note.textContent = t.resume_unavailable;
+      card.appendChild(note);
+    }
     return card;
   }
 
@@ -600,7 +657,7 @@
       if (!emailLookup.ok) {
         hasUnverified = true; // eroare de retea/server la interogarea prin email — NU "0 comenzi"
       } else {
-        emailEligible = emailLookup.orders.map((o) => ({ order: o, continueUrl: null, previewVariantIds: o.previewVariantIds || [] }));
+        emailEligible = emailLookup.orders.map((o) => ({ order: o, continueUrl: null, previewVariantIds: o.previewVariantIds || [], email: pendingRecoveryEmail }));
       }
     }
 
@@ -639,7 +696,7 @@
     eligible.forEach((r, i) => {
       const card = r.continueUrl
         ? renderOrderCard(r.order, i + 1, r.continueUrl)
-        : renderReadOnlyOrderCard(r.order, i + 1, r.previewVariantIds);
+        : renderReadOnlyOrderCard(r.order, i + 1, r.previewVariantIds, r.email);
       listEl.appendChild(card);
     });
     recoveryBox.style.display = '';
@@ -691,7 +748,7 @@
     }
     const listEl = document.getElementById('orders-list');
     listEl.innerHTML = '';
-    eligible.forEach((o, i) => listEl.appendChild(renderReadOnlyOrderCard(o, i + 1, o.previewVariantIds)));
+    eligible.forEach((o, i) => listEl.appendChild(renderReadOnlyOrderCard(o, i + 1, o.previewVariantIds, email)));
     resultEl.style.display = 'none';
   });
 

@@ -554,6 +554,10 @@
   }
 
   let currentToken = null;
+  // "Continua cu aceasta comanda" (2026-09-28) — id explicit optional, prezent STRICT cand se
+  // ajunge aici printr-un resumeUrl calculat server-side (vezi resumeUrlFor in server.js). Fara
+  // el (linkul real din email), comportamentul e identic cu inainte — vezi urlId mai jos.
+  let currentOrderId = null;
   // RELANSARE (2026-08-14, "un singur FormData cu toate fisierele intr-un singur POST nu e
   // incarcare directa/fragmentata/reluabila"): inlocuit stagedFiles + un buton "Incarca" manual
   // care trimitea TOATE fisierele intr-o singura cerere (o cerere esuata = tot lotul pierdut,
@@ -681,7 +685,8 @@
   async function refreshOrderMediaOnly() {
     if (!currentToken) return;
     try {
-      const res = await fetch('/api/orders/access/' + encodeURIComponent(currentToken));
+      const idSuffix = currentOrderId ? '?id=' + encodeURIComponent(currentOrderId) : '';
+      const res = await fetch('/api/orders/access/' + encodeURIComponent(currentToken) + idSuffix);
       if (!res.ok) return;
       const fresh = await res.json();
       if (memOrderRef) {
@@ -1441,14 +1446,15 @@
     results.innerHTML = `<p class="empty">${escapeHtml(message)}</p><a class="cta-btn" href="/comenzile-mele.html">${escapeHtml(t.see_my_orders)}</a>`;
   }
 
-  async function lookup(token) {
+  async function lookup(token, orderId) {
     const results = document.getElementById('results');
     if (!token) return;
 
     results.innerHTML = `<p class="empty">${t.searching}</p>`;
 
     try {
-      const res = await fetch('/api/orders/access/' + encodeURIComponent(token));
+      const idSuffix = orderId ? '?id=' + encodeURIComponent(orderId) : '';
+      const res = await fetch('/api/orders/access/' + encodeURIComponent(token) + idSuffix);
 
       if (res.status === 400) {
         renderAccessError(t.invalid);
@@ -1465,6 +1471,7 @@
 
       const o = await res.json();
       currentToken = token;
+      currentOrderId = o.id;
       // SAME BROWSER — PERSISTENTA TOKEN (2026-09-28, cerinta explicita, audit "Comenzile mele
       // goale in Chrome normal"): aceasta pagina e destinatia LINKULUI DIN EMAILUL DE LIVRARE
       // (vezi server.js, accessUrl trimis dupa plata) — cea mai comuna revenire a unui client
@@ -1552,11 +1559,15 @@
     }
   }
 
-  // daca vine dintr-un link din email (?token=...), cautam automat — SINGURUL mod de a ajunge aici
-  // (fara token, redirectul din <head> trimite catre comenzile-mele.html inainte de acest punct).
-  const urlToken = new URLSearchParams(window.location.search).get('token');
+  // daca vine dintr-un link din email (?token=...), cautam automat — acelasi mecanism serveste
+  // acum si resumeUrl-ul calculat server-side pentru "Continua cu aceasta comanda" (?token=...&id=...
+  // — vezi resumeUrlFor in server.js). Fara token, redirectul din <head> trimite catre
+  // comenzile-mele.html inainte de acest punct.
+  const urlParams = new URLSearchParams(window.location.search);
+  const urlToken = urlParams.get('token');
+  const urlId = urlParams.get('id');
   if (urlToken) {
-    lookup(urlToken);
+    lookup(urlToken, urlId);
   }
 </script>
 <footer style="max-width:900px;margin:32px auto 0;padding:16px 20px 40px;font-size:12px;color:#8a8a8a;display:flex;flex-wrap:wrap;gap:8px 16px;border-top:1px solid #e8e2d6;"><a href="/terms.html" style="color:#8B6D3F;text-decoration:underline;">Terms &amp; Conditions</a><a href="/privacy.html" style="color:#8B6D3F;text-decoration:underline;">Privacy Policy</a><a href="/refund.html" style="color:#8B6D3F;text-decoration:underline;">Cancellation &amp; Refund Policy</a><a href="mailto:contact@nalunastudio.com" style="color:#8B6D3F;text-decoration:underline;">contact@nalunastudio.com</a><span>Naluna Studio, 5 Brayford Square, London, E1 0SG, United Kingdom</span></footer>

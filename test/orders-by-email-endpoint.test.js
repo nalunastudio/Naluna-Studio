@@ -34,6 +34,10 @@ function sliceBetween(source, startMarker, endMarker) {
 const routeSrc = sliceBetween(server, "app.post('/api/orders/by-email',", '\n});');
 const dtoSrc = sliceBetween(server, 'function buildOrderSummaryDto(order) {', "app.post('/api/orders/by-email',");
 const hostedAccessSrc = sliceBetween(server, 'const CONTENT_RETENTION_DAYS = 30;', '\n\n// Content-Disposition:');
+// "Continua cu aceasta comanda" (2026-09-28) — buildOrderSummaryDto apeleaza acum
+// resolveOrderResumeStage (canResume/resumeStage) — extras separat, ca sandboxul de mai jos
+// (evalDto) sa poata rula functia reala fara sa duplice logica ei.
+const resolveOrderResumeStageSrc = sliceBetween(server, 'function resolveOrderResumeStage(order) {', '\n\nasync function resumeUrlFor');
 
 // ===================================================================================================
 // STRUCTURA RUTEI — reutilizeaza rate limiting-ul deja auditat (anti-enumerare), NU creeaza unul nou.
@@ -92,7 +96,7 @@ function evalDto(order) {
   const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor;
   const fn = new AsyncFunction(
     'order', 'getGiftVariant', 'getPremiumBonusVariant',
-    hostedAccessSrc + '\n' + dtoSrc + '\nreturn buildOrderSummaryDto(order);'
+    hostedAccessSrc + '\n' + resolveOrderResumeStageSrc + '\n' + dtoSrc + '\nreturn buildOrderSummaryDto(order);'
   );
   return fn(order, getGiftVariant, getPremiumBonusVariant);
 }
@@ -155,10 +159,11 @@ test('sandbox: buildOrderSummaryDto — hostedAccessExpired reflecta EXACT aceea
 // contine sub nicio forma (verificat mai sus) — deci nu exista nicio valoare din acest raspuns
 // care sa poata fi refolosita ca "X-Access-Token"/accessToken pe acele rute.
 // ===================================================================================================
-test('server.js: requireOrderToken (garda comuna pentru edit lyrics/regenerate/select/generate/checkout/media upload-delete-reorder/create-video) ramane STRICT NESCHIMBATA — cere accessToken real (safeCompare), pe care raspunsul by-email nu il ofera', () => {
-  const guardSrc = sliceBetween(server, 'async function requireOrderToken(req, res, next) {', '\n\n// ==');
+test('server.js: requireOrderToken (garda comuna pentru edit lyrics/regenerate/select/generate/checkout/media upload-delete-reorder/create-video) ramane STRICT NESCHIMBATA in structura — cere un credential valid (accessToken real SAU resume-token limitat, via classifyOrderCredential — vezi "Continua cu aceasta comanda", 2026-09-30), pe care raspunsul by-email nu il ofera (STRICT accessToken; resume-tokenul se cere separat, per comanda, prin resume-by-email)', () => {
+  const guardSrc = sliceBetween(server, 'async function requireOrderToken(req, res, next) {', '\n\n// Aplicata STRICT pe /generate');
   assert.match(guardSrc, /const token = req\.get\('X-Access-Token'\) \|\| \(req\.body && req\.body\.accessToken\) \|\| null;/);
-  assert.match(guardSrc, /if \(!order \|\| !token \|\| !safeCompare\(token, order\.accessToken\)\) \{/);
+  assert.match(guardSrc, /const credentialKind = \(order && token\) \? classifyOrderCredential\(order, token\) : null;/);
+  assert.match(guardSrc, /if \(!order \|\| !token \|\| !credentialKind\) \{/);
   const MUTATING_ROUTES = [
     "app.post('/api/orders/:orderId/generate', generationLimiter, requireOrderToken,",
     "app.post('/api/orders/:orderId/regenerate', generationLimiter, requireOrderToken,",
@@ -174,8 +179,8 @@ test('server.js: requireOrderToken (garda comuna pentru edit lyrics/regenerate/s
   MUTATING_ROUTES.forEach((sig) => assert.ok(server.includes(sig), `ruta mutabila lipseste/s-a schimbat semnatura: ${sig}`));
 });
 
-test('GET /media/full/:orderId (fisierul COMPLET, platit) ramane STRICT protejat prin accessToken/safeCompare — raspunsul by-email nu largeste acest acces', () => {
+test('GET /media/full/:orderId (fisierul COMPLET, platit) ramane STRICT protejat printr-un credential valid (isValidOrderCredential, care foloseste safeCompare intern pentru ambele ramuri — accessToken real SAU resume-token) — raspunsul by-email nu largeste acest acces (nu contine niciodata accessToken, iar resume-tokenul se cere separat)', () => {
   const fullMediaSrc = sliceBetween(server, "app.get('/media/full/:orderId', async (req, res, next) => {", '\n});');
-  assert.match(fullMediaSrc, /safeCompare/);
+  assert.match(fullMediaSrc, /isValidOrderCredential/);
   assert.ok(!fullMediaSrc.includes('previewVariantIds'), 'media/full nu trebuie sa aiba nicio legatura cu mecanismul de preview by-email');
 });
