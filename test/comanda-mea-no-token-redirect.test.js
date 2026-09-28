@@ -121,9 +121,13 @@ test('comanda-mea.html: cheia de traducere "search" (labelul butonului Cauta, el
 });
 
 test('comanda-mea.html: NICIUNA dintre cele 8 limbi nu mai promite/mentioneaza un "cod" (de acces/confirmare) in sub/invalid/not_found — STRICT limbaj de link, niciodata de cod', () => {
+  // NOTA: \b (word boundary) e definit STRICT pe caractere ASCII [A-Za-z0-9_] in regex JS — nu
+  // functioneaza corect pentru chirilic (bg), unde \bкод\b NU s-ar potrivi niciodata (bug gasit in
+  // productie, 2026-09-29: textul vechi bulgar cu "код" a trecut nedetectat de acest test). Pentru
+  // bg, cautam STRICT substringul "код", fara \b.
   const CODE_WORD_BY_LANG = {
     ro: /\bcod\b/i, en: /\bcode\b/i, de: /\bcode\b/i, es: /\bcódigo\b/i,
-    it: /\bcodice\b/i, fr: /\bcode\b/i, bg: /\bкод\b/i, tr: /\bkod\b/i
+    it: /\bcodice\b/i, fr: /\bcode\b/i, bg: /код/i, tr: /\bkod\b/i
   };
   ALLOWED_LANGS.forEach((lang) => {
     const block = langBlock(lang);
