@@ -47,6 +47,10 @@
   .order-readonly:hover{ border-color:var(--line); transform:none; }
   .order-readonly .continue-cta-btn{ margin-top:12px; width:100%; text-align:center; }
   .order-readonly .resume-error{ color:var(--error); font-size:12px; margin-top:8px; margin-bottom:0; }
+  /* "CREEAZA O MELODIE NOUA" (2026-09-30, cerinta explicita) — UN SINGUR CTA, dupa lista de
+     comenzi (niciodata per card) — vizibil STRICT cand serverul confirma canCreateNew:true. */
+  #create-new-cta-wrap{ margin:4px 0 20px; }
+  .create-new-cta-btn{ width:100%; }
   .status{
     font-size:11px; padding:4px 10px; border-radius:999px; text-transform:uppercase;
     letter-spacing:.06em; font-family:'Sora',sans-serif; display:inline-block; margin-top:8px;
@@ -106,6 +110,9 @@
   <button type="button" id="use-other-email-btn" class="link-btn">Foloseşte alt email</button>
 
   <div id="orders-list"></div>
+  <div id="create-new-cta-wrap" style="display:none;">
+    <button type="button" id="create-new-cta-btn" class="create-new-cta-btn"></button>
+  </div>
   <p class="empty" id="loading-msg">Se încarcă...</p>
 
   <div class="recovery-box" id="recovery-box" style="display:none;">
@@ -136,6 +143,7 @@
       recovery_email_fallback_btn: 'Trimite-mi link pe email', recovery_sending: 'Se trimite...',
       recovery_sent: 'Dacă adresa introdusă are comenzi eligibile, vei primi în scurt timp un email cu linkurile de acces.',
       use_other_email: 'Foloseşte alt email',
+      create_new_song_btn: 'Creează o melodie nouă',
       empty_no_orders: 'Nu am găsit nicio comandă în acest browser.',
       verify_error: 'Nu am putut verifica acum comenzile tale — verifică-ți conexiunea și reîncarcă pagina.',
       plan: { standard: 'Standard', premium: 'Premium', video: 'Cadou video' }
@@ -155,6 +163,7 @@
       recovery_email_fallback_btn: 'Email me a link', recovery_sending: 'Sending...',
       recovery_sent: "If that email has any eligible orders, you'll receive an email shortly with the access links.",
       use_other_email: 'Use a different email',
+      create_new_song_btn: 'Create a new song',
       empty_no_orders: 'We could not find any order in this browser.',
       verify_error: "We couldn't check your orders right now — check your connection and reload the page.",
       plan: { standard: 'Standard', premium: 'Premium', video: 'Video gift' }
@@ -174,6 +183,7 @@
       recovery_email_fallback_btn: 'Zugang per E-Mail zusenden', recovery_sending: 'Wird gesendet...',
       recovery_sent: 'Falls diese E-Mail-Adresse berechtigte Bestellungen hat, erhältst du in Kürze eine E-Mail mit den Zugangslinks.',
       use_other_email: 'Andere E-Mail verwenden',
+      create_new_song_btn: 'Ein neues Lied erstellen',
       empty_no_orders: 'Wir konnten in diesem Browser keine Bestellung finden.',
       verify_error: 'Wir konnten deine Bestellungen gerade nicht überprüfen — überprüfe deine Verbindung und lade die Seite neu.',
       plan: { standard: 'Standard', premium: 'Premium', video: 'Video-Geschenk' }
@@ -193,6 +203,7 @@
       recovery_email_fallback_btn: 'Enviarme un enlace por email', recovery_sending: 'Enviando...',
       recovery_sent: 'Si esa dirección tiene pedidos elegibles, recibirás en breve un email con los enlaces de acceso.',
       use_other_email: 'Usar otro email',
+      create_new_song_btn: 'Crear una canción nueva',
       empty_no_orders: 'No encontramos ningún pedido en este navegador.',
       verify_error: 'No pudimos verificar tus pedidos ahora — comprueba tu conexión y recarga la página.',
       plan: { standard: 'Estándar', premium: 'Premium', video: 'Regalo en video' }
@@ -212,6 +223,7 @@
       recovery_email_fallback_btn: 'Inviami un link via email', recovery_sending: 'Invio in corso...',
       recovery_sent: 'Se quell\'indirizzo ha ordini idonei, riceverai a breve un\'email con i link di accesso.',
       use_other_email: 'Usa un\'altra email',
+      create_new_song_btn: 'Crea una nuova canzone',
       empty_no_orders: 'Non abbiamo trovato nessun ordine in questo browser.',
       verify_error: 'Non siamo riusciti a verificare i tuoi ordini ora — controlla la connessione e ricarica la pagina.',
       plan: { standard: 'Standard', premium: 'Premium', video: 'Regalo video' }
@@ -231,6 +243,7 @@
       recovery_email_fallback_btn: 'M\'envoyer un lien par email', recovery_sending: 'Envoi en cours...',
       recovery_sent: 'Si cette adresse a des commandes éligibles, vous recevrez bientôt un email avec les liens d\'accès.',
       use_other_email: 'Utiliser un autre email',
+      create_new_song_btn: 'Créer une nouvelle chanson',
       empty_no_orders: 'Nous n\'avons trouvé aucune commande dans ce navigateur.',
       verify_error: 'Nous n\'avons pas pu vérifier tes commandes maintenant — vérifie ta connexion et recharge la page.',
       plan: { standard: 'Standard', premium: 'Premium', video: 'Cadeau vidéo' }
@@ -250,6 +263,7 @@
       recovery_email_fallback_btn: 'Изпрати ми линк по имейл', recovery_sending: 'Изпраща се...',
       recovery_sent: 'Ако този имейл има допустими поръчки, ще получиш скоро писмо с линкове за достъп.',
       use_other_email: 'Използвай друг имейл',
+      create_new_song_btn: 'Създай нова песен',
       empty_no_orders: 'Не намерихме нито една поръчка в този браузър.',
       verify_error: 'Не успяхме да проверим поръчките ти точно сега — провери връзката си и презареди страницата.',
       plan: { standard: 'Стандартен', premium: 'Премиум', video: 'Видео подарък' }
@@ -269,6 +283,7 @@
       recovery_email_fallback_btn: 'Bağlantıyı e-postama gönder', recovery_sending: 'Gönderiliyor...',
       recovery_sent: 'Bu adresin uygun siparişleri varsa, kısa süre içinde erişim bağlantılarını içeren bir e-posta alacaksınız.',
       use_other_email: 'Başka bir e-posta kullan',
+      create_new_song_btn: 'Yeni bir şarkı oluştur',
       empty_no_orders: 'Bu tarayıcıda hiçbir sipariş bulamadık.',
       verify_error: 'Siparişlerinizi şu anda kontrol edemedik — bağlantınızı kontrol edip sayfayı yeniden yükleyin.',
       plan: { standard: 'Standart', premium: 'Premium', video: 'Video hediye' }
@@ -291,6 +306,7 @@
   document.getElementById('recovery-btn').textContent = t.recovery_btn;
   document.getElementById('recovery-email-fallback-btn').textContent = t.recovery_email_fallback_btn;
   document.getElementById('use-other-email-btn').textContent = t.use_other_email;
+  document.getElementById('create-new-cta-btn').textContent = t.create_new_song_btn;
 
   function escapeHtml(str) {
     const div = document.createElement('div');
@@ -471,6 +487,39 @@
       return { ok: true, orders: Array.isArray(data.orders) ? data.orders : [] };
     } catch (e) { return { ok: false, orders: [] }; }
   }
+
+  // "CREEAZA O MELODIE NOUA" (2026-09-30, cerinta explicita) — STRICT o intrebare catre serverul
+  // care detine deja regula reala de quota (3/7 zile, cu reset la plata — vezi
+  // db.canCreateNewGeneration, EXACT aceeasi sursa de adevar ca la generarea efectiva). NICIODATA
+  // dedus aici din numarul de carduri afisate — acel numar poate fi complet diferit de quota reala
+  // (comenzi vechi/istorice, alt device etc.). O eroare de retea/server e tratata STRICT ca
+  // "nu afisa butonul" — niciodata ca "afiseaza-l implicit" (niciun fals-pozitiv posibil).
+  async function checkCanCreateNew(email) {
+    try {
+      const res = await fetch('/api/orders/can-create-new', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      });
+      if (!res.ok) return false;
+      const data = await res.json();
+      return data && data.canCreateNew === true;
+    } catch (e) { return false; }
+  }
+
+  // UN SINGUR CTA, dupa lista de comenzi — niciodata per card. La click, porneste STRICT fluxul
+  // normal deja existent de creare a unei melodii noi (/comanda.html) — nu reutilizeaza nicio
+  // comanda existenta, nu genereaza nimic la simpla apasare.
+  async function maybeShowCreateNewCta(email) {
+    if (!email) return;
+    const canCreateNew = await checkCanCreateNew(email);
+    if (canCreateNew) {
+      document.getElementById('create-new-cta-wrap').style.display = '';
+    }
+  }
+  document.getElementById('create-new-cta-btn').addEventListener('click', () => {
+    window.location.href = '/comanda.html';
+  });
 
   // Cardul intreg e un link (<a>) catre propria comanda — clientul apasa oriunde pe card ca sa
   // intre si sa asculte variantele deja disponibile/autorizate (pe pagina corecta, de mai sus).
@@ -704,6 +753,7 @@
     });
     recoveryBox.style.display = '';
     hideRedundantRecoveryButton();
+    await maybeShowCreateNewCta(pendingRecoveryEmail);
   }
 
   loadAndRenderOrders().catch(() => {
@@ -755,6 +805,7 @@
     eligible.forEach((o, i) => listEl.appendChild(renderReadOnlyOrderCard(o, i + 1, o.previewVariantIds, email)));
     resultEl.style.display = 'none';
     hideRedundantRecoveryButton();
+    await maybeShowCreateNewCta(email);
   });
 
   // FALLBACK SECUNDAR (cerinta explicita, "recovery prin email poate ramane ca fallback secundar
@@ -779,6 +830,27 @@
     resultEl.style.display = '';
     btn.textContent = originalLabel;
     btn.disabled = false;
+  });
+
+  // BUG REAL DE PRODUCTIE (2026-09-30, "dupa Back, butonul ramane gri cu 'Se incarca...'") —
+  // cauza gasita: dupa un click reusit pe "Continua cu aceasta comanda", butonul e lasat
+  // INTENTIONAT dezactivat + cu textul de asteptare (t.loading) chiar inainte de
+  // window.location.href = resumeUrl — corect atata timp cat pagina se descarca imediat dupa.
+  // Cand browserul restaureaza aceasta pagina din bfcache (back-forward cache) la apasarea
+  // Back de pe melodia-mea.html/comanda-mea.html/amintiri-video.html, NU re-executa scriptul de
+  // la zero (asta e intreg rostul bfcache-ului) — arata STRICT DOM-ul inghetat exact cum a fost
+  // lasat, deci butonul apare inca dezactivat/"Se incarca...", desi nicio cerere nu mai e cu
+  // adevarat in desfasurare. popstate NU e relevant aici (nu exista nicio navigare
+  // pushState/hash in interiorul acestei pagini — traseul e o navigare REALA catre alt document).
+  // Fixul corect (nu un timeout arbitrar): evenimentul standard `pageshow`, cu verificarea
+  // explicita `event.persisted` (true STRICT cand pagina vine din bfcache, niciodata la o
+  // incarcare noua/normala, unde loadAndRenderOrders() oricum reconstruieste totul de la zero).
+  window.addEventListener('pageshow', (event) => {
+    if (!event.persisted) return;
+    document.querySelectorAll('.continue-cta-btn').forEach((btn) => {
+      btn.disabled = false;
+      btn.textContent = t.continue_btn;
+    });
   });
 })();
 </script>

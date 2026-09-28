@@ -1318,6 +1318,32 @@ async function claimOrderForInitialGeneration(orderId, maxAttempts, emailKey, sk
   });
 }
 
+// "CREEAZA O MELODIE NOUA" (2026-09-30, cerinta explicita, "Comenzile mele") — STRICT o CITIRE,
+// folosind EXACT aceeasi regula de numarare ca claimOrderForInitialGeneration de mai sus (3
+// comenzi / 7 zile per email, cu reset la cycle_started_at dupa plata) — cod DUPLICAT INTENTIONAT
+// (nu extras intr-un helper comun), tocmai ca sa nu riste sa schimbe comportamentul claim-ului
+// atomic existent, care ramane singura scriere si singura autoritate finala. Fara
+// pg_advisory_xact_lock si fara tranzactie — nu exista nicio scriere de protejat impotriva unei
+// curse; o eventuala cursa intre acest calcul si un claim real e acceptabila prin design (STRICT
+// un indiciu pentru UI — claimOrderForInitialGeneration reverifica INTOTDEAUNA quota la generarea
+// efectiva, indiferent de ce a aratat acest calcul).
+async function canCreateNewGeneration(emailKey, skipQuota) {
+  if (skipQuota) return true;
+  const cycleRes = await pool.query(
+    'SELECT cycle_started_at FROM client_generation_cycles WHERE email_key = $1',
+    [emailKey]
+  );
+  const cycleStartedAt = cycleRes.rows[0] ? cycleRes.rows[0].cycle_started_at : null;
+  const countRes = await pool.query(
+    `SELECT COUNT(*) AS n FROM orders
+     WHERE lower(trim(email)) = $1
+       AND status NOT IN ('draft', 'generation_failed')
+       AND created_at >= GREATEST(now() - ($2 || ' days')::interval, COALESCE($3, '-infinity'::timestamptz))`,
+    [emailKey, FREE_GENERATION_WINDOW_DAYS, cycleStartedAt]
+  );
+  return Number(countRes.rows[0].n) < FREE_GENERATION_LIMIT;
+}
+
 // RECUPERARE SECURIZATA A COMENZILOR (2026-09-27, cerinta explicita) — folosita STRICT de
 // POST /api/orders/recover-access (server.js), care NU intoarce niciodata randurile de aici in
 // raspunsul HTTP — le trimite doar pe email, la adresa introdusa (vezi acel handler pentru
@@ -3621,6 +3647,7 @@ module.exports = {
   updateGenerationPhaseIfLater,
   startRegenerationJob, updateRegenerationPhaseIfLater, markRegenerationStatus,
   claimOrderForProviderFinalization, claimOrderForRegeneration, claimOrderForInitialGeneration,
+  canCreateNewGeneration,
   getEligibleOrdersForAccessRecovery,
   findOrdersEligibleForUnpaidExpiry, expireUnpaidOrder,
   refundEditIfReserved,

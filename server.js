@@ -4011,6 +4011,32 @@ app.post('/api/orders/by-email', recoveryIpLimiter, recoveryEmailTargetLimiter, 
 });
 
 // ==========================================================================================
+// "CREEAZA O MELODIE NOUA" (2026-09-30, cerinta explicita, "Comenzile mele") — raspunde STRICT
+// canCreateNew:true/false, calculat prin db.canCreateNewGeneration — EXACT aceeasi sursa de
+// adevar (regula 3/7 zile, reset la plata) ca claimOrderForInitialGeneration, folosita la
+// generarea efectiva. STRICT o citire — nu creeaza nimic, nu atinge quota, nu apeleaza Suno. UI-ul
+// foloseste raspunsul STRICT ca sa arate/ascunda un buton — clientul nu primeste niciodata numere
+// (cate mai are, cand se reseteaza) — serverul reverifica INTOTDEAUNA quota, real, la generarea
+// efectiva (POST /generate), indiferent de ce a raspuns acest endpoint.
+app.post('/api/orders/can-create-new', recoveryIpLimiter, recoveryEmailTargetLimiter, async (req, res, next) => {
+  try {
+    const rawEmail = typeof req.body?.email === 'string' ? req.body.email.trim() : '';
+    if (!rawEmail || !rawEmail.includes('@')) return res.json({ canCreateNew: false });
+
+    // Identic cu /by-email: throttling pe email = raspuns normal, negativ — niciodata un semnal
+    // distinct care ar permite enumerarea adreselor.
+    if (req.recoveryEmailThrottled) return res.json({ canCreateNew: false });
+
+    const emailKey = rawEmail.toLowerCase();
+    const skipQuota = isTestCustomerEmail(rawEmail);
+    const canCreateNew = await db.canCreateNewGeneration(emailKey, skipQuota);
+    res.json({ canCreateNew });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ==========================================================================================
 // "CONTINUA CU ACEASTA COMANDA" (2026-09-28, cerinta explicita) — emite un resume-token
 // STATELESS pentru O SINGURA comanda specifica, dupa exact aceeasi verificare de eligibilitate
 // (db.getEligibleOrdersForAccessRecovery) ca /api/orders/by-email de mai sus — nicio eligibilitate

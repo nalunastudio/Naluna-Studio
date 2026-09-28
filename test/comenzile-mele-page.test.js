@@ -281,20 +281,36 @@ function buildSandbox({ search = '', storedOrders, fetchImpl, pendingRecoveryEma
     };
   }
   const elements = {};
-  const ids = ['h1-title', 'p-sub', 'loading-msg', 'recovery-title', 'recovery-sub', 'recovery-email', 'recovery-btn', 'recovery-email-fallback-btn', 'blocked-banner', 'orders-list', 'recovery-box', 'recovery-result'];
+  const ids = ['h1-title', 'p-sub', 'loading-msg', 'recovery-title', 'recovery-sub', 'recovery-email', 'recovery-btn', 'recovery-email-fallback-btn', 'blocked-banner', 'orders-list', 'recovery-box', 'recovery-result', 'create-new-cta-wrap', 'create-new-cta-btn'];
   for (const id of ids) elements[id] = makeEl();
   // Starea initiala reala a paginii (vezi markup-ul static): blocked-banner/recovery-box pornesc
   // ascunse (style="display:none;" in HTML) — scriptul le dezvaluie explicit, nu mock-ul.
   elements['blocked-banner'].style.display = 'none';
   elements['recovery-box'].style.display = 'none';
+  elements['create-new-cta-wrap'].style.display = 'none';
   const documentMock = {
     documentElement: { lang: '' },
     getElementById: (id) => elements[id] || makeEl(),
-    createElement: () => makeEl()
+    createElement: () => makeEl(),
+    // STRICT suficient pentru selectorul real folosit de pagina (.continue-cta-btn, pentru fixul
+    // de bfcache) — cauta recursiv in cardurile deja randate (orders-list), nu un motor de
+    // selectori complet.
+    querySelectorAll: (selector) => {
+      const results = [];
+      function walk(node) {
+        if (!node) return;
+        if (selector === '.' + node.className) results.push(node);
+        (node.children || []).forEach(walk);
+      }
+      walk(elements['orders-list']);
+      return results;
+    }
   };
+  const windowListeners = {};
   const windowMock = {
     location: { search, href: 'https://nalunastudio.com/comenzile-mele.html' + search },
-    history: { replaceState: () => {} }
+    history: { replaceState: () => {} },
+    addEventListener: (evt, fn) => { (windowListeners[evt] = windowListeners[evt] || []).push(fn); }
   };
   const storage = {};
   if (storedOrders !== undefined) storage.naluna_my_order_keys = JSON.stringify(storedOrders);
@@ -319,7 +335,7 @@ function buildSandbox({ search = '', storedOrders, fetchImpl, pendingRecoveryEma
     harness + '\nreturn window.__test_api;'
   );
   const api = fn(documentMock, windowMock, localStorageMock, sessionStorageMock, { language: 'en' }, URLSearchParams, fetchMock, { replaceState: () => {} });
-  return { api, elements, fetchCalls };
+  return { api, elements, fetchCalls, windowListeners };
 }
 
 function jsonRes(obj) {
@@ -584,10 +600,13 @@ test('sandbox (primar: introducerea manuala a unui email cere DIRECT POST /api/o
   await api.__loadPromise;
   elements['recovery-email'].value = 'client@exemplu.com';
   await elements['recovery-btn'].__listeners.click();
-  assert.equal(fetchCalls.length, 1);
+  // 2 cereri: descoperirea (/by-email) + verificarea de eligibilitate pentru "Creeaza o melodie
+  // noua" (/can-create-new, adaugata 2026-09-30) — NICIUN email trimis in ambele cazuri.
+  assert.equal(fetchCalls.length, 2);
   assert.equal(fetchCalls[0].url, '/api/orders/by-email');
   assert.equal(fetchCalls[0].opts.method, 'POST');
   assert.equal(fetchCalls[0].opts.body, JSON.stringify({ email: 'client@exemplu.com' }));
+  assert.equal(fetchCalls[1].url, '/api/orders/can-create-new');
   const card = elements['orders-list'].children[0];
   assert.equal(elements['orders-list'].children.length, 1, 'comanda gasita prin email trebuie afisata direct, fara niciun email trimis');
   assert.match(card.innerHTML, /Ana/);
@@ -727,6 +746,158 @@ test('sandbox: 3 comenzi eligibile prin email — apasarea Continue pe FIECARE c
   assert.equal(resumeCalls[2].url, '/api/orders/order-B/resume-by-email');
   resumeCalls.forEach((c) => assert.equal(c.opts.body, JSON.stringify({ email: 'client@exemplu.com' }), 'fiecare cerere trebuie sa foloseasca STRICT acelasi email real, niciodata unul gresit/lipsa'));
 });
+
+// ===================================================================================================
+// BUG REAL DE PRODUCTIE (2026-09-30, "dupa Back, butonul ramane gri cu 'Se incarca...'") —
+// cauza: bfcache restaureaza pagina EXACT cum a fost lasata (buton dezactivat + text de asteptare),
+// fara sa re-execute scriptul. Fixul: `pageshow` cu `event.persisted===true` reseteaza butoanele.
+// ===================================================================================================
+test('sandbox: dupa restaurare din bfcache (pageshow cu persisted:true), un buton de continuare ramas dezactivat/"Se incarca..." e resetat la starea normala', async () => {
+  const { api, elements, windowListeners } = buildSandbox({
+    pendingRecoveryEmail: 'client@exemplu.com',
+    fetchImpl: (url) => (url === '/api/orders/by-email'
+      ? jsonRes({ orders: [{ id: 'order-A', plan: 'standard', recipient: 'Maria', status: 'preview_ready', createdAt: '2026-09-01T00:00:00Z', songCount: 1, hostedAccessExpired: false, canResume: true }] })
+      : { ok: false })
+  });
+  await api.__loadPromise;
+  const card = elements['orders-list'].children[0];
+  const btn = card.children.find((c) => c.className === 'continue-cta-btn');
+  // Simuleaza STRICT starea inghetata lasata de bfcache dupa un click reusit (navigare in curs,
+  // pagina nu se mai reincarca de la zero la Back).
+  btn.disabled = true;
+  btn.textContent = api.t.loading;
+  assert.ok(windowListeners.pageshow && windowListeners.pageshow.length > 0, 'trebuie sa existe un listener pageshow inregistrat');
+  windowListeners.pageshow.forEach((fn) => fn({ persisted: true }));
+  assert.equal(btn.disabled, false, 'butonul trebuie reactivat dupa restaurarea din bfcache');
+  assert.equal(btn.textContent, api.t.continue_btn, 'textul trebuie restaurat la eticheta normala, niciodata ramas pe "Se incarca..."');
+});
+
+test('sandbox: secventa REALA Comanda 1 -> Back -> Comanda 2 -> Back -> Comanda 3 -> Back — fiecare restaurare din bfcache reseteaza STRICT butonul ramas dezactivat, fara sa afecteze celelalte', async () => {
+  const { api, elements, windowListeners } = buildSandbox({
+    pendingRecoveryEmail: 'client@exemplu.com',
+    fetchImpl: (url) => (url === '/api/orders/by-email'
+      ? jsonRes({ orders: [
+        { id: 'order-1', plan: 'standard', recipient: 'Maria', status: 'preview_ready', createdAt: '2026-09-01T00:00:00Z', songCount: 1, hostedAccessExpired: false, canResume: true },
+        { id: 'order-2', plan: 'premium', recipient: 'Maria', status: 'preview_ready', createdAt: '2026-09-02T00:00:00Z', songCount: 4, hostedAccessExpired: false, canResume: true },
+        { id: 'order-3', plan: 'video', recipient: 'Maria', status: 'ready', createdAt: '2026-09-03T00:00:00Z', songCount: 1, hostedAccessExpired: false, canResume: true }
+      ] })
+      : { ok: false })
+  });
+  await api.__loadPromise;
+  const cards = elements['orders-list'].children;
+  const btns = cards.map((c) => c.children.find((child) => child.className === 'continue-cta-btn'));
+  // Continue Comanda 1 -> Back (STRICT butonul 1 ramane dezactivat/incarcare la revenire).
+  btns[0].disabled = true; btns[0].textContent = api.t.loading;
+  windowListeners.pageshow.forEach((fn) => fn({ persisted: true }));
+  assert.equal(btns[0].disabled, false);
+  assert.equal(btns[0].textContent, api.t.continue_btn);
+  assert.equal(btns[1].disabled, false, 'butonul 2 nu trebuie atins de resetarea butonului 1');
+  assert.equal(btns[2].disabled, false, 'butonul 3 nu trebuie atins de resetarea butonului 1');
+  // Continue Comanda 2 -> Back.
+  btns[1].disabled = true; btns[1].textContent = api.t.loading;
+  windowListeners.pageshow.forEach((fn) => fn({ persisted: true }));
+  assert.equal(btns[1].disabled, false);
+  assert.equal(btns[1].textContent, api.t.continue_btn);
+  // Continue Comanda 3 -> Back.
+  btns[2].disabled = true; btns[2].textContent = api.t.loading;
+  windowListeners.pageshow.forEach((fn) => fn({ persisted: true }));
+  assert.equal(btns[2].disabled, false);
+  assert.equal(btns[2].textContent, api.t.continue_btn);
+  // Toate 3 sunt active la final — "toate butoanele sunt din nou active".
+  btns.forEach((b) => assert.equal(b.disabled, false));
+});
+
+test('sandbox: o incarcare NORMALA (nu din bfcache — event.persisted===false, ex. pageshow la incarcarea initiala) NU declanseaza resetarea (loadAndRenderOrders() oricum reconstruieste totul de la zero)', async () => {
+  const { elements, windowListeners } = buildSandbox({ storedOrders: [] });
+  const btn = elements['recovery-btn']; // orice element existent, STRICT ca sa verificam ca handler-ul nu arunca / nu modifica nimic in afara .continue-cta-btn
+  const before = btn.disabled;
+  windowListeners.pageshow.forEach((fn) => fn({ persisted: false }));
+  assert.equal(btn.disabled, before, 'un pageshow normal (persisted:false) nu trebuie sa modifice nimic');
+});
+
+// ===================================================================================================
+// "CREEAZA O MELODIE NOUA" (2026-09-30, cerinta explicita) — vizibil STRICT dupa confirmarea
+// server-side (canCreateNew), niciodata dedus din numarul de carduri afisate. UN SINGUR CTA, dupa
+// lista — niciodata per card. Click -> STRICT fluxul normal existent (/comanda.html), fara nicio
+// cerere suplimentara (nicio generare/creare de comanda la simpla apasare).
+// ===================================================================================================
+test('sandbox: server confirma canCreateNew:true -> CTA-ul "Creeaza o melodie noua" devine vizibil dupa lista de comenzi', async () => {
+  const { api, elements } = buildSandbox({
+    pendingRecoveryEmail: 'client@exemplu.com',
+    fetchImpl: (url) => {
+      if (url === '/api/orders/by-email') return jsonRes({ orders: [{ id: 'order-1', plan: 'standard', recipient: 'Maria', status: 'preview_ready', createdAt: '2026-09-01T00:00:00Z', songCount: 1, hostedAccessExpired: false, canResume: true }] });
+      if (url === '/api/orders/can-create-new') return jsonRes({ canCreateNew: true });
+      return { ok: false };
+    }
+  });
+  await api.__loadPromise;
+  assert.notEqual(elements['create-new-cta-wrap'].style.display, 'none');
+  assert.equal(elements['create-new-cta-btn'].textContent, api.t.create_new_song_btn);
+});
+
+test('sandbox: server confirma canCreateNew:false -> CTA-ul "Creeaza o melodie noua" RAMANE ascuns (niciodata dedus din numarul de comenzi afisate)', async () => {
+  const { api, elements } = buildSandbox({
+    pendingRecoveryEmail: 'client@exemplu.com',
+    fetchImpl: (url) => {
+      if (url === '/api/orders/by-email') return jsonRes({ orders: [{ id: 'order-1', plan: 'standard', recipient: 'Maria', status: 'preview_ready', createdAt: '2026-09-01T00:00:00Z', songCount: 1, hostedAccessExpired: false, canResume: true }] });
+      if (url === '/api/orders/can-create-new') return jsonRes({ canCreateNew: false });
+      return { ok: false };
+    }
+  });
+  await api.__loadPromise;
+  assert.equal(elements['create-new-cta-wrap'].style.display, 'none');
+});
+
+test('sandbox: eroare de retea la verificarea can-create-new -> CTA ramane ascuns (niciodata un fals-pozitiv)', async () => {
+  const { api, elements } = buildSandbox({
+    pendingRecoveryEmail: 'client@exemplu.com',
+    fetchImpl: (url) => {
+      if (url === '/api/orders/by-email') return jsonRes({ orders: [{ id: 'order-1', plan: 'standard', recipient: 'Maria', status: 'preview_ready', createdAt: '2026-09-01T00:00:00Z', songCount: 1, hostedAccessExpired: false, canResume: true }] });
+      if (url === '/api/orders/can-create-new') throw new Error('network down');
+      return { ok: false };
+    }
+  });
+  await api.__loadPromise;
+  assert.equal(elements['create-new-cta-wrap'].style.display, 'none');
+});
+
+test('sandbox: fara niciun email cunoscut (STRICT tokenuri locale, fara pendingRecoveryEmail) -> CTA-ul ramane ascuns, fara nicio cerere can-create-new (nimic de verificat fara email)', async () => {
+  const token = 'j'.repeat(48);
+  const { api, elements, fetchCalls } = buildSandbox({
+    storedOrders: [{ id: 'order-local', token }],
+    fetchImpl: (url) => (url.includes('order-local')
+      ? jsonRes({ id: 'order-local', plan: 'standard', recipient: 'Maria', status: 'ready', createdAt: '2026-09-01T00:00:00Z', hasGiftAudio: false, hasPremiumBonusAudio: false, hostedAccessExpired: false })
+      : { ok: false })
+  });
+  await api.__loadPromise;
+  assert.equal(elements['create-new-cta-wrap'].style.display, 'none');
+  assert.ok(!fetchCalls.some((c) => c.url === '/api/orders/can-create-new'), 'fara email cunoscut, nu trebuie facuta nicio cerere de verificare');
+});
+
+test('sandbox: click pe "Creeaza o melodie noua" navigheaza STRICT catre /comanda.html (fluxul normal existent) si NU face nicio cerere suplimentara — niciun order/generare/quota atinsa la simpla apasare', async () => {
+  const { api, elements, fetchCalls } = buildSandbox({
+    pendingRecoveryEmail: 'client@exemplu.com',
+    fetchImpl: (url) => {
+      if (url === '/api/orders/by-email') return jsonRes({ orders: [{ id: 'order-1', plan: 'standard', recipient: 'Maria', status: 'preview_ready', createdAt: '2026-09-01T00:00:00Z', songCount: 1, hostedAccessExpired: false, canResume: true }] });
+      if (url === '/api/orders/can-create-new') return jsonRes({ canCreateNew: true });
+      return { ok: false };
+    }
+  });
+  await api.__loadPromise;
+  const callsBeforeClick = fetchCalls.length;
+  elements['create-new-cta-btn'].__listeners.click();
+  assert.equal(fetchCalls.length, callsBeforeClick, 'simpla apasare nu trebuie sa declanseze NICIO cerere noua (nicio creare de comanda/generare la click)');
+});
+
+for (const lang of ALLOWED_LANGS) {
+  test(`comenzile-mele.html: limba ${lang} are cheia create_new_song_btn, nevida`, () => {
+    const idxLang = page.indexOf(`    ${lang}: {`);
+    const endLang = page.indexOf('\n    },', idxLang);
+    const block = page.slice(idxLang, endLang);
+    const m = block.match(/create_new_song_btn: '([^']+)'/);
+    assert.ok(m && m[1].trim().length > 0, `[${lang}] create_new_song_btn lipseste/gol`);
+  });
+}
 
 test('node --check server.js si db.js trec (nicio eroare de sintaxa)', () => {
   const { execFileSync } = require('node:child_process');

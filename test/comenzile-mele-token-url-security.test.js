@@ -94,7 +94,7 @@ test('sandbox: la incarcare cu ?tokens=..., URL-ul e curatat (history.replaceSta
   );
 
   const started = runner(
-    { location: fakeLocation, history: fakeHistory, NalunaAnalytics: { isAnalyticsConsentGranted: () => false } },
+    { location: fakeLocation, history: fakeHistory, NalunaAnalytics: { isAnalyticsConsentGranted: () => false }, addEventListener: () => {} },
     fakeDocument,
     fakeLocalStorage,
     fakeHistory,

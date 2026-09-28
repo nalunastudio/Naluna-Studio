@@ -92,7 +92,7 @@ function buildComenzileMeleSandbox({ storedOrders, fetchImpl }) {
     getItem: (k) => (Object.prototype.hasOwnProperty.call(storage, k) ? storage[k] : null),
     setItem: (k, v) => { storage[k] = v; }
   };
-  const windowMock = { location: { search: '', href: 'https://nalunastudio.com/comenzile-mele.html' }, history: { replaceState: () => {} } };
+  const windowMock = { location: { search: '', href: 'https://nalunastudio.com/comenzile-mele.html' }, history: { replaceState: () => {} }, addEventListener: () => {} };
   const fetchMock = async (url) => fetchImpl(url);
   const fn = new Function('document', 'window', 'localStorage', 'navigator', 'URLSearchParams', 'fetch', 'history',
     harness + '\nreturn window.__test_api;'

@@ -268,7 +268,7 @@ function buildSandbox({ search = '', storedOrders, fetchImpl } = {}) {
     getItem: (k) => (Object.prototype.hasOwnProperty.call(storage, k) ? storage[k] : null),
     setItem: (k, v) => { storage[k] = v; }
   };
-  const windowMock = { location: { search, href: 'https://nalunastudio.com/comenzile-mele.html' + search }, history: { replaceState: () => {} } };
+  const windowMock = { location: { search, href: 'https://nalunastudio.com/comenzile-mele.html' + search }, history: { replaceState: () => {} }, addEventListener: () => {} };
   const fetchCalls = [];
   const fetchMock = async (url) => {
     fetchCalls.push(url);

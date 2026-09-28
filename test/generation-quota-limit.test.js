@@ -452,6 +452,115 @@ test('server.js: nu exista o a doua lista hardcodata de emailuri de test pentru 
   assert.equal(occurrences, 1, 'trebuie sa existe o SINGURA sursa de adevar pentru emailurile de test/excluse');
 });
 
+// ===============================================================================================
+// "CREEAZA O MELODIE NOUA" (2026-09-30, cerinta explicita, "Comenzile mele") —
+// db.canCreateNewGeneration: STRICT o citire (fara pg_advisory_xact_lock, fara tranzactie, fara
+// nicio scriere), folosind EXACT aceeasi regula de numarare (3/7 zile, reset la cycle_started_at)
+// ca claimOrderForInitialGeneration de mai sus — cod duplicat INTENTIONAT (vezi comentariul din
+// db.js), niciodata extras intr-un helper comun care ar risca sa schimbe claim-ul atomic existent.
+// ===============================================================================================
+async function withMockPoolQuery(rowsQueue, fn) {
+  const original = db.pool.query;
+  const calls = [];
+  db.pool.query = async (sql, params) => {
+    calls.push({ sql, params });
+    return rowsQueue.shift() || { rows: [] };
+  };
+  try {
+    return await fn(calls);
+  } finally {
+    db.pool.query = original;
+  }
+}
+
+test('canCreateNewGeneration: skipQuota=true (email de test) -> true, FARA nicio interogare (nicio scriere, nicio numarare) — exceptia existenta, neschimbata', async () => {
+  await withMockPoolQuery([], async (calls) => {
+    const result = await db.canCreateNewGeneration('test@naluna.dev', true);
+    assert.equal(result, true);
+    assert.equal(calls.length, 0, 'niciun query pentru emailuri de test');
+  });
+});
+
+// CAZ A — client fara consum relevant in ciclul actual.
+test('canCreateNewGeneration: client normal, 0 comenzi eligibile in fereastra -> true', async () => {
+  await withMockPoolQuery(
+    [{ rows: [] }, { rows: [{ n: '0' }] }],
+    async () => {
+      const result = await db.canCreateNewGeneration('client@exemplu.ro', false);
+      assert.equal(result, true);
+    }
+  );
+});
+
+// CAZ B — quota partial consumata (1 sau 2 din 3) -> tot eligibil.
+test('canCreateNewGeneration: client normal, 1 sau 2 comenzi eligibile in fereastra (sub limita de 3) -> true', async () => {
+  await withMockPoolQuery([{ rows: [{ cycle_started_at: null }] }, { rows: [{ n: '1' }] }], async () => {
+    assert.equal(await db.canCreateNewGeneration('client@exemplu.ro', false), true);
+  });
+  await withMockPoolQuery([{ rows: [{ cycle_started_at: null }] }, { rows: [{ n: '2' }] }], async () => {
+    assert.equal(await db.canCreateNewGeneration('client@exemplu.ro', false), true);
+  });
+});
+
+// CAZ C — quota epuizata (>=3 in fereastra) -> NU eligibil.
+test('canCreateNewGeneration: client normal, 3+ comenzi eligibile in fereastra -> false (quota epuizata, EXACT limita existenta, neschimbata)', async () => {
+  await withMockPoolQuery([{ rows: [{ cycle_started_at: null }] }, { rows: [{ n: '3' }] }], async () => {
+    assert.equal(await db.canCreateNewGeneration('client@exemplu.ro', false), false);
+  });
+  await withMockPoolQuery([{ rows: [{ cycle_started_at: null }] }, { rows: [{ n: '7' }] }], async () => {
+    assert.equal(await db.canCreateNewGeneration('client@exemplu.ro', false), false);
+  });
+});
+
+// CAZ D — plata reala deschide un ciclu nou (cycle_started_at recent) — reflectat corect.
+test('canCreateNewGeneration: cycle_started_at prezent (client a platit recent) e transmis STRICT ca parametru GREATEST(...) — acelasi mecanism de reset ca la claim, neschimbat', async () => {
+  await withMockPoolQuery(
+    [{ rows: [{ cycle_started_at: '2026-09-29T00:00:00.000Z' }] }, { rows: [{ n: '0' }] }],
+    async (calls) => {
+      const result = await db.canCreateNewGeneration('client@exemplu.ro', false);
+      assert.equal(result, true);
+      const countCall = calls[1];
+      assert.equal(countCall.params[2], '2026-09-29T00:00:00.000Z', 'cycle_started_at citit trebuie transmis STRICT ca parametru al numararii (GREATEST cu fereastra de 7 zile)');
+    }
+  );
+});
+
+test('canCreateNewGeneration: foloseste EXACT aceleasi constante (FREE_GENERATION_LIMIT=3, FREE_GENERATION_WINDOW_DAYS=7) si acelasi filtru de status ca claimOrderForInitialGeneration — nicio regula noua/duplicata cu alte valori', () => {
+  const dbSrc = fs.readFileSync(path.join(__dirname, '..', 'db.js'), 'utf8');
+  const idx = dbSrc.indexOf('async function canCreateNewGeneration(emailKey, skipQuota) {');
+  const end = dbSrc.indexOf('\n}', idx);
+  const body = dbSrc.slice(idx, end);
+  assert.match(body, /status NOT IN \('draft', 'generation_failed'\)/, 'acelasi filtru de status ca la claim (draft/generation_failed excluse din numarare)');
+  assert.match(body, /FREE_GENERATION_WINDOW_DAYS/);
+  assert.match(body, /FREE_GENERATION_LIMIT/);
+  assert.ok(!body.includes('pg_advisory_xact_lock'), 'STRICT citire — fara advisory lock (nu exista nicio scriere de protejat)');
+  assert.ok(!body.includes('withTransaction'), 'STRICT citire — fara tranzactie');
+  assert.ok(!/UPDATE|INSERT|DELETE/i.test(body), 'canCreateNewGeneration nu trebuie sa scrie NIMIC in DB');
+});
+
+test('server.js: POST /api/orders/can-create-new foloseste db.canCreateNewGeneration + isTestCustomerEmail (aceeasi exceptie existenta) — raspunde STRICT {canCreateNew:true/false}, niciodata numere/limite/countdown', () => {
+  const idx = serverSrc.indexOf("app.post('/api/orders/can-create-new',");
+  const end = serverSrc.indexOf('\n});', idx);
+  const body = serverSrc.slice(idx, end);
+  assert.match(body, /const skipQuota = isTestCustomerEmail\(rawEmail\);/);
+  assert.match(body, /const canCreateNew = await db\.canCreateNewGeneration\(emailKey, skipQuota\);/);
+  assert.match(body, /res\.json\(\{ canCreateNew \}\);/);
+  assert.ok(!/FREE_GENERATION_LIMIT|FREE_GENERATION_WINDOW_DAYS|\b3\b.*zile|countdown/i.test(body), 'raspunsul nu trebuie sa expuna niciodata limita/fereastra/countdown catre client');
+});
+
+test('server.js: POST /api/orders/can-create-new e STRICT read-only — nu apeleaza niciodata claimOrderForInitialGeneration, createOrder, runGeneration, sau orice alta scriere', () => {
+  const idx = serverSrc.indexOf("app.post('/api/orders/can-create-new',");
+  const end = serverSrc.indexOf('\n});', idx);
+  const body = serverSrc.slice(idx, end);
+  ['claimOrderForInitialGeneration', 'createOrder', 'runGeneration', 'generation_attempts', 'stripe.checkout.sessions.create', 'sendDeliveryEmail'].forEach((token) => {
+    assert.ok(!body.includes(token), `ruta nu trebuie sa contina "${token}" — STRICT o citire de eligibilitate`);
+  });
+});
+
+test('server.js: POST /api/orders/can-create-new reutilizeaza STRICT recoveryIpLimiter + recoveryEmailTargetLimiter (acelasi anti-abuz ca /by-email, niciun limiter nou)', () => {
+  assert.match(serverSrc, /app\.post\('\/api\/orders\/can-create-new', recoveryIpLimiter, recoveryEmailTargetLimiter, async \(req, res, next\) => \{/);
+});
+
 test('node --check server.js si db.js trec (nicio eroare de sintaxa)', () => {
   const { execFileSync } = require('node:child_process');
   assert.doesNotThrow(() => execFileSync(process.execPath, ['--check', path.join(__dirname, '..', 'server.js')]));
