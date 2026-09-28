@@ -4120,8 +4120,22 @@
   // accessToken valid, verificat server-side chiar AICI. Scriem STRICT dupa `res.ok` (200) —
   // niciodata pe baza simplei prezente a parametrilor din URL. Idempotent (merge, nu duplica),
   // acelasi tipar exact ca in comanda.html/comenzile-mele.html (naluna_my_order_keys).
+  // BUG REAL DE PRODUCTIE (2026-09-30, "dupa Back, cardul devine link auriu in loc de buton
+  // negru") — cauza gasita: aceasta functie retinea NEDIFERENTIAT orice token din URL, inclusiv
+  // un resume-token (2026-09-28, "Continua cu aceasta comanda") — care ajunge apoi in
+  // naluna_my_order_keys exact ca un accessToken permanent. La revenirea pe comenzile-mele.html,
+  // acea comanda (gasita initial STRICT prin email, randata cu butonul negru) e gasita ACUM SI
+  // prin token local — versiunea cu token are prioritate (by design, acces complet detinut
+  // legitim), deci cardul trece la randarea cealalta (link auriu cu sageata, gandita STRICT
+  // pentru comenzi cu accessToken real). Resume-tokenul NU trebuie retinut ca un accessToken
+  // permanent — are STRICT 60 de minute si o autoritate limitata (vezi server.js). Distinctie
+  // STRUCTURALA, fara niciun apel catre server: un resume-token e STRICT "payload.semnatura"
+  // (contine un singur "."), un accessToken real e STRICT hex (48 caractere, niciodata ".").
+  function isResumeToken(token) {
+    return typeof token === 'string' && token.includes('.');
+  }
   function rememberAuthorizedOrder(id, token) {
-    if (!id || !token) return;
+    if (!id || !token || isResumeToken(token)) return;
     try {
       const KEY = 'naluna_my_order_keys';
       const raw = localStorage.getItem(KEY);

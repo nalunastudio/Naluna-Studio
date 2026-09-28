@@ -4956,7 +4956,25 @@ app.post('/api/orders/:orderId/checkout', requireOrderToken, async (req, res, ne
       // Idempotency key legata de comanda SI de versiunea aprobata (vezi comentariul de mai
       // sus) — un dublu-click, un al doilea tab, sau un retry client dupa o eroare de retea,
       // PENTRU ACEEASI versiune, tot nu mai creeaza o a doua sesiune Stripe independenta.
-      idempotencyKey: `checkout-${order.id}-${versionFingerprint}`
+      //
+      // BUG REAL DE PRODUCTIE (2026-09-30, "Eroare la initierea platii" la TOATE comenzile
+      // testate prin resume-by-email — confirmat in loguri: Stripe respinge cu "Keys for
+      // idempotent requests can only be used with the same parameters they were first used
+      // with") — cauza gasita: gaClientId/gaSessionId/marketingConsent fac parte din request-ul
+      // REAL trimis catre Stripe (metadata, mai sus), dar NU erau incluse in idempotencyKey.
+      // gaSessionId in special e un timestamp Unix al INCEPUTULUI sesiunii GA4 curente — variaza
+      // garantat intre o incercare initiala de plata si o reincercare zile mai tarziu (sesiune
+      // GA noua), chiar pentru EXACT aceeasi comanda/selectie/versiune. Stripe compara INTREGUL
+      // request fata de prima folosire a cheii — o cheie neschimbata + parametri schimbati =
+      // exact eroarea observata, PERMANENT, pentru acea combinatie comanda+versiune, indiferent
+      // de credential (accessToken sau resume-token — ambele ajung la ACEEASI ruta, NESCHIMBATA
+      // aici). Preexistent din 2026-09-14/09-21 (cand gaClientId/gaSessionId/marketingConsent au
+      // fost adaugate) — resume-v2 doar a permis clientilor sa ajunga IN SFARSIT inapoi la
+      // checkout pentru comenzi atinse mai demult, scotand la iveala acest bug latent. Fixul:
+      // includem si aceste 3 valori in cheie — un dublu-click/retry IMEDIAT (aceeasi sesiune GA,
+      // aceleasi valori) tot dedupleaza corect; O SESIUNE GA NOUA (context legitim diferit)
+      // primeste acum, corect, o sesiune Stripe noua, in loc sa coliziona cu una veche, inghetata.
+      idempotencyKey: `checkout-${order.id}-${versionFingerprint}-${gaClientId}-${gaSessionId}-${marketingConsent}`
     });
 
     // Salvam amprenta EXACT a sesiunii create — folosita la webhook pentru a respinge sigur

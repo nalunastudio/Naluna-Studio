@@ -361,9 +361,15 @@ test('selectedVariantId persista la refresh — GET /api/orders/:orderId il retu
 
 test('dublul click pe plata nu creeaza checkouturi Stripe duplicate (idempotencyKey legata de versiune)', () => {
   const server = read('server.js');
+  // BUG REAL DE PRODUCTIE (2026-09-30, "Eroare la initierea platii" — Stripe respingea cu "Keys
+  // for idempotent requests..." la reincercari zile mai tarziu) — cheia a fost extinsa cu
+  // gaClientId/gaSessionId/marketingConsent (aceleasi valori care fac deja parte din metadata
+  // reala trimisa la Stripe) — versionFingerprint (comanda+varianta+mediaRevision) ramane STRICT
+  // neschimbat ca prefix, deci un dublu-click rapid (ACELASI context GA, aceeasi sesiune) tot
+  // dedupleaza corect, neschimbat.
   assert.ok(
-    server.includes('idempotencyKey: `checkout-${order.id}-${versionFingerprint}`'),
-    'aceeasi comanda + aceeasi varianta selectata trebuie sa returneze mereu ACEEASI sesiune Stripe, niciodata una noua la un al doilea click rapid'
+    server.includes('idempotencyKey: `checkout-${order.id}-${versionFingerprint}-${gaClientId}-${gaSessionId}-${marketingConsent}`'),
+    'aceeasi comanda + aceeasi varianta selectata + acelasi context GA trebuie sa returneze mereu ACEEASI sesiune Stripe, niciodata una noua la un al doilea click rapid'
   );
 });
 

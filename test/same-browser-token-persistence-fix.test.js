@@ -97,8 +97,11 @@ test('comanda-mea.html: node --check (indirect, sintaxa scriptului inline) trece
 // D. COMPORTAMENT REAL, sandbox — merge idempotent (nu suprascrie, nu duplica).
 // ===============================================================================================
 function loadRememberFn(html) {
-  const idx = html.indexOf('function rememberAuthorizedOrder(id, token) {');
-  const end = html.indexOf('\n  }', idx) + 4;
+  // "BUG REAL DE PRODUCTIE (2026-09-30, link auriu dupa Back)" — rememberAuthorizedOrder()
+  // apeleaza acum isResumeToken() (definita chiar deasupra ei) — extractia trebuie sa includa
+  // AMBELE functii, altfel sandboxul ar arunca ReferenceError la primul apel real.
+  const idx = html.indexOf('function isResumeToken(token) {');
+  const end = html.indexOf('\n  }', html.indexOf('function rememberAuthorizedOrder(id, token) {')) + 4;
   const fnSrc = html.slice(idx, end);
   const fn = new Function('localStorage', fnSrc + '\nreturn rememberAuthorizedOrder;');
   const storage = {};
@@ -151,6 +154,36 @@ test('sandbox (melodia-mea.html): id/token lipsa/goale -> nu scrie nimic (defens
   assert.equal(storage.naluna_my_order_keys, undefined);
 });
 
+// ===============================================================================================
+// BUG REAL DE PRODUCTIE (2026-09-30, "dupa Back, cardul devine link auriu cu sageata, in loc de
+// buton negru") — cauza gasita: rememberAuthorizedOrder() retinea NEDIFERENTIAT si un resume-token
+// (2026-09-28, "Continua cu aceasta comanda", STRICT 60 de minute, autoritate limitata) ca pe un
+// accessToken permanent. Odata retinut, comanda gasita initial STRICT prin email (randata cu
+// renderReadOnlyOrderCard, buton negru) era gasita ULTERIOR SI prin token local — versiunea cu
+// token castiga prioritatea existenta (by design), deci cardul trecea la renderOrderCard (link
+// auriu + sageata, gandit STRICT pentru accessToken real). Fix: un resume-token (format STRUCTURAL
+// distinct — "payload.semnatura", contine un ".") nu mai e retinut ca accessToken permanent.
+// ===============================================================================================
+test('sandbox (melodia-mea.html): un resume-token (format "payload.semnatura") NU e retinut in naluna_my_order_keys — accessToken-ul real (48 hex, fara ".") continua sa fie retinut normal', () => {
+  const { remember, storage } = loadRememberFn(melodiaMea);
+  const resumeTokenShaped = 'cGF5bG9hZA.abcdef0123456789abcdef0123456789abcdef0123456789abcdef01';
+  remember('order-resume', resumeTokenShaped);
+  assert.equal(storage.naluna_my_order_keys, undefined, 'un resume-token nu trebuie retinut deloc — cardul trebuie sa ramana STRICT view/listen (email) la urmatoarea incarcare');
+
+  remember('order-real', 'a'.repeat(48));
+  const list = JSON.parse(storage.naluna_my_order_keys);
+  assert.deepEqual(list, [{ id: 'order-real', token: 'a'.repeat(48) }], 'accessToken-ul real (fara ".") trebuie retinut normal, neschimbat');
+});
+
+test('sandbox (melodia-mea.html): SECVENTA REALA — Comanda 1/2/3 accesate prin resume-token (Continue -> melodia-mea.html) -> naluna_my_order_keys ramane STRICT gol pentru toate 3, niciodata partial populat', () => {
+  const { remember, storage } = loadRememberFn(melodiaMea);
+  const resumeTokenFor = (n) => `cGF5bG9hZA${n}.abcdef0123456789abcdef0123456789abcdef0123456789abcdef01`;
+  remember('order-1', resumeTokenFor(1));
+  remember('order-2', resumeTokenFor(2));
+  remember('order-3', resumeTokenFor(3));
+  assert.equal(storage.naluna_my_order_keys, undefined, 'niciuna dintre cele 3 comenzi accesate prin resume-token nu trebuie sa apara in tokenurile locale permanente — toate 3 trebuie sa ramana view/listen (email) dupa Back');
+});
+
 const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor;
 
 function loadComandaMeaRememberSnippet() {
@@ -191,6 +224,21 @@ test('sandbox (comanda-mea.html): apelat de doua ori pentru ACEEASI comanda -> a
     const list = JSON.parse(raw);
     assert.equal(list.length, 1);
     assert.equal(list[0].token, 'new'.padEnd(48, '0'));
+  });
+});
+
+test('sandbox (comanda-mea.html): un resume-token (comanda "ready" continuata prin resume-v2) NU e retinut in naluna_my_order_keys — acelasi fix ca melodia-mea.html', () => {
+  const storage = {};
+  const localStorageMock = {
+    getItem: (k) => (Object.prototype.hasOwnProperty.call(storage, k) ? storage[k] : null),
+    setItem: (k, v) => { storage[k] = v; }
+  };
+  const resMock = { json: async () => ({ id: 'order-ready-resume' }) };
+  const resumeTokenShaped = 'cGF5bG9hZA.abcdef0123456789abcdef0123456789abcdef0123456789abcdef01';
+  const fn = new AsyncFunction('localStorage', 'res', 'token', loadComandaMeaRememberSnippet());
+  const result = fn(localStorageMock, resMock, resumeTokenShaped);
+  return result.then((raw) => {
+    assert.equal(raw, null, 'un resume-token nu trebuie retinut — comanda platita accesata prin resume ramane STRICT view/listen (email) la urmatoarea incarcare');
   });
 });
 

@@ -1480,7 +1480,13 @@
       // "neautorizat" pentru Comenzile mele, desi tocmai a dovedit, server-side, ca detine un
       // accessToken valid pentru aceasta comanda. Scriem STRICT dupa succesul GET
       // /api/orders/access/:token de mai sus — niciodata pe baza inputului brut al clientului.
-      try {
+      // BUG REAL DE PRODUCTIE (2026-09-30) — un resume-token (2026-09-28, "Continua cu aceasta
+      // comanda", STRICT 60 de minute, autoritate limitata) NU trebuie retinut aici ca un
+      // accessToken permanent — vezi comentariul identic din melodia-mea.html. Distinctie
+      // STRUCTURALA: un resume-token e STRICT "payload.semnatura" (contine un "."), un
+      // accessToken real e STRICT hex (48 caractere, niciodata ".").
+      const isResumeToken = typeof token === 'string' && token.includes('.');
+      if (!isResumeToken) try {
         const KEY = 'naluna_my_order_keys';
         const raw = localStorage.getItem(KEY);
         const arr = raw ? JSON.parse(raw) : [];

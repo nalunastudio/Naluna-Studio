@@ -807,6 +807,43 @@ test('sandbox: secventa REALA Comanda 1 -> Back -> Comanda 2 -> Back -> Comanda 
   btns.forEach((b) => assert.equal(b.disabled, false));
 });
 
+// ===================================================================================================
+// BUG REAL DE PRODUCTIE, PARTEA A 2-A (2026-09-30, "dupa Back, cardul devine link auriu cu
+// sageata, in loc de buton negru") — DISTINCT de bug-ul de mai sus (disabled/"Se incarca..."):
+// aici cauza NU era bfcache — era o RE-INCARCARE REALA in care melodia-mea.html/comanda-mea.html
+// retinusera GRESIT resume-tokenul in naluna_my_order_keys (fix separat, vezi
+// test/same-browser-token-persistence-fix.test.js). Cardul trecea astfel de la
+// renderReadOnlyOrderCard (buton negru, .continue-cta-btn) la renderOrderCard (link auriu + "→",
+// .continue-cta) — nu doar un state ramas, ci FUNCTIA DE RANDARE insasi schimbata. Cu fixul din
+// melodia-mea.html/comanda-mea.html (resume-tokenul nu se mai retine), naluna_my_order_keys ramane
+// gol pentru comenzile 1/2/3 dupa Back, deci comenzile-mele.html continua sa le randeze STRICT
+// prin renderReadOnlyOrderCard (buton negru normal, latime/stil originale) la fiecare reincarcare.
+// ===================================================================================================
+test('sandbox: Comanda 1/2/3 accesate prin resume-by-email, apoi Back -> RE-INCARCARE REALA (nu bfcache) cu naluna_my_order_keys STRICT gol (fixul din melodia-mea.html/comanda-mea.html) -> toate 3 carduri raman butoane negre normale (.continue-cta-btn), NICIODATA link auriu (.continue-cta) cu sageata', async () => {
+  const { api, elements } = buildSandbox({
+    storedOrders: [], // naluna_my_order_keys GOL — exact rezultatul fixului melodia-mea.html/comanda-mea.html dupa Continue+Back pe toate 3 comenzile
+    pendingRecoveryEmail: 'client@exemplu.com',
+    fetchImpl: (url) => (url === '/api/orders/by-email'
+      ? jsonRes({ orders: [
+        { id: 'order-1', plan: 'standard', recipient: 'Maria', status: 'preview_ready', createdAt: '2026-09-01T00:00:00Z', songCount: 1, hostedAccessExpired: false, canResume: true },
+        { id: 'order-2', plan: 'premium', recipient: 'Maria', status: 'preview_ready', createdAt: '2026-09-02T00:00:00Z', songCount: 4, hostedAccessExpired: false, canResume: true },
+        { id: 'order-3', plan: 'video', recipient: 'Maria', status: 'ready', createdAt: '2026-09-03T00:00:00Z', songCount: 1, hostedAccessExpired: false, canResume: true }
+      ] })
+      : { ok: false })
+  });
+  await api.__loadPromise;
+  const cards = elements['orders-list'].children;
+  assert.equal(cards.length, 3);
+  cards.forEach((card, i) => {
+    const blackBtn = card.children.find((c) => c.className === 'continue-cta-btn');
+    assert.ok(blackBtn, `cardul ${i + 1} trebuie sa aiba butonul negru normal (.continue-cta-btn)`);
+    assert.equal(blackBtn.textContent, api.t.continue_btn, `cardul ${i + 1}: text corect, fara sageata`);
+    assert.ok(!card.innerHTML.includes('continue-cta"'), `cardul ${i + 1} nu trebuie sa foloseasca NICIODATA varianta link auriu (.continue-cta)`);
+    assert.ok(!card.innerHTML.includes('→'), `cardul ${i + 1} nu trebuie sa contina sageata (STRICT pentru cardurile cu token local complet)`);
+    assert.ok(!card.href, `cardul ${i + 1} nu trebuie sa fie un <a> clicabil — STRICT div, view/listen prin email`);
+  });
+});
+
 test('sandbox: o incarcare NORMALA (nu din bfcache — event.persisted===false, ex. pageshow la incarcarea initiala) NU declanseaza resetarea (loadAndRenderOrders() oricum reconstruieste totul de la zero)', async () => {
   const { elements, windowListeners } = buildSandbox({ storedOrders: [] });
   const btn = elements['recovery-btn']; // orice element existent, STRICT ca sa verificam ca handler-ul nu arunca / nu modifica nimic in afara .continue-cta-btn
