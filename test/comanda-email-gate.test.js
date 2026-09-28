@@ -72,9 +72,17 @@ function loadGateSandbox({ storedOrders, stepKeyValue, restoredStepValue = 3, fe
     'gate-my-orders-desc': { textContent: '' },
     email: { value: initialEmailValue },
     'gate-email-continue-btn': { addEventListener: (evt, fn) => { listeners.emailContinue = fn; } },
-    'gate-new-song-btn': { addEventListener: (evt, fn) => { listeners.newSong = fn; } }
+    'gate-new-song-btn': { addEventListener: (evt, fn) => { listeners.newSong = fn; } },
+    'gate-my-orders-link': { addEventListener: (evt, fn) => { listeners.myOrders = fn; } }
   };
   const fakeDocument = { getElementById: (id) => (id in elements ? elements[id] : null) };
+  // stepCards (referentiat de returnToGateChoiceFromWizard, PROBLEMA 3) e declarat in comanda.html
+  // MULT inainte de startMarker (document.querySelectorAll('.step-card')) — injectat direct ca
+  // parametru al sandbox-ului, ca sa nu extindem extragerea peste tot restul wizard-ului.
+  const fakeStepCards = [
+    { dataset: { step: '1' }, style: {} },
+    { dataset: { step: '2' }, style: {} }
+  ];
   const storage = {};
   if (stepKeyValue !== undefined && stepKeyValue !== null) storage.currentStep = stepKeyValue;
   if (storedOrders !== undefined) storage.naluna_my_order_keys = JSON.stringify(storedOrders);
@@ -96,13 +104,29 @@ function loadGateSandbox({ storedOrders, stepKeyValue, restoredStepValue = 3, fe
   // = continuarea aceleiasi navigari (dead-end fix, comportament implicit aici), 'navigate' =
   // intrare noua (homepage/CTA/bookmark), folosit explicit de testele PROBLEMA 1 de mai jos.
   const fakePerformance = { getEntriesByType: (type) => (type === 'navigation' ? [{ type: navigationType }] : []) };
+  // PROBLEMA 3 (2026-09-30, "Navigarea Back") — window.history/window.addEventListener simulate,
+  // ca sa testam exact acelasi cod (history.pushState/popstate) care ruleaza intr-un browser real.
+  let historyState = null;
+  const popstateListeners = [];
+  const fakeWindow = {
+    history: {
+      get state() { return historyState; },
+      pushState: (state) => { historyState = state; }
+    },
+    location: { href: 'https://nalunastudio.com/comanda.html' },
+    addEventListener: (evt, fn) => { if (evt === 'popstate') popstateListeners.push(fn); }
+  };
 
   const build = new Function(
-    'document', 'localStorage', 'fetch', 'STEP_KEY', 'restoredStep', 'isValidEmailClient', 'setFieldError', 'saveDraft', 'showStep', 't', 'performance',
+    'document', 'localStorage', 'fetch', 'STEP_KEY', 'restoredStep', 'isValidEmailClient', 'setFieldError', 'saveDraft', 'showStep', 't', 'performance', 'window', 'stepCards',
     snippet + '\nreturn { computeVerifiedKnownOrderCount, showGateChoiceScreen, enterWizardAfterGate, gateAlreadyPassed };'
   );
-  const api = build(fakeDocument, fakeLocalStorage, fakeFetch, 'currentStep', restoredStepValue, isValidEmailClient, setFieldError, saveDraft, showStep, t, fakePerformance);
-  return { api, elements, listeners, calls, snippet, storageRef: storage };
+  const api = build(fakeDocument, fakeLocalStorage, fakeFetch, 'currentStep', restoredStepValue, isValidEmailClient, setFieldError, saveDraft, showStep, t, fakePerformance, fakeWindow, fakeStepCards);
+  return {
+    api, elements, listeners, calls, snippet, storageRef: storage, stepCards: fakeStepCards,
+    getHistoryState: () => historyState,
+    firePopstate: (state) => { historyState = state; popstateListeners.forEach((fn) => fn({ state })); }
+  };
 }
 
 test('sandbox: blocul JS al gate-ului exista si e sintactic valid, izolat', () => {
@@ -255,6 +279,56 @@ test('PROBLEMA 1: refresh/back_forward mid-wizard NU goleste campul de email (co
   });
   assert.equal(api.gateAlreadyPassed, true);
   assert.equal(elements.email.value, 'client@exemplu.com', 'un refresh mid-wizard nu trebuie sa goleasca un camp deja completat in aceasta sesiune');
+});
+
+// ===============================================================================================
+// PROBLEMA 3 (2026-09-30, "Navigarea Back este gresita" — audit history/navigation existent):
+// trecerea gate-choice-screen -> wizard nu crea nicio intrare noua in istoric, deci Back din
+// Pasul 1 sarea direct la homepage. Fix: history.pushState() la intrarea in wizard; popstate
+// revine STRICT la ecranul de alegere ("Ce vrei sa faci?"), fara nicio navigare reala.
+// ===============================================================================================
+test('PROBLEMA 3: intrarea in wizard (enterWizardAfterGate) impinge O intrare noua in istoric (history.pushState, {ndsView:"wizard"}) — STRICT o data, nu de fiecare apel (reload/gateAlreadyPassed nu stivuieste straturi suplimentare)', () => {
+  const { api, getHistoryState } = loadGateSandbox({ navigationType: 'navigate' });
+  assert.equal(getHistoryState(), null, 'inainte de a intra in wizard, nu trebuie impins niciun state');
+  api.enterWizardAfterGate();
+  assert.deepEqual(getHistoryState(), { ndsView: 'wizard' });
+});
+
+test('PROBLEMA 3: enterWizardAfterGate() apelat A DOUA OARA (reload cu gateAlreadyPassed, history.state deja "wizard") NU impinge un al doilea strat — history.state ramane identic, nu se acumuleaza', () => {
+  const { api, getHistoryState } = loadGateSandbox({ stepKeyValue: '4', restoredStepValue: 4, navigationType: 'reload' });
+  // gateAlreadyPassed=true => enterWizardAfterGate() ruleaza deja o data la incarcarea sandbox-ului.
+  assert.deepEqual(getHistoryState(), { ndsView: 'wizard' });
+  api.enterWizardAfterGate();
+  assert.deepEqual(getHistoryState(), { ndsView: 'wizard' }, 'niciun strat suplimentar la a doua rulare');
+});
+
+test('PROBLEMA 3: Back (popstate) din wizard, cu state diferit de "wizard" (ex. null — stratul anterior, ecranul de alegere), reafiseaza STRICT gate-choice-screen — ascunde progress-wrap si toti step-cards numerotati, NICIODATA o navigare reala', () => {
+  const { api, elements, stepCards, firePopstate } = loadGateSandbox({ navigationType: 'navigate' });
+  api.enterWizardAfterGate();
+  elements['progress-wrap'].style.display = '';
+  elements['gate-choice-screen'].style.display = 'none';
+  stepCards.forEach((c) => { c.style.display = 'block'; });
+  firePopstate(null); // simuleaza Back-ul real al browserului catre stratul impins ANTERIOR intrarii in wizard
+  assert.equal(elements['progress-wrap'].style.display, 'none', 'bara de progres a wizard-ului trebuie ascunsa la Back');
+  assert.equal(elements['gate-choice-screen'].style.display, 'block', 'ecranul "Ce vrei sa faci?" trebuie reafisat la Back din wizard');
+  stepCards.forEach((c) => assert.equal(c.style.display, 'none', `pasul numerotat ${c.dataset.step} trebuie ascuns la Back din wizard`));
+});
+
+test('PROBLEMA 3: popstate cu state {ndsView:"wizard"} (ex. Forward inapoi in wizard) NU declanseaza reafisarea ecranului de alegere — ramane in wizard', () => {
+  const { api, elements, firePopstate } = loadGateSandbox({ navigationType: 'navigate' });
+  api.enterWizardAfterGate();
+  elements['gate-choice-screen'].style.display = 'none';
+  firePopstate({ ndsView: 'wizard' });
+  assert.equal(elements['gate-choice-screen'].style.display, 'none', 'un popstate catre acelasi strat (wizard) nu trebuie sa reafiseze ecranul de alegere');
+});
+
+// PROBLEMA 1 (2026-09-30) — click pe "Comenzile mele" STRICT stocheaza emailul local
+// (sessionStorage, pentru comenzile-mele.html) — NICIODATA nu declanseaza un fetch/creeaza o
+// comanda/consuma quota doar pentru ca a fost apasat acest link.
+test('PROBLEMA 1: click pe "Comenzile mele" din gate NU declanseaza niciun fetch (nicio creare de comanda/consumare de quota doar pentru navigarea catre lista de comenzi)', () => {
+  const { listeners, calls } = loadGateSandbox({ initialEmailValue: 'client@exemplu.com' });
+  listeners.myOrders();
+  assert.equal(calls.fetch, 0);
 });
 
 // ===============================================================================================

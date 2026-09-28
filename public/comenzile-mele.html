@@ -34,8 +34,16 @@
   }
   .order:hover{ border-color:var(--gold); transform:translateY(-1px); }
   .order .title{ font-weight:600; font-family:'Fraunces', serif; font-size:17px; }
+  .order .song-title{ font-style:italic; color:#4a4a4a; margin-top:2px; font-size:14px; }
   .order .for-line{ color:var(--text-secondary); font-size:14px; margin-top:4px; }
   .order .count-line{ color:var(--text-secondary); font-size:14px; margin-top:2px; }
+  /* VIEW/LISTEN MODE (2026-09-30, decizie explicita de produs, "email -> lista -> Play") — cardul
+     unei comenzi gasite STRICT prin email (fara token local) NU e clicabil (nu ofera acces
+     complet) — STRICT informativ + player(e) audio pentru preview-urile deja publice. */
+  .order-readonly{ cursor:default; }
+  .order-readonly:hover{ border-color:var(--line); transform:none; }
+  .order-readonly audio{ width:100%; margin-top:10px; display:block; }
+  .order-readonly .view-only-note{ color:var(--text-secondary); font-size:12px; margin-top:10px; margin-bottom:0; }
   .status{
     font-size:11px; padding:4px 10px; border-radius:999px; text-transform:uppercase;
     letter-spacing:.06em; font-family:'Sora',sans-serif; display:inline-block; margin-top:8px;
@@ -98,10 +106,11 @@
   <p class="empty" id="loading-msg">Se încarcă...</p>
 
   <div class="recovery-box" id="recovery-box" style="display:none;">
-    <h2 id="recovery-title">Nu găsești o comandă?</h2>
-    <p class="sub" id="recovery-sub" style="margin-bottom:14px;">Primești pe email linkurile către comenzile tale.</p>
+    <h2 id="recovery-title">Nu vezi o comandă?</h2>
+    <p class="sub" id="recovery-sub" style="margin-bottom:14px;">Introdu emailul folosit la comandă.</p>
     <input type="email" id="recovery-email" placeholder="email@exemplu.com" autocomplete="email">
-    <button type="button" id="recovery-btn">Trimite-mi acces pe email</button>
+    <button type="button" id="recovery-btn">Vezi comenzile mele</button>
+    <button type="button" id="recovery-email-fallback-btn" class="link-btn" style="display:block;margin-top:10px;margin-bottom:0;">Trimite-mi link pe email</button>
     <p class="recovery-result" id="recovery-result" style="display:none;"></p>
   </div>
 </div>
@@ -113,14 +122,16 @@
       title: 'Comenzile mele', sub: 'Comenzile la care ai acces din acest browser.',
       order_label: 'Comandă',
       song_count: (n) => `${n} ${n === 1 ? 'melodie' : 'melodii'}`,
+      view_only_note: 'Pentru plată sau editare, folosește linkul primit pe email.',
       blocked: 'Ai deja melodii create pentru tine. Alege una dintre comenzile tale pentru a continua.',
       blocked_empty: 'Ai atins limita de melodii gratuite pentru acest email. Dacă ai comenzi existente, folosește recuperarea prin email de mai jos ca să le accesezi.',
       loading: 'Se încarcă...', for_label: 'Pentru', continue_btn: 'Continuă cu această comandă',
       status_progress: 'Se compune', status_ready: 'Gata',
-      recovery_title: 'Nu găsești o comandă?', recovery_sub: 'Primești pe email linkurile către comenzile tale.',
-      recovery_placeholder: 'email@exemplu.com', recovery_btn: 'Trimite-mi acces pe email', recovery_sending: 'Se trimite...',
+      recovery_title: 'Nu vezi o comandă?', recovery_sub: 'Introdu emailul folosit la comandă ca să-ți vezi melodiile direct.',
+      recovery_placeholder: 'email@exemplu.com', recovery_btn: 'Vezi comenzile mele', recovery_searching: 'Se caută...',
+      recovery_no_orders_for_email: 'Nu am găsit nicio comandă pentru acest email.',
+      recovery_email_fallback_btn: 'Trimite-mi link pe email', recovery_sending: 'Se trimite...',
       recovery_sent: 'Dacă adresa introdusă are comenzi eligibile, vei primi în scurt timp un email cu linkurile de acces.',
-      auto_recovery_sent: 'Ţi-am trimis pe email accesul securizat la comenzile tale existente.',
       use_other_email: 'Foloseşte alt email',
       empty_no_orders: 'Nu am găsit nicio comandă în acest browser.',
       verify_error: 'Nu am putut verifica acum comenzile tale — verifică-ți conexiunea și reîncarcă pagina.',
@@ -130,14 +141,16 @@
       title: 'My orders', sub: 'The orders you can access from this browser.',
       order_label: 'Order',
       song_count: (n) => `${n} ${n === 1 ? 'song' : 'songs'}`,
+      view_only_note: 'For payment or editing, use the link you received by email.',
       blocked: 'You already have songs created for you. Choose one of your existing orders to continue.',
       blocked_empty: "You've reached the free-song limit for this email. If you have existing orders, use the email recovery below to access them.",
       loading: 'Loading...', for_label: 'For', continue_btn: 'Continue with this order',
       status_progress: 'Being composed', status_ready: 'Ready',
-      recovery_title: "Can't find an order?", recovery_sub: "We'll email you the links to your orders.",
-      recovery_placeholder: 'email@example.com', recovery_btn: 'Email me access', recovery_sending: 'Sending...',
+      recovery_title: "Can't find an order?", recovery_sub: "Enter the email you used to order, and we'll show your songs directly.",
+      recovery_placeholder: 'email@example.com', recovery_btn: 'See my orders', recovery_searching: 'Searching...',
+      recovery_no_orders_for_email: 'We could not find any order for this email.',
+      recovery_email_fallback_btn: 'Email me a link', recovery_sending: 'Sending...',
       recovery_sent: "If that email has any eligible orders, you'll receive an email shortly with the access links.",
-      auto_recovery_sent: "We've emailed you secure access to your existing orders.",
       use_other_email: 'Use a different email',
       empty_no_orders: 'We could not find any order in this browser.',
       verify_error: "We couldn't check your orders right now — check your connection and reload the page.",
@@ -147,14 +160,16 @@
       title: 'Meine Bestellungen', sub: 'Die Bestellungen, auf die du von diesem Browser aus zugreifen kannst.',
       order_label: 'Bestellung',
       song_count: (n) => `${n} ${n === 1 ? 'Lied' : 'Lieder'}`,
+      view_only_note: 'Für Zahlung oder Bearbeitung nutze den Link, den du per E-Mail erhalten hast.',
       blocked: 'Für dich wurden bereits Lieder erstellt. Wähle eine deiner bestehenden Bestellungen, um fortzufahren.',
       blocked_empty: 'Du hast das Limit kostenloser Lieder für diese E-Mail-Adresse erreicht. Falls du bestehende Bestellungen hast, nutze die E-Mail-Wiederherstellung unten, um darauf zuzugreifen.',
       loading: 'Wird geladen...', for_label: 'Für', continue_btn: 'Mit dieser Bestellung fortfahren',
       status_progress: 'Wird komponiert', status_ready: 'Fertig',
-      recovery_title: 'Findest du eine Bestellung nicht?', recovery_sub: 'Wir senden dir die Links zu deinen Bestellungen per E-Mail.',
-      recovery_placeholder: 'email@beispiel.com', recovery_btn: 'Zugang per E-Mail zusenden', recovery_sending: 'Wird gesendet...',
+      recovery_title: 'Findest du eine Bestellung nicht?', recovery_sub: 'Gib die E-Mail-Adresse ein, mit der du bestellt hast — wir zeigen dir deine Lieder direkt.',
+      recovery_placeholder: 'email@beispiel.com', recovery_btn: 'Meine Bestellungen ansehen', recovery_searching: 'Wird gesucht...',
+      recovery_no_orders_for_email: 'Wir konnten keine Bestellung für diese E-Mail-Adresse finden.',
+      recovery_email_fallback_btn: 'Zugang per E-Mail zusenden', recovery_sending: 'Wird gesendet...',
       recovery_sent: 'Falls diese E-Mail-Adresse berechtigte Bestellungen hat, erhältst du in Kürze eine E-Mail mit den Zugangslinks.',
-      auto_recovery_sent: 'Wir haben dir den sicheren Zugang zu deinen bestehenden Bestellungen per E-Mail geschickt.',
       use_other_email: 'Andere E-Mail verwenden',
       empty_no_orders: 'Wir konnten in diesem Browser keine Bestellung finden.',
       verify_error: 'Wir konnten deine Bestellungen gerade nicht überprüfen — überprüfe deine Verbindung und lade die Seite neu.',
@@ -164,14 +179,16 @@
       title: 'Mis pedidos', sub: 'Los pedidos a los que puedes acceder desde este navegador.',
       order_label: 'Pedido',
       song_count: (n) => `${n} ${n === 1 ? 'canción' : 'canciones'}`,
+      view_only_note: 'Para pagar o editar, usa el enlace que recibiste por email.',
       blocked: 'Ya tienes canciones creadas para ti. Elige uno de tus pedidos existentes para continuar.',
       blocked_empty: 'Has alcanzado el límite de canciones gratuitas para este email. Si tienes pedidos existentes, usa la recuperación por email de abajo para acceder a ellos.',
       loading: 'Cargando...', for_label: 'Para', continue_btn: 'Continuar con este pedido',
       status_progress: 'En composición', status_ready: 'Listo',
-      recovery_title: '¿No encuentras un pedido?', recovery_sub: 'Te enviaremos por email los enlaces a tus pedidos.',
-      recovery_placeholder: 'email@ejemplo.com', recovery_btn: 'Enviarme el acceso por email', recovery_sending: 'Enviando...',
+      recovery_title: '¿No encuentras un pedido?', recovery_sub: 'Introduce el email que usaste para pedir y te mostraremos tus canciones directamente.',
+      recovery_placeholder: 'email@ejemplo.com', recovery_btn: 'Ver mis pedidos', recovery_searching: 'Buscando...',
+      recovery_no_orders_for_email: 'No encontramos ningún pedido para este email.',
+      recovery_email_fallback_btn: 'Enviarme un enlace por email', recovery_sending: 'Enviando...',
       recovery_sent: 'Si esa dirección tiene pedidos elegibles, recibirás en breve un email con los enlaces de acceso.',
-      auto_recovery_sent: 'Te hemos enviado por email el acceso seguro a tus pedidos existentes.',
       use_other_email: 'Usar otro email',
       empty_no_orders: 'No encontramos ningún pedido en este navegador.',
       verify_error: 'No pudimos verificar tus pedidos ahora — comprueba tu conexión y recarga la página.',
@@ -181,14 +198,16 @@
       title: 'I miei ordini', sub: 'Gli ordini a cui puoi accedere da questo browser.',
       order_label: 'Ordine',
       song_count: (n) => `${n} ${n === 1 ? 'canzone' : 'canzoni'}`,
+      view_only_note: 'Per il pagamento o la modifica, usa il link ricevuto via email.',
       blocked: 'Hai già delle canzoni create per te. Scegli uno dei tuoi ordini esistenti per continuare.',
       blocked_empty: 'Hai raggiunto il limite di canzoni gratuite per questa email. Se hai ordini esistenti, usa il recupero via email qui sotto per accedervi.',
       loading: 'Caricamento...', for_label: 'Per', continue_btn: 'Continua con questo ordine',
       status_progress: 'In composizione', status_ready: 'Pronto',
-      recovery_title: 'Non trovi un ordine?', recovery_sub: 'Ti invieremo via email i link ai tuoi ordini.',
-      recovery_placeholder: 'email@esempio.com', recovery_btn: 'Inviami accesso via email', recovery_sending: 'Invio in corso...',
+      recovery_title: 'Non trovi un ordine?', recovery_sub: 'Inserisci l\'email usata per l\'ordine e ti mostreremo subito le tue canzoni.',
+      recovery_placeholder: 'email@esempio.com', recovery_btn: 'Vedi i miei ordini', recovery_searching: 'Ricerca in corso...',
+      recovery_no_orders_for_email: 'Non abbiamo trovato nessun ordine per questa email.',
+      recovery_email_fallback_btn: 'Inviami un link via email', recovery_sending: 'Invio in corso...',
       recovery_sent: 'Se quell\'indirizzo ha ordini idonei, riceverai a breve un\'email con i link di accesso.',
-      auto_recovery_sent: 'Ti abbiamo inviato via email l\'accesso sicuro ai tuoi ordini esistenti.',
       use_other_email: 'Usa un\'altra email',
       empty_no_orders: 'Non abbiamo trovato nessun ordine in questo browser.',
       verify_error: 'Non siamo riusciti a verificare i tuoi ordini ora — controlla la connessione e ricarica la pagina.',
@@ -198,14 +217,16 @@
       title: 'Mes commandes', sub: 'Les commandes auxquelles vous pouvez accéder depuis ce navigateur.',
       order_label: 'Commande',
       song_count: (n) => `${n} ${n === 1 ? 'chanson' : 'chansons'}`,
+      view_only_note: 'Pour le paiement ou la modification, utilisez le lien reçu par email.',
       blocked: 'Des chansons ont déjà été créées pour toi. Choisis l’une de tes commandes existantes pour continuer.',
       blocked_empty: 'Tu as atteint la limite de chansons gratuites pour cet email. Si tu as des commandes existantes, utilise la récupération par email ci-dessous pour y accéder.',
       loading: 'Chargement...', for_label: 'Pour', continue_btn: 'Continuer avec cette commande',
       status_progress: 'En composition', status_ready: 'Prête',
-      recovery_title: 'Vous ne trouvez pas une commande ?', recovery_sub: 'Nous vous enverrons par email les liens vers vos commandes.',
-      recovery_placeholder: 'email@exemple.com', recovery_btn: 'M\'envoyer l\'accès par email', recovery_sending: 'Envoi en cours...',
+      recovery_title: 'Vous ne trouvez pas une commande ?', recovery_sub: 'Entrez l\'email utilisé pour commander et nous afficherons vos chansons directement.',
+      recovery_placeholder: 'email@exemple.com', recovery_btn: 'Voir mes commandes', recovery_searching: 'Recherche...',
+      recovery_no_orders_for_email: 'Nous n\'avons trouvé aucune commande pour cet email.',
+      recovery_email_fallback_btn: 'M\'envoyer un lien par email', recovery_sending: 'Envoi en cours...',
       recovery_sent: 'Si cette adresse a des commandes éligibles, vous recevrez bientôt un email avec les liens d\'accès.',
-      auto_recovery_sent: 'Nous t\'avons envoyé par email l\'accès sécurisé à tes commandes existantes.',
       use_other_email: 'Utiliser un autre email',
       empty_no_orders: 'Nous n\'avons trouvé aucune commande dans ce navigateur.',
       verify_error: 'Nous n\'avons pas pu vérifier tes commandes maintenant — vérifie ta connexion et recharge la page.',
@@ -215,14 +236,16 @@
       title: 'Моите поръчки', sub: 'Поръчките, до които имаш достъп от този браузър.',
       order_label: 'Поръчка',
       song_count: (n) => `${n} ${n === 1 ? 'песен' : 'песни'}`,
+      view_only_note: 'За плащане или редактиране, използвай линка, получен по имейл.',
       blocked: 'Вече имаш създадени песни за теб. Избери една от съществуващите си поръчки, за да продължиш.',
       blocked_empty: 'Достигна лимита на безплатните песни за този имейл. Ако имаш съществуващи поръчки, използвай възстановяването по имейл по-долу, за да получиш достъп до тях.',
       loading: 'Зареждане...', for_label: 'За', continue_btn: 'Продължи с тази поръчка',
       status_progress: 'Композира се', status_ready: 'Готова',
-      recovery_title: 'Не намираш поръчка?', recovery_sub: 'Ще ти изпратим по имейл линковете към поръчките ти.',
-      recovery_placeholder: 'email@primer.com', recovery_btn: 'Изпрати ми достъп по имейл', recovery_sending: 'Изпраща се...',
+      recovery_title: 'Не намираш поръчка?', recovery_sub: 'Въведи имейла, използван при поръчката, и ще ти покажем песните ти директно.',
+      recovery_placeholder: 'email@primer.com', recovery_btn: 'Виж поръчките ми', recovery_searching: 'Търсене...',
+      recovery_no_orders_for_email: 'Не намерихме нито една поръчка за този имейл.',
+      recovery_email_fallback_btn: 'Изпрати ми линк по имейл', recovery_sending: 'Изпраща се...',
       recovery_sent: 'Ако този имейл има допустими поръчки, ще получиш скоро писмо с линкове за достъп.',
-      auto_recovery_sent: 'Изпратихме ти по имейл сигурен достъп до съществуващите ти поръчки.',
       use_other_email: 'Използвай друг имейл',
       empty_no_orders: 'Не намерихме нито една поръчка в този браузър.',
       verify_error: 'Не успяхме да проверим поръчките ти точно сега — провери връзката си и презареди страницата.',
@@ -232,14 +255,16 @@
       title: 'Siparişlerim', sub: 'Bu tarayıcıdan erişebildiğiniz siparişler.',
       order_label: 'Sipariş',
       song_count: (n) => `${n} şarkı`,
+      view_only_note: 'Ödeme veya düzenleme için e-postayla aldığınız bağlantıyı kullanın.',
       blocked: 'Senin için zaten şarkılar oluşturuldu. Devam etmek için mevcut siparişlerinden birini seç.',
       blocked_empty: 'Bu e-posta için ücretsiz şarkı sınırına ulaştın. Mevcut siparişlerin varsa, bunlara erişmek için aşağıdaki e-posta kurtarma seçeneğini kullan.',
       loading: 'Yükleniyor...', for_label: 'Kime', continue_btn: 'Bu siparişe devam et',
       status_progress: 'Besteleniyor', status_ready: 'Hazır',
-      recovery_title: 'Bir sipariş bulamıyor musunuz?', recovery_sub: 'Siparişlerinizin bağlantılarını e-posta ile göndereceğiz.',
-      recovery_placeholder: 'email@ornek.com', recovery_btn: 'Erişimi e-postama gönder', recovery_sending: 'Gönderiliyor...',
+      recovery_title: 'Bir sipariş bulamıyor musunuz?', recovery_sub: 'Siparişte kullandığınız e-postayı girin, şarkılarınızı hemen gösterelim.',
+      recovery_placeholder: 'email@ornek.com', recovery_btn: 'Siparişlerimi gör', recovery_searching: 'Aranıyor...',
+      recovery_no_orders_for_email: 'Bu e-posta için sipariş bulamadık.',
+      recovery_email_fallback_btn: 'Bağlantıyı e-postama gönder', recovery_sending: 'Gönderiliyor...',
       recovery_sent: 'Bu adresin uygun siparişleri varsa, kısa süre içinde erişim bağlantılarını içeren bir e-posta alacaksınız.',
-      auto_recovery_sent: 'Mevcut siparişlerine güvenli erişimi e-posta ile gönderdik.',
       use_other_email: 'Başka bir e-posta kullan',
       empty_no_orders: 'Bu tarayıcıda hiçbir sipariş bulamadık.',
       verify_error: 'Siparişlerinizi şu anda kontrol edemedik — bağlantınızı kontrol edip sayfayı yeniden yükleyin.',
@@ -261,6 +286,7 @@
   document.getElementById('recovery-sub').textContent = t.recovery_sub;
   document.getElementById('recovery-email').placeholder = t.recovery_placeholder;
   document.getElementById('recovery-btn').textContent = t.recovery_btn;
+  document.getElementById('recovery-email-fallback-btn').textContent = t.recovery_email_fallback_btn;
   document.getElementById('use-other-email-btn').textContent = t.use_other_email;
 
   function escapeHtml(str) {
@@ -391,7 +417,11 @@
   //    ca pagina de ascultare (comanda-mea.html), acum expusa si de GET /api/orders/:id.
   //  - inainte de plata (status!=='ready'): numarul de variante cu previzualizare reala disponibila
   //    (order.variants[].previewUrl) — poate fi 0 daca melodia se compune inca.
+  // EMAIL (2026-09-30) — POST /api/orders/by-email intoarce deja songCount CALCULAT server-side
+  // (DTO minimal, fara variants/previewUrl expuse) — folosit direct daca prezent, aceeasi regula,
+  // acelasi rezultat, nicio dubla logica de intretinut.
   function realSongCount(order) {
+    if (typeof order.songCount === 'number') return order.songCount;
     if (order.status === 'ready') {
       return 1 + (order.hasGiftAudio ? 1 : 0) + (order.hasPremiumBonusAudio ? 1 : 0);
     }
@@ -417,51 +447,90 @@
     return `/melodia-mea.html?id=${encodeURIComponent(order.id)}&token=${encodeURIComponent(token)}`;
   }
 
+  // EMAIL SUFICIENT (2026-09-30, decizie explicita de produs) — cauta comenzile eligibile ale
+  // unui email DIRECT pe server, fara sa astepte niciun link din email. STRICT citire (server.js,
+  // POST /api/orders/by-email: db.getEligibleOrdersForAccessRecovery, acelasi criteriu ca la
+  // recuperare/quota) — nu creeaza nicio comanda, nu atinge quota, nu apeleaza Suno/Stripe, nu
+  // trimite niciun email. Raspunsul NU contine niciodata accessToken/email/date administrative —
+  // STRICT campurile necesare UI-ului, plus un continueUrl deja construit server-side. `ok:false`
+  // (eroare de retea/server) e distinct explicit de "email confirmat cu 0 comenzi" — acelasi tipar
+  // deja folosit pentru tokenurile locale (confirmed/gone/unknown) — o eroare temporara NU trebuie
+  // sa afirme fals "nicio comanda".
+  async function lookupOrdersByEmail(email) {
+    try {
+      const res = await fetch('/api/orders/by-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      });
+      if (!res.ok) return { ok: false, orders: [] };
+      const data = await res.json();
+      return { ok: true, orders: Array.isArray(data.orders) ? data.orders : [] };
+    } catch (e) { return { ok: false, orders: [] }; }
+  }
+
   // Cardul intreg e un link (<a>) catre propria comanda — clientul apasa oriunde pe card ca sa
   // intre si sa asculte variantele deja disponibile/autorizate (pe pagina corecta, de mai sus).
   // NU mai redam playere audio AICI (ar fi un al doilea sistem de redare, duplicat) — STRICT un
-  // sumar clar: "Comanda N — Pachet" / "Pentru destinatar" / "N melodii" (date reale, niciodata
-  // inventate), plus statusul (Gata/Se compune).
-  function renderOrderCard(order, index, token) {
-    const card = document.createElement('a');
-    card.className = 'order';
-    card.href = continueUrlFor(order, token);
+  // sumar clar: "Comanda N — Pachet" / titlul melodiei (daca exista) / "Pentru destinatar" /
+  // "N melodii" (date reale, niciodata inventate), plus statusul (Gata/Se compune).
+  function orderCardBodyHtml(order, index) {
     const isReady = order.status === 'ready';
     const accessExpired = isReady && !!order.hostedAccessExpired;
     const statusLabel = isReady ? t.status_ready : t.status_progress;
     const statusClass = isReady ? 'status-ready' : 'status-progress';
     const count = realSongCount(order);
-
-    card.innerHTML = `
+    const titleHtml = order.songTitle ? `<div class="song-title">${escapeHtml(order.songTitle)}</div>` : '';
+    return `
       <div class="title">${escapeHtml(t.order_label)} ${escapeHtml(String(index))} — ${escapeHtml(planName(order.plan))}</div>
+      ${titleHtml}
       <div class="for-line">${escapeHtml(t.for_label)} ${escapeHtml(stripRedundantForPrefix(order.recipient, lang))}</div>
       ${count > 0 ? `<div class="count-line">${escapeHtml(t.song_count(count))}</div>` : ''}
       ${accessExpired ? '' : `<span class="status ${statusClass}">${escapeHtml(statusLabel)}</span>`}
     `;
+  }
+
+  // Card CLICKABIL — STRICT pentru comenzi autorizate prin accessToken (tokenuri locale, deja
+  // detinute de acest browser) — continueUrl duce catre pagina corecta (comanda-mea.html/
+  // melodia-mea.html), unde actiunile complete (ascultare completa, plata, editare) raman
+  // protejate EXACT ca inainte.
+  function renderOrderCard(order, index, continueUrl) {
+    const card = document.createElement('a');
+    card.className = 'order';
+    card.href = continueUrl;
+    card.innerHTML = orderCardBodyHtml(order, index);
+    return card;
+  }
+
+  // CORECTIE CRITICA DE SECURITATE (2026-09-30, runda 2 — decizie explicita, dupa audit): cardul
+  // pentru o comanda gasita STRICT prin email (fara token local) NU mai e un link catre o pagina
+  // cu autoritate completa (accessToken) — simpla cunoastere a emailului cuiva NU trebuie sa ofere
+  // plata/editare/regenerare asupra comenzilor lui. E un <div> necliclabil, STRICT view/listen:
+  // sumarul comenzii + un player <audio> pentru fiecare varianta cu preview real disponibil,
+  // redat prin GET /media/preview/:orderId/:variantId — ruta deja PUBLICA/neautentificata,
+  // acelasi preview pe care clientul il putea asculta oricum inainte de plata. Fara previewuri
+  // disponibile (comanda inca in compunere), cardul ramane STRICT informativ.
+  function renderReadOnlyOrderCard(order, index, previewVariantIds) {
+    const card = document.createElement('div');
+    card.className = 'order order-readonly';
+    const players = (previewVariantIds || [])
+      .map((variantId) => `<audio controls src="/media/preview/${encodeURIComponent(order.id)}/${encodeURIComponent(variantId)}"></audio>`)
+      .join('');
+    card.innerHTML = orderCardBodyHtml(order, index) + players + `<p class="view-only-note">${escapeHtml(t.view_only_note)}</p>`;
     return card;
   }
 
   // SUPRIMAREA MESAJULUI REDUNDANT (2026-09-28, cerinta explicita, "Nu vreau mesaje
   // contradictorii") — cand quota tocmai a blocat clientul (wasBlocked), banner-ul de sus
-  // (t.blocked_empty) explica DEJA situatia reala ("nu vezi comenzi in acest browser") — a mai
-  // afisa si "Nu am gasit nicio comanda in acest browser" DEDESUBT era redundant/confuz (exact
-  // problema raportata). Mesajul empty_no_orders ramane STRICT pentru cazul FARA niciun context
-  // de blocare (browser nou, fara tokenuri, fara quota implicata) — recovery discret, secundar.
-  //
-  // RECOVERY AUTOMAT (cerinta explicita) — daca avem si emailul tocmai folosit (pendingRecoveryEmail,
-  // vezi mai sus), il folosim IMEDIAT pentru a porni recovery-ul securizat, fara sa cerem
-  // clientului sa il retasteze — prioritate: tokenuri locale (verificate mai sus, inaintea acestei
-  // functii) > email tocmai furnizat (aici) > formular manual (fallback, ramane intotdeauna
-  // disponibil si functional).
+  // (t.blocked_empty) explica DEJA situatia reala ("nu vezi comenzi") — a mai afisa si "Nu am
+  // gasit nicio comanda" DEDESUBT era redundant/confuz. Mesajul empty_no_orders ramane STRICT
+  // pentru cazul FARA niciun context de blocare.
   function handleNoVisibleOrders() {
     const recoveryBox = document.getElementById('recovery-box');
     if (wasBlocked) {
       const banner = document.getElementById('blocked-banner');
       banner.textContent = t.blocked_empty;
       banner.style.display = '';
-      if (pendingRecoveryEmail) {
-        triggerAutoRecovery(pendingRecoveryEmail);
-      }
     } else {
       const listEl = document.getElementById('orders-list');
       const p = document.createElement('p');
@@ -472,23 +541,19 @@
     recoveryBox.style.display = '';
   }
 
-  // Acelasi endpoint public, generic/indistinct (POST /api/orders/recover-access), deja auditat —
-  // STRICT o invocare automata a ACELUIASI mecanism pe care butonul manual il declanseaza mai jos.
-  // Raspunsul ramane generic indiferent de rezultat (nicio enumerare posibila) — mesajul afisat
-  // clientului confirma STRICT ca a fost initiat, niciodata daca emailul chiar are comenzi.
-  async function triggerAutoRecovery(email) {
-    const resultEl = document.getElementById('recovery-result');
-    try {
-      await fetch('/api/orders/recover-access', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, lang })
-      });
-    } catch (e) { /* raspunsul ramane generic, indiferent de reteaua clientului */ }
-    resultEl.textContent = t.auto_recovery_sent;
-    resultEl.style.display = '';
-  }
-
+  // SURSA DE ADEVAR (2026-09-30, PROBLEMA 1 — "Comenzile mele goala desi quota stie ca exista
+  // melodii", decizie explicita de produs, "emailul introdus de client e suficient"): pana acum,
+  // singura sursa era naluna_my_order_keys (tokenuri locale) — un client care revenea pe alt
+  // dispozitiv/browser, sau al carui browser pierduse tokenurile, vedea "nicio comanda" desi
+  // quota (verificata server-side, dupa EMAIL) stia clar ca exista generari eligibile. Contradictia
+  // nu era mascata cu un text — era arhitecturala: doua surse de adevar diferite pentru ACEEASI
+  // intrebare. Rezolvata la radacina: daca avem un email (din gate-ul comanda.html sau din
+  // traseul de blocare quota — pendingRecoveryEmail, transmis STRICT prin sessionStorage, citit
+  // O SINGURA DATA mai sus), il folosim ACUM ca sa intrebam serverul DIRECT (POST
+  // /api/orders/by-email — acelasi criteriu de eligibilitate deja folosit de quota si de
+  // recuperarea prin email, db.getEligibleOrdersForAccessRecovery). Tokenurile locale raman un
+  // FAST-PATH de optimizare/compatibilitate (verificate in continuare, neschimbat), NICIODATA
+  // autoritatea exclusiva — cele doua surse sunt combinate, deduplicate dupa id.
   async function loadAndRenderOrders() {
     await resolveIncomingTokens();
 
@@ -496,26 +561,12 @@
     const loadingEl = document.getElementById('loading-msg');
     const recoveryBox = document.getElementById('recovery-box');
 
-    if (known.length === 0) {
-      loadingEl.style.display = 'none';
-      handleNoVisibleOrders();
-      return;
-    }
-
     // BUG REAL (2026-09-28, "Ai 4 comenzi salvate" vs "Nu am gasit nicio comanda" — audit +
     // reproducere directa): versiunea anterioara trata IDENTIC doua situatii complet diferite —
-    // (a) serverul CONFIRMA explicit ca id/token nu mai sunt valide (404/400 — comanda chiar nu
-    // mai exista, sau tokenul e gresit) si (b) fetch-ul ESUEAZA prin exceptie de retea (offline,
-    // timeout, conexiune mobila instabila) SAU serverul raspunde cu o eroare temporara (5xx) —
-    // in (b) NU exista nicio dovada ca acea comanda nu mai e valida, doar ca NU a putut fi
-    // verificata ACUM. `catch (e) { return null; }` trata (b) ca (a), stergand PERMANENT din
-    // naluna_my_order_keys comenzi perfect valide, exact mecanismul prin care 4 comenzi reale,
-    // autorizate, disparea dintr-o singura vizita pe o retea mobila instabila (vezi
-    // test/gate-count-vs-list-contradiction.test.js pentru reproducerea exacta). Acum distingem
-    // explicit cele trei stari posibile: 'confirmed' (200, date reale), 'gone' (404/400 — STRICT
-    // aici e sigur sa stergem local) si 'unknown' (orice alta eroare — pastram intrarea
-    // neschimbata, nu o afisam ACUM, dar nici nu o declaram fals disparuta).
-    const results = await Promise.all(known.map(async (entry) => {
+    // (a) serverul CONFIRMA explicit ca id/token nu mai sunt valide (404/400) si (b) fetch-ul
+    // ESUEAZA prin exceptie de retea/eroare temporara (5xx) — in (b) NU exista nicio dovada ca
+    // acea comanda nu mai e valida. Distingem explicit 'confirmed'/'gone'/'unknown', neschimbat.
+    const results = known.length === 0 ? [] : await Promise.all(known.map(async (entry) => {
       try {
         const res = await fetch(`/api/orders/${encodeURIComponent(entry.id)}?token=${encodeURIComponent(entry.token)}`);
         if (res.status === 404 || res.status === 400) return { entry, state: 'gone' };
@@ -528,26 +579,45 @@
     }));
 
     // Auto-curatare — STRICT comenzile CONFIRMATE server-side ca nu mai exista (404/400) sunt
-    // scoase din lista locala. O eroare de retea/temporara ('unknown') NU sterge nimic — comanda
-    // ramane autorizata local, doar neafisata in ACEASTA incarcare; un refresh ulterior (retea
-    // revenita) o recupera imediat, fara niciun recovery necesar.
+    // scoase din lista locala. O eroare de retea/temporara ('unknown') NU sterge nimic.
     const goneIds = new Set(results.filter((r) => r.state === 'gone').map((r) => r.entry.id));
     known = known.filter((entry) => !goneIds.has(entry.id));
     saveKnownOrders(known);
 
-    const eligible = results
+    // Tokenurile locale confirmate ofera acces COMPLET (link catre pagina cu accessToken) —
+    // neschimbat.
+    const tokenEligible = results
       .filter((r) => r.state === 'confirmed')
       .filter((r) => r.order.status !== 'draft' && r.order.status !== 'generation_failed')
-      .sort((a, b) => new Date(a.order.createdAt) - new Date(b.order.createdAt));
-    const hasUnverified = results.some((r) => r.state === 'unknown');
+      .map((r) => ({ order: r.order, continueUrl: continueUrlFor(r.order, r.token), previewVariantIds: null }));
+    let hasUnverified = results.some((r) => r.state === 'unknown');
+
+    // EMAIL — a doua sursa, combinata (nu inlocuieste tokenurile locale, le completeaza). STRICT
+    // view/listen (vezi buildOrderSummaryDto, server.js) — NICIODATA continueUrl/accessToken.
+    let emailEligible = [];
+    if (pendingRecoveryEmail) {
+      const emailLookup = await lookupOrdersByEmail(pendingRecoveryEmail);
+      if (!emailLookup.ok) {
+        hasUnverified = true; // eroare de retea/server la interogarea prin email — NU "0 comenzi"
+      } else {
+        emailEligible = emailLookup.orders.map((o) => ({ order: o, continueUrl: null, previewVariantIds: o.previewVariantIds || [] }));
+      }
+    }
+
+    // Aceeasi comanda gasita si prin token local SI prin email -> versiunea cu token (acces
+    // complet, deja detinut legitim de acest browser) are prioritate, niciodata suprascrisa de
+    // versiunea STRICT view/listen a email-ului.
+    const byId = new Map();
+    tokenEligible.forEach((e) => byId.set(e.order.id, e));
+    emailEligible.forEach((e) => { if (!byId.has(e.order.id)) byId.set(e.order.id, e); });
+    const eligible = [...byId.values()].sort((a, b) => new Date(a.order.createdAt) - new Date(b.order.createdAt));
 
     loadingEl.style.display = 'none';
 
     if (eligible.length === 0) {
       if (hasUnverified) {
-        // NU "nu am gasit nicio comanda" (afirmatie falsa de certitudine) si NU
-        // handleNoVisibleOrders() (ar putea porni recovery automat inutil) — STRICT un mesaj
-        // onest: nu am putut verifica ACUM, nu ca nu exista.
+        // NU "nu am gasit nicio comanda" (afirmatie falsa de certitudine) — STRICT un mesaj
+        // onest: nu am putut verifica ACUM (retea/server), nu ca nu exista.
         const p = document.createElement('p');
         p.className = 'empty';
         p.textContent = t.verify_error;
@@ -567,7 +637,10 @@
     }
 
     eligible.forEach((r, i) => {
-      listEl.appendChild(renderOrderCard(r.order, i + 1, r.token));
+      const card = r.continueUrl
+        ? renderOrderCard(r.order, i + 1, r.continueUrl)
+        : renderReadOnlyOrderCard(r.order, i + 1, r.previewVariantIds);
+      listEl.appendChild(card);
     });
     recoveryBox.style.display = '';
   }
@@ -588,10 +661,45 @@
     window.location.href = '/comanda.html';
   });
 
-  // RECUPERARE PRIN EMAIL (mecanism SECUNDAR — pentru alt browser/dispozitiv, sau cand lista
-  // locala e goala) — acelasi endpoint public, generic/indistinct, deja auditat.
+  // PRIMAR (2026-09-30, decizie explicita de produs) — introducerea manuala a unui email pe
+  // aceasta pagina cere ACUM direct serverul (acelasi POST /api/orders/by-email) si afiseaza
+  // comenzile IMEDIAT, fara sa mai treaca prin email — inlocuieste vechiul "trimite-mi acces pe
+  // email" ca actiune IMPLICITA. Mecanismul de trimitere pe email ramane disponibil STRICT ca
+  // fallback secundar explicit, prin butonul separat de mai jos.
   document.getElementById('recovery-btn').addEventListener('click', async () => {
     const btn = document.getElementById('recovery-btn');
+    const resultEl = document.getElementById('recovery-result');
+    const email = document.getElementById('recovery-email').value.trim();
+    if (!email) return;
+    btn.disabled = true;
+    const originalLabel = btn.textContent;
+    btn.textContent = t.recovery_searching;
+    resultEl.style.display = 'none';
+    const lookup = await lookupOrdersByEmail(email);
+    btn.textContent = originalLabel;
+    btn.disabled = false;
+    if (!lookup.ok) {
+      resultEl.textContent = t.verify_error;
+      resultEl.style.display = '';
+      return;
+    }
+    const eligible = lookup.orders.slice().sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+    if (eligible.length === 0) {
+      resultEl.textContent = t.recovery_no_orders_for_email;
+      resultEl.style.display = '';
+      return;
+    }
+    const listEl = document.getElementById('orders-list');
+    listEl.innerHTML = '';
+    eligible.forEach((o, i) => listEl.appendChild(renderReadOnlyOrderCard(o, i + 1, o.previewVariantIds)));
+    resultEl.style.display = 'none';
+  });
+
+  // FALLBACK SECUNDAR (cerinta explicita, "recovery prin email poate ramane ca fallback secundar
+  // pentru situatii speciale") — mecanismul VECHI, neschimbat: trimite un link pe email. Ramane
+  // disponibil STRICT ca actiune separata, explicita — niciodata implicita/automata.
+  document.getElementById('recovery-email-fallback-btn').addEventListener('click', async () => {
+    const btn = document.getElementById('recovery-email-fallback-btn');
     const resultEl = document.getElementById('recovery-result');
     const email = document.getElementById('recovery-email').value.trim();
     if (!email) return;

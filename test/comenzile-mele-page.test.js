@@ -65,8 +65,26 @@ test('AUDIT: comanda-mea.html reda EFECTIV melodia (principala + cadou + bonus) 
   assert.match(comandaMea, /if \(o\.status === 'ready' && !accessExpired && o\.hasPremiumBonusAudio\)/);
 });
 
-test('AUDIT: comenzile-mele.html NU reimplementeaza un al doilea sistem de redare audio — niciun <audio> real pe aceasta pagina (STRICT mentionat in comentarii de audit), ci STRICT rutare catre pagina corecta (comanda-mea.html/melodia-mea.html)', () => {
-  assert.ok(!/<audio\s/.test(page), 'lista de comenzi nu trebuie sa mai contina playere inline (tag real <audio ...>) — click pe card duce la pagina corecta');
+// CORECTIE (2026-09-30, runda 2 — decizie explicita de produs, "view/listen mode fara accessToken
+// complet"): un card CLICKABIL (token local, acces complet) tot NU reimplementeaza un al doilea
+// sistem de redare — ramane STRICT rutare catre comanda-mea.html/melodia-mea.html, neschimbat.
+// Cardul STRICT view/listen (gasit prin email, FARA token) e singurul care contine acum <audio>
+// real — STRICT pentru preview-uri PUBLICE (GET /media/preview/:orderId/:variantId, deja
+// neautentificata, nicio schimbare de autoritate), niciodata pentru fisierul complet/WAV/video.
+test('AUDIT: renderOrderCard (cardul CLICKABIL, cu token local, acces complet) NU reimplementeaza un al doilea sistem de redare audio — STRICT rutare catre pagina corecta', () => {
+  const idx = page.indexOf('function renderOrderCard(order, index, continueUrl) {');
+  const end = page.indexOf('function renderReadOnlyOrderCard');
+  const body = page.slice(idx, end);
+  assert.ok(!/<audio\s/.test(body), 'cardul clickabil (acces complet) nu trebuie sa contina playere inline — click duce la pagina corecta');
+});
+
+test('AUDIT: renderReadOnlyOrderCard (STRICT view/listen, comanda gasita prin email fara token) foloseste STRICT GET /media/preview/:orderId/:variantId (deja publica/neautentificata) — niciodata /media/full, /media/wav sau /media/video (continut platit)', () => {
+  const idx = page.indexOf('function renderReadOnlyOrderCard');
+  const end = page.indexOf('function handleNoVisibleOrders');
+  const body = page.slice(idx, end);
+  assert.match(body, /<audio controls src="\/media\/preview\/\$\{encodeURIComponent\(order\.id\)\}\/\$\{encodeURIComponent\(variantId\)\}"><\/audio>/);
+  assert.ok(!/\/media\/full|\/media\/wav|\/media\/video/.test(body), 'view/listen mode nu trebuie sa acceseze niciodata continutul platit');
+  assert.ok(!body.includes('href'), 'cardul view/listen nu trebuie sa fie clicabil (fara continueUrl/acces complet)');
 });
 
 // ===============================================================================================
@@ -186,7 +204,7 @@ const T = extractTranslationsObject();
 for (const lang of ALLOWED_LANGS) {
   test(`comenzile-mele.html: limba ${lang} are toate cheile obligatorii noi (order_label/song_count/blocked_empty) plus cele existente`, () => {
     assert.ok(T[lang], `bloc de traduceri lipsa pentru ${lang}`);
-    for (const key of ['title', 'order_label', 'blocked', 'blocked_empty', 'continue_btn', 'status_progress', 'status_ready', 'recovery_btn', 'recovery_sent', 'auto_recovery_sent', 'use_other_email', 'empty_no_orders']) {
+    for (const key of ['title', 'order_label', 'blocked', 'blocked_empty', 'continue_btn', 'status_progress', 'status_ready', 'recovery_btn', 'recovery_searching', 'recovery_no_orders_for_email', 'recovery_email_fallback_btn', 'recovery_sent', 'use_other_email', 'empty_no_orders']) {
       assert.ok(typeof T[lang][key] !== 'undefined', `[${lang}] cheia lipsa: ${key}`);
     }
     assert.equal(typeof T[lang].song_count, 'function', `[${lang}] song_count trebuie sa fie o functie (n) => string`);
@@ -221,7 +239,7 @@ test('comenzile-mele.html: toate cele 8 traduceri ale "blocked" si "blocked_empt
 // executam cu document/localStorage/fetch minimale, dar suficient de fidele pentru a exercita
 // REAL functiile: realSongCount, continueUrlFor, renderOrderCard, loadAndRenderOrders.
 // ===============================================================================================
-function buildSandbox({ search = '', storedOrders, fetchImpl } = {}) {
+function buildSandbox({ search = '', storedOrders, fetchImpl, pendingRecoveryEmail } = {}) {
   const script = lastInlineScript(page);
   const bodyStart = script.indexOf('(function () {') + '(function () {'.length;
   const bodyEnd = script.lastIndexOf('})();');
@@ -247,7 +265,7 @@ function buildSandbox({ search = '', storedOrders, fetchImpl } = {}) {
       style: {}, dataset: {}, children: [], href: '',
       set textContent(v) { this._text = v; this._html = escapeForMock(v); },
       get textContent() { return this._text || ''; },
-      set innerHTML(v) { this._html = v; },
+      set innerHTML(v) { this._html = v; this.children = []; },
       get innerHTML() { return this._html || ''; },
       appendChild(child) { this.children.push(child); return child; },
       addEventListener(evt, fn) { listeners[evt] = fn; },
@@ -258,7 +276,7 @@ function buildSandbox({ search = '', storedOrders, fetchImpl } = {}) {
     };
   }
   const elements = {};
-  const ids = ['h1-title', 'p-sub', 'loading-msg', 'recovery-title', 'recovery-sub', 'recovery-email', 'recovery-btn', 'blocked-banner', 'orders-list', 'recovery-box', 'recovery-result'];
+  const ids = ['h1-title', 'p-sub', 'loading-msg', 'recovery-title', 'recovery-sub', 'recovery-email', 'recovery-btn', 'recovery-email-fallback-btn', 'blocked-banner', 'orders-list', 'recovery-box', 'recovery-result'];
   for (const id of ids) elements[id] = makeEl();
   // Starea initiala reala a paginii (vezi markup-ul static): blocked-banner/recovery-box pornesc
   // ascunse (style="display:none;" in HTML) — scriptul le dezvaluie explicit, nu mock-ul.
@@ -284,10 +302,18 @@ function buildSandbox({ search = '', storedOrders, fetchImpl } = {}) {
     fetchCalls.push({ url, opts });
     return fetchImpl ? fetchImpl(url, opts) : { ok: false };
   };
-  const fn = new Function('document', 'window', 'localStorage', 'navigator', 'URLSearchParams', 'fetch', 'history',
+  // PROBLEMA 1/2 (2026-09-30) — pendingRecoveryEmail (gate "Comenzile mele" SAU blocare quota)
+  // e citit STRICT din sessionStorage, o singura data, si sters imediat — simulat aici explicit
+  // ca sa putem exercita REAL calea "emailul e sursa de adevar" din loadAndRenderOrders().
+  const sessionStorageBacking = pendingRecoveryEmail !== undefined ? { naluna_pending_recovery_email: pendingRecoveryEmail } : {};
+  const sessionStorageMock = {
+    getItem: (k) => (Object.prototype.hasOwnProperty.call(sessionStorageBacking, k) ? sessionStorageBacking[k] : null),
+    removeItem: (k) => { delete sessionStorageBacking[k]; }
+  };
+  const fn = new Function('document', 'window', 'localStorage', 'sessionStorage', 'navigator', 'URLSearchParams', 'fetch', 'history',
     harness + '\nreturn window.__test_api;'
   );
-  const api = fn(documentMock, windowMock, localStorageMock, { language: 'en' }, URLSearchParams, fetchMock, { replaceState: () => {} });
+  const api = fn(documentMock, windowMock, localStorageMock, sessionStorageMock, { language: 'en' }, URLSearchParams, fetchMock, { replaceState: () => {} });
   return { api, elements, fetchCalls };
 }
 
@@ -414,11 +440,105 @@ test('sandbox (banner corect cand exista REAL comenzi + ?blocked=1): foloseste t
   assert.equal(elements['orders-list'].children.length, 1);
 });
 
-test('sandbox (recovery prin email ramane functional si securizat): trimite STRICT {email, lang} catre /api/orders/recover-access, niciodata id-uri/tokenuri locale — si arata ACELASI mesaj generic indiferent de raspunsul serverului (nicio enumerare de conturi)', async () => {
+// ===================================================================================================
+// PROBLEMA 1/2 (2026-09-30, "Comenzile mele goala desi quota stie ca exista melodii" +
+// "quota block trebuie sa duca direct la melodiile existente" — decizie explicita de produs):
+// emailul (din gate SAU din blocarea quota, transmis STRICT prin sessionStorage) e acum o a DOUA
+// sursa de adevar, combinata cu tokenurile locale — NICIODATA exclusiva, NICIODATA ignorata.
+// ===================================================================================================
+test('PROBLEMA 1: email cu comenzi eligibile, browser FARA niciun token local (naluna_my_order_keys absent) -> comenzile apar oricum, DIRECT, fara niciun link din email, STRICT in view/listen mode (fara accessToken/continueUrl, cu player pentru preview)', async () => {
+  const { api, elements, fetchCalls } = buildSandbox({
+    pendingRecoveryEmail: 'client@exemplu.com',
+    fetchImpl: (url) => (url === '/api/orders/by-email'
+      ? jsonRes({ orders: [
+        { id: 'o1', plan: 'standard', recipient: 'Maria', status: 'ready', createdAt: '2026-09-01T00:00:00Z', songCount: 1, hostedAccessExpired: false, previewVariantIds: ['v1'] },
+        { id: 'o2', plan: 'premium', recipient: 'Ion', status: 'preview_ready', createdAt: '2026-09-02T00:00:00Z', songCount: 2, hostedAccessExpired: false, previewVariantIds: ['v2a', 'v2b'] },
+        { id: 'o3', plan: 'video', recipient: 'Elena', status: 'ready', createdAt: '2026-09-03T00:00:00Z', songCount: 2, hostedAccessExpired: false, previewVariantIds: [] }
+      ] })
+      : { ok: false })
+  });
+  await api.__loadPromise;
+  const byEmailCalls = fetchCalls.filter((c) => c.url === '/api/orders/by-email');
+  assert.equal(byEmailCalls.length, 1);
+  assert.equal(byEmailCalls[0].opts.method, 'POST');
+  assert.equal(byEmailCalls[0].opts.body, JSON.stringify({ email: 'client@exemplu.com' }));
+  const cards = elements['orders-list'].children;
+  assert.equal(cards.length, 3, 'toate cele 3 comenzi eligibile trebuie afisate DIRECT, fara niciun link din email');
+  cards.forEach((c) => {
+    assert.ok(!c.href, 'cardurile view/listen (fara token local) nu trebuie sa fie clicabile — niciun continueUrl/acces complet');
+    assert.ok(!c.innerHTML.includes('token='), 'niciun token nu trebuie sa apara in cardul randat');
+  });
+  assert.match(cards[0].innerHTML, /<audio controls src="\/media\/preview\/o1\/v1"><\/audio>/, 'previewul comenzii o1 trebuie redabil prin ruta publica /media/preview');
+  assert.match(cards[1].innerHTML, /<audio controls src="\/media\/preview\/o2\/v2a"><\/audio>.*<audio controls src="\/media\/preview\/o2\/v2b"><\/audio>/s, 'ambele preview-uri Premium trebuie redabile');
+  assert.ok(!cards[2].innerHTML.includes('<audio'), 'o comanda fara preview real disponibil nu trebuie sa afiseze niciun player');
+});
+
+test('PROBLEMA 2: quota block (?blocked=1) CU email transmis si comenzi eligibile reale -> banner "ai deja melodii" + comenzile afisate DIRECT dedesubt (view/listen mode), niciodata "nu am gasit nicio comanda" langa banner-ul de blocare', async () => {
+  const { api, elements } = buildSandbox({
+    search: '?blocked=1',
+    pendingRecoveryEmail: 'blocat@exemplu.com',
+    fetchImpl: (url) => (url === '/api/orders/by-email'
+      ? jsonRes({ orders: [{ id: 'o1', plan: 'standard', recipient: 'Ana', status: 'ready', createdAt: '2026-09-01T00:00:00Z', songCount: 1, hostedAccessExpired: false, previewVariantIds: ['v1'] }] })
+      : { ok: false })
+  });
+  await api.__loadPromise;
+  assert.equal(elements['blocked-banner'].textContent, api.t.blocked, 'mesajul trebuie sa fie cel de succes ("ai deja melodii"), nu blocked_empty');
+  assert.equal(elements['orders-list'].children.length, 1);
+  assert.match(elements['orders-list'].children[0].innerHTML, /<audio controls src="\/media\/preview\/o1\/v1"><\/audio>/, 'melodia trebuie sa poata fi ascultata direct, din blocarea quota');
+  assert.ok(!elements['orders-list'].children.some((c) => c.textContent === api.t.empty_no_orders), 'nu trebuie sa apara NICIODATA "nu am gasit nicio comanda" langa comenzi reale afisate');
+});
+
+test('PROBLEMA 1/2: email fara comenzi eligibile (cont real, dar 0 comenzi) -> lista goala corecta, NICIODATA un card inventat', async () => {
+  const { api, elements } = buildSandbox({
+    pendingRecoveryEmail: 'fara-comenzi@exemplu.com',
+    fetchImpl: (url) => (url === '/api/orders/by-email' ? jsonRes({ orders: [] }) : { ok: false })
+  });
+  await api.__loadPromise;
+  assert.equal(elements['orders-list'].children.filter((c) => c.className === 'order').length, 0);
+});
+
+test('PROBLEMA 1: localStorage stale (toate tokenurile locale CONFIRMATE inexistente, 404) DAR emailul are comenzi eligibile reale -> comenzile tot apar (serverul, dupa email, ramane sursa de adevar, niciodata tokenurile locale)', async () => {
+  const staleToken = 'f'.repeat(48);
+  const { api, elements } = buildSandbox({
+    storedOrders: [{ id: 'order-stale', token: staleToken }],
+    pendingRecoveryEmail: 'client@exemplu.com',
+    fetchImpl: (url) => {
+      if (url.includes('order-stale')) return { ok: false, status: 404 };
+      if (url === '/api/orders/by-email') return jsonRes({ orders: [{ id: 'order-real', plan: 'standard', recipient: 'Maria', status: 'ready', createdAt: '2026-09-01T00:00:00Z', songCount: 1, hostedAccessExpired: false, previewVariantIds: ['v1'] }] });
+      return { ok: false };
+    }
+  });
+  await api.__loadPromise;
+  assert.equal(elements['orders-list'].children.length, 1, 'comanda gasita prin email trebuie afisata, desi tokenul local era stale/inexistent');
+  assert.match(elements['orders-list'].children[0].innerHTML, /Maria/);
+  assert.match(elements['orders-list'].children[0].innerHTML, /<audio controls src="\/media\/preview\/order-real\/v1"><\/audio>/, 'trebuie ascultabila direct, in view/listen mode (fara token local)');
+  assert.ok(!elements['orders-list'].children[0].href, 'cardul view/listen nu trebuie sa fie clicabil');
+});
+
+test('PROBLEMA 1: aceeasi comanda confirmata ATAT prin token local CAT SI prin email (acelasi id) -> apare O SINGURA DATA, niciodata dublata', async () => {
+  const token = 'g'.repeat(48);
+  const { api, elements } = buildSandbox({
+    storedOrders: [{ id: 'order-dup', token }],
+    pendingRecoveryEmail: 'client@exemplu.com',
+    fetchImpl: (url) => {
+      if (url.includes('order-dup?token=')) return jsonRes({ id: 'order-dup', plan: 'standard', recipient: 'Maria', status: 'ready', createdAt: '2026-09-01T00:00:00Z', hasGiftAudio: false, hasPremiumBonusAudio: false, hostedAccessExpired: false });
+      if (url === '/api/orders/by-email') return jsonRes({ orders: [{ id: 'order-dup', plan: 'standard', recipient: 'Maria', status: 'ready', createdAt: '2026-09-01T00:00:00Z', songCount: 1, hostedAccessExpired: false, previewVariantIds: ['v1'] }] });
+      return { ok: false };
+    }
+  });
+  await api.__loadPromise;
+  assert.equal(elements['orders-list'].children.length, 1, 'aceeasi comanda (acelasi id) nu trebuie sa apara de doua ori');
+});
+
+// FALLBACK SECUNDAR (2026-09-30, decizie explicita de produs — "recovery prin email poate ramane
+// ca fallback secundar pentru situatii speciale"): butonul PRIMAR (#recovery-btn) foloseste acum
+// lookup direct (testat separat mai jos) — mecanismul VECHI de trimitere pe email, cu proprietatea
+// lui de securitate (raspuns generic, anti-enumerare), ramane STRICT pe butonul secundar explicit.
+test('sandbox (fallback: recovery prin email ramane functional si securizat): trimite STRICT {email, lang} catre /api/orders/recover-access, niciodata id-uri/tokenuri locale — si arata ACELASI mesaj generic indiferent de raspunsul serverului (nicio enumerare de conturi)', async () => {
   const { api, elements, fetchCalls } = buildSandbox({ storedOrders: [] });
   await api.__loadPromise;
   elements['recovery-email'].value = 'client@exemplu.com';
-  await elements['recovery-btn'].__listeners.click();
+  await elements['recovery-email-fallback-btn'].__listeners.click();
   assert.equal(fetchCalls.length, 1);
   assert.equal(fetchCalls[0].url, '/api/orders/recover-access');
   assert.equal(fetchCalls[0].opts.method, 'POST');
@@ -427,12 +547,53 @@ test('sandbox (recovery prin email ramane functional si securizat): trimite STRI
   assert.equal(elements['recovery-result'].textContent, api.t.recovery_sent);
 });
 
-test('sandbox (recovery ramane securizat chiar daca serverul esueaza/e lent): mesajul afisat clientului e IDENTIC (generic), niciodata o eroare care ar confirma/infirma existenta contului', async () => {
+test('sandbox (fallback: recovery ramane securizat chiar daca serverul esueaza/e lent): mesajul afisat clientului e IDENTIC (generic), niciodata o eroare care ar confirma/infirma existenta contului', async () => {
   const { api, elements } = buildSandbox({ storedOrders: [], fetchImpl: () => { throw new Error('retea cazuta'); } });
   await api.__loadPromise;
   elements['recovery-email'].value = 'oricine@exemplu.com';
-  await elements['recovery-btn'].__listeners.click();
+  await elements['recovery-email-fallback-btn'].__listeners.click();
   assert.equal(elements['recovery-result'].textContent, api.t.recovery_sent, 'mesajul trebuie sa ramana generic chiar si la eroare de retea');
+});
+
+// PRIMAR (2026-09-30, decizie explicita de produs, "emailul introdus de client e suficient"):
+// butonul principal cere DIRECT serverul (POST /api/orders/by-email) si afiseaza comenzile
+// imediat, in aceeasi pagina — niciun email trimis, niciun link de asteptat.
+test('sandbox (primar: introducerea manuala a unui email cere DIRECT POST /api/orders/by-email si afiseaza comenzile imediat, fara sa trimita niciun email)', async () => {
+  const { api, elements, fetchCalls } = buildSandbox({
+    storedOrders: [],
+    fetchImpl: (url) => {
+      if (url === '/api/orders/by-email') {
+        return jsonRes({ orders: [{ id: 'order-x', plan: 'standard', recipient: 'Ana', status: 'ready', createdAt: '2026-09-01T00:00:00Z', songCount: 1, hostedAccessExpired: false, previewVariantIds: ['v1'] }] });
+      }
+      return { ok: false };
+    }
+  });
+  await api.__loadPromise;
+  elements['recovery-email'].value = 'client@exemplu.com';
+  await elements['recovery-btn'].__listeners.click();
+  assert.equal(fetchCalls.length, 1);
+  assert.equal(fetchCalls[0].url, '/api/orders/by-email');
+  assert.equal(fetchCalls[0].opts.method, 'POST');
+  assert.equal(fetchCalls[0].opts.body, JSON.stringify({ email: 'client@exemplu.com' }));
+  const card = elements['orders-list'].children[0];
+  assert.equal(elements['orders-list'].children.length, 1, 'comanda gasita prin email trebuie afisata direct, fara niciun email trimis');
+  assert.match(card.innerHTML, /Ana/);
+  assert.match(card.innerHTML, /<audio controls src="\/media\/preview\/order-x\/v1"><\/audio>/, 'previewul trebuie ascultabil direct, in view/listen mode');
+  assert.ok(!card.href, 'cardul view/listen nu trebuie sa fie clicabil (fara acces complet)');
+});
+
+test('sandbox (primar: email fara comenzi eligibile -> mesaj clar, fara card, fara email trimis)', async () => {
+  const { api, elements, fetchCalls } = buildSandbox({
+    storedOrders: [],
+    fetchImpl: (url) => (url === '/api/orders/by-email' ? jsonRes({ orders: [] }) : { ok: false })
+  });
+  await api.__loadPromise;
+  elements['recovery-email'].value = 'fara-comenzi@exemplu.com';
+  await elements['recovery-btn'].__listeners.click();
+  assert.equal(fetchCalls.length, 1);
+  assert.equal(fetchCalls[0].url, '/api/orders/by-email');
+  assert.equal(elements['orders-list'].children.filter((c) => c.className === 'order').length, 0, 'niciun card de comanda nu trebuie inventat');
+  assert.equal(elements['recovery-result'].textContent, api.t.recovery_no_orders_for_email);
 });
 
 test('sandbox: acces expirat (hostedAccessExpired) — numarul real de melodii ramane afisat (fapt istoric real), dar fara pill-ul de status "Gata" (comportament pastrat neschimbat)', async () => {

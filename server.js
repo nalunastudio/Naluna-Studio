@@ -3682,6 +3682,74 @@ app.post('/api/orders/recover-access', recoveryIpLimiter, recoveryEmailTargetLim
 });
 
 // ==========================================================================================
+// EMAIL SUFICIENT PENTRU "COMENZILE MELE" (2026-09-30, decizie explicita de produs — audit
+// "Comenzile mele goala desi quota stie ca exista melodii"): clientul nu mai trebuie sa detina
+// un token local sau sa deschida un link din email ca sa-si vada/asculte comenzile — introduce
+// emailul si serverul cauta DIRECT, sincron, in acest raspuns (spre deosebire de
+// POST /recover-access de mai sus, care NU intoarce randurile, STRICT le trimite pe email).
+// Eligibilitate EXACT identica cu recuperarea prin email (db.getEligibleOrdersForAccessRecovery).
+//
+// CORECTIE CRITICA DE SECURITATE (2026-09-30, runda 2 — decizie explicita, dupa audit): versiunea
+// initiala a acestui endpoint construia un `continueUrl` cu accessToken-ul COMPLET embedat in
+// query string (`?token=...`) — desi nu exista niciun camp `accessToken` separat in raspuns,
+// tokenul ajungea oricum, in clar, la client prin acel URL. Asta insemna ca simpla cunoastere a
+// unui email strain oferea autoritate COMPLETA (plata, editare versuri, regenerare, upload media,
+// generare video) asupra comenzilor acelui email — mult mai mult decat "vezi/asculta". Eliminat
+// COMPLET: acest endpoint NU mai returneaza accessToken sub nicio forma (proprietate, query
+// param, URL, metadata). Ofera STRICT un VIEW/LISTEN MODE:
+//   - datele de sumar ale comenzii (identice cu inainte — recipient/plan/status/titlu/numar);
+//   - id-urile variantelor cu PREVIEW real disponibil (previewVariantIds) — redabile STRICT prin
+//     GET /media/preview/:orderId/:variantId, ruta deja PUBLICA/neautentificata (nu verifica
+//     niciun token — exista dinainte de aceasta schimbare, neatinsa aici), STRICT acelasi
+//     preview pe care clientul il putea asculta oricum inainte de plata.
+// NU ofera niciun acces nou la fisierul COMPLET/WAV/video (continut platit — ramane STRICT
+// protejat prin accessToken/requireOrderToken, neschimbat) si NU ofera nicio cale catre vreun
+// endpoint mutabil (edit versuri, regenerare, selectie, checkout, upload/delete/reorder media,
+// generare video) — toate raman protejate EXACT ca inainte, pentru ca acest raspuns pur si simplu
+// nu contine credentialul de care au nevoie. Separarea finala: EMAIL -> discovery + read/listen;
+// ACCESS TOKEN COMPLET (deja detinut local, sau primit printr-un link de recovery/livrare
+// existent) -> mutate/full authority, neschimbat.
+// ==========================================================================================
+function buildOrderSummaryDto(order) {
+  const giftVariant = getGiftVariant(order);
+  const premiumBonusVariant = getPremiumBonusVariant(order);
+  const songCount = order.status === 'ready'
+    ? 1 + (giftVariant && giftVariant.fullKey ? 1 : 0) + (premiumBonusVariant && premiumBonusVariant.fullKey ? 1 : 0)
+    : (order.variants || []).filter((v) => v.previewUrl).length;
+  const mainVariant = (order.variants || []).find((v) => v.id === order.selectedVariantId) || (order.variants || [])[0] || null;
+  return {
+    id: order.id,
+    recipient: order.recipient,
+    plan: order.plan,
+    status: order.status,
+    createdAt: order.createdAt,
+    songTitle: (mainVariant && mainVariant.title) ? mainVariant.title : null,
+    songCount,
+    hostedAccessExpired: isHostedAccessExpired(order),
+    // STRICT id-uri de variante — nu URL-uri, nu chei de storage. Clientul construieste local
+    // /media/preview/:orderId/:variantId (deja publica, neautentificata) — niciun credential nou.
+    previewVariantIds: (order.variants || []).filter((v) => v.previewUrl).map((v) => v.id)
+  };
+}
+
+app.post('/api/orders/by-email', recoveryIpLimiter, recoveryEmailTargetLimiter, async (req, res, next) => {
+  try {
+    const rawEmail = typeof req.body?.email === 'string' ? req.body.email.trim() : '';
+    if (!rawEmail || !rawEmail.includes('@')) return res.json({ orders: [] });
+
+    // Identic cu /recover-access: throttling pe email = raspuns normal, gol — niciodata un semnal
+    // distinct care ar permite enumerarea adreselor.
+    if (req.recoveryEmailThrottled) return res.json({ orders: [] });
+
+    const emailKey = rawEmail.toLowerCase();
+    const orders = await db.getEligibleOrdersForAccessRecovery(emailKey);
+    res.json({ orders: orders.map(buildOrderSummaryDto) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ==========================================================================================
 // 3. Regenereaza (editare) — o noua pereche de variante, limitat la FREE_EDITS
 // ==========================================================================================
 // MODIFICARE STRICTĂ — fluxul Premium: editare selectiva pe pagina dedicata (hotfix 2026-08-10
@@ -4259,6 +4327,11 @@ app.get('/api/orders/:orderId', async (req, res, next) => {
       // (gasit direct la testarea reala: ambele carduri aparea etichetate "inițială", pentru
       // ca acest camp lipsea din whitelist-ul de raspuns, desi era scris corect in DB).
       isEditedAlternative: !!v.isEditedAlternative,
+      // "Comenzile mele" (2026-09-30, decizie explicita — email suficient pentru listare):
+      // titlul melodiei (sistemul emotional story-aware, JSONB additiv) — deja expus separat de
+      // GET /api/orders/access/:token (comanda-mea.html); nu e secret, doar lipsea din acest
+      // whitelist. Necesar ca lista sa poata afisa titlul, cand exista, langa fiecare comanda.
+      title: v.title || null,
       // MODIFICARE STRICTĂ — fluxul Premium: pagina finala de comparare (hotfix 2026-08-10 runda
       // 3): songSlot (1/2, stabil, NICIODATA dedus din genre) — grupeaza cardurile pe pagina de
       // comparare dupa melodia CĂREIA îi aparțin, indiferent de câte editări au avut loc.

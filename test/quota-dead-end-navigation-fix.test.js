@@ -117,23 +117,30 @@ test('comenzile-mele.html: sessionStorage e citit O SINGURA DATA si sters IMEDIA
   assert.match(body, /sessionStorage\.removeItem\('naluna_pending_recovery_email'\)/);
 });
 
-test('comenzile-mele.html: recovery-ul automat foloseste STRICT acelasi endpoint public deja auditat (POST /api/orders/recover-access, {email, lang}) — niciun sistem paralel', () => {
-  const idx = comenzileMele.indexOf('async function triggerAutoRecovery(email) {');
-  const end = comenzileMele.indexOf('async function loadAndRenderOrders');
+// CORECTIE (2026-09-30, PROBLEMA 1/2 — "Comenzile mele goala desi quota stie ca exista melodii",
+// decizie explicita de produs): emailul transmis prin pendingRecoveryEmail (gate SAU blocare
+// quota) nu mai declanseaza un EMAIL AUTOMAT (fostul triggerAutoRecovery/POST /recover-access,
+// eliminat — clientul ar fi trebuit sa astepte un email si sa deschida un link, exact dead-end-ul
+// pe care produsul nu il mai vrea) — declanseaza acum o CERERE DIRECTA (lookupOrdersByEmail/POST
+// /api/orders/by-email), ale carei rezultate sunt afisate IMEDIAT, pe aceeasi pagina.
+test('comenzile-mele.html: pendingRecoveryEmail foloseste STRICT lookupOrdersByEmail (POST /api/orders/by-email) — NICIODATA fostul email automat (POST /recover-access)', () => {
+  const idx = comenzileMele.indexOf('async function lookupOrdersByEmail(email) {');
+  const end = comenzileMele.indexOf('function renderOrderCard');
   const body = comenzileMele.slice(idx, end);
-  assert.match(body, /fetch\('\/api\/orders\/recover-access', \{/);
+  assert.match(body, /fetch\('\/api\/orders\/by-email', \{/);
   assert.match(body, /method: 'POST'/);
-  assert.match(body, /body: JSON\.stringify\(\{ email, lang \}\)/);
+  assert.match(body, /body: JSON\.stringify\(\{ email \}\)/);
+  assert.ok(!/triggerAutoRecovery/.test(comenzileMele), 'mecanismul de email automat trebuie eliminat complet, nu doar ocolit');
 });
 
-test('comenzile-mele.html: recovery automat se declanseaza STRICT cand (a) NU exista comenzi vizibile SI (b) exista un email transmis — niciodata cand exista deja comenzi vizibile (tokenurile locale au prioritate, niciodata suprascrise)', () => {
-  const idx = comenzileMele.indexOf('function handleNoVisibleOrders() {');
-  const end = comenzileMele.indexOf('async function triggerAutoRecovery');
+test('comenzile-mele.html: loadAndRenderOrders() cere STRICT lookupOrdersByEmail(pendingRecoveryEmail) cand acesta exista, si combina rezultatul cu tokenurile locale (nu il inlocuieste, nu il ignora cand exista deja comenzi vizibile)', () => {
+  const idx = comenzileMele.indexOf('async function loadAndRenderOrders() {');
+  const end = comenzileMele.indexOf('loadAndRenderOrders().catch');
   const body = comenzileMele.slice(idx, end);
-  assert.match(body, /if \(pendingRecoveryEmail\) \{\s*\n\s*triggerAutoRecovery\(pendingRecoveryEmail\);/);
-  // handleNoVisibleOrders() e apelat STRICT din cele doua ramuri "nicio comanda vizibila" —
-  // niciodata cand eligible.length > 0 (verificat separat, testul de mai jos).
-  assert.match(comenzileMele, /if \(known\.length === 0\) \{\s*\n\s*loadingEl\.style\.display = 'none';\s*\n\s*handleNoVisibleOrders\(\);/);
+  assert.match(body, /if \(pendingRecoveryEmail\) \{\s*\n\s*const emailLookup = await lookupOrdersByEmail\(pendingRecoveryEmail\);/);
+  assert.match(body, /const byId = new Map\(\);/, 'tokenurile locale si rezultatul email-ului trebuie combinate (deduplicate), nu tratate exclusiv');
+  assert.match(body, /tokenEligible\.forEach\(\(e\) => byId\.set\(e\.order\.id, e\)\);/);
+  assert.match(body, /emailEligible\.forEach\(\(e\) => \{ if \(!byId\.has\(e\.order\.id\)\) byId\.set\(e\.order\.id, e\); \}\);/, 'comenzile deja confirmate prin token au prioritate — email-ul completeaza, nu suprascrie');
   // CORECTIE (2026-09-28, audit "4 comenzi salvate" vs "0"): cand eligible.length===0, se apeleaza
   // handleNoVisibleOrders() STRICT daca nu exista intrari 'unknown' (neverificabile din cauza unei
   // erori de retea/server) — acelea primesc acum un mesaj distinct (verify_error), NU o afirmatie

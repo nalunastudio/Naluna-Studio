@@ -347,7 +347,7 @@ test('comenzile-mele.html: toate cele 8 limbi raman intacte dupa acest fix (nici
   const T = new Function(comenzileMele.slice(idx, i + 1) + '\nreturn T;')();
   for (const lang of ['ro', 'en', 'de', 'es', 'it', 'fr', 'bg', 'tr']) {
     assert.ok(T[lang], `limba ${lang} lipseste`);
-    assert.ok(T[lang].order_label && T[lang].song_count && T[lang].use_other_email && T[lang].auto_recovery_sent);
+    assert.ok(T[lang].order_label && T[lang].song_count && T[lang].use_other_email && T[lang].recovery_email_fallback_btn);
   }
 });
 

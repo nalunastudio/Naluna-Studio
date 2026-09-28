@@ -3817,10 +3817,36 @@
     }).catch(() => { /* mesajul generic ramane afisat — nicio afirmatie nesigura */ });
   }
 
+  // PROBLEMA 3 (2026-09-30, "Navigarea Back este gresita" — audit history/navigation existent):
+  // trecerea gate-choice-screen -> wizard NU crea niciodata o intrare noua in istoricul
+  // browserului (STRICT toggle de display, in aceeasi pagina) — comanda.html fiind vizitata O
+  // SINGURA DATA in istoric, Back din Pasul 1 sarea direct la pagina anterioara REALA (homepage),
+  // sarind peste "Ce vrei sa faci?" desi clientul trecuse deja prin acel ecran in aceasta
+  // navigare. Fix STANDARD, fara hack-uri care distrug istoricul: history.pushState() creeaza o
+  // a doua intrare, PE ACEEASI pagina/URL, exact in momentul intrarii in wizard — Back
+  // (popstate) revine STRICT la acel "strat" anterior (ecranul de alegere), fara nicio navigare
+  // reala, inainte sa ajunga vreodata la homepage (care ramane accesibila cu un AL DOILEA Back,
+  // exact semantica normala de browser). Functioneaza identic pe reload/back_forward (bfcache
+  // pastreaza history.state neschimbat) — guardul de mai jos evita sa impinga un strat suplimentar
+  // de fiecare data cand enterWizardAfterGate() ruleaza din nou (reload, sau gateAlreadyPassed).
+  function returnToGateChoiceFromWizard() {
+    progressWrap.style.display = 'none';
+    stepCards.forEach((card) => { if (card.dataset.step !== '0') card.style.display = 'none'; });
+    showGateChoiceScreen();
+  }
+  window.addEventListener('popstate', (event) => {
+    if (!(event.state && event.state.ndsView === 'wizard')) {
+      returnToGateChoiceFromWizard();
+    }
+  });
+
   function enterWizardAfterGate() {
     gateEmailScreen.style.display = 'none';
     gateChoiceScreen.style.display = 'none';
     progressWrap.style.display = '';
+    if (!(window.history.state && window.history.state.ndsView === 'wizard')) {
+      try { window.history.pushState({ ndsView: 'wizard' }, '', window.location.href); } catch (err) { /* ignoram */ }
+    }
     showStep(restoredStep);
   }
 
@@ -3838,6 +3864,20 @@
   });
 
   document.getElementById('gate-new-song-btn').addEventListener('click', enterWizardAfterGate);
+
+  // PROBLEMA 1 (2026-09-30, "Comenzile mele este goala desi quota stie ca exista melodii" —
+  // decizie explicita de produs, "emailul introdus de client e suficient"): emailul TOCMAI
+  // introdus la acest gate e transmis catre comenzile-mele.html STRICT prin sessionStorage
+  // (niciodata URL/query — acelasi mecanism deja auditat, folosit si de traseul de blocare
+  // quota mai jos), ca acea pagina sa poata cere serverului DIRECT comenzile eligibile ale
+  // acestui email, fara sa astepte niciun link din email si fara sa depinda de tokenuri locale.
+  // Handler separat, NU preventDefault — navigarea reala a link-ului ramane neschimbata.
+  document.getElementById('gate-my-orders-link').addEventListener('click', () => {
+    try {
+      const emailVal = document.getElementById('email').value.trim();
+      if (emailVal) sessionStorage.setItem('naluna_pending_recovery_email', emailVal);
+    } catch (err) { /* sessionStorage indisponibil — comenzile-mele.html revine la cautare manuala */ }
+  });
 
   // BUG REAL (2026-09-29, "O comanda noua trebuie sa inceapa INTOTDEAUNA cu emailul" — audit +
   // reproducere directa): STEP_KEY e setat de showStep() la FIECARE pas, inclusiv pasul 1 — o
