@@ -3775,23 +3775,46 @@
   const gateChoiceScreen = document.getElementById('gate-choice-screen');
   const progressWrap = document.getElementById('progress-wrap');
 
-  function computeLocalKnownOrderCount() {
-    // Acelasi mecanism/cheie ca in comenzile-mele.html (naluna_my_order_keys) — STRICT ownership
-    // local (id+token detinute de acest browser), NICIODATA derivat din email (cerinta explicita:
-    // "Nu afisa numarul de comenzi bazandu-te doar pe email").
+  // BUG REAL (2026-09-28, "Ai 4 comenzi salvate" vs "Nu am gasit nicio comanda" — audit +
+  // reproducere directa, test/gate-count-vs-list-contradiction.test.js): versiunea anterioara
+  // (computeLocalKnownOrderCount, eliminata) numara STRICT cate perechi {id,token} sunt in
+  // localStorage — ZERO verificare server-side (nicio validare ca id-ul e real, ca tokenul e
+  // corect, sau ca statusul comenzii chiar are continut util). comenzile-mele.html, in schimb,
+  // verifica FIECARE intrare server-side si exclude draft/generation_failed — deci un browser cu
+  // chei stale/expirate vedea un numar AICI care nu se potrivea NICIODATA cu ce afisa efectiv
+  // comenzile-mele.html. Aceasta functie face ACEEASI verificare server-side, numarand STRICT
+  // comenzile CONFIRMATE ca exista si sunt eligibile (acelasi filtru exact ca in
+  // comenzile-mele.html) — niciodata doar prezenta locala a unei chei. O eroare de retea/server la
+  // verificare NU e tratata ca "0 comenzi" — pur si simplu nu actualizeaza mesajul (ramane cel
+  // generic, neutru), niciodata o afirmatie falsa.
+  async function computeVerifiedKnownOrderCount() {
+    let known;
     try {
       const raw = localStorage.getItem('naluna_my_order_keys');
       const arr = raw ? JSON.parse(raw) : [];
-      return Array.isArray(arr) ? arr.filter((o) => o && o.id && o.token).length : 0;
+      known = Array.isArray(arr) ? arr.filter((o) => o && o.id && o.token) : [];
     } catch (err) { return 0; }
+    if (known.length === 0) return 0;
+    const results = await Promise.all(known.map(async (entry) => {
+      try {
+        const res = await fetch(`/api/orders/${encodeURIComponent(entry.id)}?token=${encodeURIComponent(entry.token)}`);
+        if (!res.ok) return null;
+        return await res.json();
+      } catch (err) { return null; }
+    }));
+    return results.filter((order) => order && order.status !== 'draft' && order.status !== 'generation_failed').length;
   }
 
   function showGateChoiceScreen() {
     gateEmailScreen.style.display = 'none';
-    const count = computeLocalKnownOrderCount();
     const desc = document.getElementById('gate-my-orders-desc');
-    desc.textContent = count > 0 ? t('gate_my_orders_count')(count) : t('gate_my_orders_desc');
+    // Mesaj generic, neutru, afisat IMEDIAT (fara sa astepte reteaua) — inlocuit cu numarul EXACT
+    // STRICT daca verificarea server-side confirma comenzi reale, niciodata invers.
+    desc.textContent = t('gate_my_orders_desc');
     gateChoiceScreen.style.display = 'block';
+    computeVerifiedKnownOrderCount().then((count) => {
+      if (count > 0) desc.textContent = t('gate_my_orders_count')(count);
+    }).catch(() => { /* mesajul generic ramane afisat — nicio afirmatie nesigura */ });
   }
 
   function enterWizardAfterGate() {

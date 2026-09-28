@@ -113,9 +113,10 @@ test('comenzile-mele.html: dupa rezolvarea token-urilor din URL, acestea sunt st
   assert.match(page, /window\.history\.replaceState\(null, '', clean\.toString\(\)\)/);
 });
 
-test('comenzile-mele.html: o comanda care nu mai raspunde (404 — expirata/token gresit) e scoasa din lista locala, niciodata pastrata "moarta"', () => {
-  assert.match(page, /stillValidIds = new Set\(results\.filter\(Boolean\)\.map\(\(r\) => r\.order\.id\)\)/);
-  assert.match(page, /known = known\.filter\(\(entry\) => stillValidIds\.has\(entry\.id\)\)/);
+test('comenzile-mele.html: o comanda CONFIRMATA inexistenta (404/400 — expirata/token gresit) e scoasa din lista locala; o eroare de retea/server (necunoscuta) NU e tratata ca "moarta" si NU sterge intrarea', () => {
+  assert.match(page, /if \(res\.status === 404 \|\| res\.status === 400\) return \{ entry, state: 'gone' \};/);
+  assert.match(page, /goneIds = new Set\(results\.filter\(\(r\) => r\.state === 'gone'\)\.map\(\(r\) => r\.entry\.id\)\)/);
+  assert.match(page, /known = known\.filter\(\(entry\) => !goneIds\.has\(entry\.id\)\)/);
 });
 
 test('comenzile-mele.html: exclude draft/generation_failed din afisare (acelasi filtru ca recovery email/quota — nimic de continuat/diferentiat)', () => {

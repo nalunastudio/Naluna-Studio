@@ -134,7 +134,15 @@ test('comenzile-mele.html: recovery automat se declanseaza STRICT cand (a) NU ex
   // handleNoVisibleOrders() e apelat STRICT din cele doua ramuri "nicio comanda vizibila" —
   // niciodata cand eligible.length > 0 (verificat separat, testul de mai jos).
   assert.match(comenzileMele, /if \(known\.length === 0\) \{\s*\n\s*loadingEl\.style\.display = 'none';\s*\n\s*handleNoVisibleOrders\(\);/);
-  assert.match(comenzileMele, /if \(eligible\.length === 0\) \{\s*\n\s*handleNoVisibleOrders\(\);/);
+  // CORECTIE (2026-09-28, audit "4 comenzi salvate" vs "0"): cand eligible.length===0, se apeleaza
+  // handleNoVisibleOrders() STRICT daca nu exista intrari 'unknown' (neverificabile din cauza unei
+  // erori de retea/server) — acelea primesc acum un mesaj distinct (verify_error), NU o afirmatie
+  // falsa de "nicio comanda" si NU recovery automat inutil. Vezi
+  // test/gate-count-vs-list-contradiction.test.js pentru comportamentul complet.
+  const eligibleZeroIdx = comenzileMele.indexOf('if (eligible.length === 0) {');
+  const eligibleZeroBody = comenzileMele.slice(eligibleZeroIdx, comenzileMele.indexOf('\n    }', comenzileMele.indexOf('handleNoVisibleOrders();', eligibleZeroIdx)) + 6);
+  assert.match(eligibleZeroBody, /if \(hasUnverified\) \{/);
+  assert.match(eligibleZeroBody, /handleNoVisibleOrders\(\);/);
 });
 
 // ===============================================================================================

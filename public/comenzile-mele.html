@@ -123,6 +123,7 @@
       auto_recovery_sent: 'Ţi-am trimis pe email accesul securizat la comenzile tale existente.',
       use_other_email: 'Foloseşte alt email',
       empty_no_orders: 'Nu am găsit nicio comandă în acest browser.',
+      verify_error: 'Nu am putut verifica acum comenzile tale — verifică-ți conexiunea și reîncarcă pagina.',
       plan: { standard: 'Standard', premium: 'Premium', video: 'Cadou video' }
     },
     en: {
@@ -139,6 +140,7 @@
       auto_recovery_sent: "We've emailed you secure access to your existing orders.",
       use_other_email: 'Use a different email',
       empty_no_orders: 'We could not find any order in this browser.',
+      verify_error: "We couldn't check your orders right now — check your connection and reload the page.",
       plan: { standard: 'Standard', premium: 'Premium', video: 'Video gift' }
     },
     de: {
@@ -155,6 +157,7 @@
       auto_recovery_sent: 'Wir haben dir den sicheren Zugang zu deinen bestehenden Bestellungen per E-Mail geschickt.',
       use_other_email: 'Andere E-Mail verwenden',
       empty_no_orders: 'Wir konnten in diesem Browser keine Bestellung finden.',
+      verify_error: 'Wir konnten deine Bestellungen gerade nicht überprüfen — überprüfe deine Verbindung und lade die Seite neu.',
       plan: { standard: 'Standard', premium: 'Premium', video: 'Video-Geschenk' }
     },
     es: {
@@ -171,6 +174,7 @@
       auto_recovery_sent: 'Te hemos enviado por email el acceso seguro a tus pedidos existentes.',
       use_other_email: 'Usar otro email',
       empty_no_orders: 'No encontramos ningún pedido en este navegador.',
+      verify_error: 'No pudimos verificar tus pedidos ahora — comprueba tu conexión y recarga la página.',
       plan: { standard: 'Estándar', premium: 'Premium', video: 'Regalo en video' }
     },
     it: {
@@ -187,6 +191,7 @@
       auto_recovery_sent: 'Ti abbiamo inviato via email l\'accesso sicuro ai tuoi ordini esistenti.',
       use_other_email: 'Usa un\'altra email',
       empty_no_orders: 'Non abbiamo trovato nessun ordine in questo browser.',
+      verify_error: 'Non siamo riusciti a verificare i tuoi ordini ora — controlla la connessione e ricarica la pagina.',
       plan: { standard: 'Standard', premium: 'Premium', video: 'Regalo video' }
     },
     fr: {
@@ -203,6 +208,7 @@
       auto_recovery_sent: 'Nous t\'avons envoyé par email l\'accès sécurisé à tes commandes existantes.',
       use_other_email: 'Utiliser un autre email',
       empty_no_orders: 'Nous n\'avons trouvé aucune commande dans ce navigateur.',
+      verify_error: 'Nous n\'avons pas pu vérifier tes commandes maintenant — vérifie ta connexion et recharge la page.',
       plan: { standard: 'Standard', premium: 'Premium', video: 'Cadeau vidéo' }
     },
     bg: {
@@ -219,6 +225,7 @@
       auto_recovery_sent: 'Изпратихме ти по имейл сигурен достъп до съществуващите ти поръчки.',
       use_other_email: 'Използвай друг имейл',
       empty_no_orders: 'Не намерихме нито една поръчка в този браузър.',
+      verify_error: 'Не успяхме да проверим поръчките ти точно сега — провери връзката си и презареди страницата.',
       plan: { standard: 'Стандартен', premium: 'Премиум', video: 'Видео подарък' }
     },
     tr: {
@@ -235,6 +242,7 @@
       auto_recovery_sent: 'Mevcut siparişlerine güvenli erişimi e-posta ile gönderdik.',
       use_other_email: 'Başka bir e-posta kullan',
       empty_no_orders: 'Bu tarayıcıda hiçbir sipariş bulamadık.',
+      verify_error: 'Siparişlerinizi şu anda kontrol edemedik — bağlantınızı kontrol edip sayfayı yeniden yükleyin.',
       plan: { standard: 'Standart', premium: 'Premium', video: 'Video hediye' }
     }
   };
@@ -494,31 +502,59 @@
       return;
     }
 
+    // BUG REAL (2026-09-28, "Ai 4 comenzi salvate" vs "Nu am gasit nicio comanda" — audit +
+    // reproducere directa): versiunea anterioara trata IDENTIC doua situatii complet diferite —
+    // (a) serverul CONFIRMA explicit ca id/token nu mai sunt valide (404/400 — comanda chiar nu
+    // mai exista, sau tokenul e gresit) si (b) fetch-ul ESUEAZA prin exceptie de retea (offline,
+    // timeout, conexiune mobila instabila) SAU serverul raspunde cu o eroare temporara (5xx) —
+    // in (b) NU exista nicio dovada ca acea comanda nu mai e valida, doar ca NU a putut fi
+    // verificata ACUM. `catch (e) { return null; }` trata (b) ca (a), stergand PERMANENT din
+    // naluna_my_order_keys comenzi perfect valide, exact mecanismul prin care 4 comenzi reale,
+    // autorizate, disparea dintr-o singura vizita pe o retea mobila instabila (vezi
+    // test/gate-count-vs-list-contradiction.test.js pentru reproducerea exacta). Acum distingem
+    // explicit cele trei stari posibile: 'confirmed' (200, date reale), 'gone' (404/400 — STRICT
+    // aici e sigur sa stergem local) si 'unknown' (orice alta eroare — pastram intrarea
+    // neschimbata, nu o afisam ACUM, dar nici nu o declaram fals disparuta).
     const results = await Promise.all(known.map(async (entry) => {
       try {
         const res = await fetch(`/api/orders/${encodeURIComponent(entry.id)}?token=${encodeURIComponent(entry.token)}`);
-        if (!res.ok) return null;
+        if (res.status === 404 || res.status === 400) return { entry, state: 'gone' };
+        if (!res.ok) return { entry, state: 'unknown' };
         const order = await res.json();
-        return { order, token: entry.token };
+        return { entry, state: 'confirmed', order, token: entry.token };
       } catch (e) {
-        return null;
+        return { entry, state: 'unknown' };
       }
     }));
 
-    // Auto-curatare — orice comanda care nu mai raspunde (expirata dupa 7 zile neplatita,
-    // token gresit etc.) e scoasa din lista locala, niciodata pastrata "moarta".
-    const stillValidIds = new Set(results.filter(Boolean).map((r) => r.order.id));
-    known = known.filter((entry) => stillValidIds.has(entry.id));
+    // Auto-curatare — STRICT comenzile CONFIRMATE server-side ca nu mai exista (404/400) sunt
+    // scoase din lista locala. O eroare de retea/temporara ('unknown') NU sterge nimic — comanda
+    // ramane autorizata local, doar neafisata in ACEASTA incarcare; un refresh ulterior (retea
+    // revenita) o recupera imediat, fara niciun recovery necesar.
+    const goneIds = new Set(results.filter((r) => r.state === 'gone').map((r) => r.entry.id));
+    known = known.filter((entry) => !goneIds.has(entry.id));
     saveKnownOrders(known);
 
     const eligible = results
-      .filter(Boolean)
+      .filter((r) => r.state === 'confirmed')
       .filter((r) => r.order.status !== 'draft' && r.order.status !== 'generation_failed')
       .sort((a, b) => new Date(a.order.createdAt) - new Date(b.order.createdAt));
+    const hasUnverified = results.some((r) => r.state === 'unknown');
 
     loadingEl.style.display = 'none';
 
     if (eligible.length === 0) {
+      if (hasUnverified) {
+        // NU "nu am gasit nicio comanda" (afirmatie falsa de certitudine) si NU
+        // handleNoVisibleOrders() (ar putea porni recovery automat inutil) — STRICT un mesaj
+        // onest: nu am putut verifica ACUM, nu ca nu exista.
+        const p = document.createElement('p');
+        p.className = 'empty';
+        p.textContent = t.verify_error;
+        listEl.appendChild(p);
+        recoveryBox.style.display = '';
+        return;
+      }
       handleNoVisibleOrders();
       return;
     }

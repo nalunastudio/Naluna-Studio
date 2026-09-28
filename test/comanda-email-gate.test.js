@@ -55,7 +55,7 @@ test('1. comanda.html: gate-email-screen e vizibil implicit (fara style="display
 // SANDBOX — extragem STRICT logica gate-ului (fara restul wizard-ului, acelasi tipar deja folosit
 // in test/wizard-step-renumbering.test.js), cu document/localStorage/fetch simulate.
 // ===============================================================================================
-function loadGateSandbox({ storedOrders, stepKeyValue, restoredStepValue = 3 } = {}) {
+function loadGateSandbox({ storedOrders, stepKeyValue, restoredStepValue = 3, fetchImpl } = {}) {
   const startMarker = "const gateEmailScreen = document.getElementById('gate-email-screen');";
   const endMarker = 'if (gateAlreadyPassed) {\n    enterWizardAfterGate();\n  }';
   const startIdx = html.indexOf(startMarker);
@@ -82,7 +82,11 @@ function loadGateSandbox({ storedOrders, stepKeyValue, restoredStepValue = 3 } =
     getItem: (k) => (Object.prototype.hasOwnProperty.call(storage, k) ? storage[k] : null),
     setItem: (k, v) => { storage[k] = v; }
   };
-  function fakeFetch() { calls.fetch++; throw new Error('fetch NU trebuie apelat din gate — simpla introducere a emailului nu poate atinge reteaua'); }
+  function fakeFetch(...args) {
+    calls.fetch++;
+    if (fetchImpl) return fetchImpl(...args);
+    throw new Error('fetch NU trebuie apelat din gate cand nu exista nicio comanda locala de verificat (naluna_my_order_keys gol/absent)');
+  }
   function isValidEmailClient(v) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v || ''); }
   function setFieldError(field, msg) { calls.setFieldError.push([field, msg]); }
   function saveDraft() { calls.saveDraft++; }
@@ -91,7 +95,7 @@ function loadGateSandbox({ storedOrders, stepKeyValue, restoredStepValue = 3 } =
 
   const build = new Function(
     'document', 'localStorage', 'fetch', 'STEP_KEY', 'restoredStep', 'isValidEmailClient', 'setFieldError', 'saveDraft', 'showStep', 't',
-    snippet + '\nreturn { computeLocalKnownOrderCount, showGateChoiceScreen, enterWizardAfterGate, gateAlreadyPassed };'
+    snippet + '\nreturn { computeVerifiedKnownOrderCount, showGateChoiceScreen, enterWizardAfterGate, gateAlreadyPassed };'
   );
   const api = build(fakeDocument, fakeLocalStorage, fakeFetch, 'currentStep', restoredStepValue, isValidEmailClient, setFieldError, saveDraft, showStep, t);
   return { api, elements, listeners, calls, snippet };
@@ -178,9 +182,11 @@ test('4. comanda.html: handler-ul de submit al #order-form incepe STRICT cu e.pr
   assert.match(firstStatement, /^e\.preventDefault\(\);$/, `prima instructiune din handler trebuie sa fie e.preventDefault(), gasit: "${firstStatement}"`);
 });
 
-test('sandbox: sursa blocului gate NU contine niciun apel fetch/XMLHttpRequest — garantie structurala suplimentara, independenta de simulare', () => {
+test('sandbox: sursa blocului gate contine STRICT fetch-ul de verificare read-only GET /api/orders/:id?token= (numarul afisat) — niciodata un apel de creare de comanda/Suno/checkout, si niciun XMLHttpRequest', () => {
   const { snippet } = loadGateSandbox();
-  assert.ok(!/fetch\(/.test(snippet));
+  const fetchCallCount = (snippet.match(/fetch\(/g) || []).length;
+  assert.equal(fetchCallCount, 1, 'trebuie sa existe STRICT un singur apel fetch in blocul gate — verificarea read-only a comenzilor cunoscute local');
+  assert.match(snippet, /fetch\(`\/api\/orders\/\$\{encodeURIComponent\(entry\.id\)\}\?token=\$\{encodeURIComponent\(entry\.token\)\}`\)/, 'singurul fetch permis trebuie sa fie STRICT GET /api/orders/:id?token=, niciodata /generate, /checkout sau alt endpoint');
   assert.ok(!/XMLHttpRequest/.test(snippet));
 });
 
@@ -201,30 +207,55 @@ test('20. sandbox: la incarcare (refresh/back) cu STEP_KEY deja existent (draft 
 // TEST 5/6 — browser cu 1 / 2 comenzi autorizate: numarul afisat vine STRICT din ownership local
 // (naluna_my_order_keys), niciodata din email.
 // ===============================================================================================
-test('5. sandbox: computeLocalKnownOrderCount() intoarce 1 pentru un browser cu exact o comanda autorizata local', () => {
-  const { api } = loadGateSandbox({ storedOrders: [{ id: 'ord-1', token: 'a'.repeat(48) }] });
-  assert.equal(api.computeLocalKnownOrderCount(), 1);
+// BUG REAL (2026-09-28) — vezi test/gate-count-vs-list-contradiction.test.js: numarul afisat aici
+// nu mai e un simplu count local (fara verificare), ci STRICT numarul de comenzi CONFIRMATE
+// server-side ca exista si sunt eligibile (acelasi filtru ca in comenzile-mele.html). Testele de
+// mai jos simuleaza raspunsul serverului pentru fiecare {id,token} cunoscut local.
+function jsonRes(obj) { return { ok: true, json: async () => obj }; }
+function confirmedOrderFetchImpl(byId) {
+  return async (url) => {
+    const m = /\/api\/orders\/([^?]+)\?token=/.exec(url);
+    const id = decodeURIComponent(m[1]);
+    if (!(id in byId)) return { ok: false, status: 404 };
+    return jsonRes(byId[id]);
+  };
+}
+
+test('5. sandbox: computeVerifiedKnownOrderCount() intoarce 1 pentru un browser cu exact o comanda autorizata local, CONFIRMATA eligibila de server', async () => {
+  const { api } = loadGateSandbox({
+    storedOrders: [{ id: 'ord-1', token: 'a'.repeat(48) }],
+    fetchImpl: confirmedOrderFetchImpl({ 'ord-1': { id: 'ord-1', status: 'ready' } })
+  });
+  assert.equal(await api.computeVerifiedKnownOrderCount(), 1);
 });
 
-test('6. sandbox: computeLocalKnownOrderCount() intoarce 2 pentru un browser cu exact doua comenzi autorizate local', () => {
-  const { api } = loadGateSandbox({ storedOrders: [{ id: 'ord-1', token: 'a'.repeat(48) }, { id: 'ord-2', token: 'b'.repeat(48) }] });
-  assert.equal(api.computeLocalKnownOrderCount(), 2);
+test('6. sandbox: computeVerifiedKnownOrderCount() intoarce 2 pentru un browser cu exact doua comenzi autorizate local, ambele CONFIRMATE eligibile de server', async () => {
+  const { api } = loadGateSandbox({
+    storedOrders: [{ id: 'ord-1', token: 'a'.repeat(48) }, { id: 'ord-2', token: 'b'.repeat(48) }],
+    fetchImpl: confirmedOrderFetchImpl({ 'ord-1': { id: 'ord-1', status: 'ready' }, 'ord-2': { id: 'ord-2', status: 'preview_ready' } })
+  });
+  assert.equal(await api.computeVerifiedKnownOrderCount(), 2);
 });
 
-test('8/9. sandbox: computeLocalKnownOrderCount() ignora intrarile fara id/token valide (NU deriva niciodata "ownership" din simpla prezenta a unui email) si intoarce 0 pentru un browser fara tokenuri', () => {
+test('8/9. sandbox: computeVerifiedKnownOrderCount() ignora intrarile fara id/token valide (NU deriva niciodata "ownership" din simpla prezenta a unui email) si intoarce 0 pentru un browser fara tokenuri', async () => {
   const { api: apiEmpty } = loadGateSandbox({ storedOrders: [] });
-  assert.equal(apiEmpty.computeLocalKnownOrderCount(), 0);
+  assert.equal(await apiEmpty.computeVerifiedKnownOrderCount(), 0);
   const { api: apiMalformed } = loadGateSandbox({ storedOrders: [{ id: 'ord-1' }, { token: 'x' }, null, {}] });
-  assert.equal(apiMalformed.computeLocalKnownOrderCount(), 0, 'intrari fara id+token complet nu conteaza ca ownership');
+  assert.equal(await apiMalformed.computeVerifiedKnownOrderCount(), 0, 'intrari fara id+token complet nu conteaza ca ownership');
 });
 
-test('sandbox: showGateChoiceScreen() foloseste STRICT numarul calculat local (count>0 -> mesaj cu numar; count=0 -> mesajul generic implicit), niciodata legat de email', () => {
-  const withOrders = loadGateSandbox({ storedOrders: [{ id: 'a', token: 'x'.repeat(48) }] });
+test('sandbox: showGateChoiceScreen() foloseste STRICT numarul CONFIRMAT server-side (count>0 -> mesaj cu numar; count=0 -> mesajul generic implicit), niciodata legat de email', async () => {
+  const withOrders = loadGateSandbox({
+    storedOrders: [{ id: 'a', token: 'x'.repeat(48) }],
+    fetchImpl: confirmedOrderFetchImpl({ a: { id: 'a', status: 'ready' } })
+  });
   withOrders.api.showGateChoiceScreen();
+  await new Promise((r) => setTimeout(r, 0));
   assert.equal(withOrders.elements['gate-my-orders-desc'].textContent, 'COUNT:1');
 
   const withoutOrders = loadGateSandbox({ storedOrders: [] });
   withoutOrders.api.showGateChoiceScreen();
+  await new Promise((r) => setTimeout(r, 0));
   assert.equal(withoutOrders.elements['gate-my-orders-desc'].textContent, 'T:gate_my_orders_desc');
 });
 
