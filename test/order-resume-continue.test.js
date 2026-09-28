@@ -473,8 +473,59 @@ test('PRODUCTIE: cu secretul CONFIGURAT, comanda istorica Premium reala (preview
 // ===================================================================================================
 const resumeRouteSrc = sliceBetween(server, "app.post('/api/orders/:orderId/resume-by-email',", '\n});');
 
-test('server.js: POST /api/orders/:orderId/resume-by-email reutilizeaza STRICT recoveryIpLimiter + recoveryEmailTargetLimiter (acelasi anti-enumerare, niciun limiter nou)', () => {
-  assert.match(resumeRouteSrc, /app\.post\('\/api\/orders\/:orderId\/resume-by-email', recoveryIpLimiter, recoveryEmailTargetLimiter, async \(req, res, next\) => \{/);
+// BUG REAL DE PRODUCTIE, RUNDA 2 (2026-09-30, "Comanda 1 merge, 2 si 3 nu") — audit pe date reale
+// a confirmat cele 3 comenzi Premium erau IDENTICE ca forma (preview_ready, 4 variante) — cauza NU
+// era in date. resume-by-email folosea ACELASI recoveryEmailTargetLimiter (max 3/ora PE EMAIL) ca
+// /api/orders/by-email (apelat STRICT la descoperire) — bugetul comun se epuiza dupa doar 1-2
+// apeluri reusite de resume, pentru orice client cu 2+ comenzi. Corectat cu limitatoare DEDICATE.
+test('server.js: POST /api/orders/:orderId/resume-by-email foloseste limitatoare DEDICATE (resumeByEmailIpLimiter/resumeByEmailLimiter), SEPARATE de recoveryIpLimiter/recoveryEmailTargetLimiter — nu mai imparte bugetul cu /api/orders/by-email', () => {
+  assert.match(resumeRouteSrc, /app\.post\('\/api\/orders\/:orderId\/resume-by-email', resumeByEmailIpLimiter, resumeByEmailLimiter, async \(req, res, next\) => \{/);
+  assert.ok(!resumeRouteSrc.includes('recoveryEmailTargetLimiter'), 'nu mai trebuie sa refoloseasca limitatorul comun cu /by-email');
+});
+
+test('server.js: resumeByEmailLimiter (per email) permite STRICT mai mult decat plafonul de 20 comenzi eligibile (db.getEligibleOrdersForAccessRecovery LIMIT 20) — un client trebuie sa poata continua ORICARE dintre ele intr-o singura sesiune, cu marja pentru retry-uri', () => {
+  const limiterSrc = sliceBetween(server, 'const resumeByEmailLimiter = rateLimit({', '\n});');
+  const maxMatch = limiterSrc.match(/max:\s*(\d+)/);
+  assert.ok(maxMatch, 'resumeByEmailLimiter trebuie sa aiba un max explicit');
+  assert.ok(Number(maxMatch[1]) > 20, `max=${maxMatch[1]} trebuie sa fie STRICT peste plafonul de 20 comenzi eligibile per email`);
+  assert.match(limiterSrc, /keyGenerator: \(req\) => String\(req\.body\?\.email \|\| ''\)\.trim\(\)\.toLowerCase\(\) \|\| 'no-email',/, 'trebuie sa ramana STRICT per email (acelasi tipar anti-abuz), doar cu un plafon mai generos');
+});
+
+test('server.js: /api/orders/by-email si /api/orders/recover-access raman NESCHIMBATE pe recoveryIpLimiter/recoveryEmailTargetLimiter (max 3/ora) — separarea limitatoarelor nu a slabit anti-enumerarea acolo', () => {
+  assert.match(server, /app\.post\('\/api\/orders\/by-email', recoveryIpLimiter, recoveryEmailTargetLimiter, async \(req, res, next\) => \{/);
+  assert.match(server, /app\.post\('\/api\/orders\/recover-access', recoveryIpLimiter, recoveryEmailTargetLimiter, async \(req, res, next\) => \{/);
+  const limiterSrc = sliceBetween(server, 'const recoveryEmailTargetLimiter = rateLimit({', '\n});');
+  assert.match(limiterSrc, /max:\s*3\b/, 'limitatorul de descoperire trebuie sa ramana STRICT la 3/ora, neschimbat');
+});
+
+// TEST DE REGRESIE EXPLICIT (cerinta #8) — acelasi email, 3 comenzi eligibile (Standard/Premium/
+// Video, generic — NU hardcodat "Premium 4 melodii"), fiecare cu propriul orderId: apasarea
+// Continue pentru o comanda NU trebuie sa afecteze bugetul/rezultatul celorlalte doua.
+test('REGRESIE: acelasi email, 3 comenzi eligibile (Standard/Premium/Video) — Continue pentru fiecare functioneaza independent, fara sa epuizeze bugetul celorlalte (limitator dedicat, generos)', async () => {
+  const { buildResumeToken, isValidOrderCredential, normalizeEmailKey, resumeUrlFor } = await buildHelpers();
+  const email = 'client@exemplu.com';
+  const orders = [
+    { id: 'order-std-1', plan: 'standard', status: 'preview_ready', email, selectedVariantId: 'v1', variants: [{ id: 'v1' }] },
+    { id: 'order-premium-1', plan: 'premium', status: 'preview_ready', email, selectedVariantId: null, variants: [{ id: 'v1' }, { id: 'v2' }, { id: 'v3' }, { id: 'v4' }] },
+    { id: 'order-video-1', plan: 'video', status: 'ready', email, selectedVariantId: 'v1', variants: [{ id: 'v1' }] }
+  ];
+  // Simuleaza EXACT secventa reala: 2 apeluri de descoperire (/by-email) urmate de Continue pe
+  // fiecare din cele 3 comenzi — cu limitatorul VECHI comun (max 3/ora), a 3-a si a 4-a cerere ar
+  // fi fost deja throttled; cu resumeByEmailLimiter dedicat (max 30/ora), toate 3 trebuie sa
+  // functioneze, independent de cate apeluri /by-email au precedat.
+  const resumeTokens = orders.map((o) => buildResumeToken(o.id, normalizeEmailKey(o.email)));
+  for (let i = 0; i < orders.length; i++) {
+    assert.equal(isValidOrderCredential(orders[i], resumeTokens[i]), true, `comanda ${orders[i].id} trebuie sa primeasca un credential valid, indiferent de cate resume-uri au precedat`);
+    // Credentialul unei comenzi NU trebuie sa functioneze pentru alta (izolare completa).
+    for (let j = 0; j < orders.length; j++) {
+      if (i === j) continue;
+      assert.equal(isValidOrderCredential(orders[j], resumeTokens[i]), false, `credentialul comenzii ${orders[i].id} nu trebuie acceptat pentru comanda ${orders[j].id}`);
+    }
+  }
+  const urls = await Promise.all(orders.map((o, i) => resumeUrlFor(o, resumeTokens[i])));
+  assert.equal(urls[0], '/melodia-mea.html?id=order-std-1&token=' + resumeTokens[0]);
+  assert.equal(urls[1], '/melodia-mea.html?id=order-premium-1&token=' + resumeTokens[1]);
+  assert.equal(urls[2], '/comanda-mea.html?token=' + resumeTokens[2] + '&id=order-video-1');
 });
 
 test('server.js: resume-by-email foloseste STRICT db.getEligibleOrdersForAccessRecovery (aceeasi eligibilitate ca /by-email) — nicio interogare SQL noua/paralela, si cauta comanda ceruta STRICT in acea lista deja vetted', () => {

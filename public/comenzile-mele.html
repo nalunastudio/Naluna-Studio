@@ -477,11 +477,11 @@
   // NU mai redam playere audio AICI (ar fi un al doilea sistem de redare, duplicat) — STRICT un
   // sumar clar: "Comanda N — Pachet" / titlul melodiei (daca exista) / "Pentru destinatar" /
   // "N melodii" (date reale, niciodata inventate), plus statusul (Gata/Se compune).
+  // BADGE DE STATUS ELIMINAT (2026-09-30, cerinta explicita dupa testul real in productie):
+  // "Se compune" era confuz pe carduri care au deja melodii generate (preview_ready cu variante
+  // reale) — cardul ramane STRICT plan/destinatar/titlu/numar de melodii. Neinlocuit acum cu alt
+  // status (decizie explicita).
   function orderCardBodyHtml(order, index) {
-    const isReady = order.status === 'ready';
-    const accessExpired = isReady && !!order.hostedAccessExpired;
-    const statusLabel = isReady ? t.status_ready : t.status_progress;
-    const statusClass = isReady ? 'status-ready' : 'status-progress';
     const count = realSongCount(order);
     const titleHtml = order.songTitle ? `<div class="song-title">${escapeHtml(order.songTitle)}</div>` : '';
     return `
@@ -489,7 +489,6 @@
       ${titleHtml}
       <div class="for-line">${escapeHtml(t.for_label)} ${escapeHtml(stripRedundantForPrefix(order.recipient, lang))}</div>
       ${count > 0 ? `<div class="count-line">${escapeHtml(t.song_count(count))}</div>` : ''}
-      ${accessExpired ? '' : `<span class="status ${statusClass}">${escapeHtml(statusLabel)}</span>`}
     `;
   }
 
@@ -575,6 +574,17 @@
   // (t.blocked_empty) explica DEJA situatia reala ("nu vezi comenzi") — a mai afisa si "Nu am
   // gasit nicio comanda" DEDESUBT era redundant/confuz. Mesajul empty_no_orders ramane STRICT
   // pentru cazul FARA niciun context de blocare.
+  // BUTON REDUNDANT ELIMINAT DIN STAREA "COMENZI DEJA AFISATE" (2026-09-30, cerinta explicita
+  // dupa testul real in productie) — "Vezi comenzile mele" nu mai are sens odata ce clientul vede
+  // deja comenzile lui pe ecran (indiferent daca au aparut automat sau prin aceasta cautare
+  // manuala). Ascunde STRICT butonul primar (#recovery-btn) — campul de email si fallback-ul
+  // "Trimite-mi link pe email" raman functionale, pentru cazul unei comenzi sub alt email. NU se
+  // apeleaza niciodata pe ramura "nicio comanda gasita" (handleNoVisibleOrders/mesajul de eroare
+  // de mai jos) — acolo cautarea initiala ramane STRICT necesara si vizibila.
+  function hideRedundantRecoveryButton() {
+    document.getElementById('recovery-btn').style.display = 'none';
+  }
+
   function handleNoVisibleOrders() {
     const recoveryBox = document.getElementById('recovery-box');
     if (wasBlocked) {
@@ -693,6 +703,7 @@
       listEl.appendChild(card);
     });
     recoveryBox.style.display = '';
+    hideRedundantRecoveryButton();
   }
 
   loadAndRenderOrders().catch(() => {
@@ -743,6 +754,7 @@
     listEl.innerHTML = '';
     eligible.forEach((o, i) => listEl.appendChild(renderReadOnlyOrderCard(o, i + 1, o.previewVariantIds, email)));
     resultEl.style.display = 'none';
+    hideRedundantRecoveryButton();
   });
 
   // FALLBACK SECUNDAR (cerinta explicita, "recovery prin email poate ramane ca fallback secundar

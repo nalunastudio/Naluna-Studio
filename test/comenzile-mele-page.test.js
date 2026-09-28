@@ -622,6 +622,112 @@ test('sandbox: acces expirat (hostedAccessExpired) — numarul real de melodii r
   assert.ok(!card.innerHTML.includes('status-ready'), 'nu trebuie afisat pill-ul de status cand accesul gazduit a expirat');
 });
 
+// ===================================================================================================
+// BUG REAL DE PRODUCTIE, RUNDA 2 (2026-09-30) — UX: badge-ul "SE COMPUNE" (status_progress) e
+// confuz pe carduri cu melodii deja generate — eliminat COMPLET (nu doar pentru cazul expirat de
+// mai sus), pentru orice comanda, indiferent de status. Neinlocuit acum cu alt status.
+// ===================================================================================================
+test('sandbox: NICIUN card (indiferent de status) nu mai afiseaza vreun badge/pill de status ("Gata"/"Se compune") — eliminat complet, nu doar pentru comenzi expirate', async () => {
+  const tok = 'h'.repeat(48);
+  const { api, elements } = buildSandbox({
+    storedOrders: [{ id: 'order-progress', token: tok }],
+    fetchImpl: (url) => (url.includes('order-progress')
+      ? jsonRes({ id: 'order-progress', plan: 'premium', recipient: 'Maria', status: 'preview_ready', createdAt: '2026-09-01T00:00:00Z', songCount: 4, hostedAccessExpired: false })
+      : { ok: false })
+  });
+  await api.__loadPromise;
+  const card = elements['orders-list'].children[0];
+  assert.ok(!card.innerHTML.includes('class="status'), 'niciun pill de status nu mai trebuie afisat pe card');
+  assert.ok(!card.innerHTML.includes(api.t.status_progress), '"Se compune" nu mai trebuie afisat, nici macar pentru o comanda inca in preview_ready');
+  assert.match(card.innerHTML, /4 (melodii|songs)/i, 'numarul real de melodii ramane afisat');
+});
+
+// ===================================================================================================
+// BUG REAL DE PRODUCTIE, RUNDA 2 — UX: "Vezi comenzile mele" e redundant odata ce comenzile sunt
+// deja afisate (indiferent daca au aparut automat sau prin cautarea manuala) — ascuns STRICT in
+// acel caz; campul de email si fallback-ul "Trimite-mi link pe email" raman functionale. Cautarea
+// initiala (STAREA A, fara comenzi incarcate inca) ramane complet neatinsa.
+// ===================================================================================================
+test('sandbox: dupa afisarea AUTOMATA a comenzilor (token local confirmat), butonul "Vezi comenzile mele" e ascuns — fallback-ul de email ramane vizibil/functional', async () => {
+  const tok = 'i'.repeat(48);
+  const { api, elements } = buildSandbox({
+    storedOrders: [{ id: 'order-auto', token: tok }],
+    fetchImpl: (url) => (url.includes('order-auto')
+      ? jsonRes({ id: 'order-auto', plan: 'standard', recipient: 'Maria', status: 'ready', createdAt: '2026-09-01T00:00:00Z', hasGiftAudio: false, hasPremiumBonusAudio: false, hostedAccessExpired: false })
+      : { ok: false })
+  });
+  await api.__loadPromise;
+  assert.equal(elements['orders-list'].children.length, 1);
+  assert.equal(elements['recovery-btn'].style.display, 'none', 'butonul primar redundant trebuie ascuns odata ce o comanda e deja afisata');
+  assert.notEqual(elements['recovery-email-fallback-btn'].style.display, 'none', 'fallback-ul de email trebuie sa ramana vizibil/functional');
+});
+
+test('sandbox: dupa cautarea MANUALA reusita (buton "Vezi comenzile mele" -> comenzi gasite), acelasi buton se ascunde singur — fara sa afecteze campul de email sau fallback-ul', async () => {
+  const { api, elements } = buildSandbox({
+    storedOrders: [],
+    fetchImpl: (url) => (url === '/api/orders/by-email'
+      ? jsonRes({ orders: [{ id: 'order-manual', plan: 'premium', recipient: 'Ana', status: 'preview_ready', createdAt: '2026-09-01T00:00:00Z', songCount: 2, hostedAccessExpired: false }] })
+      : { ok: false })
+  });
+  await api.__loadPromise;
+  assert.notEqual(elements['recovery-btn'].style.display, 'none', 'STAREA A (nimic incarcat inca) — butonul trebuie sa ramana vizibil, cautarea initiala ramane necesara');
+  elements['recovery-email'].value = 'client@exemplu.com';
+  await elements['recovery-btn'].__listeners.click();
+  assert.equal(elements['orders-list'].children.length, 1);
+  assert.equal(elements['recovery-btn'].style.display, 'none', 'dupa gasirea comenzilor manual, butonul redundant trebuie ascuns');
+});
+
+test('sandbox: cand NICIO comanda nu e gasita (email fara comenzi, sau lista goala fara token), butonul "Vezi comenzile mele" RAMANE vizibil — STAREA A, cautarea initiala ramane necesara', async () => {
+  const { api, elements } = buildSandbox({
+    storedOrders: [],
+    fetchImpl: (url) => (url === '/api/orders/by-email' ? jsonRes({ orders: [] }) : { ok: false })
+  });
+  await api.__loadPromise;
+  assert.notEqual(elements['recovery-btn'].style.display, 'none', 'fara comenzi incarcate, butonul de cautare initiala trebuie sa ramana vizibil');
+});
+
+// ===================================================================================================
+// TEST DE REGRESIE (cerinta #4 — audit event binding) — fiecare card foloseste PROPRIUL orderId si
+// email: apasarea butonului unei comenzi NU trebuie sa foloseasca vreodata id-ul/emailul altei
+// comenzi (nicio closure/id/dataset partajat gresit, niciun listener atasat doar primului element).
+// ===================================================================================================
+test('sandbox: 3 comenzi eligibile prin email — apasarea Continue pe FIECARE card cere resume-by-email STRICT cu propriul orderId, niciodata id-ul altei comenzi (fara closure/state partajat)', async () => {
+  const { api, elements, fetchCalls } = buildSandbox({
+    pendingRecoveryEmail: 'client@exemplu.com',
+    fetchImpl: (url) => {
+      if (url === '/api/orders/by-email') {
+        return jsonRes({ orders: [
+          { id: 'order-A', plan: 'standard', recipient: 'Maria', status: 'preview_ready', createdAt: '2026-09-01T00:00:00Z', songCount: 1, hostedAccessExpired: false, canResume: true },
+          { id: 'order-B', plan: 'premium', recipient: 'Maria', status: 'preview_ready', createdAt: '2026-09-02T00:00:00Z', songCount: 4, hostedAccessExpired: false, canResume: true },
+          { id: 'order-C', plan: 'video', recipient: 'Maria', status: 'ready', createdAt: '2026-09-03T00:00:00Z', songCount: 1, hostedAccessExpired: false, canResume: true }
+        ] });
+      }
+      if (url.includes('/resume-by-email')) {
+        return jsonRes({ canResume: true, resumeUrl: '/resumed?for=' + url.split('/api/orders/')[1].split('/')[0] });
+      }
+      return { ok: false };
+    }
+  });
+  await api.__loadPromise;
+  const cards = elements['orders-list'].children;
+  assert.equal(cards.length, 3);
+  const findBtn = (card) => card.children.find((c) => c.className === 'continue-cta-btn');
+  for (let i = 0; i < cards.length; i++) {
+    assert.ok(findBtn(cards[i]), `cardul ${i} trebuie sa aiba propriul buton de continuare`);
+  }
+  // Apasam in ordine INVERSA (C, apoi A, apoi B) — anume ca sa dovedim ca nu exista niciun
+  // "primul orderId reutilizat" sau stare ramasa de la un click anterior.
+  await findBtn(cards[2]).__listeners.click();
+  await findBtn(cards[0]).__listeners.click();
+  await findBtn(cards[1]).__listeners.click();
+  const resumeCalls = fetchCalls.filter((c) => c.url.includes('/resume-by-email'));
+  assert.equal(resumeCalls.length, 3);
+  assert.equal(resumeCalls[0].url, '/api/orders/order-C/resume-by-email');
+  assert.equal(resumeCalls[1].url, '/api/orders/order-A/resume-by-email');
+  assert.equal(resumeCalls[2].url, '/api/orders/order-B/resume-by-email');
+  resumeCalls.forEach((c) => assert.equal(c.opts.body, JSON.stringify({ email: 'client@exemplu.com' }), 'fiecare cerere trebuie sa foloseasca STRICT acelasi email real, niciodata unul gresit/lipsa'));
+});
+
 test('node --check server.js si db.js trec (nicio eroare de sintaxa)', () => {
   const { execFileSync } = require('node:child_process');
   assert.doesNotThrow(() => execFileSync(process.execPath, ['--check', path.join(__dirname, '..', 'server.js')]));

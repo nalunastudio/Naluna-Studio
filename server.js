@@ -1781,6 +1781,31 @@ const recoveryEmailTargetLimiter = rateLimit({
   keyGenerator: (req) => String(req.body?.email || '').trim().toLowerCase() || 'no-email',
   handler: (req, res, next) => { req.recoveryEmailThrottled = true; next(); }
 });
+// BUG REAL DE PRODUCTIE (2026-09-30, "Comanda 1 merge, Comenzile 2 si 3 primesc mereu 'nu poate fi
+// continuata'"): audit direct pe date reale a confirmat cele 3 comenzi Premium ale clientului erau
+// IDENTICE ca forma (preview_ready, 4 variante, aceeasi eligibilitate) — deci diferenta NU era in
+// date. Cauza reala: POST /resume-by-email (apelat O DATA per click "Continua", deci de mai multe
+// ori intr-o singura sesiune pentru un client cu mai multe comenzi) folosea ACELASI
+// recoveryEmailTargetLimiter (max 3/ora PE EMAIL) ca /api/orders/by-email (apelat STRICT la
+// descoperire) — bugetul comun se epuiza dupa doar 1-2 apeluri reusite de resume, pentru orice
+// client cu 2+ comenzi, indiferent de starea lor. Rezolvat prin limitatoare DEDICATE, separate de
+// cele de descoperire (care raman NESCHIMBATE — acelasi comportament anti-enumerare ca inainte):
+// max 30/ora pe email (confortabil peste plafonul de 20 comenzi eligibile per email,
+// db.getEligibleOrdersForAccessRecovery LIMIT 20 — un client poate continua ORICARE dintre ele
+// intr-o singura sesiune) si max 40/15min pe IP (acelasi rationament, plus marja pentru
+// retry-uri/dublu-click). Amandoua raman STRICT anti-abuz — orderId e un UUID negasibil prin
+// ghicire, iar raspunsul e identic (canResume:false) indiferent de motiv, deci nu ofera niciun
+// semnal nou de enumerare fata de /by-email.
+const resumeByEmailIpLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, max: 40, standardHeaders: true, legacyHeaders: false,
+  keyGenerator: realClientIp,
+  message: { error: 'Prea multe încercări. Încearcă din nou mai târziu' }
+});
+const resumeByEmailLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, max: 30, standardHeaders: false, legacyHeaders: false,
+  keyGenerator: (req) => String(req.body?.email || '').trim().toLowerCase() || 'no-email',
+  handler: (req, res, next) => { req.recoveryEmailThrottled = true; next(); }
+});
 // LAUNCH SAFETY (2026-09-01, Faza 3 — vector DoS evident): endpoint-urile de upload media
 // (Cadou video) erau protejate doar de requireOrderToken (imposibil de ghicit, dar odata
 // cunoscut un token real, cererile puteau fi repetate nelimitat). Aplicat STRICT pe
@@ -3995,7 +4020,7 @@ app.post('/api/orders/by-email', recoveryIpLimiter, recoveryEmailTargetLimiter, 
 // nu trimite email — STRICT calculeaza si returneaza o adresa de continuare pentru starea deja
 // existenta a comenzii (resumeUrlFor mai sus). NU returneaza NICIODATA accessToken-ul real.
 // ==========================================================================================
-app.post('/api/orders/:orderId/resume-by-email', recoveryIpLimiter, recoveryEmailTargetLimiter, async (req, res, next) => {
+app.post('/api/orders/:orderId/resume-by-email', resumeByEmailIpLimiter, resumeByEmailLimiter, async (req, res, next) => {
   try {
     if (!UUID_RE.test(req.params.orderId)) return res.json({ canResume: false });
 
