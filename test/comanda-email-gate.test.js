@@ -55,9 +55,9 @@ test('1. comanda.html: gate-email-screen e vizibil implicit (fara style="display
 // SANDBOX — extragem STRICT logica gate-ului (fara restul wizard-ului, acelasi tipar deja folosit
 // in test/wizard-step-renumbering.test.js), cu document/localStorage/fetch simulate.
 // ===============================================================================================
-function loadGateSandbox({ storedOrders, stepKeyValue, restoredStepValue = 3, fetchImpl } = {}) {
+function loadGateSandbox({ storedOrders, stepKeyValue, restoredStepValue = 3, fetchImpl, navigationType = 'reload', initialEmailValue = '' } = {}) {
   const startMarker = "const gateEmailScreen = document.getElementById('gate-email-screen');";
-  const endMarker = 'if (gateAlreadyPassed) {\n    enterWizardAfterGate();\n  }';
+  const endMarker = "if (emailField) emailField.value = '';\n    } catch (err) { /* ignoram */ }\n  }";
   const startIdx = html.indexOf(startMarker);
   const endIdx = html.indexOf(endMarker, startIdx) + endMarker.length;
   assert.ok(startIdx !== -1 && endIdx > startIdx, 'nu am gasit blocul JS al gate-ului in comanda.html');
@@ -70,7 +70,7 @@ function loadGateSandbox({ storedOrders, stepKeyValue, restoredStepValue = 3, fe
     'gate-choice-screen': { style: {} },
     'progress-wrap': { style: {} },
     'gate-my-orders-desc': { textContent: '' },
-    email: { value: '' },
+    email: { value: initialEmailValue },
     'gate-email-continue-btn': { addEventListener: (evt, fn) => { listeners.emailContinue = fn; } },
     'gate-new-song-btn': { addEventListener: (evt, fn) => { listeners.newSong = fn; } }
   };
@@ -92,13 +92,17 @@ function loadGateSandbox({ storedOrders, stepKeyValue, restoredStepValue = 3, fe
   function saveDraft() { calls.saveDraft++; }
   function showStep(n) { calls.showStep.push(n); }
   function t(key) { return key === 'gate_my_orders_count' ? ((n) => `COUNT:${n}`) : `T:${key}`; }
+  // Navigation Timing API simulata (vezi comanda.html, getNavigationType) — 'reload'/'back_forward'
+  // = continuarea aceleiasi navigari (dead-end fix, comportament implicit aici), 'navigate' =
+  // intrare noua (homepage/CTA/bookmark), folosit explicit de testele PROBLEMA 1 de mai jos.
+  const fakePerformance = { getEntriesByType: (type) => (type === 'navigation' ? [{ type: navigationType }] : []) };
 
   const build = new Function(
-    'document', 'localStorage', 'fetch', 'STEP_KEY', 'restoredStep', 'isValidEmailClient', 'setFieldError', 'saveDraft', 'showStep', 't',
+    'document', 'localStorage', 'fetch', 'STEP_KEY', 'restoredStep', 'isValidEmailClient', 'setFieldError', 'saveDraft', 'showStep', 't', 'performance',
     snippet + '\nreturn { computeVerifiedKnownOrderCount, showGateChoiceScreen, enterWizardAfterGate, gateAlreadyPassed };'
   );
-  const api = build(fakeDocument, fakeLocalStorage, fakeFetch, 'currentStep', restoredStepValue, isValidEmailClient, setFieldError, saveDraft, showStep, t);
-  return { api, elements, listeners, calls, snippet };
+  const api = build(fakeDocument, fakeLocalStorage, fakeFetch, 'currentStep', restoredStepValue, isValidEmailClient, setFieldError, saveDraft, showStep, t, fakePerformance);
+  return { api, elements, listeners, calls, snippet, storageRef: storage };
 }
 
 test('sandbox: blocul JS al gate-ului exista si e sintactic valid, izolat', () => {
@@ -201,6 +205,56 @@ test('20. sandbox: la incarcare (refresh/back) cu STEP_KEY deja existent (draft 
   assert.equal(api.gateAlreadyPassed, true);
   assert.deepEqual(calls.showStep, [4]);
   assert.equal(calls.fetch, 0);
+});
+
+// ===============================================================================================
+// PROBLEMA 1 (2026-09-29, "O comanda noua trebuie sa inceapa INTOTDEAUNA cu emailul" — audit +
+// reproducere directa): STEP_KEY ramane NELIMITAT in localStorage (setat de showStep() la orice
+// pas, inclusiv 1) — o comanda abandonata acum saptamani nu trebuie sa mai sara gate-ul la o
+// intrare noua, chiar daca STEP_KEY exista inca. Distinctia vine STRICT din Navigation Timing API
+// (navigationType, simulat mai sus): 'reload'/'back_forward' = continuarea aceleiasi navigari
+// (comportamentul deja testat mai sus, NESCHIMBAT), 'navigate' = intrare noua (homepage/CTA/
+// bookmark) — gate-ul TREBUIE aratat, indiferent de STEP_KEY.
+// ===============================================================================================
+test('PROBLEMA 1: intrare noua (navigationType navigate) cu STEP_KEY vechi existent (comanda abandonata la orice pas, saptamani in urma) -> gate-ul NU e sarit, indiferent de STEP_KEY', () => {
+  const { calls, api } = loadGateSandbox({ stepKeyValue: '4', restoredStepValue: 4, navigationType: 'navigate' });
+  assert.equal(api.gateAlreadyPassed, false, 'o intrare noua nu trebuie sa sara gate-ul, chiar daca STEP_KEY exista din o comanda abandonata anterior');
+  assert.deepEqual(calls.showStep, [], 'showStep nu trebuie apelat automat la o intrare noua — wizard-ul ramane in spatele gate-ului pana la alegerea explicita a clientului');
+});
+
+test('PROBLEMA 1: naluna_my_order_keys NU este sters/modificat de verificarea de tip navigare — comenzile deja autorizate raman intacte, indiferent de tipul de navigare sau daca gate-ul e sarit', () => {
+  const knownOrdersJson = JSON.stringify([{ id: 'ord-1', token: 'a'.repeat(48) }, { id: 'ord-2', token: 'b'.repeat(48) }]);
+  for (const navigationType of ['navigate', 'reload', 'back_forward']) {
+    const { storageRef } = loadGateSandbox({
+      storedOrders: JSON.parse(knownOrdersJson), stepKeyValue: '4', navigationType
+    });
+    assert.equal(storageRef.naluna_my_order_keys, knownOrdersJson, `naluna_my_order_keys trebuie neatins pentru navigationType=${navigationType}`);
+  }
+});
+
+test('PROBLEMA 1: intrare noua (navigate) NU sterge naluna_my_order_keys si NU atinge DRAFT_KEY — STRICT campul de email vizibil e golit, ca sa nu se presupuna reutilizarea automata a emailului unei comenzi anterioare', () => {
+  // initialEmailValue simuleaza exact ce face restoreDraft() INAINTE de acest bloc (deja testat
+  // separat, neschimbat): campul de email pre-completat cu valoarea unui draft vechi. Blocul de
+  // gate trebuie sa il goleasca la o intrare noua, ca sa nu se presupuna reutilizarea automata a
+  // acelui email.
+  const { api, elements, storageRef } = loadGateSandbox({
+    storedOrders: [{ id: 'ord-1', token: 'a'.repeat(48) }],
+    stepKeyValue: '4',
+    navigationType: 'navigate',
+    initialEmailValue: 'vechi@exemplu.com'
+  });
+  assert.equal(api.gateAlreadyPassed, false);
+  assert.equal(elements.email.value, '', 'campul de email trebuie golit la o intrare noua, chiar daca un draft vechi il pre-completase');
+  assert.equal(storageRef.naluna_my_order_keys, JSON.stringify([{ id: 'ord-1', token: 'a'.repeat(48) }]), 'naluna_my_order_keys nu trebuie atins de aceasta verificare — comenzile deja autorizate raman intacte');
+  assert.ok(!('nds_form_draft' in storageRef), 'DRAFT_KEY nu e scris/sters de acest bloc — el nu face parte din snippet-ul extras (saveDraft e apelat STRICT de handlerele de click, neschimbate)');
+});
+
+test('PROBLEMA 1: refresh/back_forward mid-wizard NU goleste campul de email (continuarea aceleiasi navigari, NU o intrare noua) — dead-end fix anterior ramane neschimbat', () => {
+  const { api, elements } = loadGateSandbox({
+    stepKeyValue: '4', restoredStepValue: 4, navigationType: 'reload', initialEmailValue: 'client@exemplu.com'
+  });
+  assert.equal(api.gateAlreadyPassed, true);
+  assert.equal(elements.email.value, 'client@exemplu.com', 'un refresh mid-wizard nu trebuie sa goleasca un camp deja completat in aceasta sesiune');
 });
 
 // ===============================================================================================

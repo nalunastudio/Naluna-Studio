@@ -3839,18 +3839,51 @@
 
   document.getElementById('gate-new-song-btn').addEventListener('click', enterWizardAfterGate);
 
-  // Sarim gate-ul STRICT daca acest browser a ajuns deja o data in interiorul wizard-ului
-  // numerotat (STEP_KEY exista in localStorage — setat de showStep(), mai sus) — un refresh/
-  // navigare inapoi cat timp clientul completeaza activ formularul nu trebuie sa il intrerupa,
-  // cerandu-i din nou emailul. Un browser complet nou (sau unul al carui draft anterior a fost
-  // deja trimis/sters — vezi localStorage.removeItem(DRAFT_KEY) la trimiterea reusita) vede
-  // intotdeauna gate-ul, indiferent de istoricul lui de comenzi — cerinta explicita: emailul e
-  // cerut ca prim contact de fiecare data cand incepe o comanda noua, de la zero.
+  // BUG REAL (2026-09-29, "O comanda noua trebuie sa inceapa INTOTDEAUNA cu emailul" — audit +
+  // reproducere directa): STEP_KEY e setat de showStep() la FIECARE pas, inclusiv pasul 1 — o
+  // comanda abandonata la pasul 1 acum cateva saptamani lasa STEP_KEY='1' NELIMITAT in
+  // localStorage. Verificarea veche (`STEP_KEY !== null`) nu distingea "acelasi tab, refresh/
+  // Inapoi/Inainte in mijlocul formularului" (unde sarirea gate-ului e corecta — dead-end fix
+  // anterior) de "intrare noua, de la zero, chiar dupa ce clientul a inchis complet browserul si
+  // a revenit prin Comanda acum" (unde gate-ul TREBUIE aratat, indiferent de STEP_KEY) — motivul
+  // exact pentru care clientul ajungea direct la "Pasul 1 din 5" cu emailul/starea veche,
+  // niciodata prin gate. Distinctia reala vine din Navigation Timing API, NU dintr-o presupunere:
+  // 'reload' si 'back_forward' raman STRICT continuarea aceleiasi navigari (dead-end fix
+  // neschimbat); orice alt tip ('navigate' — click pe orice link/CTA, inclusiv "Comanda acum" de
+  // pe homepage/nav/bara sticky mobil/pricing, sau URL tastat/bookmark) e o intrare noua. NICIUN
+  // storage nu e sters de aceasta verificare — naluna_my_order_keys (comenzile deja autorizate,
+  // vizibile in Comenzile mele) si DRAFT_KEY (povestea/destinatarul etc., pastrate intentionat de
+  // fluxul "Foloseste alt email" din comenzile-mele.html) raman complet neatinse. STRICT campul
+  // de email vizibil in gate e golit la o intrare noua, ca sa nu se presupuna reutilizarea
+  // automata a emailului unei comenzi anterioare (cerinta explicita) — clientul il retasteaza
+  // explicit, iar acel gest suprascrie oricum draftul vechi.
+  function getNavigationType() {
+    try {
+      const entries = performance.getEntriesByType('navigation');
+      if (entries && entries.length && entries[0].type) return entries[0].type;
+    } catch (err) { /* ignoram */ }
+    try {
+      if (performance.navigation) {
+        if (performance.navigation.type === 1) return 'reload';
+        if (performance.navigation.type === 2) return 'back_forward';
+        return 'navigate';
+      }
+    } catch (err) { /* ignoram */ }
+    return 'navigate';
+  }
+  const navigationType = getNavigationType();
+  const isSameSessionContinuation = (navigationType === 'reload' || navigationType === 'back_forward');
+
   let gateAlreadyPassed = false;
-  try { gateAlreadyPassed = localStorage.getItem(STEP_KEY) !== null; } catch (err) { /* ignoram */ }
+  try { gateAlreadyPassed = isSameSessionContinuation && localStorage.getItem(STEP_KEY) !== null; } catch (err) { /* ignoram */ }
 
   if (gateAlreadyPassed) {
     enterWizardAfterGate();
+  } else if (!isSameSessionContinuation) {
+    try {
+      const emailField = document.getElementById('email');
+      if (emailField) emailField.value = '';
+    } catch (err) { /* ignoram */ }
   }
 
   const statusMsg = document.getElementById('status-msg');

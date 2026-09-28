@@ -615,7 +615,7 @@ test('server.js: expireStaleFinalMedia() sterge REAL toate cele 5 chei media (fu
 
 test('comanda-mea.html: cand hostedAccessExpired e true, se afiseaza STRICT starea curata de expirare (access_expired_title/body) — NICIODATA playerul/linkurile de descarcare (ar fi sparte)', () => {
   const html = read('public/comanda-mea.html');
-  const fn = extractFn(html, 'async function lookup(tokenOverride) {');
+  const fn = extractFn(html, 'async function lookup(token) {');
   assert.match(fn, /const accessExpired = o\.status === 'ready' && !!o\.hostedAccessExpired;/);
   assert.match(fn, /accessExpired \? `/);
   assert.match(fn, /t\.access_expired_title/);

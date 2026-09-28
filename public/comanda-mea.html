@@ -8,6 +8,23 @@
 <script src="/js/config.js"></script>
 <script src="/js/attribution.js"></script>
 <script src="/js/analytics.js"></script>
+<script data-purpose="no-token-redirect">
+  // BUG REAL (2026-09-29, audit "pagina cu cod de acces care nu exista" — comentariu TikTok, "dar
+  // nu primesc codul pe e-mail, dece oare"): fara ?token= in URL, aceasta pagina afisa un formular
+  // "Introdu codul de acces primit pe email" care nu poate functiona NICIODATA pentru un client
+  // real — niciun email Naluna (livrare, preview/recovery, checkout recovery, recuperare acces)
+  // nu afiseaza vreodata accessToken-ul ca text vizibil/copiabil; el e mereu embedat STRICT
+  // intr-un link (<a href>) care completeaza si cauta automat (vezi urlToken mai jos). Cautarea
+  // dupa email a fost deja respinsa intentionat (motive de confidentialitate, vezi comentariul de
+  // langa T mai jos), iar recovery-ul real (2026-09-27) duce deja catre comenzile-mele.html, nu
+  // aici. Cu token in URL (SINGURUL caz cu care aceasta pagina mai e legata de undeva — emailul de
+  // livrare, sendDeliveryEmail din server.js), comportamentul ramane 100% neschimbat. Redirect
+  // STRICT catre fluxul curent, care chiar functioneaza, inainte ca formularul mort sa apuce sa
+  // fie randat vizibil.
+  if (!new URLSearchParams(window.location.search).get('token')) {
+    window.location.replace('/comenzile-mele.html');
+  }
+</script>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;1,9..144,400&family=Sora:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root{
@@ -23,12 +40,12 @@
   h1{ font-family:'Fraunces', serif; font-weight:400; font-size:26px; margin-bottom:8px; }
   h2{ font-family:'Fraunces', serif; font-weight:400; font-size:17px; margin:0 0 6px; }
   p.sub{ color:var(--text-secondary); font-size:14px; margin-bottom:28px; }
-  .field{ display:flex; gap:10px; margin-bottom:32px; }
-  input[type="text"]{
-    flex:1; background:var(--surface); border:1px solid var(--line); border-radius:10px;
-    padding:12px 14px; color:var(--text); font-family:'Sora', sans-serif; font-size:14px;
+  a.cta-btn{
+    display:inline-block; background:var(--text); color:var(--bg); border-radius:10px;
+    padding:12px 22px; font-weight:500; font-size:14px; text-decoration:none;
+    font-family:'Sora',sans-serif; margin-top:6px; transition:background-color .25s ease;
   }
-  input:focus{ outline:2px solid var(--gold); outline-offset:1px; }
+  a.cta-btn:hover{ background:var(--gold-deep); }
   button{
     background:var(--text); color:var(--bg); border:none; border-radius:10px;
     padding:12px 22px; font-weight:500; font-size:14px; cursor:pointer;
@@ -154,12 +171,7 @@
 <div class="wrap">
   <img class="logo-mark" src="/logo.svg" alt="NALUNA">
   <h1 id="h1-title">Comanda mea</h1>
-  <p class="sub" id="p-sub">Introdu codul de acces primit pe email ca să-ți vezi melodia</p>
-
-  <div class="field">
-    <input type="text" id="token" placeholder="cod din emailul de confirmare" autocomplete="off">
-    <button id="btn-search">Caută</button>
-  </div>
+  <p class="sub" id="p-sub">Verificăm accesul la comanda ta...</p>
 
   <div id="results"></div>
 </div>
@@ -171,12 +183,12 @@
   // povestile private. Codul e primit doar pe email, dupa plata.
   const T = {
     ro: {
-      title: 'Comanda mea', sub: 'Introdu codul de acces primit pe email ca să-ți vezi melodia',
-      search: 'Caută', searching: 'Se caută...', not_found: 'Nu am găsit nicio comandă pentru acest cod',
+      title: 'Comanda mea', sub: 'Verificăm accesul la comanda ta...', see_my_orders: 'Vezi comenzile mele',
+      searching: 'Se caută...', not_found: 'Nu am găsit nicio comandă pentru acest link.',
       conn_error: 'Eroare de conexiune. Încearcă din nou', for_label: 'Pentru', download: 'Descarcă fișierul', download_wav: 'Descarcă WAV', download_video: 'Descarcă videoclipul',
       gift_title: 'A doua melodie completă', gift_download: 'Descarcă a doua melodie',
       premium_bonus_download: '🎁 Descarcă melodia surpriză',
-      invalid: 'Cod de acces invalid',
+      invalid: 'Acest link de acces nu mai este valabil.',
       access_expired_title: 'Perioada de acces s-a încheiat',
       access_expired_body: 'Fișierele au fost găzduite timp de 30 de zile de la livrare. Dacă ai nevoie de ele, scrie-ne la contact@nalunastudio.com — drepturile tale legale nu sunt afectate.',
       download_tip_ios: 'Apasă Descarcă, apoi găsești fișierul în aplicația Fișiere (Descărcări). Pentru un videoclip: deschide-l acolo, apasă Distribuie, apoi Salvează videoclipul, ca să apară și în Poze.',
@@ -212,12 +224,12 @@
       plan_standard: '🎵 Pachet Standard', plan_premium: '💿 Pachet Premium', plan_video: '🎬 Cadou video'
     },
     en: {
-      title: 'My order', sub: 'Enter the access code you received by email to see your song.',
-      search: 'Search', searching: 'Searching...', not_found: 'No order found for this code.',
+      title: 'My order', sub: 'Checking access to your order...', see_my_orders: 'See my orders',
+      searching: 'Searching...', not_found: 'No order was found for this link.',
       conn_error: 'Connection error. Please try again.', for_label: 'For', download: 'Download the file', download_wav: 'Download WAV', download_video: 'Download the video',
       gift_title: 'Your second complete song', gift_download: 'Download the second song',
       premium_bonus_download: '🎁 Download the surprise song',
-      invalid: 'Invalid access code.',
+      invalid: 'This access link is no longer valid.',
       access_expired_title: 'The access period has ended',
       access_expired_body: 'Your files were hosted for 30 days from delivery. If you need them, contact us at contact@nalunastudio.com — your legal rights are not affected.',
       download_tip_ios: 'Tap Download, then find the file in the Files app (Downloads). For a video: open it there, tap Share, then Save Video, so it also appears in Photos.',
@@ -253,12 +265,12 @@
       plan_standard: '🎵 Standard package', plan_premium: '💿 Premium package', plan_video: '🎬 Video gift'
     },
     de: {
-      title: 'Meine Bestellung', sub: 'Gib den per E-Mail erhaltenen Zugangscode ein, um dein Lied zu sehen.',
-      search: 'Suchen', searching: 'Suche läuft...', not_found: 'Keine Bestellung für diesen Code gefunden.',
+      title: 'Meine Bestellung', sub: 'Wir überprüfen den Zugriff auf deine Bestellung...', see_my_orders: 'Meine Bestellungen ansehen',
+      searching: 'Suche läuft...', not_found: 'Für diesen Link wurde keine Bestellung gefunden.',
       conn_error: 'Verbindungsfehler. Bitte versuche es erneut.', for_label: 'Für', download: 'Datei herunterladen', download_wav: 'WAV herunterladen', download_video: 'Video herunterladen',
       gift_title: 'Dein zweites vollständiges Lied', gift_download: 'Zweites Lied herunterladen',
       premium_bonus_download: '🎁 Überraschungslied herunterladen',
-      invalid: 'Ungültiger Zugangscode.',
+      invalid: 'Dieser Zugangslink ist nicht mehr gültig.',
       access_expired_title: 'Der Zugriffszeitraum ist abgelaufen',
       access_expired_body: 'Deine Dateien wurden 30 Tage ab Lieferung gehostet. Falls du sie brauchst, schreib uns an contact@nalunastudio.com — deine gesetzlichen Rechte sind davon nicht betroffen.',
       download_tip_ios: 'Tippe auf Herunterladen, die Datei findest du dann in der App Dateien (Downloads). Bei einem Video: öffne es dort, tippe auf Teilen, dann auf Video sichern, damit es auch in Fotos erscheint.',
@@ -294,12 +306,12 @@
       plan_standard: '🎵 Standard-Paket', plan_premium: '💿 Premium-Paket', plan_video: '🎬 Video-Geschenk'
     },
     es: {
-      title: 'Mi pedido', sub: 'Introduce el código de acceso recibido por email para ver tu canción.',
-      search: 'Buscar', searching: 'Buscando...', not_found: 'No se encontró ningún pedido para este código.',
+      title: 'Mi pedido', sub: 'Comprobando el acceso a tu pedido...', see_my_orders: 'Ver mis pedidos',
+      searching: 'Buscando...', not_found: 'No se encontró ningún pedido para este enlace.',
       conn_error: 'Error de conexión. Inténtalo de nuevo.', for_label: 'Para', download: 'Descargar el archivo', download_wav: 'Descargar WAV', download_video: 'Descargar el video',
       gift_title: 'Tu segunda canción completa', gift_download: 'Descargar la segunda canción',
       premium_bonus_download: '🎁 Descargar la canción sorpresa',
-      invalid: 'Código de acceso no válido.',
+      invalid: 'Este enlace de acceso ya no es válido.',
       access_expired_title: 'El periodo de acceso ha terminado',
       access_expired_body: 'Tus archivos estuvieron alojados durante 30 días desde la entrega. Si los necesitas, escríbenos a contact@nalunastudio.com — tus derechos legales no se ven afectados.',
       download_tip_ios: 'Toca Descargar, luego encontrarás el archivo en la app Archivos (Descargas). Para un video: ábrelo allí, toca Compartir y luego Guardar video, para que también aparezca en Fotos.',
@@ -335,12 +347,12 @@
       plan_standard: '🎵 Paquete Estándar', plan_premium: '💿 Paquete Premium', plan_video: '🎬 Regalo en video'
     },
     it: {
-      title: 'Il mio ordine', sub: 'Inserisci il codice di accesso ricevuto via email per vedere la tua canzone.',
-      search: 'Cerca', searching: 'Ricerca in corso...', not_found: 'Nessun ordine trovato per questo codice.',
+      title: 'Il mio ordine', sub: 'Verifica dell\'accesso al tuo ordine in corso...', see_my_orders: 'Vedi i miei ordini',
+      searching: 'Ricerca in corso...', not_found: 'Nessun ordine trovato per questo link.',
       conn_error: 'Errore di connessione. Riprova.', for_label: 'Per', download: 'Scarica il file', download_wav: 'Scarica WAV', download_video: 'Scarica il video',
       gift_title: 'La tua seconda canzone completa', gift_download: 'Scarica la seconda canzone',
       premium_bonus_download: '🎁 Scarica la canzone sorpresa',
-      invalid: 'Codice di accesso non valido.',
+      invalid: 'Questo link di accesso non è più valido.',
       access_expired_title: 'Il periodo di accesso è terminato',
       access_expired_body: 'I tuoi file sono stati ospitati per 30 giorni dalla consegna. Se ne hai bisogno, scrivici a contact@nalunastudio.com — i tuoi diritti legali non sono influenzati.',
       download_tip_ios: 'Tocca Scarica, poi trovi il file nell\'app File (Download). Per un video: aprilo lì, tocca Condividi e poi Salva video, così appare anche in Foto.',
@@ -376,12 +388,12 @@
       plan_standard: '🎵 Pacchetto Standard', plan_premium: '💿 Pacchetto Premium', plan_video: '🎬 Regalo video'
     },
     fr: {
-      title: 'Ma commande', sub: 'Entrez le code d\'accès reçu par email pour voir votre chanson.',
-      search: 'Rechercher', searching: 'Recherche...', not_found: 'Aucune commande trouvée pour ce code.',
+      title: 'Ma commande', sub: 'Vérification de l\'accès à votre commande...', see_my_orders: 'Voir mes commandes',
+      searching: 'Recherche...', not_found: 'Aucune commande trouvée pour ce lien.',
       conn_error: 'Erreur de connexion. Veuillez réessayer.', for_label: 'Pour', download: 'Télécharger le fichier', download_wav: 'Télécharger le WAV', download_video: 'Télécharger la vidéo',
       gift_title: 'Votre deuxième chanson complète', gift_download: 'Télécharger la deuxième chanson',
       premium_bonus_download: '🎁 Télécharger la chanson surprise',
-      invalid: 'Code d\'accès invalide.',
+      invalid: 'Ce lien d\'accès n\'est plus valide.',
       access_expired_title: 'La période d\'accès est terminée',
       access_expired_body: 'Vos fichiers ont été hébergés pendant 30 jours à compter de la livraison. Si vous en avez besoin, écrivez-nous à contact@nalunastudio.com — vos droits légaux ne sont pas affectés.',
       download_tip_ios: 'Appuyez sur Télécharger, puis retrouvez le fichier dans l\'app Fichiers (Téléchargements). Pour une vidéo : ouvrez-la là, appuyez sur Partager puis Enregistrer la vidéo, pour qu\'elle apparaisse aussi dans Photos.',
@@ -417,8 +429,8 @@
       plan_standard: '🎵 Pack Standard', plan_premium: '💿 Pack Premium', plan_video: '🎬 Cadeau vidéo'
     },
     bg: {
-      title: 'Моята поръчка', sub: 'Въведи кода за достъп, получен по имейл, за да видиш песента си.',
-      search: 'Търси', searching: 'Търсене...', not_found: 'Няма намерена поръчка за този код.',
+      title: 'Моята поръчка', sub: 'Проверяваме достъпа до поръчката ти...', see_my_orders: 'Виж поръчките ми',
+      searching: 'Търсене...', not_found: 'Не е намерена поръчка за този линк.',
       conn_error: 'Грешка във връзката. Опитай отново.', for_label: 'За', download: 'Изтегли файла', download_wav: 'Изтегли WAV', download_video: 'Изтегли видеото',
       gift_title: 'Втората ти пълна песен', gift_download: 'Изтегли втората песен',
       premium_bonus_download: '🎁 Изтегли песента изненада',
@@ -458,12 +470,12 @@
       plan_standard: '🎵 Пакет Стандарт', plan_premium: '💿 Пакет Премиум', plan_video: '🎬 Видео подарък'
     },
     tr: {
-      title: 'Siparişim', sub: 'Şarkınızı görmek için e-posta ile aldığınız erişim kodunu girin.',
-      search: 'Ara', searching: 'Aranıyor...', not_found: 'Bu kod için sipariş bulunamadı.',
+      title: 'Siparişim', sub: 'Siparişinize erişim kontrol ediliyor...', see_my_orders: 'Siparişlerimi gör',
+      searching: 'Aranıyor...', not_found: 'Bu bağlantı için sipariş bulunamadı.',
       conn_error: 'Bağlantı hatası. Lütfen tekrar deneyin.', for_label: 'Kimin için', download: 'Dosyayı indir', download_wav: 'WAV indir', download_video: 'Videoyu indir',
       gift_title: 'İkinci tam şarkınız', gift_download: 'İkinci şarkıyı indir',
       premium_bonus_download: '🎁 Sürpriz şarkıyı indir',
-      invalid: 'Geçersiz erişim kodu.',
+      invalid: 'Bu erişim bağlantısı artık geçerli değil.',
       access_expired_title: 'Erişim süresi sona erdi',
       access_expired_body: 'Dosyalarınız teslimattan itibaren 30 gün boyunca barındırıldı. İhtiyacınız varsa contact@nalunastudio.com adresinden bize yazın — yasal haklarınız etkilenmez.',
       download_tip_ios: 'İndir\'e dokunun, dosyayı Dosyalar uygulamasında (İndirilenler) bulacaksınız. Bir video için: orada açın, Paylaş\'a dokunun, sonra Videoyu Kaydet\'e dokunun — böylece Fotoğraflar\'da da görünür.',
@@ -506,7 +518,6 @@
   document.documentElement.lang = lang;
   document.getElementById('h1-title').textContent = t.title;
   document.getElementById('p-sub').textContent = t.sub;
-  document.getElementById('btn-search').textContent = t.search;
 
   // Decizie de business 2026-09-06 (runda 2, "instructiuni FOARTE simple, potrivite
   // dispozitivului"): un singur sfat combinat iOS+Android obliga clientul sa citeasca ambele
@@ -1417,8 +1428,20 @@
     });
   }
 
-  async function lookup(tokenOverride) {
-    const token = (tokenOverride || document.getElementById('token').value.trim());
+  // BUG REAL (2026-09-29, audit "pagina cu cod de acces care nu exista", runda 2 — cerinta
+  // explicita: "nu vreau sa mai existe NICIUN scenariu in care clientului i se cere manual codul
+  // de acces primit pe email"): formularul manual (camp #token + buton Cauta) a fost eliminat
+  // complet — aceasta pagina e accesibila DOAR cu ?token= in URL (vezi redirectul din <head>),
+  // deci lookup() nu mai are niciun fallback catre un camp inexistent. Orice esec (link invalid/
+  // expirat/inexistent SAU eroare de retea) afiseaza acum un mesaj clar + un CTA catre
+  // comenzile-mele.html (fluxul curent, real — comenzi salvate local SAU recuperare prin email),
+  // niciodata o cerere de reintroducere manuala a unui "cod".
+  function renderAccessError(message) {
+    const results = document.getElementById('results');
+    results.innerHTML = `<p class="empty">${escapeHtml(message)}</p><a class="cta-btn" href="/comenzile-mele.html">${escapeHtml(t.see_my_orders)}</a>`;
+  }
+
+  async function lookup(token) {
     const results = document.getElementById('results');
     if (!token) return;
 
@@ -1428,15 +1451,15 @@
       const res = await fetch('/api/orders/access/' + encodeURIComponent(token));
 
       if (res.status === 400) {
-        results.innerHTML = `<p class="empty">${t.invalid}</p>`;
+        renderAccessError(t.invalid);
         return;
       }
       if (res.status === 404) {
-        results.innerHTML = `<p class="empty">${t.not_found}</p>`;
+        renderAccessError(t.not_found);
         return;
       }
       if (!res.ok) {
-        results.innerHTML = `<p class="empty">${t.conn_error}</p>`;
+        renderAccessError(t.conn_error);
         return;
       }
 
@@ -1525,18 +1548,14 @@
 
       if (o.status === 'ready' && !accessExpired) wireMemoriesEvents(o.id);
     } catch (e) {
-      results.innerHTML = `<p class="empty">${t.conn_error}</p>`;
+      renderAccessError(t.conn_error);
     }
   }
 
-  // CSP (2026-09-01): activare STRICT prin addEventListener, niciodata un atribut onclick inline —
-  // singura schimbare fata de inainte e mecanismul de declansare, comportamentul ramane identic.
-  document.getElementById('btn-search').addEventListener('click', () => lookup());
-
-  // daca vine dintr-un link din email (?token=...), cautam automat, fara sa mai tasteze nimic
+  // daca vine dintr-un link din email (?token=...), cautam automat — SINGURUL mod de a ajunge aici
+  // (fara token, redirectul din <head> trimite catre comenzile-mele.html inainte de acest punct).
   const urlToken = new URLSearchParams(window.location.search).get('token');
   if (urlToken) {
-    document.getElementById('token').value = urlToken;
     lookup(urlToken);
   }
 </script>
