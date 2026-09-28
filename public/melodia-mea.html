@@ -4109,6 +4109,30 @@
     showState('content-state');
   }
 
+  // SAME BROWSER — PERSISTENTA TOKEN (2026-09-28, cerinta explicita, audit "Comenzile mele goale
+  // in Chrome normal, desi comenzi anterioare existau"): pana acum, STRICT comanda.html scria in
+  // naluna_my_order_keys, la crearea comenzii — nicio alta pagina care detine/valideaza deja un
+  // accessToken (aici, melodia-mea.html — reachable direct din remindere de preview/checkout prin
+  // email, sau dintr-un link redeschis mai tarziu) nu il intarea acolo. Rezultat REAL, demonstrat:
+  // un browser care a ajuns aici altfel decat prin crearea proaspata a comenzii (ex. a inchis
+  // fila inainte ca acel cod sa apuce sa scrie, sau a continuat STRICT prin linkul din reminder)
+  // ramane "neautorizat" pentru viitoarele vizite pe Comenzile mele, desi detine deja, legitim, un
+  // accessToken valid, verificat server-side chiar AICI. Scriem STRICT dupa `res.ok` (200) —
+  // niciodata pe baza simplei prezente a parametrilor din URL. Idempotent (merge, nu duplica),
+  // acelasi tipar exact ca in comanda.html/comenzile-mele.html (naluna_my_order_keys).
+  function rememberAuthorizedOrder(id, token) {
+    if (!id || !token) return;
+    try {
+      const KEY = 'naluna_my_order_keys';
+      const raw = localStorage.getItem(KEY);
+      const arr = raw ? JSON.parse(raw) : [];
+      const list = Array.isArray(arr) ? arr.filter((o) => o && o.id && o.token) : [];
+      const idx = list.findIndex((o) => o.id === id);
+      if (idx !== -1) list[idx].token = token; else list.push({ id, token });
+      localStorage.setItem(KEY, JSON.stringify(list.slice(-50)));
+    } catch (e) { /* localStorage indisponibil — pagina functioneaza oricum, doar nu retine local */ }
+  }
+
   async function loadOrder() {
     try {
       const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}?token=${encodeURIComponent(accessToken)}`);
@@ -4117,6 +4141,7 @@
         return;
       }
       const order = await res.json();
+      rememberAuthorizedOrder(orderId, accessToken);
 
       lang = supportedLangs.includes(order.lang) ? order.lang : 'ro';
       t = T[lang];

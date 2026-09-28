@@ -1442,6 +1442,23 @@
 
       const o = await res.json();
       currentToken = token;
+      // SAME BROWSER — PERSISTENTA TOKEN (2026-09-28, cerinta explicita, audit "Comenzile mele
+      // goale in Chrome normal"): aceasta pagina e destinatia LINKULUI DIN EMAILUL DE LIVRARE
+      // (vezi server.js, accessUrl trimis dupa plata) — cea mai comuna revenire a unui client
+      // platit. Fara aceasta linie, un browser care ajunge STRICT aici (niciodata prin
+      // comanda.html, care e singura pagina care scria pana acum in naluna_my_order_keys) ramane
+      // "neautorizat" pentru Comenzile mele, desi tocmai a dovedit, server-side, ca detine un
+      // accessToken valid pentru aceasta comanda. Scriem STRICT dupa succesul GET
+      // /api/orders/access/:token de mai sus — niciodata pe baza inputului brut al clientului.
+      try {
+        const KEY = 'naluna_my_order_keys';
+        const raw = localStorage.getItem(KEY);
+        const arr = raw ? JSON.parse(raw) : [];
+        const list = Array.isArray(arr) ? arr.filter((entry) => entry && entry.id && entry.token) : [];
+        const idx = list.findIndex((entry) => entry.id === o.id);
+        if (idx !== -1) list[idx].token = token; else list.push({ id: o.id, token });
+        localStorage.setItem(KEY, JSON.stringify(list.slice(-50)));
+      } catch (e) { /* localStorage indisponibil — pagina functioneaza oricum, doar nu retine local */ }
       const fullUrl = `/media/full/${o.id}?token=${encodeURIComponent(token)}`;
       // Decizie de business 2026-09-06: acces gazduit garantat 30 de zile de la livrare —
       // calculat time-based de server (hostedAccessExpired), niciodata dedus local doar din
