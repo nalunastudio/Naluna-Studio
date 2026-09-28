@@ -1195,7 +1195,19 @@ const RESUME_TOKEN_TTL_MS = 60 * 60 * 1000;
 const RESUME_TOKEN_SCOPE = 'order-resume-v1';
 
 function buildResumeToken(orderId, emailKey) {
-  if (!RECOVERY_EMAIL_UNSUBSCRIBE_SECRET) return '';
+  // BUG REAL DE PRODUCTIE (2026-09-30, "butonul Continua apare, dar mesajul de esec apare mereu
+  // dupa apasare, pentru orice comanda") — cauza gasita prin audit direct al variabilelor de mediu
+  // din productie: RECOVERY_EMAIL_UNSUBSCRIBE_SECRET nu era setat deloc pe serviciul Naluna-Studio
+  // (verificat cu `railway variables`) — aceasta ramura returna STRICT '' pentru absolut orice
+  // comanda, indiferent de status/istoric, iar POST /resume-by-email raspundea mereu
+  // {canResume:false}. Esecul era silentios (fara nicio linie in loguri) — de-aia a trecut
+  // neobservat pana la testul manual in productie. Logam explicit, ca o eventuala recidiva
+  // (alt mediu neconfigurat) sa fie vizibila imediat in loguri, nu descoperita doar prin audit
+  // manual — NICIO informatie sensibila (emailul/orderId nu apar in acest mesaj).
+  if (!RECOVERY_EMAIL_UNSUBSCRIBE_SECRET) {
+    console.error('buildResumeToken: RECOVERY_EMAIL_UNSUBSCRIBE_SECRET lipseste din mediu — "Continua cu aceasta comanda" nu poate emite niciun credential pentru nicio comanda pana nu e configurat.');
+    return '';
+  }
   const issuedAt = Date.now();
   const expiresAt = issuedAt + RESUME_TOKEN_TTL_MS;
   // Amprenta emailului (SHA-256, trunchiata) — NU secreta prin ea insasi (oricine stie emailul

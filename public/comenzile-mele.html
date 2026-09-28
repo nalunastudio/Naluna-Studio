@@ -40,13 +40,11 @@
   /* "Continua cu aceasta comanda" (2026-09-28) — eticheta vizibila in interiorul cardului-link
      (traseul cu token complet, nicio schimbare de mecanism de click/navigare). */
   .order .continue-cta{ color:var(--gold-deep); font-size:13px; font-weight:600; margin-top:10px; }
-  /* VIEW/LISTEN MODE (2026-09-30, decizie explicita de produs, "email -> lista -> Play") — cardul
-     unei comenzi gasite STRICT prin email (fara token local) NU e clicabil (nu ofera acces
-     complet) — STRICT informativ + player(e) audio pentru preview-urile deja publice. */
+  /* UX SIMPLIFICAT (2026-09-30, cerinta explicita) — cardul unei comenzi gasite STRICT prin email
+     (fara token local) NU e clicabil (nu ofera acces complet) — STRICT sumar + butonul de
+     continuare. Fara playere audio aici — ascultarea reala se intampla pe pagina de destinatie. */
   .order-readonly{ cursor:default; }
   .order-readonly:hover{ border-color:var(--line); transform:none; }
-  .order-readonly audio{ width:100%; margin-top:10px; display:block; }
-  .order-readonly .resume-unavailable-note{ color:var(--text-secondary); font-size:12px; margin-top:10px; margin-bottom:0; }
   .order-readonly .continue-cta-btn{ margin-top:12px; width:100%; text-align:center; }
   .order-readonly .resume-error{ color:var(--error); font-size:12px; margin-top:8px; margin-bottom:0; }
   .status{
@@ -524,56 +522,51 @@
     } catch (e) { return { canResume: false }; }
   }
 
-  // CORECTIE CRITICA DE SECURITATE (2026-09-30, runda 2 — decizie explicita, dupa audit): cardul
-  // pentru o comanda gasita STRICT prin email (fara token local) NU mai e un link catre o pagina
-  // cu autoritate completa (accessToken) — simpla cunoastere a emailului cuiva NU trebuie sa ofere
-  // plata/editare/regenerare asupra comenzilor lui. E un <div> necliclabil: sumarul comenzii +
-  // un player <audio> pentru fiecare varianta cu preview real disponibil (redat prin
-  // GET /media/preview/:orderId/:variantId, ruta deja PUBLICA/neautentificata, acelasi preview
-  // pe care clientul il putea asculta oricum inainte de plata) — NESCHIMBAT.
-  // "CONTINUA CU ACEASTA COMANDA" (2026-09-28, cerinta explicita): daca serverul a marcat comanda
-  // ca fiind continuabila (order.canResume, calculat de resolveOrderResumeStage — vezi server.js),
-  // aratam butonul de continuare, care cere separat, la apasare, resume-by-email (mai sus) — NU
-  // acorda nicio autoritate suplimentara doar prin afisarea butonului. Altfel, un mesaj corect
-  // (resume_unavailable), NICIODATA un CTA fals.
+  // UX SIMPLIFICAT (2026-09-30, cerinta explicita dupa testul real in productie): cardul unei
+  // comenzi gasite STRICT prin email (fara token local) NU mai reda playere audio inline — STRICT
+  // un sumar clar (plan/destinatar/titlu/numar de melodii, identic cu cardul cu token), plus
+  // butonul de continuare. Ascultarea REALA se intampla pe pagina de destinatie (dupa apasarea
+  // butonului), nu aici — acolo unde a fost dintotdeauna (melodia-mea.html/comanda-mea.html), NU
+  // un al doilea sistem de redare pe aceasta pagina.
+  //
+  // BUTONUL SE ARATA INTOTDEAUNA (2026-09-30, audit dupa bug real de productie): eligibilitatea
+  // server-side (db.getEligibleOrdersForAccessRecovery — SINGURA sursa a acestei liste) exclude
+  // deja STRICT draft/generation_failed/ready-expirat/neplatita-expirata — orice comanda care
+  // ajunge sa fie afisata aici are STRUCTURAL un resumeStage nenul (verificat direct: status
+  // ramas posibil e STRICT generating/processing_provider_result/preview_ready/ready, toate
+  // mapate de resolveOrderResumeStage). Un branch static "order.canResume ? buton : mesaj" ar
+  // insemna un cod care nu se declanseaza NICIODATA in conditii normale — eliminat. Mesajul
+  // resume_unavailable ramane STRICT ca raspuns la un esec REAL la apasare (retea/server/limiter/
+  // comanda devenita between-timp neeligibila) — nu mai apare NICIODATA fara ca clientul sa fi
+  // apasat efectiv butonul.
   function renderReadOnlyOrderCard(order, index, previewVariantIds, email) {
     const card = document.createElement('div');
     card.className = 'order order-readonly';
-    const players = (previewVariantIds || [])
-      .map((variantId) => `<audio controls src="/media/preview/${encodeURIComponent(order.id)}/${encodeURIComponent(variantId)}"></audio>`)
-      .join('');
-    card.innerHTML = orderCardBodyHtml(order, index) + players;
+    card.innerHTML = orderCardBodyHtml(order, index);
 
-    if (order.canResume) {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'continue-cta-btn';
-      btn.textContent = t.continue_btn;
-      btn.addEventListener('click', async () => {
-        const originalLabel = btn.textContent;
-        btn.disabled = true;
-        btn.textContent = t.loading;
-        const result = await resumeOrderByEmail(order.id, email);
-        if (result.canResume && result.resumeUrl) {
-          window.location.href = result.resumeUrl;
-          return;
-        }
-        btn.disabled = false;
-        btn.textContent = originalLabel;
-        if (!card.querySelector('.resume-error')) {
-          const msg = document.createElement('p');
-          msg.className = 'resume-error';
-          msg.textContent = t.resume_unavailable;
-          card.appendChild(msg);
-        }
-      });
-      card.appendChild(btn);
-    } else {
-      const note = document.createElement('p');
-      note.className = 'resume-unavailable-note';
-      note.textContent = t.resume_unavailable;
-      card.appendChild(note);
-    }
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'continue-cta-btn';
+    btn.textContent = t.continue_btn;
+    btn.addEventListener('click', async () => {
+      const originalLabel = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = t.loading;
+      const result = await resumeOrderByEmail(order.id, email);
+      if (result.canResume && result.resumeUrl) {
+        window.location.href = result.resumeUrl;
+        return;
+      }
+      btn.disabled = false;
+      btn.textContent = originalLabel;
+      if (!card.querySelector('.resume-error')) {
+        const msg = document.createElement('p');
+        msg.className = 'resume-error';
+        msg.textContent = t.resume_unavailable;
+        card.appendChild(msg);
+      }
+    });
+    card.appendChild(btn);
     return card;
   }
 

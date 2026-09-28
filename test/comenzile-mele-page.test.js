@@ -68,12 +68,9 @@ test('AUDIT: comanda-mea.html reda EFECTIV melodia (principala + cadou + bonus) 
   assert.match(comandaMea, /if \(o\.status === 'ready' && !accessExpired && o\.hasPremiumBonusAudio\)/);
 });
 
-// CORECTIE (2026-09-30, runda 2 — decizie explicita de produs, "view/listen mode fara accessToken
-// complet"): un card CLICKABIL (token local, acces complet) tot NU reimplementeaza un al doilea
-// sistem de redare — ramane STRICT rutare catre comanda-mea.html/melodia-mea.html, neschimbat.
-// Cardul STRICT view/listen (gasit prin email, FARA token) e singurul care contine acum <audio>
-// real — STRICT pentru preview-uri PUBLICE (GET /media/preview/:orderId/:variantId, deja
-// neautentificata, nicio schimbare de autoritate), niciodata pentru fisierul complet/WAV/video.
+// UX SIMPLIFICAT (2026-09-30, cerinta explicita dupa testul real in productie): NICIUN card de pe
+// aceasta pagina (nici cel clicabil cu token local, nici cel gasit prin email) nu mai reda playere
+// audio inline — STRICT sumar + rutare catre pagina corecta (unde ascultarea REALA se intampla).
 test('AUDIT: renderOrderCard (cardul CLICKABIL, cu token local, acces complet) NU reimplementeaza un al doilea sistem de redare audio — STRICT rutare catre pagina corecta', () => {
   const idx = page.indexOf('function renderOrderCard(order, index, continueUrl) {');
   const end = page.indexOf('function renderReadOnlyOrderCard');
@@ -81,12 +78,12 @@ test('AUDIT: renderOrderCard (cardul CLICKABIL, cu token local, acces complet) N
   assert.ok(!/<audio\s/.test(body), 'cardul clickabil (acces complet) nu trebuie sa contina playere inline — click duce la pagina corecta');
 });
 
-test('AUDIT: renderReadOnlyOrderCard (STRICT view/listen, comanda gasita prin email fara token) foloseste STRICT GET /media/preview/:orderId/:variantId (deja publica/neautentificata) — niciodata /media/full, /media/wav sau /media/video (continut platit)', () => {
+test('AUDIT: renderReadOnlyOrderCard (comanda gasita prin email fara token) NU mai reda playere audio inline — STRICT sumar + buton de continuare, niciodata /media/full, /media/wav, /media/video sau /media/preview', () => {
   const idx = page.indexOf('function renderReadOnlyOrderCard');
   const end = page.indexOf('function handleNoVisibleOrders');
   const body = page.slice(idx, end);
-  assert.match(body, /<audio controls src="\/media\/preview\/\$\{encodeURIComponent\(order\.id\)\}\/\$\{encodeURIComponent\(variantId\)\}"><\/audio>/);
-  assert.ok(!/\/media\/full|\/media\/wav|\/media\/video/.test(body), 'view/listen mode nu trebuie sa acceseze niciodata continutul platit');
+  assert.ok(!/<audio\s/.test(body), 'cardul view/listen nu mai trebuie sa contina playere inline — ascultarea reala se intampla dupa Continua cu aceasta comanda, pe pagina de destinatie');
+  assert.ok(!/\/media\/full|\/media\/wav|\/media\/video|\/media\/preview/.test(body), 'view/listen mode nu trebuie sa acceseze niciun continut media direct pe aceasta pagina');
   // "Continua cu aceasta comanda" (2026-09-28) — cardul ramane STRICT un <div> necliclabil (nu
   // primeste niciodata un href static/continueUrl) — navigarea reala (window.location.href) se
   // intampla STRICT in interiorul handler-ului de click al butonului, STRICT dupa ce serverul a
@@ -454,7 +451,7 @@ test('sandbox (banner corect cand exista REAL comenzi + ?blocked=1): foloseste t
 // emailul (din gate SAU din blocarea quota, transmis STRICT prin sessionStorage) e acum o a DOUA
 // sursa de adevar, combinata cu tokenurile locale — NICIODATA exclusiva, NICIODATA ignorata.
 // ===================================================================================================
-test('PROBLEMA 1: email cu comenzi eligibile, browser FARA niciun token local (naluna_my_order_keys absent) -> comenzile apar oricum, DIRECT, fara niciun link din email, STRICT in view/listen mode (fara accessToken/continueUrl, cu player pentru preview)', async () => {
+test('PROBLEMA 1: email cu comenzi eligibile, browser FARA niciun token local (naluna_my_order_keys absent) -> comenzile apar oricum, DIRECT, fara niciun link din email, STRICT sumar + buton de continuare (fara accessToken/continueUrl/playere)', async () => {
   const { api, elements, fetchCalls } = buildSandbox({
     pendingRecoveryEmail: 'client@exemplu.com',
     fetchImpl: (url) => (url === '/api/orders/by-email'
@@ -476,9 +473,12 @@ test('PROBLEMA 1: email cu comenzi eligibile, browser FARA niciun token local (n
     assert.ok(!c.href, 'cardurile view/listen (fara token local) nu trebuie sa fie clicabile — niciun continueUrl/acces complet');
     assert.ok(!c.innerHTML.includes('token='), 'niciun token nu trebuie sa apara in cardul randat');
   });
-  assert.match(cards[0].innerHTML, /<audio controls src="\/media\/preview\/o1\/v1"><\/audio>/, 'previewul comenzii o1 trebuie redabil prin ruta publica /media/preview');
-  assert.match(cards[1].innerHTML, /<audio controls src="\/media\/preview\/o2\/v2a"><\/audio>.*<audio controls src="\/media\/preview\/o2\/v2b"><\/audio>/s, 'ambele preview-uri Premium trebuie redabile');
-  assert.ok(!cards[2].innerHTML.includes('<audio'), 'o comanda fara preview real disponibil nu trebuie sa afiseze niciun player');
+  cards.forEach((c, i) => {
+    assert.ok(!c.innerHTML.includes('<audio'), `cardul ${i} nu mai trebuie sa contina niciun player audio — ascultarea reala se intampla dupa Continua cu aceasta comanda`);
+    const btn = c.children.find((child) => child.className === 'continue-cta-btn');
+    assert.ok(btn, `cardul ${i} trebuie sa aiba butonul de continuare`);
+    assert.equal(btn.textContent, api.t.continue_btn);
+  });
 });
 
 test('PROBLEMA 2: quota block (?blocked=1) CU email transmis si comenzi eligibile reale -> banner "ai deja melodii" + comenzile afisate DIRECT dedesubt (view/listen mode), niciodata "nu am gasit nicio comanda" langa banner-ul de blocare', async () => {
@@ -492,7 +492,10 @@ test('PROBLEMA 2: quota block (?blocked=1) CU email transmis si comenzi eligibil
   await api.__loadPromise;
   assert.equal(elements['blocked-banner'].textContent, api.t.blocked, 'mesajul trebuie sa fie cel de succes ("ai deja melodii"), nu blocked_empty');
   assert.equal(elements['orders-list'].children.length, 1);
-  assert.match(elements['orders-list'].children[0].innerHTML, /<audio controls src="\/media\/preview\/o1\/v1"><\/audio>/, 'melodia trebuie sa poata fi ascultata direct, din blocarea quota');
+  const card = elements['orders-list'].children[0];
+  assert.ok(!card.innerHTML.includes('<audio'), 'cardul nu mai trebuie sa contina niciun player audio');
+  const btn = card.children.find((c) => c.className === 'continue-cta-btn');
+  assert.ok(btn, 'comanda gasita din blocarea quota trebuie sa aiba butonul de continuare');
   assert.ok(!elements['orders-list'].children.some((c) => c.textContent === api.t.empty_no_orders), 'nu trebuie sa apara NICIODATA "nu am gasit nicio comanda" langa comenzi reale afisate');
 });
 
@@ -518,9 +521,11 @@ test('PROBLEMA 1: localStorage stale (toate tokenurile locale CONFIRMATE inexist
   });
   await api.__loadPromise;
   assert.equal(elements['orders-list'].children.length, 1, 'comanda gasita prin email trebuie afisata, desi tokenul local era stale/inexistent');
-  assert.match(elements['orders-list'].children[0].innerHTML, /Maria/);
-  assert.match(elements['orders-list'].children[0].innerHTML, /<audio controls src="\/media\/preview\/order-real\/v1"><\/audio>/, 'trebuie ascultabila direct, in view/listen mode (fara token local)');
-  assert.ok(!elements['orders-list'].children[0].href, 'cardul view/listen nu trebuie sa fie clicabil');
+  const card = elements['orders-list'].children[0];
+  assert.match(card.innerHTML, /Maria/);
+  assert.ok(!card.innerHTML.includes('<audio'), 'cardul nu mai trebuie sa contina niciun player audio');
+  assert.ok(card.children.find((c) => c.className === 'continue-cta-btn'), 'trebuie sa aiba butonul de continuare, desi tokenul local era stale/inexistent');
+  assert.ok(!card.href, 'cardul view/listen nu trebuie sa fie clicabil');
 });
 
 test('PROBLEMA 1: aceeasi comanda confirmata ATAT prin token local CAT SI prin email (acelasi id) -> apare O SINGURA DATA, niciodata dublata', async () => {
@@ -586,7 +591,8 @@ test('sandbox (primar: introducerea manuala a unui email cere DIRECT POST /api/o
   const card = elements['orders-list'].children[0];
   assert.equal(elements['orders-list'].children.length, 1, 'comanda gasita prin email trebuie afisata direct, fara niciun email trimis');
   assert.match(card.innerHTML, /Ana/);
-  assert.match(card.innerHTML, /<audio controls src="\/media\/preview\/order-x\/v1"><\/audio>/, 'previewul trebuie ascultabil direct, in view/listen mode');
+  assert.ok(!card.innerHTML.includes('<audio'), 'cardul nu mai trebuie sa contina niciun player audio');
+  assert.ok(card.children.find((c) => c.className === 'continue-cta-btn'), 'trebuie sa aiba butonul de continuare');
   assert.ok(!card.href, 'cardul view/listen nu trebuie sa fie clicabil (fara acces complet)');
 });
 

@@ -396,6 +396,78 @@ test('TEST 10: generation_failed -> resolveOrderResumeStage returneaza null (exc
 });
 
 // ===================================================================================================
+// BUG REAL DE PRODUCTIE (2026-09-30, "Premium cu 4 melodii generate, testat manual in productie,
+// primeste mereu 'Aceasta comanda nu poate fi continuata automat momentan'") — audit facut STRICT
+// pe date reale din productie (interogare agregata, read-only, fara PII): TOATE comenzile Premium
+// cu 4 variante au status='preview_ready' (9 cu selectie nefacuta, 9 cu selectie facuta) — NICIODATA
+// 'generating'/'draft'. resolveOrderResumeStage mapeaza deja 'preview_ready' -> 'in_progress'
+// (nenul) — deci canResume era STRUCTURAL true pentru exact aceste comenzi. Cauza REALA, confirmata
+// separat prin `railway variables`: RECOVERY_EMAIL_UNSUBSCRIBE_SECRET lipsea din mediul de productie
+// — buildResumeToken returna STRICT '' pentru ORICE comanda, indiferent de stare, iar resume-by-email
+// raspundea mereu {canResume:false}, silentios (fara nicio linie in loguri). Testele de mai jos
+// reproduc EXACT forma comenzii reale gasite (Premium, preview_ready, 4 variante, fara selectie) si
+// verifica atat regresia de operabilitate (avertisment explicit in loguri), cat si comportamentul
+// corect end-to-end cand secretul e configurat.
+// ===================================================================================================
+test('PRODUCTIE: comanda istorica Premium reala (preview_ready, 4 variante, FARA selectie, unpaid_expired_at=null) -> canResume:true in lista, resolveOrderResumeStage="in_progress", resumeUrlFor -> melodia-mea.html (ecranul real de comparare/alegere, NU un formular nou)', async () => {
+  const { resolveOrderResumeStage, resumeUrlFor } = await buildHelpers();
+  // Forma EXACTA gasita in productie (fara PII — id/email/recipient sunt inventate pentru test).
+  const historicalPremiumOrder = {
+    id: 'prod-shape-premium-4v', plan: 'premium', status: 'preview_ready', email: 'client@exemplu.com',
+    selectedVariantId: null, unpaidExpiredAt: null,
+    variants: [
+      { id: 'v1', previewUrl: 'https://cdn/v1.mp3', title: 'Melodia 1' },
+      { id: 'v2', previewUrl: 'https://cdn/v2.mp3', title: 'Melodia 2' },
+      { id: 'v3', previewUrl: 'https://cdn/v3.mp3', title: 'Melodia 3 (editata)' },
+      { id: 'v4', previewUrl: 'https://cdn/v4.mp3', title: 'Melodia 4 (editata)' }
+    ]
+  };
+  assert.equal(resolveOrderResumeStage(historicalPremiumOrder), 'in_progress', 'preview_ready trebuie mapat la o stare continuabila, niciodata null');
+  const url = await resumeUrlFor(historicalPremiumOrder, 'RESUME.TOKEN');
+  assert.equal(url, '/melodia-mea.html?id=prod-shape-premium-4v&token=RESUME.TOKEN', 'trebuie sa duca STRICT la melodia-mea.html — variants.length===4>2 face ca acea pagina sa arate singura ecranul de comparare/alegere finala, fara niciun formular nou');
+
+  const dtoSrc = sliceBetween(server, 'function buildOrderSummaryDto(order) {', "app.post('/api/orders/by-email',");
+  const hostedAccessSrc = sliceBetween(server, 'const CONTENT_RETENTION_DAYS = 30;', '\n\n// Content-Disposition:');
+  const resolveStageForDto = sliceBetween(server, 'function resolveOrderResumeStage(order) {', '\n\nasync function resumeUrlFor');
+  const { getGiftVariant, getPremiumBonusVariant } = require('../lib/entitlements.js');
+  const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor;
+  const dtoFn = new AsyncFunction('order', 'getGiftVariant', 'getPremiumBonusVariant',
+    hostedAccessSrc + '\n' + resolveStageForDto + '\n' + dtoSrc + '\nreturn buildOrderSummaryDto(order);');
+  const dto = await dtoFn(historicalPremiumOrder, getGiftVariant, getPremiumBonusVariant);
+  assert.equal(dto.canResume, true, 'comanda istorica reala (preview_ready, 4 variante) trebuie sa apara STRICT ca resumabila in lista "Comenzile mele"');
+  assert.equal(dto.resumeStage, 'in_progress');
+});
+
+test('PRODUCTIE: buildResumeToken logheaza explicit (console.error, fara PII) cand RECOVERY_EMAIL_UNSUBSCRIBE_SECRET lipseste — regresia de operabilitate care a mascat bug-ul real (esec silentios) e corectata', async () => {
+  const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor;
+  const calls = [];
+  const src = `
+    const RECOVERY_EMAIL_UNSUBSCRIBE_SECRET = '';
+    ${credentialSrc}
+    return { buildResumeToken };
+  `;
+  const fn = new AsyncFunction('createHash', 'createHmac', 'console', src);
+  const { buildResumeToken } = await fn(crypto.createHash, crypto.createHmac, { error: (...args) => calls.push(args) });
+  const token = buildResumeToken('order-1', 'client@exemplu.com');
+  assert.equal(token, '', 'fara secret, tokenul ramane gol (comportament neschimbat)');
+  assert.equal(calls.length, 1, 'trebuie sa logheze explicit exact o data, ca sa fie vizibil imediat in loguri');
+  assert.match(calls[0][0], /RECOVERY_EMAIL_UNSUBSCRIBE_SECRET lipseste/);
+  assert.ok(!calls[0].some((arg) => typeof arg === 'string' && /@/.test(arg)), 'mesajul de log nu trebuie sa contina niciun email');
+});
+
+test('PRODUCTIE: cu secretul CONFIGURAT, comanda istorica Premium reala (preview_ready, 4 variante, fara selectie) primeste un resume-token functional, acceptat de GET /api/orders/:orderId — round-trip complet, nu doar izolat', async () => {
+  const { buildResumeToken, isValidOrderCredential, normalizeEmailKey } = await buildHelpers();
+  const historicalPremiumOrder = {
+    id: 'prod-shape-premium-4v-2', plan: 'premium', status: 'preview_ready', email: 'Client@Exemplu.com',
+    selectedVariantId: null, accessToken: 'z'.repeat(48),
+    variants: [{ id: 'v1' }, { id: 'v2' }, { id: 'v3' }, { id: 'v4' }]
+  };
+  const token = buildResumeToken(historicalPremiumOrder.id, normalizeEmailKey(historicalPremiumOrder.email));
+  assert.notEqual(token, '', 'cu secretul configurat, tokenul trebuie emis');
+  assert.equal(isValidOrderCredential(historicalPremiumOrder, token), true, 'tokenul emis trebuie acceptat de aceeasi comanda (GET /api/orders/:orderId foloseste exact isValidOrderCredential)');
+});
+
+// ===================================================================================================
 // POST /api/orders/:orderId/resume-by-email — STRICT emitere de credential pentru O comanda,
 // dupa aceeasi eligibilitate ca /api/orders/by-email. NICIODATA accessToken in raspuns.
 // ===================================================================================================
@@ -469,14 +541,14 @@ test('comenzile-mele.html: renderOrderCard (card CLICKABIL, token local) afiseaz
   assert.match(body, /t\.continue_btn/);
 });
 
-test('comenzile-mele.html: renderReadOnlyOrderCard afiseaza butonul de continuare STRICT cand order.canResume e true, altfel un mesaj corect (resume_unavailable) — niciodata un CTA fals', () => {
+test('comenzile-mele.html: renderReadOnlyOrderCard afiseaza INTOTDEAUNA butonul de continuare (fara playere audio) — audit productie 2026-09-30: eligibilitatea server-side (getEligibleOrdersForAccessRecovery) garanteaza deja un resumeStage nenul pentru orice comanda listata, deci NU exista un branch static "canResume ? buton : mesaj" — mesajul resume_unavailable apare STRICT ca raspuns la un esec real la apasare', () => {
   const idx = page.indexOf('function renderReadOnlyOrderCard(order, index, previewVariantIds, email) {');
   const end = page.indexOf('function handleNoVisibleOrders');
   const body = page.slice(idx, end);
-  assert.match(body, /if \(order\.canResume\) \{/);
+  assert.ok(!/if \(order\.canResume\)/.test(body), 'nu trebuie sa existe un branch static bazat pe order.canResume — butonul se arata intotdeauna');
+  assert.ok(!/<audio\s/.test(body), 'renderReadOnlyOrderCard nu mai trebuie sa contina niciun player audio');
   assert.match(body, /btn\.textContent = t\.continue_btn;/);
   assert.match(body, /msg\.textContent = t\.resume_unavailable;/);
-  assert.match(body, /note\.textContent = t\.resume_unavailable;/);
 });
 
 test('comenzile-mele.html: butonul de continuare apeleaza STRICT resumeOrderByEmail(order.id, email) si navigheaza STRICT dupa ce serverul confirma canResume+resumeUrl — niciodata inainte', () => {
