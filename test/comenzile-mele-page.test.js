@@ -244,7 +244,25 @@ test('comenzile-mele.html: toate cele 8 traduceri ale "blocked" si "blocked_empt
 // executam cu document/localStorage/fetch minimale, dar suficient de fidele pentru a exercita
 // REAL functiile: realSongCount, continueUrlFor, renderOrderCard, loadAndRenderOrders.
 // ===============================================================================================
-function buildSandbox({ search = '', storedOrders, fetchImpl, pendingRecoveryEmail } = {}) {
+// Simuleaza STRICT semantica reala a stivei de istoric a browserului (push trunchiaza orice
+// "inainte" existent la pozitia curenta, exact ca la un click nou de link; back muta STRICT
+// pointerul, fara sa trunchieze nimic) — folosita pentru testele "Continue -> Back -> Continue"
+// care trebuie sa dovedeasca exact unde ajunge un Back REAL dupa mai multe cicluri.
+function makeSharedHistory(initialUrl) {
+  const stack = [{ url: initialUrl, state: null }];
+  let pos = 0;
+  return {
+    current: () => stack[pos],
+    pushState(state, url) { stack.length = pos + 1; stack.push({ url, state }); pos = stack.length - 1; },
+    replaceState(state, url) { stack[pos] = { url, state }; },
+    navigateTo(url) { stack.length = pos + 1; stack.push({ url, state: null }); pos = stack.length - 1; },
+    back() { if (pos > 0) pos -= 1; return stack[pos]; },
+    depth: () => stack.length,
+    position: () => pos
+  };
+}
+
+function buildSandbox({ search = '', storedOrders, fetchImpl, pendingRecoveryEmail, sharedHistory } = {}) {
   const script = lastInlineScript(page);
   const bodyStart = script.indexOf('(function () {') + '(function () {'.length;
   const bodyEnd = script.lastIndexOf('})();');
@@ -307,9 +325,25 @@ function buildSandbox({ search = '', storedOrders, fetchImpl, pendingRecoveryEma
     }
   };
   const windowListeners = {};
+  const pushStateCalls = [];
+  // sharedHistory (optional) — simuleaza un STIVA reala de istoric de browser, persistenta intre
+  // mai multe instante buildSandbox() succesive (fiecare instanta = o "incarcare" separata a
+  // paginii, exact ca o reincarcare reala/bfcache dupa un Back) — necesar STRICT pentru testele
+  // care verifica secvente reale Continue -> Back -> Continue -> Back (garda anti-history-trap).
+  // Fara el (implicit), fiecare test ramane izolat, cu propriul history.state local, ca pana acum.
+  const historyMock = sharedHistory ? {
+    get state() { return sharedHistory.current().state; },
+    replaceState: (state, _t, url) => sharedHistory.replaceState(state, url),
+    pushState: (state, _t, url) => { pushStateCalls.push([state, _t, url]); sharedHistory.pushState(state, url); }
+  } : {
+    state: null,
+    replaceState: () => {},
+    pushState: (...args) => { pushStateCalls.push(args); historyMockSelf.state = args[0]; }
+  };
+  const historyMockSelf = historyMock;
   const windowMock = {
-    location: { search, href: 'https://nalunastudio.com/comenzile-mele.html' + search },
-    history: { replaceState: () => {} },
+    location: { search, href: (sharedHistory ? sharedHistory.current().url : 'https://nalunastudio.com/comenzile-mele.html' + search) },
+    history: historyMock,
     addEventListener: (evt, fn) => { (windowListeners[evt] = windowListeners[evt] || []).push(fn); }
   };
   const storage = {};
@@ -335,7 +369,7 @@ function buildSandbox({ search = '', storedOrders, fetchImpl, pendingRecoveryEma
     harness + '\nreturn window.__test_api;'
   );
   const api = fn(documentMock, windowMock, localStorageMock, sessionStorageMock, { language: 'en' }, URLSearchParams, fetchMock, { replaceState: () => {} });
-  return { api, elements, fetchCalls, windowListeners };
+  return { api, elements, fetchCalls, windowListeners, windowMock, pushStateCalls };
 }
 
 function jsonRes(obj) {
@@ -805,6 +839,205 @@ test('sandbox: secventa REALA Comanda 1 -> Back -> Comanda 2 -> Back -> Comanda 
   assert.equal(btns[2].textContent, api.t.continue_btn);
   // Toate 3 sunt active la final — "toate butoanele sunt din nou active".
   btns.forEach((b) => assert.equal(b.disabled, false));
+});
+
+// ===================================================================================================
+// BUG REAL DE PRODUCTIE, PARTEA A 3-A (2026-09-30 -> 2026-10-03, "Back trebuie sa revina la
+// Comenzile mele"): incercarea initiala (history.pushState() cu o intrare-ancora, chiar si cu
+// garda anti-dublare) rezolva navigarea catre Comenzile mele, DAR introducea ea insasi un history
+// trap (Back de doua ori, constant, ca sa se paraseasca efectiv pagina — cerinta explicita: STRICT
+// UN SINGUR Back trebuie sa arate Comenzile mele, iar Back-ul urmator trebuie sa paraseasca normal
+// pagina). SOLUTIA FINALA: eliminam COMPLET orice manipulare de istoric (pushState/replaceState)
+// legata de navigarea catre o comanda — nici comenzile-mele.html, nici melodia-mea.html, nici
+// comanda-mea.html, nici amintiri-video.html nu ating window.history in acest scop (verificat
+// direct, cautare completa in toate 4 fisierele). Motivul pentru care asta e suficient: click-ul
+// pe un card (<a href>) sau navigarea din resumeOrderByEmail (window.location.href=) pornesc
+// AMBELE de pe comenzile-mele.html, care e prin definitie varful stivei de istoric in acel moment
+// — o navigare noua dintr-o pozitie cu istoric "inainte" (draft/wizard vechi in acelasi tab)
+// TRUNCHIAZA acel istoric (semantica standard de browser, neschimbata de codul nostru) si
+// insereaza noua intrare STRICT dupa pozitia curenta. Back revine deci STRICT la comenzile-mele.html,
+// FARA nicio entry suplimentara/duplicata — testele de mai jos simuleaza o STIVA REALA de istoric
+// (push trunchiaza forward-ul, back muta STRICT pointerul, exact semantica de browser) ca sa
+// dovedeasca exact acest lucru pentru toate scenariile cerute explicit (1 comanda, 2, 3, inca un
+// Back dupa oricare, un draft vechi, si "Creeaza o melodie noua").
+// ===================================================================================================
+test('comenzile-mele.html: NU exista niciun apel history.pushState() in tot fisierul — navigarea catre o comanda ramane STRICT o navigare normala (<a href> / location.href=), fara nicio manipulare de istoric', () => {
+  assert.ok(!page.includes('history.pushState'), 'niciun history.pushState nu trebuie sa existe — cauza confirmata a unui history trap real');
+});
+
+for (const destFile of [
+  ['public/melodia-mea.html', read('public/melodia-mea.html')],
+  ['public/comanda-mea.html', read('public/comanda-mea.html')],
+  ['public/amintiri-video.html', read('public/amintiri-video.html')]
+]) {
+  test(`${destFile[0]}: nu manipuleaza window.history in niciun fel (nici pushState, nici replaceState, nici back/go/forward) — problema Back nu se rezolva (si nu trebuie rezolvata) pe pagina destinatie`, () => {
+    assert.ok(!/history\.(pushState|replaceState|back\(|go\(|forward\()/.test(destFile[1]), `${destFile[0]} nu trebuie sa atinga history deloc`);
+  });
+}
+
+test('sandbox: Continua cu aceasta comanda (token local — Standard/Premium/Video, fiecare izolat) NU apeleaza NICIODATA history.pushState() — navigarea ramane STRICT nativa (card.href)', async () => {
+  const cases = [
+    { id: 'order-standard', plan: 'standard', recipient: 'Ion', status: 'ready', createdAt: '2026-09-01T00:00:00Z', hasGiftAudio: false, hasPremiumBonusAudio: false, hostedAccessExpired: false },
+    { id: 'order-premium', plan: 'premium', recipient: 'Elena', status: 'preview_ready', createdAt: '2026-09-02T00:00:00Z', variants: [{ previewUrl: 'https://cdn/a.mp3' }, { previewUrl: 'https://cdn/b.mp3' }] },
+    { id: 'order-video', plan: 'video', recipient: 'Andrei', status: 'preview_ready', createdAt: '2026-09-03T00:00:00Z', variants: [{ previewUrl: 'https://cdn/x1.mp3' }] }
+  ];
+  for (const order of cases) {
+    const tok = 's'.repeat(48);
+    const { api, elements, pushStateCalls } = buildSandbox({
+      storedOrders: [{ id: order.id, token: tok }],
+      fetchImpl: (url) => (url.includes(`/api/orders/${order.id}?token=`) ? jsonRes(order) : { ok: false })
+    });
+    await api.__loadPromise;
+    const card = elements['orders-list'].children[0];
+    // Cardul e un <a href> nativ, fara niciun listener JS de click (verificat implicit: nu
+    // exista __listeners.click) — navigarea o face STRICT browserul, urmarind href-ul.
+    assert.ok(!card.__listeners.click, `${order.plan}: cardul nu trebuie sa aiba niciun listener de click — navigare 100% nativa`);
+    assert.equal(pushStateCalls.length, 0, `${order.plan}: nimic nu trebuie sa apeleze pushState`);
+  }
+});
+
+test('sandbox: Continua cu aceasta comanda prin resume-by-email NU apeleaza history.pushState() — STRICT window.location.href = resumeUrl, fara nicio manipulare de istoric', async () => {
+  const { api, elements, windowMock, pushStateCalls } = buildSandbox({
+    pendingRecoveryEmail: 'client@exemplu.com',
+    fetchImpl: (url) => {
+      if (url === '/api/orders/by-email') {
+        return jsonRes({ orders: [{ id: 'order-1', plan: 'standard', recipient: 'Maria', status: 'preview_ready', createdAt: '2026-09-01T00:00:00Z', songCount: 1, hostedAccessExpired: false, canResume: true }] });
+      }
+      if (url.includes('/resume-by-email')) {
+        return jsonRes({ canResume: true, resumeUrl: '/melodia-mea.html?id=order-1&token=payload.semnatura' });
+      }
+      return { ok: false };
+    }
+  });
+  await api.__loadPromise;
+  const card = elements['orders-list'].children[0];
+  const btn = card.children.find((c) => c.className === 'continue-cta-btn');
+  assert.ok(btn, 'trebuie sa existe butonul de continuare');
+  await btn.__listeners.click();
+  assert.equal(pushStateCalls.length, 0, 'niciun pushState nu trebuie chemat — STRICT navigarea nativa');
+  assert.equal(windowMock.location.href, '/melodia-mea.html?id=order-1&token=payload.semnatura', 'navigarea reala catre comanda tot are loc, neschimbata');
+});
+
+test('sandbox: click pe "Creeaza o melodie noua" NU apeleaza history.pushState() — fluxul normal existent, neatins', async () => {
+  const { api, elements, pushStateCalls } = buildSandbox({
+    pendingRecoveryEmail: 'client@exemplu.com',
+    fetchImpl: (url) => {
+      if (url === '/api/orders/by-email') return jsonRes({ orders: [{ id: 'order-1', plan: 'standard', recipient: 'Maria', status: 'preview_ready', createdAt: '2026-09-01T00:00:00Z', songCount: 1, hostedAccessExpired: false, canResume: true }] });
+      if (url === '/api/orders/can-create-new') return jsonRes({ canCreateNew: true });
+      return { ok: false };
+    }
+  });
+  await api.__loadPromise;
+  elements['create-new-cta-btn'].__listeners.click();
+  assert.equal(pushStateCalls.length, 0, '"Creeaza o melodie noua" trebuie sa ramana STRICT fluxul normal existent, fara nicio manipulare de istoric');
+});
+
+// ===================================================================================================
+// SCENARIILE OBLIGATORII (2026-10-03, cerinta explicita, verbatim) — simuleaza o STIVA REALA de
+// istoric de browser (push trunchiaza forward-ul de la pozitia curenta, back muta STRICT
+// pointerul — exact semantica standard, NIMIC adaugat de codul nostru) ca sa dovedeasca:
+//   1. Comenzile mele -> Comanda 1 -> Back = Comenzile mele
+//   2. Comenzile mele -> Comanda 1 -> Back -> Comanda 2 -> Back = Comenzile mele
+//   3. Comenzile mele -> Comanda 1 -> Back -> Comanda 2 -> Back -> Comanda 3 -> Back = Comenzile mele
+//   4. Dupa oricare dintre 1-3: INCA un Back = paraseste normal Comenzile mele (NU Comenzile mele
+//      din nou, NU vreo entry duplicata)
+//   5. Cu un draft/formular vechi deja in istoric: Comenzile mele -> Continue -> Back = tot
+//      Comenzile mele, NU draftul
+//   6. Creeaza o melodie noua -> Back = Comenzile mele, daca navigarea a pornit de acolo
+// ===================================================================================================
+test('sandbox: SCENARIILE 1-4 (stiva de istoric REALA, fara nicio manipulare JS) — Comanda1->Back, apoi Comanda2->Back, apoi Comanda3->Back arata de fiecare data STRICT Comenzile mele; un Back suplimentar dupa oricare paraseste normal pagina (nu mai exista Comenzile mele din nou, nu exista nicio entry duplicata)', async () => {
+  const initialUrl = 'https://nalunastudio.com/comenzile-mele.html';
+  const beforeSiteUrl = 'https://google.com/search?q=naluna'; // orice ar fi existat REAL inainte de a ajunge pe site
+  const orders = [
+    { id: 'order-1', plan: 'standard', recipient: 'Ion', status: 'ready', createdAt: '2026-09-01T00:00:00Z', hasGiftAudio: false, hasPremiumBonusAudio: false, hostedAccessExpired: false },
+    { id: 'order-2', plan: 'premium', recipient: 'Elena', status: 'ready', createdAt: '2026-09-02T00:00:00Z', hasGiftAudio: false, hasPremiumBonusAudio: false, hostedAccessExpired: false },
+    { id: 'order-3', plan: 'video', recipient: 'Andrei', status: 'ready', createdAt: '2026-09-03T00:00:00Z', hasGiftAudio: false, hasPremiumBonusAudio: false, hostedAccessExpired: false }
+  ];
+  const tokens = { 'order-1': 'a'.repeat(48), 'order-2': 'b'.repeat(48), 'order-3': 'c'.repeat(48) };
+  const fetchImpl = (url) => {
+    const match = orders.find((o) => url.includes(`/api/orders/${o.id}?token=`));
+    return match ? jsonRes(match) : { ok: false };
+  };
+
+  // Stiva reala inainte de sosirea pe Comenzile mele — orice ar fi fost acolo (chiar si un
+  // referrer extern), complet irelevant, pentru ca noua navigare catre Comenzile mele oricum
+  // devine varful stivei in mod normal.
+  const history = makeSharedHistory(beforeSiteUrl);
+  history.navigateTo(initialUrl); // sosirea REALA pe Comenzile mele — stack: [google, comenzile-mele]
+
+  for (let i = 0; i < orders.length; i++) {
+    const order = orders[i];
+    const { api, elements, pushStateCalls } = buildSandbox({
+      sharedHistory: history,
+      storedOrders: [{ id: order.id, token: tokens[order.id] }],
+      fetchImpl
+    });
+    await api.__loadPromise;
+    const card = elements['orders-list'].children[0];
+    assert.ok(!card.__listeners.click, `Comanda ${i + 1}: cardul nu trebuie sa aiba niciun listener JS — navigare 100% nativa`);
+    assert.equal(pushStateCalls.length, 0, `Comanda ${i + 1}: nimic nu trebuie sa manipuleze istoricul`);
+    // Navigarea reala catre pagina comenzii — browserul urmeaza STRICT card.href (niciun JS implicat).
+    assert.equal(card.href, `/comanda-mea.html?token=${encodeURIComponent(tokens[order.id])}`, `Comanda ${i + 1}: href-ul cardului trebuie sa duca la comanda corecta`);
+    history.navigateTo(card.href);
+    // Back — SCENARIILE 1/2/3: dupa Comanda 1, apoi dupa Comanda 1->Back->Comanda 2, apoi dupa ...->Comanda 3.
+    const afterBack = history.back();
+    assert.equal(afterBack.url, initialUrl, `SCENARIUL ${i + 1}: dupa Comanda ${i + 1} -> Back, trebuie sa fim STRICT pe Comenzile mele`);
+  }
+
+  // Stiva finala trebuie sa aiba STRICT 3 intrari: [google, comenzile-mele, order-3] — NICIO
+  // entry duplicata de Comenzile mele, indiferent de cate comenzi au fost vizitate (1, 2 sau 3).
+  assert.equal(history.depth(), 3, 'NU trebuie sa existe nicio duplicare de Comenzile mele in istoric, indiferent de numarul de comenzi vizitate');
+  assert.equal(history.position(), 1, 'pozitia curenta trebuie sa fie STRICT intrarea comenzile-mele.html, unica');
+
+  // SCENARIUL 4: inca un Back, DUPA ce am revenit la Comenzile mele — trebuie sa paraseasca
+  // normal pagina (catre ce a existat REAL inainte), NICIODATA sa arate Comenzile mele din nou.
+  const oneMoreBack = history.back();
+  assert.notEqual(oneMoreBack.url, initialUrl, 'Back-ul suplimentar NU trebuie sa arate Comenzile mele din nou — trebuie sa paraseasca normal pagina');
+  assert.equal(oneMoreBack.url, beforeSiteUrl, 'Back-ul suplimentar trebuie sa ajunga STRICT la ce a existat cu adevarat inainte de Comenzile mele — fara nicio entry intermediara inventata');
+});
+
+test('sandbox: SCENARIUL 5 (draft/formular vechi deja in istoric) — Comenzile mele -> Continue -> Back = tot Comenzile mele, NICIODATA draftul vechi, chiar daca acesta exista mai devreme in aceeasi stiva', async () => {
+  const draftUrl = 'https://nalunastudio.com/comanda.html'; // draftul vechi, deja vizitat cu mult inainte, in acelasi tab
+  const initialUrl = 'https://nalunastudio.com/comenzile-mele.html';
+  const order = { id: 'order-1', plan: 'standard', recipient: 'Ion', status: 'ready', createdAt: '2026-09-01T00:00:00Z', hasGiftAudio: false, hasPremiumBonusAudio: false, hostedAccessExpired: false };
+  const tok = 'a'.repeat(48);
+
+  const history = makeSharedHistory(draftUrl); // clientul a inceput demult un draft aici
+  history.navigateTo(initialUrl); // apoi, separat, ajunge (real) pe Comenzile mele — stack: [comanda.html(draft), comenzile-mele]
+
+  const { api, elements, pushStateCalls } = buildSandbox({
+    sharedHistory: history,
+    storedOrders: [{ id: order.id, token: tok }],
+    fetchImpl: (url) => (url.includes(`/api/orders/${order.id}?token=`) ? jsonRes(order) : { ok: false })
+  });
+  await api.__loadPromise;
+  const card = elements['orders-list'].children[0];
+  assert.ok(!card.__listeners.click, 'cardul nu trebuie sa aiba niciun listener JS — navigare 100% nativa');
+  assert.equal(pushStateCalls.length, 0, 'niciun pushState — draftul vechi ramane STRICT in istoric, netouched, dar NU trebuie sa "castige" Back-ul');
+  history.navigateTo(card.href);
+  const afterBack = history.back();
+  assert.equal(afterBack.url, initialUrl, 'Back trebuie sa arate STRICT Comenzile mele, NICIODATA draftul vechi de pe comanda.html, desi acesta exista mai devreme in aceeasi stiva');
+});
+
+test('sandbox: SCENARIUL 6 — Comenzile mele -> Creeaza o melodie noua -> Back = Comenzile mele (navigarea a pornit de acolo, deci Back revine STRICT acolo, fara nicio manipulare suplimentara)', async () => {
+  const initialUrl = 'https://nalunastudio.com/comenzile-mele.html';
+  const history = makeSharedHistory(initialUrl);
+  const { api, elements, pushStateCalls } = buildSandbox({
+    sharedHistory: history,
+    pendingRecoveryEmail: 'client@exemplu.com',
+    fetchImpl: (url) => {
+      if (url === '/api/orders/by-email') return jsonRes({ orders: [{ id: 'order-1', plan: 'standard', recipient: 'Maria', status: 'preview_ready', createdAt: '2026-09-01T00:00:00Z', songCount: 1, hostedAccessExpired: false, canResume: true }] });
+      if (url === '/api/orders/can-create-new') return jsonRes({ canCreateNew: true });
+      return { ok: false };
+    }
+  });
+  await api.__loadPromise;
+  elements['create-new-cta-btn'].__listeners.click();
+  assert.equal(pushStateCalls.length, 0, '"Creeaza o melodie noua" nu manipuleaza istoricul');
+  history.navigateTo('https://nalunastudio.com/comanda.html');
+  const afterBack = history.back();
+  assert.equal(afterBack.url, initialUrl, 'Back de pe /comanda.html trebuie sa revina STRICT la comenzile-mele.html, de unde a pornit navigarea');
+  assert.equal(history.depth(), 2, 'stiva ramane cu STRICT 2 intrari (comenzile-mele + comanda.html) — nicio entry suplimentara');
 });
 
 // ===================================================================================================

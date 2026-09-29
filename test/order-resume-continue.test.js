@@ -607,7 +607,11 @@ test('comenzile-mele.html: butonul de continuare apeleaza STRICT resumeOrderByEm
   const end = page.indexOf('function handleNoVisibleOrders');
   const body = page.slice(idx, end);
   assert.match(body, /const result = await resumeOrderByEmail\(order\.id, email\);/);
+  // BACK DETERMINIST (2026-10-01 -> 2026-10-03) — o incercare cu history.pushState() a fost
+  // ELIMINATA (introducea un history trap real — vezi test/comenzile-mele-page.test.js). Navigarea
+  // ramane STRICT nativa: window.location.href=, fara nicio manipulare de istoric intre mijloc.
   assert.match(body, /if \(result\.canResume && result\.resumeUrl\) \{\s*\n\s*window\.location\.href = result\.resumeUrl;/);
+  assert.ok(!body.includes('pushState'), 'nu trebuie sa existe nicio manipulare de istoric aici — cauza confirmata a unui history trap');
 });
 
 test('comenzile-mele.html: resumeOrderByEmail cere STRICT POST /api/orders/:orderId/resume-by-email cu {email} — niciodata accessToken, niciodata un GET cu id-uri in query care sa scurga starea altor comenzi', () => {

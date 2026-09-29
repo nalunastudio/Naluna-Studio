@@ -541,6 +541,26 @@
     `;
   }
 
+  // BACK DETERMINIST (2026-10-01/03, audit "Back trebuie sa revina la Comenzile mele"):
+  // incercarea initiala (o intrare-ancora impinsa in istoric, chiar si cu garda anti-dublare)
+  // s-a dovedit ea insasi o sursa de history trap (necesita 2 Back-uri constant ca sa se paraseasca
+  // Comenzile mele, in loc de 1) — ELIMINATA COMPLET, cerinta explicita: Back trebuie sa functioneze
+  // STRICT cu semantica NATIVA de browser, fara nicio intrare suplimentara/duplicata.
+  //
+  // AUDIT REPETAT (2026-10-03): un click pe cardul unei comenzi (<a href>) sau navigarea din
+  // handler-ul resumeOrderByEmail (window.location.href=) sunt AMBELE navigari standard, pornite
+  // STRICT de pe aceasta pagina — prin definitie, comenzile-mele.html e varful stivei de istoric
+  // in acel moment. O navigare noua, dintr-o pozitie care are eventual istoric "inainte" (dintr-o
+  // vizita anterioara la comanda.html, un draft etc.), TRUNCHIAZA acel istoric "inainte" (semantica
+  // standard de browser, niciodata schimbata de codul nostru) si insereaza noua intrare STRICT dupa
+  // pozitia curenta — deci Back de pe pagina comenzii revine STRICT la comenzile-mele.html, FARA
+  // nicio manipulare suplimentara de istoric, in orice browser conform standardului. Nici
+  // melodia-mea.html, nici comanda-mea.html, nici amintiri-video.html nu modifica history in vreun
+  // fel (verificat direct, cautare completa in cele 3 fisiere) — nu exista nimic de "reparat" pe
+  // pagina destinatie. Fara nicio manipulare de istoric adaugata de noi, Back se comporta STRICT
+  // ca semantica nativa a browserului — un singur Back la Comenzile mele, un al doilea Back
+  // paraseste normal pagina, fara nicio dublare.
+
   // Card CLICKABIL — STRICT pentru comenzi autorizate prin accessToken (tokenuri locale, deja
   // detinute de acest browser) — continueUrl duce catre pagina corecta (comanda-mea.html/
   // melodia-mea.html), unde actiunile complete (ascultare completa, plata, editare) raman
