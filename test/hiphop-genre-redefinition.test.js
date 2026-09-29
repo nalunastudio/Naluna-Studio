@@ -84,7 +84,10 @@ test('DOAR hiphop s-a schimbat: celelalte 15 genuri (NEW_GENRES) raman BYTE-IDEN
   // manele_suflet EXCLUS aici (2026-09-19, corectie separata si ulterioara — "intro scurt",
   // aprobata explicit, scop STRICT limitat la acea valoare) — vezi
   // test/manele-suflet-short-intro.test.js pentru verificarea dedicata a acelei modificari.
-  for (const g of OTHER_GENRES.filter(g => g !== 'manele_suflet')) {
+  // manele_jale EXCLUS aici (2026-10-06, corectie separata si ulterioara — diferentiere muzicala
+  // fata de manele_suflet, audit pe 5 referinte audio, aprobata explicit) — vezi
+  // test/manele-jale-style-differentiation.test.js pentru verificarea dedicata a acelei modificari.
+  for (const g of OTHER_GENRES.filter(g => g !== 'manele_suflet' && g !== 'manele_jale')) {
     const m = body.match(new RegExp(`\\b${g}: '([^']+)'`));
     assert.ok(m, `nu am gasit "${g}" in versiunea dinaintea corectiei`);
     assert.equal(GENRE_STYLE_MAP[g], m[1], `genul "${g}" trebuie sa ramana byte-identic`);

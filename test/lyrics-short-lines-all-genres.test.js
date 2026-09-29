@@ -231,7 +231,11 @@ const EXPECTED_GENRE_STYLES = {
   hiphop: '2000s street hip-hop, hard drums, punchy kick, dry snare, deep heavy bass, sparse dark gritty beat from the first beat, rap verses, street hook',
   rock: 'live rock band, distorted electric guitar riff, bass, drums, strong vocal, chorus expands from verse, ranges soft-rock to stadium rock',
   manele_suflet: 'Romanian manele, Balkan oriental, melismatic vocal runs, violin accordion clarinet, hopeful devoted mood, short intro, vocals enter early',
-  manele_jale: 'Romanian manele de jale, minor-key oriental colour, mournful violin and clarinet, melismatic lament vocal, heavier longing mood'
+  // REVIZUIT (2026-10-06, cerinta explicita — audit muzical pe 5 referinte audio): manele_jale a
+  // fost rescris separat, ulterior acestui test — vezi test/manele-jale-style-differentiation.
+  // test.js pentru sursa de adevar curenta. "Identitatea neatinsa" verificata aici ramane valabila
+  // pentru toate CELELALTE genuri.
+  manele_jale: 'Romanian manele de jale, deep minor oriental melody, crying melismatic vocal, expressive violin clarinet, oriental synth, heavy heartbreak'
 };
 for (const [genre, expected] of Object.entries(EXPECTED_GENRE_STYLES)) {
   test(`4) GENRE_STYLE_MAP.${genre} ramane byte-identic (identitatea/instrumentatia genului NU a fost atinsa)`, () => {

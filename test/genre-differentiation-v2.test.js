@@ -183,9 +183,13 @@ test('DIFERENTIERE: fiecare pereche critica produce instructiuni de stil vizibil
 
 test('DIFERENTIERE: Manele de suflet ramane caldut/plin de speranta, Manele de jale ramane intunecat/jelitor — niciodata amestecate', () => {
   assert.match(GENRE_STYLE_MAP.manele_suflet, /hopeful|devoted/i);
-  assert.ok(!/mournful|lament|grief/i.test(GENRE_STYLE_MAP.manele_suflet), 'Manele de suflet nu trebuie sa contina descriptori de jale');
-  assert.match(GENRE_STYLE_MAP.manele_jale, /mournful|lament|longing/i);
-  assert.ok(!/hopeful/i.test(GENRE_STYLE_MAP.manele_jale), 'Manele de jale nu trebuie sa contina descriptori de speranta');
+  assert.ok(!/mournful|lament|grief|crying|heartbreak/i.test(GENRE_STYLE_MAP.manele_suflet), 'Manele de suflet nu trebuie sa contina descriptori de jale');
+  // REVIZUIT (2026-10-06, cerinta explicita — audit muzical pe 5 referinte audio) — vocabularul
+  // exact s-a schimbat ("crying"/"heartbreak" in loc de "mournful"/"lament"/"longing"), dar
+  // intentia testului (jale ramane STRICT intunecat, niciodata amestecat cu caldura/speranta lui
+  // manele_suflet) ramane identica.
+  assert.match(GENRE_STYLE_MAP.manele_jale, /mournful|lament|longing|crying|heartbreak/i);
+  assert.ok(!/hopeful|devoted/i.test(GENRE_STYLE_MAP.manele_jale), 'Manele de jale nu trebuie sa contina descriptori de speranta/devotament');
 });
 
 test('DIFERENTIERE: Populara ramane un ansamblu traditional romanesc, NU manele — fara ornamentatie melismatica de tip manele, fara excludere nejustificata a ornamentatiei vocale in general', () => {

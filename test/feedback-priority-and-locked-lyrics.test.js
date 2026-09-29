@@ -181,7 +181,9 @@ for (const lang of ['ro', 'en', 'de', 'es', 'it', 'fr', 'bg', 'tr']) {
       story, voicePreference: 'auto'
     };
     const prompt = buildPrompt(order, feedback, 'manele_jale');
-    assert.match(prompt, /minor-key oriental colour, mournful violin and clarinet/i, `${lang}: stilul Manele de jale trebuie sa apara`);
+    // REVIZUIT (2026-10-06, cerinta explicita — audit muzical pe 5 referinte audio): textul de
+    // stil al lui manele_jale s-a schimbat; verificam STRICT noul text curent.
+    assert.match(prompt, /deep minor oriental melody, crying melismatic vocal/i, `${lang}: stilul Manele de jale trebuie sa apara`);
     assert.ok(!prompt.includes('warm melismatic vocal, hopeful devoted mood'), `${lang}: stilul vechi (Manele de suflet) nu mai trebuie sa apara`);
     // feedback-ul poate fi trunchiat de bugetul de 600 caractere (limitare documentata) — verificam
     // ca cel PUTIN inceputul lui (clauza principala) supravietuieste, verbatim, cu diacritice intacte.

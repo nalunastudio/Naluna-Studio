@@ -206,7 +206,10 @@ test('PROTECTIE: GENRE_STYLE_MAP (15 din cele 16 genuri, hiphop exclus) ramane B
   // manele_suflet EXCLUS aici (2026-09-19, corectie separata si ulterioara — "intro scurt",
   // aprobata explicit, scop STRICT limitat la acea valoare) — vezi
   // test/manele-suflet-short-intro.test.js pentru verificarea dedicata a acelei modificari.
-  for (const g of NEW_GENRES.filter(g => g !== 'hiphop' && g !== 'manele_suflet')) assert.equal(after[g], before[g], `genul "${g}" trebuie sa ramana byte-identic`);
+  // manele_jale EXCLUS aici (2026-10-06, corectie separata si ulterioara — diferentiere muzicala
+  // fata de manele_suflet, audit pe 5 referinte audio, aprobata explicit) — vezi
+  // test/manele-jale-style-differentiation.test.js pentru verificarea dedicata a acelei modificari.
+  for (const g of NEW_GENRES.filter(g => g !== 'hiphop' && g !== 'manele_suflet' && g !== 'manele_jale')) assert.equal(after[g], before[g], `genul "${g}" trebuie sa ramana byte-identic`);
 });
 
 test('PROTECTIE: VOICE_INSTRUCTIONS_FULL/SHORT raman prezente si neatinse (fixul nu le-a modificat)', () => {

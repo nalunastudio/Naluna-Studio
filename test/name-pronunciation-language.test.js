@@ -182,11 +182,14 @@ test('7) manele_suflet: "Short lines" ramane prezent, neatins, ALATURI de noua i
 });
 
 // ================================================================================================
-// 8) manele_jale ramane NESCHIMBAT (GENRE_STYLE_MAP byte-identic) — nicio corectie a acestei
-//    modificari nu atinge harta de stiluri.
+// 8) manele_jale ramane NESCHIMBAT DE ACEASTA CORECTIE (pronuntie nume) — GENRE_STYLE_MAP a fost
+//    rescris ulterior, separat, de o cerinta explicita diferita (2026-10-06, audit muzical pe 5
+//    referinte audio) — vezi test/manele-jale-style-differentiation.test.js pentru sursa de adevar
+//    curenta. Verificam STRICT valoarea CURENTA, ca sa confirmam ca fix-ul de fata (nume/pronuntie)
+//    nu a modificat-o EL insusi.
 // ================================================================================================
-test('8) manele_jale: GENRE_STYLE_MAP ramane byte-identic — aceasta corectie nu atinge deloc GENRE_STYLE_MAP', () => {
-  assert.match(server, /manele_jale: 'Romanian manele de jale, minor-key oriental colour, mournful violin and clarinet, melismatic lament vocal, heavier longing mood',/);
+test('8) manele_jale: GENRE_STYLE_MAP ramane byte-identic cu valoarea curenta aprobata — aceasta corectie nu atinge deloc GENRE_STYLE_MAP', () => {
+  assert.match(server, /manele_jale: 'Romanian manele de jale, deep minor oriental melody, crying melismatic vocal, expressive violin clarinet, oriental synth, heavy heartbreak',/);
 });
 
 // CORECTIE (2026-09-26, "randuri scurte" extins la TOATE genurile — cerinta explicita): manele_jale

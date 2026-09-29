@@ -202,12 +202,16 @@ test('1c) CRITIC — noul text NU contine niciodata cuvantul "instrumental" (REG
 });
 
 // ===============================================================================================
-// 2) manele_jale — "perfecta", NEATINS, byte-identic.
+// 2) manele_jale — NEATINS de ACEASTA corectie (2026-09-19, intro scurt manele_suflet). O corectie
+// SEPARATA, ulterioara si explicita (2026-10-06, "manele_jale se aseamana prea mult cu
+// manele_suflet", audit muzical pe 5 referinte audio) a rescris ulterior acest text — vezi
+// test/manele-jale-style-differentiation.test.js pentru sursa de adevar curenta a acelei valori.
+// Aici verificam STRICT ca fix-ul de fata (intro scurt) nu l-a atins EL insusi.
 // ===============================================================================================
-test('2) manele_jale ramane BYTE-IDENTIC (nu a fost atins de aceasta corectie)', () => {
+test('2) manele_jale ramane BYTE-IDENTIC cu valoarea curenta aprobata (nu a fost atins de ACEASTA corectie de intro scurt)', () => {
   assert.equal(
     GENRE_STYLE_MAP.manele_jale,
-    'Romanian manele de jale, minor-key oriental colour, mournful violin and clarinet, melismatic lament vocal, heavier longing mood'
+    'Romanian manele de jale, deep minor oriental melody, crying melismatic vocal, expressive violin clarinet, oriental synth, heavy heartbreak'
   );
 });
 
@@ -221,8 +225,11 @@ test('3) niciun alt gen din GENRE_STYLE_MAP nu a fost modificat (comparat byte-c
   const end = baselineSrc.indexOf('\n};', idx);
   const body = baselineSrc.slice(idx, end);
   const LEGACY_ONLY_GENRES = ['emotional', 'suflet', 'acustic', 'petrecere', 'balada', 'manele', 'modern'];
+  // manele_jale exclus aici — schimbat de o corectie SEPARATA, ulterioara (2026-10-06), neatinsa
+  // de comparatia acestui test fata de baseline-ul de dinaintea fix-ului de intro scurt; sursa de
+  // adevar curenta e in test/manele-jale-style-differentiation.test.js.
   for (const g of [...LEGACY_ONLY_GENRES, ...NEW_GENRES]) {
-    if (g === 'manele_suflet') continue;
+    if (g === 'manele_suflet' || g === 'manele_jale') continue;
     const m = body.match(new RegExp(`\\n  ${g}: '([^']+)'`));
     assert.ok(m, `nu am gasit "${g}" in HEAD`);
     assert.equal(GENRE_STYLE_MAP[g], m[1], `genul "${g}" trebuie sa ramana byte-identic fata de HEAD`);

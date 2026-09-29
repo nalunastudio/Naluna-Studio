@@ -10335,7 +10335,24 @@ const GENRE_STYLE_MAP = {
   // povestea, in loc sa creasca partea NICIODATA scurtata — vezi buildPrompt() si
   // test/manele-suflet-short-lines.test.js.
   manele_suflet: 'Romanian manele, Balkan oriental, melismatic vocal runs, violin accordion clarinet, hopeful devoted mood, short intro, vocals enter early',
-  manele_jale: 'Romanian manele de jale, minor-key oriental colour, mournful violin and clarinet, melismatic lament vocal, heavier longing mood',
+  // REVIZUIT (2026-10-06, cerinta explicita — "manele_jale se aseamana prea mult cu
+  // manele_suflet", audit muzical pe baza a 5 referinte audio furnizate de client, analizate
+  // separat de client insusi, NU de model): descriere rescrisa ca sa impinga caracterul CLAR spre
+  // lamentatie/durere (minor mult mai pronuntat, interpretare de plans, melisme expresive, vioara+
+  // clarinet expresive, oriental synth, atmosfera grea de heartbreak) — opusul explicit al mood-
+  // ului "hopeful devoted" de la manele_suflet. STRICT descriere muzicala — verificat, niciun nume
+  // de artist/gen concret imitat. "early vocals" NU e inclus aici INTENTIONAT — ar fi redundant cu
+  // vocalsEarlyClause (mai jos in buildPrompt), care oricum adauga deja " Vocals enter early."
+  // pentru orice gen diferit de manele_suflet, deci si pentru manele_jale, automat, fara cost
+  // suplimentar de caractere aici. Lungime (138 caractere) verificata direct, prin buildPrompt()
+  // real, impotriva celui mai incarcat scenariu deja documentat (nunta, nume compuse maxime, duet,
+  // bulgara) — povestea clientului ramane prezenta (vezi test/manele-jale-style-differentiation.
+  // test.js) — o versiune anterioara, mai lunga (152 caractere, cu "early vocals" inclus), a fost
+  // respinsa explicit dupa ce testarea directa a aratat ca elimina COMPLET povestea in acel
+  // scenariu. manele_suflet, legacy `manele`, vocalsEarlyClause, buildPrompt(), limita de 600
+  // caractere, story logic, Short lines, dictia, preview-ul de 50s si toate celelalte genuri raman
+  // complet neatinse de aceasta schimbare.
+  manele_jale: 'Romanian manele de jale, deep minor oriental melody, crying melismatic vocal, expressive violin clarinet, oriental synth, heavy heartbreak',
   // CORECȚIE (2026-09-13): "unornamented vocal"/"no autotune" eliminate — ornamentatia vocala
   // e autentica si legitima in muzica populara romaneasca; diferentierea reala fata de Manele
   // vine din identitatea de ansamblu traditional/ritm traditional, nu din absenta ornamentatiei.
