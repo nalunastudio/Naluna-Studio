@@ -3805,6 +3805,16 @@
     return results.filter((order) => order && order.status !== 'draft' && order.status !== 'generation_failed').length;
   }
 
+  // BUG REAL DE PRODUCTIE (2026-10-04, "Back de pe Comenzile mele ajunge in wizard, nu la 'Ce
+  // vrei sa faci?'" — audit repetat, confirmat pe telefon): ecranul de alegere nu era NICIODATA
+  // marcat in history.state (STRICT toggle de display) — decizia de la reincarcare (mai jos,
+  // langa isSameSessionContinuation) nu avea deci niciun semnal PROPRIU acestei intrari si cadea
+  // pe o presupunere gresita (orice draft existent + reload/back_forward => arata wizard-ul),
+  // indiferent daca intrarea reala era chiar ecranul de alegere. replaceState (NU pushState) —
+  // eticheteaza STRICT intrarea DEJA existenta, fara nicio intrare noua in istoric — astfel incat
+  // o reincarcare completa (bfcache evacuat, frecvent pe telefon dupa pagini grele cu audio intre
+  // timp) sa stie sigur ce sa arate, exact ca un popstate normal (care foloseste deja acelasi
+  // semnal, vezi returnToGateChoiceFromWizard mai jos).
   function showGateChoiceScreen() {
     gateEmailScreen.style.display = 'none';
     const desc = document.getElementById('gate-my-orders-desc');
@@ -3812,6 +3822,7 @@
     // STRICT daca verificarea server-side confirma comenzi reale, niciodata invers.
     desc.textContent = t('gate_my_orders_desc');
     gateChoiceScreen.style.display = 'block';
+    try { window.history.replaceState({ ndsGate: 'choice' }, '', window.location.href); } catch (err) { /* ignoram */ }
     computeVerifiedKnownOrderCount().then((count) => {
       if (count > 0) desc.textContent = t('gate_my_orders_count')(count);
     }).catch(() => { /* mesajul generic ramane afisat — nicio afirmatie nesigura */ });
@@ -3882,21 +3893,28 @@
   // BUG REAL (2026-09-29, "O comanda noua trebuie sa inceapa INTOTDEAUNA cu emailul" — audit +
   // reproducere directa): STEP_KEY e setat de showStep() la FIECARE pas, inclusiv pasul 1 — o
   // comanda abandonata la pasul 1 acum cateva saptamani lasa STEP_KEY='1' NELIMITAT in
-  // localStorage. Verificarea veche (`STEP_KEY !== null`) nu distingea "acelasi tab, refresh/
-  // Inapoi/Inainte in mijlocul formularului" (unde sarirea gate-ului e corecta — dead-end fix
-  // anterior) de "intrare noua, de la zero, chiar dupa ce clientul a inchis complet browserul si
-  // a revenit prin Comanda acum" (unde gate-ul TREBUIE aratat, indiferent de STEP_KEY) — motivul
-  // exact pentru care clientul ajungea direct la "Pasul 1 din 5" cu emailul/starea veche,
-  // niciodata prin gate. Distinctia reala vine din Navigation Timing API, NU dintr-o presupunere:
-  // 'reload' si 'back_forward' raman STRICT continuarea aceleiasi navigari (dead-end fix
-  // neschimbat); orice alt tip ('navigate' — click pe orice link/CTA, inclusiv "Comanda acum" de
-  // pe homepage/nav/bara sticky mobil/pricing, sau URL tastat/bookmark) e o intrare noua. NICIUN
-  // storage nu e sters de aceasta verificare — naluna_my_order_keys (comenzile deja autorizate,
-  // vizibile in Comenzile mele) si DRAFT_KEY (povestea/destinatarul etc., pastrate intentionat de
-  // fluxul "Foloseste alt email" din comenzile-mele.html) raman complet neatinse. STRICT campul
-  // de email vizibil in gate e golit la o intrare noua, ca sa nu se presupuna reutilizarea
-  // automata a emailului unei comenzi anterioare (cerinta explicita) — clientul il retasteaza
+  // localStorage. Distinctia "acelasi tab, refresh/Inapoi/Inainte in mijlocul formularului" vs
+  // "intrare noua, de la zero" vine din Navigation Timing API: 'reload' si 'back_forward' raman
+  // STRICT continuarea aceleiasi navigari; orice alt tip ('navigate' — click pe orice link/CTA,
+  // inclusiv "Comanda acum" de pe homepage/nav/bara sticky mobil/pricing, sau URL tastat/bookmark)
+  // e o intrare noua, unde gate-ul TREBUIE aratat. NICIUN storage nu e sters de aceasta verificare
+  // — naluna_my_order_keys, DRAFT_KEY si STEP_KEY raman complet neatinse. STRICT campul de email
+  // vizibil in gate e golit la o intrare noua (cerinta explicita) — clientul il retasteaza
   // explicit, iar acel gest suprascrie oricum draftul vechi.
+  //
+  // BUG REAL DE PRODUCTIE, RUNDA 2 (2026-10-04, "Back de pe Comenzile mele ajunge in wizard, nu
+  // la 'Ce vrei sa faci?'" — audit repetat, confirmat pe telefon): verificarea ORIGINALA de mai
+  // sus ('isSameSessionContinuation && STEP_KEY !== null' => enterWizardAfterGate()) nu distingea
+  // DELOC intre "aceasta intrare specifica e chiar wizard-ul" si "aceasta intrare e ecranul de
+  // alegere, dar exista un draft VECHI, oriunde, oricand" — orice Back/reload catre comanda.html,
+  // cu un draft existent, sarea direct in wizard, INDIFERENT de ecranul real parasit. Cauza reala:
+  // STEP_KEY e un semnal GLOBAL (orice draft, orice sesiune), nu STRICT al intrarii de istoric
+  // curente — semnalul corect, per-intrare, e history.state (acelasi folosit deja de popstate mai
+  // sus si de enterWizardAfterGate insusi). Fix: showGateChoiceScreen() marcheaza ACUM (mai sus)
+  // intrarea CURENTA cu replaceState({ndsGate:'choice'}) — NU o intrare noua, STRICT o eticheta pe
+  // cea existenta. Decizia de mai jos consulta STRICT history.state, niciodata simpla existenta a
+  // STEP_KEY, pentru a alege intre wizard/choice/gate implicit — draftul (STEP_KEY/DRAFT_KEY)
+  // ramane complet neatins, folosit STRICT daca/cand clientul reintra explicit in wizard.
   function getNavigationType() {
     try {
       const entries = performance.getEntriesByType('navigation');
@@ -3914,11 +3932,15 @@
   const navigationType = getNavigationType();
   const isSameSessionContinuation = (navigationType === 'reload' || navigationType === 'back_forward');
 
-  let gateAlreadyPassed = false;
-  try { gateAlreadyPassed = isSameSessionContinuation && localStorage.getItem(STEP_KEY) !== null; } catch (err) { /* ignoram */ }
+  let restoredHistoryState = null;
+  try { restoredHistoryState = window.history.state; } catch (err) { /* ignoram */ }
+  const wizardStateRestored = isSameSessionContinuation && !!(restoredHistoryState && restoredHistoryState.ndsView === 'wizard');
+  const choiceStateRestored = isSameSessionContinuation && !!(restoredHistoryState && restoredHistoryState.ndsGate === 'choice');
 
-  if (gateAlreadyPassed) {
+  if (wizardStateRestored) {
     enterWizardAfterGate();
+  } else if (choiceStateRestored) {
+    showGateChoiceScreen();
   } else if (!isSameSessionContinuation) {
     try {
       const emailField = document.getElementById('email');

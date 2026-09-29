@@ -55,7 +55,7 @@ test('1. comanda.html: gate-email-screen e vizibil implicit (fara style="display
 // SANDBOX — extragem STRICT logica gate-ului (fara restul wizard-ului, acelasi tipar deja folosit
 // in test/wizard-step-renumbering.test.js), cu document/localStorage/fetch simulate.
 // ===============================================================================================
-function loadGateSandbox({ storedOrders, stepKeyValue, restoredStepValue = 3, fetchImpl, navigationType = 'reload', initialEmailValue = '' } = {}) {
+function loadGateSandbox({ storedOrders, stepKeyValue, restoredStepValue = 3, fetchImpl, navigationType = 'reload', initialEmailValue = '', initialHistoryState = null } = {}) {
   const startMarker = "const gateEmailScreen = document.getElementById('gate-email-screen');";
   const endMarker = "if (emailField) emailField.value = '';\n    } catch (err) { /* ignoram */ }\n  }";
   const startIdx = html.indexOf(startMarker);
@@ -106,12 +106,18 @@ function loadGateSandbox({ storedOrders, stepKeyValue, restoredStepValue = 3, fe
   const fakePerformance = { getEntriesByType: (type) => (type === 'navigation' ? [{ type: navigationType }] : []) };
   // PROBLEMA 3 (2026-09-30, "Navigarea Back") — window.history/window.addEventListener simulate,
   // ca sa testam exact acelasi cod (history.pushState/popstate) care ruleaza intr-un browser real.
-  let historyState = null;
+  // RUNDA 2 (2026-10-04) — replaceState() adaugat (showGateChoiceScreen() il foloseste acum ca sa
+  // marcheze intrarea curenta {ndsGate:'choice'}, vezi PROBLEMA 3, runda 2 mai jos) si
+  // initialHistoryState (parametrul sandbox-ului) ca sa putem simula EXACT o reincarcare/back care
+  // restaureaza o intrare deja etichetata (wizard SAU choice), fara sa presupunem comportamentul
+  // browserului — acelasi mecanism REAL, doar cu starea initiala controlata explicit de test.
+  let historyState = initialHistoryState;
   const popstateListeners = [];
   const fakeWindow = {
     history: {
       get state() { return historyState; },
-      pushState: (state) => { historyState = state; }
+      pushState: (state) => { historyState = state; },
+      replaceState: (state) => { historyState = state; }
     },
     location: { href: 'https://nalunastudio.com/comanda.html' },
     addEventListener: (evt, fn) => { if (evt === 'popstate') popstateListeners.push(fn); }
@@ -119,7 +125,7 @@ function loadGateSandbox({ storedOrders, stepKeyValue, restoredStepValue = 3, fe
 
   const build = new Function(
     'document', 'localStorage', 'fetch', 'STEP_KEY', 'restoredStep', 'isValidEmailClient', 'setFieldError', 'saveDraft', 'showStep', 't', 'performance', 'window', 'stepCards',
-    snippet + '\nreturn { computeVerifiedKnownOrderCount, showGateChoiceScreen, enterWizardAfterGate, gateAlreadyPassed };'
+    snippet + '\nreturn { computeVerifiedKnownOrderCount, showGateChoiceScreen, enterWizardAfterGate, wizardStateRestored, choiceStateRestored };'
   );
   const api = build(fakeDocument, fakeLocalStorage, fakeFetch, 'currentStep', restoredStepValue, isValidEmailClient, setFieldError, saveDraft, showStep, t, fakePerformance, fakeWindow, fakeStepCards);
   return {
@@ -220,15 +226,38 @@ test('sandbox: sursa blocului gate contine STRICT fetch-ul de verificare read-on
 
 test('20. sandbox: la incarcare (refresh/back), daca STEP_KEY NU exista (browser nou/draft neinceput), gate-ul NU cheama automat showStep — nicio comanda/generare accidentala', () => {
   const { calls, api } = loadGateSandbox({ stepKeyValue: null });
-  assert.equal(api.gateAlreadyPassed, false);
+  assert.equal(api.wizardStateRestored, false);
   assert.deepEqual(calls.showStep, []);
 });
 
-test('20. sandbox: la incarcare (refresh/back) cu STEP_KEY deja existent (draft mid-wizard), gate-ul e SARIT automat, showStep(restoredStep) e apelat O SINGURA DATA — fara sa creeze o comanda/generare noua, doar reafiseaza pasul salvat', () => {
-  const { calls, api } = loadGateSandbox({ stepKeyValue: '4', restoredStepValue: 4 });
-  assert.equal(api.gateAlreadyPassed, true);
+test('20. sandbox: la incarcare (refresh/back), CU STEP_KEY existent SI intrarea curenta marcata {ndsView:"wizard"} (reload mid-wizard, cazul real), gate-ul e SARIT automat, showStep(restoredStep) e apelat O SINGURA DATA — fara sa creeze o comanda/generare noua, doar reafiseaza pasul salvat', () => {
+  const { calls, api } = loadGateSandbox({ stepKeyValue: '4', restoredStepValue: 4, initialHistoryState: { ndsView: 'wizard' } });
+  assert.equal(api.wizardStateRestored, true);
   assert.deepEqual(calls.showStep, [4]);
   assert.equal(calls.fetch, 0);
+});
+
+// ===============================================================================================
+// BUG REAL DE PRODUCTIE, RUNDA 2 (2026-10-04, "Back de pe Comenzile mele ajunge in wizard, nu la
+// 'Ce vrei sa faci?'" — audit repetat, confirmat pe telefon): verificarea ORIGINALA ("STEP_KEY
+// exista => enterWizardAfterGate()") nu distingea "aceasta intrare specifica e chiar wizard-ul" de
+// "exista un draft VECHI, oriunde, oricand" — orice Back/reload cu un draft existent sarea direct
+// in wizard, INDIFERENT de ecranul real parasit. Fix: decizia consulta STRICT history.state
+// (etichetat de showGateChoiceScreen()/enterWizardAfterGate(), NU simpla existenta a STEP_KEY).
+// ===============================================================================================
+test('BUG REAL, RUNDA 2 (regresie): STEP_KEY existent (draft vechi) DAR intrarea curenta NU e marcata "wizard" (ex. e ecranul de alegere, sau o intrare veche fara nicio eticheta) -> gate-ul NU e sarit, showStep NU e apelat — draftul ramane salvat, dar NU castiga Back-ul', () => {
+  const { calls, api } = loadGateSandbox({ stepKeyValue: '4', restoredStepValue: 4, navigationType: 'back_forward', initialHistoryState: null });
+  assert.equal(api.wizardStateRestored, false, 'simpla existenta a STEP_KEY nu mai trebuie sa declanseze wizard-ul — cauza exacta a bug-ului real');
+  assert.deepEqual(calls.showStep, [], 'showStep nu trebuie apelat — wizard-ul ramane in spatele gate-ului, draftul ramane salvat pentru cand clientul alege explicit sa continue');
+});
+
+test('BUG REAL, RUNDA 2: intrarea curenta marcata {ndsGate:"choice"} (client a fost pe "Ce vrei sa faci?", apoi a plecat la Comenzile mele) -> la Back/reload, choiceStateRestored=true si showGateChoiceScreen() reafiseaza STRICT ecranul de alegere, chiar daca STEP_KEY exista dintr-un draft vechi', () => {
+  const { calls, api, elements } = loadGateSandbox({ stepKeyValue: '4', restoredStepValue: 4, navigationType: 'back_forward', initialHistoryState: { ndsGate: 'choice' } });
+  assert.equal(api.wizardStateRestored, false);
+  assert.equal(api.choiceStateRestored, true);
+  assert.deepEqual(calls.showStep, [], 'wizard-ul nu trebuie intrat automat — STRICT ecranul de alegere');
+  assert.equal(elements['gate-choice-screen'].style.display, 'block', 'ecranul "Ce vrei sa faci?" trebuie reafisat');
+  assert.equal(elements['gate-email-screen'].style.display, 'none');
 });
 
 // ===============================================================================================
@@ -242,7 +271,7 @@ test('20. sandbox: la incarcare (refresh/back) cu STEP_KEY deja existent (draft 
 // ===============================================================================================
 test('PROBLEMA 1: intrare noua (navigationType navigate) cu STEP_KEY vechi existent (comanda abandonata la orice pas, saptamani in urma) -> gate-ul NU e sarit, indiferent de STEP_KEY', () => {
   const { calls, api } = loadGateSandbox({ stepKeyValue: '4', restoredStepValue: 4, navigationType: 'navigate' });
-  assert.equal(api.gateAlreadyPassed, false, 'o intrare noua nu trebuie sa sara gate-ul, chiar daca STEP_KEY exista din o comanda abandonata anterior');
+  assert.equal(api.wizardStateRestored, false, 'o intrare noua nu trebuie sa sara gate-ul, chiar daca STEP_KEY exista din o comanda abandonata anterior');
   assert.deepEqual(calls.showStep, [], 'showStep nu trebuie apelat automat la o intrare noua — wizard-ul ramane in spatele gate-ului pana la alegerea explicita a clientului');
 });
 
@@ -267,7 +296,7 @@ test('PROBLEMA 1: intrare noua (navigate) NU sterge naluna_my_order_keys si NU a
     navigationType: 'navigate',
     initialEmailValue: 'vechi@exemplu.com'
   });
-  assert.equal(api.gateAlreadyPassed, false);
+  assert.equal(api.wizardStateRestored, false);
   assert.equal(elements.email.value, '', 'campul de email trebuie golit la o intrare noua, chiar daca un draft vechi il pre-completase');
   assert.equal(storageRef.naluna_my_order_keys, JSON.stringify([{ id: 'ord-1', token: 'a'.repeat(48) }]), 'naluna_my_order_keys nu trebuie atins de aceasta verificare — comenzile deja autorizate raman intacte');
   assert.ok(!('nds_form_draft' in storageRef), 'DRAFT_KEY nu e scris/sters de acest bloc — el nu face parte din snippet-ul extras (saveDraft e apelat STRICT de handlerele de click, neschimbate)');
@@ -275,9 +304,10 @@ test('PROBLEMA 1: intrare noua (navigate) NU sterge naluna_my_order_keys si NU a
 
 test('PROBLEMA 1: refresh/back_forward mid-wizard NU goleste campul de email (continuarea aceleiasi navigari, NU o intrare noua) — dead-end fix anterior ramane neschimbat', () => {
   const { api, elements } = loadGateSandbox({
-    stepKeyValue: '4', restoredStepValue: 4, navigationType: 'reload', initialEmailValue: 'client@exemplu.com'
+    stepKeyValue: '4', restoredStepValue: 4, navigationType: 'reload', initialEmailValue: 'client@exemplu.com',
+    initialHistoryState: { ndsView: 'wizard' }
   });
-  assert.equal(api.gateAlreadyPassed, true);
+  assert.equal(api.wizardStateRestored, true);
   assert.equal(elements.email.value, 'client@exemplu.com', 'un refresh mid-wizard nu trebuie sa goleasca un camp deja completat in aceasta sesiune');
 });
 
@@ -294,9 +324,12 @@ test('PROBLEMA 3: intrarea in wizard (enterWizardAfterGate) impinge O intrare no
   assert.deepEqual(getHistoryState(), { ndsView: 'wizard' });
 });
 
-test('PROBLEMA 3: enterWizardAfterGate() apelat A DOUA OARA (reload cu gateAlreadyPassed, history.state deja "wizard") NU impinge un al doilea strat — history.state ramane identic, nu se acumuleaza', () => {
-  const { api, getHistoryState } = loadGateSandbox({ stepKeyValue: '4', restoredStepValue: 4, navigationType: 'reload' });
-  // gateAlreadyPassed=true => enterWizardAfterGate() ruleaza deja o data la incarcarea sandbox-ului.
+test('PROBLEMA 3: enterWizardAfterGate() apelat A DOUA OARA (reload cu wizardStateRestored=true, history.state deja "wizard") NU impinge un al doilea strat — history.state ramane identic, nu se acumuleaza', () => {
+  const { api, getHistoryState } = loadGateSandbox({
+    stepKeyValue: '4', restoredStepValue: 4, navigationType: 'reload', initialHistoryState: { ndsView: 'wizard' }
+  });
+  // wizardStateRestored=true => enterWizardAfterGate() ruleaza deja o data la incarcarea sandbox-ului.
+  assert.equal(api.wizardStateRestored, true);
   assert.deepEqual(getHistoryState(), { ndsView: 'wizard' });
   api.enterWizardAfterGate();
   assert.deepEqual(getHistoryState(), { ndsView: 'wizard' }, 'niciun strat suplimentar la a doua rulare');
@@ -399,6 +432,78 @@ test('11. sandbox: click pe "Creeaza o melodie noua" ascunde ambele ecrane gate,
   assert.equal(elements['progress-wrap'].style.display, '');
   assert.deepEqual(calls.showStep, [1]);
   assert.equal(calls.fetch, 0);
+});
+
+// ===============================================================================================
+// SCENARIILE OBLIGATORII A-G (2026-10-04, cerinta explicita, verbatim) — fixul "Back de pe
+// Comenzile mele ajunge in wizard, nu la 'Ce vrei sa faci?'". comanda.html forteaza deja un reload
+// real la restaurarea din bfcache (window.addEventListener('pageshow', (event) => { if
+// (event.persisted) window.location.reload(); }), vezi test/quota-dead-end-navigation-fix.test.js)
+// — asta inseamna ca scenariile A (bfcache) si B (reincarcare completa) converg STRUCTURAL catre
+// ACELASI cod (decizia de mai jos, bazata pe history.state), niciodata pe DOM-ul inghetat vechi.
+// ===============================================================================================
+
+test('G. showGateChoiceScreen() foloseste STRICT replaceState({ndsGate:"choice"}) — NICIODATA pushState — nicio intrare noua in istoric, STRICT o eticheta pe cea existenta', () => {
+  const { snippet } = loadGateSandbox();
+  assert.match(snippet, /window\.history\.replaceState\(\{ ndsGate: 'choice' \}, '', window\.location\.href\)/, 'trebuie sa foloseasca EXACT replaceState, cu eticheta ndsGate:"choice"');
+  // Extragem STRICT corpul functiei showGateChoiceScreen() ca sa dovedim ca NU apeleaza pushState.
+  const fnStart = snippet.indexOf('function showGateChoiceScreen()');
+  const fnEnd = snippet.indexOf('\n  }', fnStart);
+  const fnBody = snippet.slice(fnStart, fnEnd);
+  assert.ok(!fnBody.includes('pushState'), 'showGateChoiceScreen() nu trebuie sa apeleze NICIODATA pushState — ar crea o intrare noua/duplicata in istoric');
+});
+
+test('G. sandbox: apelarea showGateChoiceScreen() de mai multe ori (email->choice, apoi din nou la restaurare) NU acumuleaza — history.state ramane STRICT {ndsGate:"choice"}, o singura "forma", niciodata o lista/stiva', () => {
+  const { api, getHistoryState } = loadGateSandbox({ navigationType: 'navigate' });
+  assert.equal(getHistoryState(), null);
+  api.showGateChoiceScreen();
+  assert.deepEqual(getHistoryState(), { ndsGate: 'choice' });
+  api.showGateChoiceScreen();
+  assert.deepEqual(getHistoryState(), { ndsGate: 'choice' }, 'a doua chemare nu trebuie sa schimbe/acumuleze nimic — acelasi replaceState, idempotent');
+});
+
+test('A/B. bfcache SI reincarcare completa converg pe ACELASI rezultat: intrarea curenta marcata {ndsGate:"choice"} (client a fost pe "Ce vrei sa faci?" inainte de a pleca la Comenzile mele) -> la revenire (Back), history.state e citit direct la incarcare (identic indiferent daca browserul a restaurat din bfcache-cu-reload-fortat sau a facut o reincarcare normala) -> ecranul de alegere e reafisat, NICIODATA wizard-ul', () => {
+  for (const navigationType of ['reload', 'back_forward']) {
+    const { api, elements, calls } = loadGateSandbox({
+      navigationType, initialHistoryState: { ndsGate: 'choice' }, stepKeyValue: '3', restoredStepValue: 3
+    });
+    assert.equal(api.choiceStateRestored, true, `navigationType=${navigationType}`);
+    assert.equal(api.wizardStateRestored, false, `navigationType=${navigationType}`);
+    assert.equal(elements['gate-choice-screen'].style.display, 'block', `navigationType=${navigationType}: trebuie sa arate "Ce vrei sa faci?"`);
+    assert.deepEqual(calls.showStep, [], `navigationType=${navigationType}: wizard-ul NU trebuie intrat automat`);
+  }
+});
+
+test('C. draft vechi (STEP_KEY + DRAFT_KEY) existent, intrarea curenta marcata "choice" -> Back arata "Ce vrei sa faci?", NU wizard-ul — draftul (STEP_KEY) ramane STRICT in storage, netouched, disponibil daca clientul alege explicit sa continue', () => {
+  const { api, elements, storageRef } = loadGateSandbox({
+    navigationType: 'back_forward', initialHistoryState: { ndsGate: 'choice' }, stepKeyValue: '5', restoredStepValue: 5
+  });
+  assert.equal(api.choiceStateRestored, true);
+  assert.equal(api.wizardStateRestored, false);
+  assert.equal(elements['gate-choice-screen'].style.display, 'block');
+  assert.equal(elements['progress-wrap'].style.display, undefined, 'bara de progres a wizard-ului nu trebuie afisata');
+  assert.equal(storageRef.currentStep, '5', 'STEP_KEY (draftul) ramane STRICT neatins — nu e sters, nu e modificat, STRICT neconsultat pentru aceasta decizie');
+});
+
+test('D. din "Ce vrei sa faci?", "Creeaza o melodie noua" continua sa intre normal in wizard SI poate folosi draftul existent (restoredStep din STEP_KEY) — comportament NESCHIMBAT', () => {
+  const { elements, listeners, calls, getHistoryState } = loadGateSandbox({
+    navigationType: 'back_forward', initialHistoryState: { ndsGate: 'choice' }, stepKeyValue: '5', restoredStepValue: 5
+  });
+  listeners.newSong();
+  assert.equal(elements['gate-choice-screen'].style.display, 'none');
+  assert.equal(elements['progress-wrap'].style.display, '');
+  assert.deepEqual(calls.showStep, [5], 'trebuie sa reia STRICT pasul salvat in draft (comportament existent, neschimbat)');
+  assert.deepEqual(getHistoryState(), { ndsView: 'wizard' }, 'intrarea in wizard isi pastreaza propria eticheta, distincta de "choice"');
+});
+
+test('F. draftul (STEP_KEY si DRAFT_KEY) nu e sters/modificat de NICIUN cod din acest fix, in NICIUN scenariu (choice restaurat, wizard restaurat, sau niciunul)', () => {
+  for (const initialHistoryState of [null, { ndsGate: 'choice' }, { ndsView: 'wizard' }]) {
+    const { storageRef } = loadGateSandbox({
+      navigationType: 'back_forward', initialHistoryState, stepKeyValue: '2', restoredStepValue: 2
+    });
+    assert.equal(storageRef.currentStep, '2', `STEP_KEY trebuie neatins pentru initialHistoryState=${JSON.stringify(initialHistoryState)}`);
+    assert.ok(!('nds_form_draft' in storageRef), 'DRAFT_KEY nu face parte din acest snippet — nu poate fi sters de el');
+  }
 });
 
 // ===============================================================================================
