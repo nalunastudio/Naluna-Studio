@@ -27,6 +27,11 @@
     background:var(--bg-secondary); border:1px solid var(--gold); border-radius:14px;
     padding:16px 18px; margin-bottom:24px; font-size:15px; line-height:1.5;
   }
+  /* CTA NEGRU SUB "AI ATINS LIMITA..." (2026-10-05, cerinta explicita) — STRICT cand banner-ul de
+     sus arata blocked_empty (client blocat de quota, 0 comenzi gasite automat) — acelasi stil
+     vizual ca butoanele negre principale (STRICT button{} de mai jos, nicio clasa care sa il
+     transforme in butonul ghost/secundar din .recovery-box). */
+  .blocked-cta-btn{ width:100%; margin-bottom:24px; }
   .order{
     display:block; background:var(--bg-secondary); border:1px solid var(--line); border-radius:14px;
     padding:20px; margin-bottom:16px; text-decoration:none; color:inherit;
@@ -106,6 +111,7 @@
   <img class="logo-mark" src="/logo.svg" alt="NALUNA">
   <h1 id="h1-title">Comenzile mele</h1>
   <div id="blocked-banner" class="blocked-banner" style="display:none;"></div>
+  <button type="button" id="blocked-cta-btn" class="blocked-cta-btn" style="display:none;"></button>
   <p class="sub" id="p-sub">Comenzile la care ai acces din acest browser.</p>
   <button type="button" id="use-other-email-btn" class="link-btn">Foloseşte alt email</button>
 
@@ -119,7 +125,6 @@
     <h2 id="recovery-title">Nu vezi o comandă?</h2>
     <p class="sub" id="recovery-sub" style="margin-bottom:14px;">Introdu emailul folosit la comandă.</p>
     <input type="email" id="recovery-email" placeholder="email@exemplu.com" autocomplete="email">
-    <button type="button" id="recovery-btn">Vezi comenzile mele</button>
     <button type="button" id="recovery-email-fallback-btn" class="link-btn" style="display:block;margin-top:10px;margin-bottom:0;">Trimite-mi link pe email</button>
     <p class="recovery-result" id="recovery-result" style="display:none;"></p>
   </div>
@@ -137,7 +142,7 @@
       blocked_empty: 'Ai atins limita de melodii gratuite pentru acest email. Dacă ai comenzi existente, folosește recuperarea prin email de mai jos ca să le accesezi.',
       loading: 'Se încarcă...', for_label: 'Pentru', continue_btn: 'Continuă cu această comandă',
       status_progress: 'Se compune', status_ready: 'Gata',
-      recovery_title: 'Nu vezi o comandă?', recovery_sub: 'Introdu emailul folosit la comandă ca să-ți vezi melodiile direct.',
+      recovery_title: 'Nu vezi o comandă?', recovery_sub: 'Introdu emailul folosit la comandă și îți trimitem un link de acces pe email.',
       recovery_placeholder: 'email@exemplu.com', recovery_btn: 'Vezi comenzile mele', recovery_searching: 'Se caută...',
       recovery_no_orders_for_email: 'Nu am găsit nicio comandă pentru acest email.',
       recovery_email_fallback_btn: 'Trimite-mi link pe email', recovery_sending: 'Se trimite...',
@@ -157,7 +162,7 @@
       blocked_empty: "You've reached the free-song limit for this email. If you have existing orders, use the email recovery below to access them.",
       loading: 'Loading...', for_label: 'For', continue_btn: 'Continue with this order',
       status_progress: 'Being composed', status_ready: 'Ready',
-      recovery_title: "Can't find an order?", recovery_sub: "Enter the email you used to order, and we'll show your songs directly.",
+      recovery_title: "Can't find an order?", recovery_sub: "Enter the email you used to order and we'll send you an access link by email.",
       recovery_placeholder: 'email@example.com', recovery_btn: 'See my orders', recovery_searching: 'Searching...',
       recovery_no_orders_for_email: 'We could not find any order for this email.',
       recovery_email_fallback_btn: 'Email me a link', recovery_sending: 'Sending...',
@@ -177,7 +182,7 @@
       blocked_empty: 'Du hast das Limit kostenloser Lieder für diese E-Mail-Adresse erreicht. Falls du bestehende Bestellungen hast, nutze die E-Mail-Wiederherstellung unten, um darauf zuzugreifen.',
       loading: 'Wird geladen...', for_label: 'Für', continue_btn: 'Mit dieser Bestellung fortfahren',
       status_progress: 'Wird komponiert', status_ready: 'Fertig',
-      recovery_title: 'Findest du eine Bestellung nicht?', recovery_sub: 'Gib die E-Mail-Adresse ein, mit der du bestellt hast — wir zeigen dir deine Lieder direkt.',
+      recovery_title: 'Findest du eine Bestellung nicht?', recovery_sub: 'Gib die E-Mail-Adresse ein, mit der du bestellt hast — wir schicken dir einen Zugangslink per E-Mail.',
       recovery_placeholder: 'email@beispiel.com', recovery_btn: 'Meine Bestellungen ansehen', recovery_searching: 'Wird gesucht...',
       recovery_no_orders_for_email: 'Wir konnten keine Bestellung für diese E-Mail-Adresse finden.',
       recovery_email_fallback_btn: 'Zugang per E-Mail zusenden', recovery_sending: 'Wird gesendet...',
@@ -197,7 +202,7 @@
       blocked_empty: 'Has alcanzado el límite de canciones gratuitas para este email. Si tienes pedidos existentes, usa la recuperación por email de abajo para acceder a ellos.',
       loading: 'Cargando...', for_label: 'Para', continue_btn: 'Continuar con este pedido',
       status_progress: 'En composición', status_ready: 'Listo',
-      recovery_title: '¿No encuentras un pedido?', recovery_sub: 'Introduce el email que usaste para pedir y te mostraremos tus canciones directamente.',
+      recovery_title: '¿No encuentras un pedido?', recovery_sub: 'Introduce el email que usaste para pedir y te enviaremos un enlace de acceso por email.',
       recovery_placeholder: 'email@ejemplo.com', recovery_btn: 'Ver mis pedidos', recovery_searching: 'Buscando...',
       recovery_no_orders_for_email: 'No encontramos ningún pedido para este email.',
       recovery_email_fallback_btn: 'Enviarme un enlace por email', recovery_sending: 'Enviando...',
@@ -217,7 +222,7 @@
       blocked_empty: 'Hai raggiunto il limite di canzoni gratuite per questa email. Se hai ordini esistenti, usa il recupero via email qui sotto per accedervi.',
       loading: 'Caricamento...', for_label: 'Per', continue_btn: 'Continua con questo ordine',
       status_progress: 'In composizione', status_ready: 'Pronto',
-      recovery_title: 'Non trovi un ordine?', recovery_sub: 'Inserisci l\'email usata per l\'ordine e ti mostreremo subito le tue canzoni.',
+      recovery_title: 'Non trovi un ordine?', recovery_sub: 'Inserisci l\'email usata per l\'ordine e ti invieremo un link di accesso via email.',
       recovery_placeholder: 'email@esempio.com', recovery_btn: 'Vedi i miei ordini', recovery_searching: 'Ricerca in corso...',
       recovery_no_orders_for_email: 'Non abbiamo trovato nessun ordine per questa email.',
       recovery_email_fallback_btn: 'Inviami un link via email', recovery_sending: 'Invio in corso...',
@@ -237,7 +242,7 @@
       blocked_empty: 'Tu as atteint la limite de chansons gratuites pour cet email. Si tu as des commandes existantes, utilise la récupération par email ci-dessous pour y accéder.',
       loading: 'Chargement...', for_label: 'Pour', continue_btn: 'Continuer avec cette commande',
       status_progress: 'En composition', status_ready: 'Prête',
-      recovery_title: 'Vous ne trouvez pas une commande ?', recovery_sub: 'Entrez l\'email utilisé pour commander et nous afficherons vos chansons directement.',
+      recovery_title: 'Vous ne trouvez pas une commande ?', recovery_sub: 'Entrez l\'email utilisé pour commander et nous vous enverrons un lien d\'accès par email.',
       recovery_placeholder: 'email@exemple.com', recovery_btn: 'Voir mes commandes', recovery_searching: 'Recherche...',
       recovery_no_orders_for_email: 'Nous n\'avons trouvé aucune commande pour cet email.',
       recovery_email_fallback_btn: 'M\'envoyer un lien par email', recovery_sending: 'Envoi en cours...',
@@ -257,7 +262,7 @@
       blocked_empty: 'Достигна лимита на безплатните песни за този имейл. Ако имаш съществуващи поръчки, използвай възстановяването по имейл по-долу, за да получиш достъп до тях.',
       loading: 'Зареждане...', for_label: 'За', continue_btn: 'Продължи с тази поръчка',
       status_progress: 'Композира се', status_ready: 'Готова',
-      recovery_title: 'Не намираш поръчка?', recovery_sub: 'Въведи имейла, използван при поръчката, и ще ти покажем песните ти директно.',
+      recovery_title: 'Не намираш поръчка?', recovery_sub: 'Въведи имейла, използван при поръчката, и ще ти изпратим линк за достъп по имейл.',
       recovery_placeholder: 'email@primer.com', recovery_btn: 'Виж поръчките ми', recovery_searching: 'Търсене...',
       recovery_no_orders_for_email: 'Не намерихме нито една поръчка за този имейл.',
       recovery_email_fallback_btn: 'Изпрати ми линк по имейл', recovery_sending: 'Изпраща се...',
@@ -277,7 +282,7 @@
       blocked_empty: 'Bu e-posta için ücretsiz şarkı sınırına ulaştın. Mevcut siparişlerin varsa, bunlara erişmek için aşağıdaki e-posta kurtarma seçeneğini kullan.',
       loading: 'Yükleniyor...', for_label: 'Kime', continue_btn: 'Bu siparişe devam et',
       status_progress: 'Besteleniyor', status_ready: 'Hazır',
-      recovery_title: 'Bir sipariş bulamıyor musunuz?', recovery_sub: 'Siparişte kullandığınız e-postayı girin, şarkılarınızı hemen gösterelim.',
+      recovery_title: 'Bir sipariş bulamıyor musunuz?', recovery_sub: 'Siparişte kullandığınız e-postayı girin, size e-posta ile bir erişim bağlantısı gönderelim.',
       recovery_placeholder: 'email@ornek.com', recovery_btn: 'Siparişlerimi gör', recovery_searching: 'Aranıyor...',
       recovery_no_orders_for_email: 'Bu e-posta için sipariş bulamadık.',
       recovery_email_fallback_btn: 'Bağlantıyı e-postama gönder', recovery_sending: 'Gönderiliyor...',
@@ -303,7 +308,7 @@
   document.getElementById('recovery-title').textContent = t.recovery_title;
   document.getElementById('recovery-sub').textContent = t.recovery_sub;
   document.getElementById('recovery-email').placeholder = t.recovery_placeholder;
-  document.getElementById('recovery-btn').textContent = t.recovery_btn;
+  document.getElementById('blocked-cta-btn').textContent = t.recovery_btn;
   document.getElementById('recovery-email-fallback-btn').textContent = t.recovery_email_fallback_btn;
   document.getElementById('use-other-email-btn').textContent = t.use_other_email;
   document.getElementById('create-new-cta-btn').textContent = t.create_new_song_btn;
@@ -644,22 +649,27 @@
   // gasit nicio comanda" DEDESUBT era redundant/confuz. Mesajul empty_no_orders ramane STRICT
   // pentru cazul FARA niciun context de blocare.
   // BUTON REDUNDANT ELIMINAT DIN STAREA "COMENZI DEJA AFISATE" (2026-09-30, cerinta explicita
-  // dupa testul real in productie) — "Vezi comenzile mele" nu mai are sens odata ce clientul vede
-  // deja comenzile lui pe ecran (indiferent daca au aparut automat sau prin aceasta cautare
-  // manuala). Ascunde STRICT butonul primar (#recovery-btn) — campul de email si fallback-ul
-  // "Trimite-mi link pe email" raman functionale, pentru cazul unei comenzi sub alt email. NU se
-  // apeleaza niciodata pe ramura "nicio comanda gasita" (handleNoVisibleOrders/mesajul de eroare
-  // de mai jos) — acolo cautarea initiala ramane STRICT necesara si vizibila.
+  // dupa testul real in productie; retintit 2026-10-05 catre #blocked-cta-btn dupa eliminarea
+  // vechiului #recovery-btn din sectiunea de jos) — CTA-ul negru "Vezi comenzile mele" nu mai are
+  // sens odata ce clientul vede deja comenzile lui pe ecran. Campul de email si fallback-ul
+  // "Trimite-mi link pe email" raman functionale, pentru cazul unei comenzi sub alt email.
   function hideRedundantRecoveryButton() {
-    document.getElementById('recovery-btn').style.display = 'none';
+    document.getElementById('blocked-cta-btn').style.display = 'none';
   }
 
+  // CTA NEGRU "VEZI COMENZILE MELE" (2026-10-05, cerinta explicita) — STRICT cand quota tocmai a
+  // blocat clientul SI nicio comanda nu a fost gasita automat (blocked_empty) — vizibil IMEDIAT
+  // sub chenarul "Ai atins limita...", niciodata pentru un vizitator neblocat (ramane ascuns
+  // implicit, style="display:none" in markup). Handler-ul lui (mai jos, langa celelalte
+  // addEventListener) foloseste STRICT lookupOrdersByEmail() — acelasi mecanism/ruta deja
+  // existente (POST /api/orders/by-email), niciun cod nou de retea.
   function handleNoVisibleOrders() {
     const recoveryBox = document.getElementById('recovery-box');
     if (wasBlocked) {
       const banner = document.getElementById('blocked-banner');
       banner.textContent = t.blocked_empty;
       banner.style.display = '';
+      document.getElementById('blocked-cta-btn').style.display = '';
     } else {
       const listEl = document.getElementById('orders-list');
       const p = document.createElement('p');
@@ -792,21 +802,29 @@
     window.location.href = '/comanda.html';
   });
 
-  // PRIMAR (2026-09-30, decizie explicita de produs) — introducerea manuala a unui email pe
-  // aceasta pagina cere ACUM direct serverul (acelasi POST /api/orders/by-email) si afiseaza
-  // comenzile IMEDIAT, fara sa mai treaca prin email — inlocuieste vechiul "trimite-mi acces pe
-  // email" ca actiune IMPLICITA. Mecanismul de trimitere pe email ramane disponibil STRICT ca
-  // fallback secundar explicit, prin butonul separat de mai jos.
-  document.getElementById('recovery-btn').addEventListener('click', async () => {
-    const btn = document.getElementById('recovery-btn');
+  // CTA NEGRU "VEZI COMENZILE MELE" SUB "AI ATINS LIMITA..." (2026-10-05, cerinta explicita) —
+  // foloseste STRICT emailul DEJA cunoscut din traseul de blocare quota (pendingRecoveryEmail,
+  // variabila JS de mai sus — sessionStorage e deja consumat/sters, dar valoarea ramane in memorie
+  // pentru durata acestei pagini), fara sa ceara clientului sa-l retasteze. Acelasi mecanism
+  // existent (lookupOrdersByEmail -> POST /api/orders/by-email -> renderReadOnlyOrderCard),
+  // NICIUN cod nou de retea. Daca emailul nu mai e cunoscut (sessionStorage indisponibil, sau
+  // clientul a ajuns aici altfel), STRICT muta focusul pe campul de email din sectiunea de
+  // recuperare de mai jos — nicio presupunere, nicio comanda/generare/quota atinsa la simpla
+  // apasare.
+  document.getElementById('blocked-cta-btn').addEventListener('click', async () => {
+    const btn = document.getElementById('blocked-cta-btn');
+    if (!pendingRecoveryEmail) {
+      const emailInput = document.getElementById('recovery-email');
+      emailInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      emailInput.focus();
+      return;
+    }
     const resultEl = document.getElementById('recovery-result');
-    const email = document.getElementById('recovery-email').value.trim();
-    if (!email) return;
     btn.disabled = true;
     const originalLabel = btn.textContent;
     btn.textContent = t.recovery_searching;
     resultEl.style.display = 'none';
-    const lookup = await lookupOrdersByEmail(email);
+    const lookup = await lookupOrdersByEmail(pendingRecoveryEmail);
     btn.textContent = originalLabel;
     btn.disabled = false;
     if (!lookup.ok) {
@@ -822,10 +840,12 @@
     }
     const listEl = document.getElementById('orders-list');
     listEl.innerHTML = '';
-    eligible.forEach((o, i) => listEl.appendChild(renderReadOnlyOrderCard(o, i + 1, o.previewVariantIds, email)));
+    eligible.forEach((o, i) => listEl.appendChild(renderReadOnlyOrderCard(o, i + 1, o.previewVariantIds, pendingRecoveryEmail)));
     resultEl.style.display = 'none';
+    const banner = document.getElementById('blocked-banner');
+    banner.textContent = t.blocked;
     hideRedundantRecoveryButton();
-    await maybeShowCreateNewCta(email);
+    await maybeShowCreateNewCta(pendingRecoveryEmail);
   });
 
   // FALLBACK SECUNDAR (cerinta explicita, "recovery prin email poate ramane ca fallback secundar

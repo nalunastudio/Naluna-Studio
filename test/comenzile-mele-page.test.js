@@ -225,6 +225,17 @@ for (const lang of ALLOWED_LANGS) {
   });
 }
 
+// TEST 6 (cerinta explicita) — toate cele 8 limbi: recovery_btn (reutilizat pentru CTA-ul negru
+// nou) exista si e nevid (deja verificat mai sus, in lista de chei obligatorii); recovery_sub NU
+// mai afirma ca emailul arata melodiile "direct" — vechiul buton instant a fost eliminat, STRICT
+// "Trimite-mi link pe email" (fallback) mai ramane in acea sectiune.
+for (const lang of ALLOWED_LANGS) {
+  test(`TEST 6: comenzile-mele.html: limba ${lang} — recovery_sub descrie corect recuperarea prin LINK pe email (nu mai afirma "direct"/"imediat", odata ce butonul instant a fost eliminat)`, () => {
+    assert.ok(T[lang].recovery_sub && T[lang].recovery_sub.trim().length > 0, `[${lang}] recovery_sub lipseste/gol`);
+    assert.ok(!/direct|immediately|directement|direkt|directamente|subito|hemen|директно/i.test(T[lang].recovery_sub), `[${lang}] recovery_sub nu mai trebuie sa afirme ca melodiile apar "direct" — acel buton a fost eliminat`);
+  });
+}
+
 test('comenzile-mele.html: toate cele 8 traduceri ale "blocked" si "blocked_empty" sunt distincte intre ele (per limba) si nu contin nicio cifra — si "blocked_empty" nu afirma ca exista melodii', () => {
   ALLOWED_LANGS.forEach((lang) => {
     const blocked = T[lang].blocked;
@@ -294,16 +305,19 @@ function buildSandbox({ search = '', storedOrders, fetchImpl, pendingRecoveryEma
       addEventListener(evt, fn) { listeners[evt] = fn; },
       __listeners: listeners,
       setAttribute() {},
+      scrollIntoView() {},
+      focus() { this.__focused = true; },
       set value(v) { this._value = v; },
       get value() { return this._value || ''; }
     };
   }
   const elements = {};
-  const ids = ['h1-title', 'p-sub', 'loading-msg', 'recovery-title', 'recovery-sub', 'recovery-email', 'recovery-btn', 'recovery-email-fallback-btn', 'blocked-banner', 'orders-list', 'recovery-box', 'recovery-result', 'create-new-cta-wrap', 'create-new-cta-btn'];
+  const ids = ['h1-title', 'p-sub', 'loading-msg', 'recovery-title', 'recovery-sub', 'recovery-email', 'blocked-cta-btn', 'recovery-email-fallback-btn', 'blocked-banner', 'orders-list', 'recovery-box', 'recovery-result', 'create-new-cta-wrap', 'create-new-cta-btn'];
   for (const id of ids) elements[id] = makeEl();
   // Starea initiala reala a paginii (vezi markup-ul static): blocked-banner/recovery-box pornesc
   // ascunse (style="display:none;" in HTML) — scriptul le dezvaluie explicit, nu mock-ul.
   elements['blocked-banner'].style.display = 'none';
+  elements['blocked-cta-btn'].style.display = 'none';
   elements['recovery-box'].style.display = 'none';
   elements['create-new-cta-wrap'].style.display = 'none';
   const documentMock = {
@@ -594,9 +608,10 @@ test('PROBLEMA 1: aceeasi comanda confirmata ATAT prin token local CAT SI prin e
 });
 
 // FALLBACK SECUNDAR (2026-09-30, decizie explicita de produs — "recovery prin email poate ramane
-// ca fallback secundar pentru situatii speciale"): butonul PRIMAR (#recovery-btn) foloseste acum
-// lookup direct (testat separat mai jos) — mecanismul VECHI de trimitere pe email, cu proprietatea
-// lui de securitate (raspuns generic, anti-enumerare), ramane STRICT pe butonul secundar explicit.
+// ca fallback secundar pentru situatii speciale"; ramas STRICT fallback dupa 2026-10-05, cand
+// vechiul buton PRIMAR #recovery-btn a fost eliminat din sectiunea de jos — vezi CTA-ul negru
+// #blocked-cta-btn, testat separat mai jos): mecanismul VECHI de trimitere pe email, cu
+// proprietatea lui de securitate (raspuns generic, anti-enumerare), ramane STRICT pe acest buton.
 test('sandbox (fallback: recovery prin email ramane functional si securizat): trimite STRICT {email, lang} catre /api/orders/recover-access, niciodata id-uri/tokenuri locale — si arata ACELASI mesaj generic indiferent de raspunsul serverului (nicio enumerare de conturi)', async () => {
   const { api, elements, fetchCalls } = buildSandbox({ storedOrders: [] });
   await api.__loadPromise;
@@ -616,51 +631,6 @@ test('sandbox (fallback: recovery ramane securizat chiar daca serverul esueaza/e
   elements['recovery-email'].value = 'oricine@exemplu.com';
   await elements['recovery-email-fallback-btn'].__listeners.click();
   assert.equal(elements['recovery-result'].textContent, api.t.recovery_sent, 'mesajul trebuie sa ramana generic chiar si la eroare de retea');
-});
-
-// PRIMAR (2026-09-30, decizie explicita de produs, "emailul introdus de client e suficient"):
-// butonul principal cere DIRECT serverul (POST /api/orders/by-email) si afiseaza comenzile
-// imediat, in aceeasi pagina — niciun email trimis, niciun link de asteptat.
-test('sandbox (primar: introducerea manuala a unui email cere DIRECT POST /api/orders/by-email si afiseaza comenzile imediat, fara sa trimita niciun email)', async () => {
-  const { api, elements, fetchCalls } = buildSandbox({
-    storedOrders: [],
-    fetchImpl: (url) => {
-      if (url === '/api/orders/by-email') {
-        return jsonRes({ orders: [{ id: 'order-x', plan: 'standard', recipient: 'Ana', status: 'ready', createdAt: '2026-09-01T00:00:00Z', songCount: 1, hostedAccessExpired: false, previewVariantIds: ['v1'] }] });
-      }
-      return { ok: false };
-    }
-  });
-  await api.__loadPromise;
-  elements['recovery-email'].value = 'client@exemplu.com';
-  await elements['recovery-btn'].__listeners.click();
-  // 2 cereri: descoperirea (/by-email) + verificarea de eligibilitate pentru "Creeaza o melodie
-  // noua" (/can-create-new, adaugata 2026-09-30) — NICIUN email trimis in ambele cazuri.
-  assert.equal(fetchCalls.length, 2);
-  assert.equal(fetchCalls[0].url, '/api/orders/by-email');
-  assert.equal(fetchCalls[0].opts.method, 'POST');
-  assert.equal(fetchCalls[0].opts.body, JSON.stringify({ email: 'client@exemplu.com' }));
-  assert.equal(fetchCalls[1].url, '/api/orders/can-create-new');
-  const card = elements['orders-list'].children[0];
-  assert.equal(elements['orders-list'].children.length, 1, 'comanda gasita prin email trebuie afisata direct, fara niciun email trimis');
-  assert.match(card.innerHTML, /Ana/);
-  assert.ok(!card.innerHTML.includes('<audio'), 'cardul nu mai trebuie sa contina niciun player audio');
-  assert.ok(card.children.find((c) => c.className === 'continue-cta-btn'), 'trebuie sa aiba butonul de continuare');
-  assert.ok(!card.href, 'cardul view/listen nu trebuie sa fie clicabil (fara acces complet)');
-});
-
-test('sandbox (primar: email fara comenzi eligibile -> mesaj clar, fara card, fara email trimis)', async () => {
-  const { api, elements, fetchCalls } = buildSandbox({
-    storedOrders: [],
-    fetchImpl: (url) => (url === '/api/orders/by-email' ? jsonRes({ orders: [] }) : { ok: false })
-  });
-  await api.__loadPromise;
-  elements['recovery-email'].value = 'fara-comenzi@exemplu.com';
-  await elements['recovery-btn'].__listeners.click();
-  assert.equal(fetchCalls.length, 1);
-  assert.equal(fetchCalls[0].url, '/api/orders/by-email');
-  assert.equal(elements['orders-list'].children.filter((c) => c.className === 'order').length, 0, 'niciun card de comanda nu trebuie inventat');
-  assert.equal(elements['recovery-result'].textContent, api.t.recovery_no_orders_for_email);
 });
 
 test('sandbox: acces expirat (hostedAccessExpired) — numarul real de melodii ramane afisat (fapt istoric real), dar fara pill-ul de status "Gata" (comportament pastrat neschimbat)', async () => {
@@ -696,12 +666,12 @@ test('sandbox: NICIUN card (indiferent de status) nu mai afiseaza vreun badge/pi
 });
 
 // ===================================================================================================
-// BUG REAL DE PRODUCTIE, RUNDA 2 — UX: "Vezi comenzile mele" e redundant odata ce comenzile sunt
-// deja afisate (indiferent daca au aparut automat sau prin cautarea manuala) — ascuns STRICT in
-// acel caz; campul de email si fallback-ul "Trimite-mi link pe email" raman functionale. Cautarea
-// initiala (STAREA A, fara comenzi incarcate inca) ramane complet neatinsa.
+// CTA NEGRU "VEZI COMENZILE MELE" SUB "AI ATINS LIMITA..." (2026-10-05, cerinta explicita) —
+// inlocuieste vechiul buton PRIMAR #recovery-btn (eliminat din sectiunea de jos). Vizibil STRICT
+// cand quota tocmai a blocat clientul SI nicio comanda nu a fost gasita automat (blocked_empty),
+// niciodata pentru un vizitator neblocat sau cand comenzile apar deja pe ecran.
 // ===================================================================================================
-test('sandbox: dupa afisarea AUTOMATA a comenzilor (token local confirmat), butonul "Vezi comenzile mele" e ascuns — fallback-ul de email ramane vizibil/functional', async () => {
+test('sandbox: dupa afisarea AUTOMATA a comenzilor (token local confirmat), CTA-ul negru ramane ascuns (nu are legatura cu acest traseu) — fallback-ul de email ramane vizibil/functional', async () => {
   const tok = 'i'.repeat(48);
   const { api, elements } = buildSandbox({
     storedOrders: [{ id: 'order-auto', token: tok }],
@@ -711,32 +681,120 @@ test('sandbox: dupa afisarea AUTOMATA a comenzilor (token local confirmat), buto
   });
   await api.__loadPromise;
   assert.equal(elements['orders-list'].children.length, 1);
-  assert.equal(elements['recovery-btn'].style.display, 'none', 'butonul primar redundant trebuie ascuns odata ce o comanda e deja afisata');
+  assert.equal(elements['blocked-cta-btn'].style.display, 'none', 'CTA-ul negru nu are legatura cu descoperirea automata (STRICT quota block) — ramane ascuns');
   assert.notEqual(elements['recovery-email-fallback-btn'].style.display, 'none', 'fallback-ul de email trebuie sa ramana vizibil/functional');
 });
 
-test('sandbox: dupa cautarea MANUALA reusita (buton "Vezi comenzile mele" -> comenzi gasite), acelasi buton se ascunde singur — fara sa afecteze campul de email sau fallback-ul', async () => {
-  const { api, elements } = buildSandbox({
-    storedOrders: [],
-    fetchImpl: (url) => (url === '/api/orders/by-email'
-      ? jsonRes({ orders: [{ id: 'order-manual', plan: 'premium', recipient: 'Ana', status: 'preview_ready', createdAt: '2026-09-01T00:00:00Z', songCount: 2, hostedAccessExpired: false }] })
-      : { ok: false })
-  });
-  await api.__loadPromise;
-  assert.notEqual(elements['recovery-btn'].style.display, 'none', 'STAREA A (nimic incarcat inca) — butonul trebuie sa ramana vizibil, cautarea initiala ramane necesara');
-  elements['recovery-email'].value = 'client@exemplu.com';
-  await elements['recovery-btn'].__listeners.click();
-  assert.equal(elements['orders-list'].children.length, 1);
-  assert.equal(elements['recovery-btn'].style.display, 'none', 'dupa gasirea comenzilor manual, butonul redundant trebuie ascuns');
+// TEST 3 (cerinta explicita) — vechiul buton "Vezi comenzile mele" din sectiunea de jos NU mai
+// exista in markup; CTA-ul negru nou e plasat IMEDIAT dupa #blocked-banner in DOM (inaintea
+// oricarui alt element), nu in .recovery-box.
+test('TEST 3: markup — #recovery-btn (vechiul buton din "Nu vezi o comanda?") nu mai exista deloc; #blocked-cta-btn exista, e plasat IMEDIAT dupa #blocked-banner, si e in AFARA .recovery-box (nu langa campul de email)', () => {
+  assert.ok(!/id="recovery-btn"/.test(page), 'vechiul buton #recovery-btn trebuie eliminat complet din markup');
+  assert.match(page, /<div id="blocked-banner"[^>]*><\/div>\s*\n\s*<button type="button" id="blocked-cta-btn"/, 'CTA-ul negru trebuie sa fie STRICT urmatorul element dupa banner, in markup');
+  const ctaIdx = page.indexOf('id="blocked-cta-btn"');
+  const recoveryBoxIdx = page.indexOf('id="recovery-box"');
+  assert.ok(ctaIdx < recoveryBoxIdx, 'CTA-ul negru trebuie sa fie in afara/inaintea .recovery-box, nu langa campul de email');
 });
 
-test('sandbox: cand NICIO comanda nu e gasita (email fara comenzi, sau lista goala fara token), butonul "Vezi comenzile mele" RAMANE vizibil — STAREA A, cautarea initiala ramane necesara', async () => {
+// TEST 7 (cerinta explicita, "mobile layout") — CTA-ul negru foloseste STRICT stilul vizual al
+// butoanelor negre principale (button{} generic, aceeasi regula folosita de #create-new-cta-btn/
+// .continue-cta-btn), latime completa (acelasi tipar .create-new-cta-btn{width:100%}) — nu clasa
+// ghost/secundara din .recovery-box (background:transparent, border, font mai mic).
+test('TEST 7: CSS — .blocked-cta-btn e latime completa (width:100%, ca .create-new-cta-btn) si NU e scopat de regula ghost .recovery-box button (elementul e in afara acelui container, vezi TEST 3)', () => {
+  assert.match(page, /\.blocked-cta-btn\{\s*width:100%;/, 'CTA-ul negru trebuie sa fie latime completa, ca celelalte CTA-uri principale (mobile-friendly)');
+  const recoveryBoxCss = page.slice(page.indexOf('.recovery-box{'), page.indexOf('.recovery-result{'));
+  assert.ok(!recoveryBoxCss.includes('blocked-cta-btn'), '.blocked-cta-btn nu trebuie stilat de regulile .recovery-box (ar deveni butonul ghost/secundar, nu CTA-ul negru principal)');
+});
+
+// TEST 5 (cerinta explicita) — client FARA quota block nu primeste noul CTA inutil, nici macar
+// cand nicio comanda nu e gasita (STAREA A obisnuita, fara ?blocked=1).
+test('TEST 5: cand NICIO comanda nu e gasita SI clientul NU a fost blocat de quota (fara ?blocked=1), CTA-ul negru RAMANE ascuns — mesajul obisnuit "nicio comanda" ramane, fara CTA inutil', async () => {
   const { api, elements } = buildSandbox({
     storedOrders: [],
     fetchImpl: (url) => (url === '/api/orders/by-email' ? jsonRes({ orders: [] }) : { ok: false })
   });
   await api.__loadPromise;
-  assert.notEqual(elements['recovery-btn'].style.display, 'none', 'fara comenzi incarcate, butonul de cautare initiala trebuie sa ramana vizibil');
+  assert.equal(elements['blocked-cta-btn'].style.display, 'none', 'fara quota block, CTA-ul negru nu trebuie aratat niciodata');
+});
+
+// TEST 1 (cerinta explicita) — quota block -> CTA negru apare IMEDIAT sub mesajul "Ai atins limita...".
+test('TEST 1: quota block (?blocked=1) SI nicio comanda gasita automat (blocked_empty) -> CTA-ul negru "Vezi comenzile mele" devine vizibil, imediat sub chenar', async () => {
+  const { api, elements } = buildSandbox({
+    search: '?blocked=1',
+    storedOrders: [],
+    pendingRecoveryEmail: 'client@exemplu.com',
+    fetchImpl: (url) => (url === '/api/orders/by-email' ? jsonRes({ orders: [] }) : { ok: false })
+  });
+  await api.__loadPromise;
+  assert.equal(elements['blocked-banner'].textContent, api.t.blocked_empty);
+  assert.notEqual(elements['blocked-banner'].style.display, 'none');
+  assert.notEqual(elements['blocked-cta-btn'].style.display, 'none', 'CTA-ul negru trebuie sa devina vizibil imediat sub chenarul "Ai atins limita..."');
+  assert.equal(elements['blocked-cta-btn'].textContent, api.t.recovery_btn, 'textul CTA-ului trebuie sa fie "Vezi comenzile mele" (cheia de traducere existenta, refolosita)');
+});
+
+// TEST 2 (cerinta explicita) — click -> afiseaza comenzile existente prin fluxul EXISTENT
+// (lookupOrdersByEmail -> POST /api/orders/by-email), STRICT cu emailul DEJA cunoscut din
+// traseul de blocare quota — clientul NU retasteaza nimic.
+test('TEST 2: click pe CTA-ul negru, cu emailul DEJA cunoscut din quota block -> cere STRICT POST /api/orders/by-email cu acel email (niciodata cerut din nou clientului) si afiseaza comenzile gasite, ascunzand apoi CTA-ul redundant', async () => {
+  // Prima cerere (automata, la incarcare) nu gaseste nimic -> blocked_empty + CTA vizibil
+  // (scenariul EXPLICIT cerut: chenarul apare, apoi CTA-ul). A doua cerere (declansata de click,
+  // acelasi email, acelasi mecanism lookupOrdersByEmail) gaseste comanda — situatie reala posibila
+  // (eventual consistency / o comanda devenita eligibila intre timp), STRICT ca sa dovedim ca
+  // butonul chiar refoloseste fluxul existent, cu rezultatul REAL primit de la server.
+  let byEmailCallCount = 0;
+  const { api, elements, fetchCalls } = buildSandbox({
+    search: '?blocked=1',
+    storedOrders: [],
+    pendingRecoveryEmail: 'client@exemplu.com',
+    fetchImpl: (url) => {
+      if (url !== '/api/orders/by-email') return { ok: false };
+      byEmailCallCount++;
+      if (byEmailCallCount === 1) return jsonRes({ orders: [] });
+      return jsonRes({ orders: [{ id: 'order-manual', plan: 'premium', recipient: 'Ana', status: 'preview_ready', createdAt: '2026-09-01T00:00:00Z', songCount: 2, hostedAccessExpired: false, previewVariantIds: [] }] });
+    }
+  });
+  await api.__loadPromise;
+  assert.equal(elements['blocked-banner'].textContent, api.t.blocked_empty);
+  assert.notEqual(elements['blocked-cta-btn'].style.display, 'none', 'CTA-ul trebuie vizibil dupa chenarul "Ai atins limita..."');
+  const callsBefore = fetchCalls.length;
+  await elements['blocked-cta-btn'].__listeners.click();
+  const byEmailCalls = fetchCalls.slice(callsBefore).filter((c) => c.url === '/api/orders/by-email');
+  assert.equal(byEmailCalls.length, 1, 'trebuie sa refoloseasca STRICT ruta existenta /api/orders/by-email');
+  assert.equal(byEmailCalls[0].opts.body, JSON.stringify({ email: 'client@exemplu.com' }), 'emailul folosit trebuie sa fie STRICT cel deja cunoscut din quota block, niciodata cerut din nou clientului');
+  assert.equal(elements['orders-list'].children.length, 1, 'comanda gasita trebuie afisata prin fluxul existent');
+  assert.match(elements['orders-list'].children[0].innerHTML, /Ana/);
+  assert.equal(elements['blocked-cta-btn'].style.display, 'none', 'CTA-ul redundant trebuie ascuns odata ce comenzile sunt afisate');
+});
+
+test('sandbox: click pe CTA-ul negru, emailul din quota block DAR fara comenzi eligibile -> mesaj clar (recovery_no_orders_for_email), fara card inventat', async () => {
+  const { api, elements, fetchCalls } = buildSandbox({
+    search: '?blocked=1',
+    storedOrders: [],
+    pendingRecoveryEmail: 'fara-comenzi@exemplu.com',
+    fetchImpl: (url) => (url === '/api/orders/by-email' ? jsonRes({ orders: [] }) : { ok: false })
+  });
+  await api.__loadPromise;
+  await elements['blocked-cta-btn'].__listeners.click();
+  assert.ok(fetchCalls.some((c) => c.url === '/api/orders/by-email' && c.opts.body === JSON.stringify({ email: 'fara-comenzi@exemplu.com' })));
+  assert.equal(elements['orders-list'].children.filter((c) => c.className === 'order').length, 0, 'niciun card de comanda nu trebuie inventat');
+  assert.equal(elements['recovery-result'].textContent, api.t.recovery_no_orders_for_email);
+});
+
+// Emailul NU mai e cunoscut (sessionStorage deja consumat la o vizita anterioara, sau clientul a
+// ajuns aici altfel) — clickul NU cere un email pe care nu il are; STRICT muta focusul catre
+// campul de email din sectiunea de recuperare de mai jos, fara niciun fetch nou.
+test('sandbox: click pe CTA-ul negru cand emailul NU mai e cunoscut -> NU face niciun fetch, STRICT muta focusul pe campul de email din "Nu vezi o comanda?" (fluxul existent de acolo)', async () => {
+  const { api, elements, fetchCalls } = buildSandbox({
+    search: '?blocked=1',
+    storedOrders: [],
+    fetchImpl: () => { throw new Error('niciun fetch nu trebuie declansat fara un email cunoscut'); }
+  });
+  await api.__loadPromise;
+  assert.notEqual(elements['blocked-cta-btn'].style.display, 'none');
+  const callsBefore = fetchCalls.length;
+  await elements['blocked-cta-btn'].__listeners.click();
+  assert.equal(fetchCalls.length, callsBefore, 'niciun fetch nu trebuie declansat cand emailul nu e cunoscut');
+  assert.ok(elements['recovery-email'].__focused, 'campul de email trebuie sa primeasca focus, ca sa poata fi folosit fluxul existent ("Trimite-mi link pe email")');
 });
 
 // ===================================================================================================
@@ -1079,7 +1137,7 @@ test('sandbox: Comanda 1/2/3 accesate prin resume-by-email, apoi Back -> RE-INCA
 
 test('sandbox: o incarcare NORMALA (nu din bfcache — event.persisted===false, ex. pageshow la incarcarea initiala) NU declanseaza resetarea (loadAndRenderOrders() oricum reconstruieste totul de la zero)', async () => {
   const { elements, windowListeners } = buildSandbox({ storedOrders: [] });
-  const btn = elements['recovery-btn']; // orice element existent, STRICT ca sa verificam ca handler-ul nu arunca / nu modifica nimic in afara .continue-cta-btn
+  const btn = elements['blocked-cta-btn']; // orice element existent, STRICT ca sa verificam ca handler-ul nu arunca / nu modifica nimic in afara .continue-cta-btn
   const before = btn.disabled;
   windowListeners.pageshow.forEach((fn) => fn({ persisted: false }));
   assert.equal(btn.disabled, before, 'un pageshow normal (persisted:false) nu trebuie sa modifice nimic');
