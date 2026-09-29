@@ -69,9 +69,9 @@ function baseOrder(lang, genre, voicePreference) {
 const CONTRASTING_PAIRS = [
   ['jazz', 'hiphop', /soulful vocal/i, /rap verses/i],
   ['populara', 'rock', /folk ornamentation/i, /strong vocal/i],
-  // REVIZUIT (2026-10-06, cerinta explicita — audit muzical pe 5 referinte audio): textul de stil
-  // al lui manele_jale s-a schimbat; tiparul de mai jos verifica STRICT noul caracter vocal curent.
-  ['manele_suflet', 'manele_jale', /Balkan oriental, melismatic vocal runs/i, /crying melismatic vocal, expressive violin clarinet/i]
+  // REVIZUIT RUNDA 2 (2026-10-07, cerinta explicita): textul de stil al lui manele_jale s-a
+  // schimbat din nou; tiparul de mai jos verifica STRICT noul caracter vocal curent.
+  ['manele_suflet', 'manele_jale', /Balkan oriental, melismatic vocal runs/i, /powerful projected live vocal, strong oriental melismatic ornamentation/i]
 ];
 for (const [genreA, genreB, patternA, patternB] of CONTRASTING_PAIRS) {
   for (const voicePreference of VOICE_PREFS) {

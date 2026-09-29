@@ -10335,24 +10335,27 @@ const GENRE_STYLE_MAP = {
   // povestea, in loc sa creasca partea NICIODATA scurtata — vezi buildPrompt() si
   // test/manele-suflet-short-lines.test.js.
   manele_suflet: 'Romanian manele, Balkan oriental, melismatic vocal runs, violin accordion clarinet, hopeful devoted mood, short intro, vocals enter early',
-  // REVIZUIT (2026-10-06, cerinta explicita — "manele_jale se aseamana prea mult cu
-  // manele_suflet", audit muzical pe baza a 5 referinte audio furnizate de client, analizate
-  // separat de client insusi, NU de model): descriere rescrisa ca sa impinga caracterul CLAR spre
-  // lamentatie/durere (minor mult mai pronuntat, interpretare de plans, melisme expresive, vioara+
-  // clarinet expresive, oriental synth, atmosfera grea de heartbreak) — opusul explicit al mood-
-  // ului "hopeful devoted" de la manele_suflet. STRICT descriere muzicala — verificat, niciun nume
-  // de artist/gen concret imitat. "early vocals" NU e inclus aici INTENTIONAT — ar fi redundant cu
-  // vocalsEarlyClause (mai jos in buildPrompt), care oricum adauga deja " Vocals enter early."
-  // pentru orice gen diferit de manele_suflet, deci si pentru manele_jale, automat, fara cost
-  // suplimentar de caractere aici. Lungime (138 caractere) verificata direct, prin buildPrompt()
-  // real, impotriva celui mai incarcat scenariu deja documentat (nunta, nume compuse maxime, duet,
-  // bulgara) — povestea clientului ramane prezenta (vezi test/manele-jale-style-differentiation.
-  // test.js) — o versiune anterioara, mai lunga (152 caractere, cu "early vocals" inclus), a fost
-  // respinsa explicit dupa ce testarea directa a aratat ca elimina COMPLET povestea in acel
-  // scenariu. manele_suflet, legacy `manele`, vocalsEarlyClause, buildPrompt(), limita de 600
-  // caractere, story logic, Short lines, dictia, preview-ul de 50s si toate celelalte genuri raman
-  // complet neatinse de aceasta schimbare.
-  manele_jale: 'Romanian manele de jale, deep minor oriental melody, crying melismatic vocal, expressive violin clarinet, oriental synth, heavy heartbreak',
+  // REVIZUIT RUNDA 2 (2026-10-07, cerinta explicita — testul real de productie al rundei 1
+  // "crying vocal/heavy heartbreak" nu a placut: problema principala era INTERPRETAREA, nu
+  // identitatea de gen): descriere rescrisa ca sa impinga caracterul spre voce PUTERNICA,
+  // PROIECTATA, cu senzatie de interpretare LIVE (nu moale/intima, nu pop/cinematic ballad, nu
+  // dreamy/ambient) — opusul explicit al variantei anterioare (accent pe "crying"/"heartbreak")
+  // SI al lui manele_suflet ("hopeful devoted mood", fara niciun descriptor de forta/proiectie).
+  // STRICT descriere muzicala/de interpretare — verificat, niciun nume de artist/gen concret
+  // imitat, versurile NU sunt atinse de aceasta schimbare. "early vocals"/"vocals enter" NU sunt
+  // incluse aici INTENTIONAT (neschimbat fata de runda 1) — ar fi redundant cu vocalsEarlyClause
+  // (mai jos in buildPrompt), care oricum adauga deja " Vocals enter early." pentru orice gen
+  // diferit de manele_suflet, deci si pentru manele_jale, automat, fara cost suplimentar de
+  // caractere aici. Lungime (130 caractere) verificata direct, prin buildPrompt() real, impotriva
+  // celui mai incarcat scenariu deja documentat (nunta, nume compuse maxime, duet, bulgara) —
+  // povestea clientului ramane prezenta (vezi test/manele-jale-style-differentiation.test.js) — o
+  // varianta alternativa, doar 12 caractere mai lunga (142, cu "live-band performance feel" in loc
+  // de "live-band feel"), a fost respinsa explicit dupa ce testarea directa a aratat ca elimina
+  // COMPLET povestea in acel scenariu — pragul de rupere masurat e undeva intre 130 si 142
+  // caractere pentru acest scenariu extrem. manele_suflet, legacy `manele`, vocalsEarlyClause,
+  // buildPrompt(), limita de 600 caractere, story logic, Short lines, dictia, preview-ul de 50s si
+  // toate celelalte genuri raman complet neatinse de aceasta schimbare.
+  manele_jale: 'Romanian manele de jale, powerful projected live vocal, strong oriental melismatic ornamentation, live-band feel, minor-key melody',
   // CORECȚIE (2026-09-13): "unornamented vocal"/"no autotune" eliminate — ornamentatia vocala
   // e autentica si legitima in muzica populara romaneasca; diferentierea reala fata de Manele
   // vine din identitatea de ansamblu traditional/ritm traditional, nu din absenta ornamentatiei.

@@ -181,14 +181,16 @@ test('DIFERENTIERE: fiecare pereche critica produce instructiuni de stil vizibil
   }
 });
 
-test('DIFERENTIERE: Manele de suflet ramane caldut/plin de speranta, Manele de jale ramane intunecat/jelitor — niciodata amestecate', () => {
+test('DIFERENTIERE: Manele de suflet ramane caldut/plin de speranta, Manele de jale ramane puternic/proiectat/live — niciodata amestecate', () => {
   assert.match(GENRE_STYLE_MAP.manele_suflet, /hopeful|devoted/i);
-  assert.ok(!/mournful|lament|grief|crying|heartbreak/i.test(GENRE_STYLE_MAP.manele_suflet), 'Manele de suflet nu trebuie sa contina descriptori de jale');
-  // REVIZUIT (2026-10-06, cerinta explicita — audit muzical pe 5 referinte audio) — vocabularul
-  // exact s-a schimbat ("crying"/"heartbreak" in loc de "mournful"/"lament"/"longing"), dar
-  // intentia testului (jale ramane STRICT intunecat, niciodata amestecat cu caldura/speranta lui
-  // manele_suflet) ramane identica.
-  assert.match(GENRE_STYLE_MAP.manele_jale, /mournful|lament|longing|crying|heartbreak/i);
+  assert.ok(!/powerful|projected|live-band/i.test(GENRE_STYLE_MAP.manele_suflet), 'Manele de suflet nu trebuie sa contina descriptori de forta/proiectie/live ai lui manele_jale');
+  // REVIZUIT RUNDA 2 (2026-10-07, cerinta explicita — testul real de productie al rundei 1
+  // "crying vocal/heavy heartbreak" nu a placut, problema fiind INTERPRETAREA): axa de
+  // diferentiere s-a schimbat de la vocabular "intunecat" (mournful/lament/crying/heartbreak) la
+  // caracterul de INTERPRETARE (voce puternica, proiectata, senzatie live) — intentia testului
+  // (jale ramane STRICT distinct, niciodata amestecat cu caldura/speranta lui manele_suflet)
+  // ramane identica, doar axa concreta de diferentiere s-a mutat.
+  assert.match(GENRE_STYLE_MAP.manele_jale, /powerful|projected|live-band/i);
   assert.ok(!/hopeful|devoted/i.test(GENRE_STYLE_MAP.manele_jale), 'Manele de jale nu trebuie sa contina descriptori de speranta/devotament');
 });
 

@@ -1,14 +1,21 @@
-// DIFERENTIERE MUZICALA manele_jale vs manele_suflet (2026-10-06, cerinta explicita) — clientul a
-// analizat separat 5 referinte audio si a cerut o rescriere STRICT a GENRE_STYLE_MAP.manele_jale,
-// ca sa impinga caracterul clar spre lamentatie/durere (minor pronuntat, interpretare de plans,
-// melisme expresive, vioara+clarinet expresive, oriental synth, heartbreak greu), opusul explicit
-// al mood-ului "hopeful devoted" de la manele_suflet.
+// DIFERENTIERE MUZICALA manele_jale vs manele_suflet — DOUA RUNDE, cerinte explicite.
 //
-// O versiune initiala, mai lunga (152 caractere, cu ", early vocals" inclus), a fost RESPINSA dupa
-// verificare directa prin buildPrompt(): in scenariul cel mai incarcat deja documentat (nunta,
-// nume compuse maxime, duet, bulgara), povestea clientului disparea COMPLET, si "early vocals" din
-// stil dubla inutil clauza oportunista deja existenta " Vocals enter early." (vocalsEarlyClause).
-// Varianta APROBATA (138 caractere, fara "early vocals") a fost verificata sa NU repete acest bug.
+// RUNDA 1 (2026-10-06): clientul a analizat separat 5 referinte audio si a cerut o rescriere a
+// GENRE_STYLE_MAP.manele_jale spre lamentatie/durere (minor pronuntat, "crying" vocal, "heavy
+// heartbreak"), opusul mood-ului "hopeful devoted" de la manele_suflet. Aprobata si livrata.
+//
+// RUNDA 2 (2026-10-07): testul REAL de productie al variantei din runda 1 nu a placut — problema
+// principala era INTERPRETAREA, nu identitatea de gen. Cerinta noua: voce PUTERNICA, PROIECTATA,
+// senzatie de interpretare LIVE (nu moale/intima, nu pop/cinematic ballad, nu dreamy/ambient).
+// Text rescris a doua oara, cu accentul mutat de la vocabular "intunecat" (crying/heartbreak) la
+// caracterul de interpretare (powerful/projected/live-band).
+//
+// O varianta alternativa a rundei 2, doar 12 caractere mai lunga (142, cu "live-band performance
+// feel" in loc de "live-band feel"), a fost RESPINSA dupa verificare directa prin buildPrompt():
+// in scenariul cel mai incarcat deja documentat (nunta, nume compuse maxime, duet, bulgara),
+// povestea clientului disparea COMPLET — pragul de rupere masurat e undeva intre 130 si 142
+// caractere pentru acest scenariu extrem. Varianta APROBATA (130 caractere) a fost verificata sa
+// NU reproduca acest bug.
 //
 // Scope STRICT: STRICT valoarea string GENRE_STYLE_MAP.manele_jale. manele_suflet, legacy
 // `manele`, vocalsEarlyClause, buildPrompt(), limita de 600 caractere, story logic, Short lines,
@@ -24,15 +31,19 @@ function read(relPath) {
 }
 const server = read('server.js');
 
-const NEW_MANELE_JALE_STYLE = 'Romanian manele de jale, deep minor oriental melody, crying melismatic vocal, expressive violin clarinet, oriental synth, heavy heartbreak';
+const NEW_MANELE_JALE_STYLE = 'Romanian manele de jale, powerful projected live vocal, strong oriental melismatic ornamentation, live-band feel, minor-key melody';
 const UNCHANGED_MANELE_SUFLET_STYLE = 'Romanian manele, Balkan oriental, melismatic vocal runs, violin accordion clarinet, hopeful devoted mood, short intro, vocals enter early';
 const UNCHANGED_LEGACY_MANELE_STYLE = 'Romanian manele de jale, oriental scale, mournful clarinet, melismatic vocal slides, minor key grief';
+// Textele RESPINSE (runda 1 finala, si runda 1 initiala) — verificam explicit ca NU mai apar nicaieri.
+const REJECTED_ROUND1_STYLE = 'Romanian manele de jale, deep minor oriental melody, crying melismatic vocal, expressive violin clarinet, oriental synth, heavy heartbreak';
+const REJECTED_ROUND1_INITIAL_STYLE = 'Romanian manele de jale, minor-key oriental colour, mournful violin and clarinet, melismatic lament vocal, heavier longing mood';
+const REJECTED_ROUND2_OVERBUDGET_STYLE = 'Romanian manele de jale, powerful projected live vocal, strong oriental melismatic ornamentation, live-band performance feel, minor-key melody';
 
 // ===============================================================================================
 // Extragere buildPrompt() REALA din server.js (acelasi tipar deja folosit in
 // test/manele-suflet-short-intro.test.js) — nicio reimplementare paralela.
 // ===============================================================================================
-function loadBuildPrompt() {
+function loadBuildPrompt(replacementStyle) {
   const startMarker = 'const SUNO_PROMPT_MAX_LEN = 600;';
   const startIdx = server.indexOf(startMarker);
   assert.ok(startIdx !== -1);
@@ -43,7 +54,12 @@ function loadBuildPrompt() {
     if (server[i] === '{') depth++;
     else if (server[i] === '}') { depth--; if (depth === 0) break; }
   }
-  const snippet = server.slice(startIdx, i + 1);
+  let snippet = server.slice(startIdx, i + 1);
+  if (replacementStyle) {
+    const currentLine = `manele_jale: '${NEW_MANELE_JALE_STYLE}',`;
+    assert.ok(snippet.includes(currentLine), 'linia curenta manele_jale negasita verbatim — folosita STRICT pentru testul comparativ al variantei respinse, mai jos');
+    snippet = snippet.replace(currentLine, `manele_jale: '${replacementStyle}',`);
+  }
   const sandboxSrc = `
     const { normalizeSingingText, getDictionInstruction } = require('../lib/diction.js');
     const VOICE_PREFERENCES = ['female', 'male', 'duet', 'auto'];
@@ -92,13 +108,20 @@ function heaviestOrder(overrides) {
 }
 
 // ===============================================================================================
-// TEST 1 — noul string exact pentru manele_jale.
+// TEST 1 — noul string exact pentru manele_jale (RUNDA 2).
 // ===============================================================================================
-test('1) GENRE_STYLE_MAP.manele_jale contine EXACT noul text aprobat (138 caractere, fara "early vocals")', () => {
+test('1) GENRE_STYLE_MAP.manele_jale contine EXACT noul text aprobat, runda 2 (130 caractere, fara "early vocals")', () => {
   assert.equal(GENRE_STYLE_MAP.manele_jale, NEW_MANELE_JALE_STYLE);
-  assert.equal(Array.from(GENRE_STYLE_MAP.manele_jale).length, 138);
+  assert.equal(Array.from(GENRE_STYLE_MAP.manele_jale).length, 130);
   assert.ok(!GENRE_STYLE_MAP.manele_jale.toLowerCase().includes('hopeful'), 'nu trebuie sa mai contina caracterul hopeful/devoted al lui manele_suflet');
   assert.ok(!GENRE_STYLE_MAP.manele_jale.toLowerCase().includes('devoted'));
+});
+
+test('1b) niciunul din textele RESPINSE (runda 1 initiala, runda 1 finala, varianta supra-buget a rundei 2) nu mai apare', () => {
+  assert.notEqual(GENRE_STYLE_MAP.manele_jale, REJECTED_ROUND1_STYLE);
+  assert.notEqual(GENRE_STYLE_MAP.manele_jale, REJECTED_ROUND1_INITIAL_STYLE);
+  assert.notEqual(GENRE_STYLE_MAP.manele_jale, REJECTED_ROUND2_OVERBUDGET_STYLE);
+  assert.ok(!server.includes(REJECTED_ROUND1_STYLE), 'textul respins al rundei 1 (finala) nu mai trebuie sa existe nicaieri in server.js');
 });
 
 // ===============================================================================================
@@ -118,10 +141,11 @@ test('3) GENRE_STYLE_MAP.manele (legacy, folosit STRICT la regenerarea comenzilo
 // ===============================================================================================
 // TEST 4 — buildPrompt() pentru manele_jale foloseste noul style.
 // ===============================================================================================
-test('4) buildPrompt() cu genre=manele_jale foloseste STRICT noul style (nu textul vechi, nu manele_suflet)', () => {
+test('4) buildPrompt() cu genre=manele_jale foloseste STRICT noul style (nu vreun text vechi, nu manele_suflet)', () => {
   const prompt = buildPrompt(typicalOrder({ genre: 'manele_jale' }), '', undefined);
   assert.ok(prompt.startsWith(NEW_MANELE_JALE_STYLE), 'promptul trebuie sa inceapa cu noul styleTags, neschimbat de restul cascadei');
-  assert.ok(!prompt.includes('minor-key oriental colour'), 'textul VECHI nu mai trebuie sa apara nicaieri');
+  assert.ok(!prompt.includes('minor-key oriental colour'), 'textul rundei 1 initiale nu mai trebuie sa apara nicaieri');
+  assert.ok(!prompt.includes('crying melismatic vocal'), 'textul rundei 1 finale nu mai trebuie sa apara nicaieri');
   assert.ok(!prompt.includes('hopeful devoted'), 'promptul pentru manele_jale nu trebuie sa contina caracterul lui manele_suflet');
 });
 
@@ -148,12 +172,14 @@ test('5) buildPrompt() pentru manele_jale ramane STRICT <=600 caractere, in scen
 
 // ===============================================================================================
 // TEST 6 — povestea continua sa fie prioritizata conform mecanismului EXISTENT (buildPrompt
-// neschimbat) — confirmam explicit ca noul style (138 caractere) NU reproduce regresia gasita la
-// varianta respinsa de 152 caractere, unde povestea disparea COMPLET in scenariul cel mai incarcat.
+// neschimbat) — confirmam explicit ca noul style (130 caractere) NU reproduce regresia gasita la
+// varianta respinsa de 142 caractere (runda 2), unde povestea disparea COMPLET in scenariul cel
+// mai incarcat.
 // ===============================================================================================
-test('6) In scenariul cel mai incarcat, povestea clientului RAMANE PREZENTA in prompt (fragment, chiar daca trunchiat de mecanismul deja existent) — NU dispare complet, spre deosebire de varianta respinsa de 152 caractere', () => {
+test('6) In scenariul cel mai incarcat, povestea clientului RAMANE PREZENTA in prompt (fragment, chiar daca trunchiat de mecanismul deja existent) — NU dispare complet, spre deosebire de varianta respinsa de 142 caractere', () => {
   const prompt = buildPrompt(heaviestOrder(), '', undefined);
-  assert.ok(prompt.includes('Story') || prompt.includes('Ne-am') || prompt.includes('Ne-a'), 'un fragment din poveste (eticheta si/sau continut) trebuie sa ramana prezent, niciodata eliminat complet');
+  assert.ok(prompt.includes('Story'), 'eticheta povestii trebuie sa ramana prezenta');
+  assert.ok(prompt.includes('Ne-am'), 'un fragment din poveste trebuie sa ramana prezent, niciodata eliminat complet');
 });
 
 test('6b) In scenariul tipic (fara presiune extrema de buget), povestea completa a clientului apare NETRUNCHIATA', () => {
@@ -162,14 +188,21 @@ test('6b) In scenariul tipic (fara presiune extrema de buget), povestea completa
   assert.ok(prompt.includes(order.story), 'povestea completa trebuie sa apara, cuvant cu cuvant, cand exista suficient buget');
 });
 
+test('6c) COMPARATIV: varianta respinsa a rundei 2 (142 caractere, "live-band performance feel") ELIMINA COMPLET povestea in scenariul cel mai incarcat — dovada directa a motivului pentru care a fost respinsa', () => {
+  const buildPromptRejected = loadBuildPrompt(REJECTED_ROUND2_OVERBUDGET_STYLE);
+  const prompt = buildPromptRejected(heaviestOrder(), '', undefined);
+  assert.ok(!prompt.includes('Story'), 'varianta respinsa trebuie sa demonstreze eliminarea completa a etichetei povestii in acest scenariu');
+});
+
 // ===============================================================================================
-// TEST 7 — NU exista redundanta "early vocals" (din style) + "Vocals enter early." (clauza
-// oportunista existenta, vocalsEarlyClause) — nici in stilul insusi, nici in promptul final,
-// in niciun scenariu (inclusiv cel mai usor, unde clauza oportunista are cele mai mari sanse
-// sa incapa).
+// TEST 7 — NU exista redundanta "early vocals"/"live vocal ... enter early" + "Vocals enter
+// early." (clauza oportunista existenta, vocalsEarlyClause) — nici in stilul insusi, nici in
+// promptul final, in niciun scenariu (inclusiv cel mai usor, unde clauza oportunista are cele mai
+// mari sanse sa incapa).
 // ===============================================================================================
-test('7) GENRE_STYLE_MAP.manele_jale NU contine "early vocals" — vocalsEarlyClause (nemodificata) adauga deja acest indiciu automat, opportunist, pentru orice gen diferit de manele_suflet', () => {
+test('7) GENRE_STYLE_MAP.manele_jale NU contine "early vocals"/"enter early" — vocalsEarlyClause (nemodificata) adauga deja acest indiciu automat, opportunist, pentru orice gen diferit de manele_suflet', () => {
   assert.ok(!GENRE_STYLE_MAP.manele_jale.toLowerCase().includes('early vocals'), 'stilul nu trebuie sa mentioneze "early vocals" — ar deveni redundant cu vocalsEarlyClause');
+  assert.ok(!GENRE_STYLE_MAP.manele_jale.toLowerCase().includes('enter early'), 'stilul nu trebuie sa mentioneze "enter early" — ar deveni redundant cu vocalsEarlyClause');
 });
 
 test('7b) In cel mai usor scenariu (nume scurte, engleza, fara feedback), promptul final NU repeta ideea "vocea intra devreme" de doua ori', () => {
@@ -179,7 +212,18 @@ test('7b) In cel mai usor scenariu (nume scurte, engleza, fara feedback), prompt
   assert.ok(earlyVocalsMentions <= 1, `promptul nu trebuie sa mentioneze ideea de "vocals early" de mai multe ori — gasit de ${earlyVocalsMentions} ori`);
 });
 
-test('7c) vocalsEarlyClause (mecanismul deja existent) ramane NESCHIMBAT — se aplica in continuare STRICT genurilor diferite de manele_suflet, inclusiv manele_jale', () => {
+test('7c) Intr-un scenariu cu buget suficient (comanda minimala, fara expeditor numit), clauza oportunista "Vocals enter early." CONTINUA sa fie adaugata pentru manele_jale prin mecanismul existent (vocalsEarlyClause), neschimbat', () => {
+  // Comanda "usoara" folosita la testul 7b (nume scurte) tot nu lasa loc simultan pentru
+  // "Target song length" SI "Vocals enter early." la acest style (130 caractere, +7 fata de
+  // varianta din runda 1) — un fapt masurat, nu o eroare a mecanismului. Aici demonstram STRICT
+  // ca mecanismul insusi (vocalsEarlyClause) ramane functional pentru manele_jale, cu o comanda
+  // minimala unde bugetul chiar permite ambele clauze oportuniste simultan.
+  const minimalOrder = { occasion: 'altceva', genre: 'manele_jale', lang: 'en', plan: 'standard', recipient: 'Al', senderName: '', senderRole: null, recipientRole: null, recipientMode: 'single', relationship: '', voicePreference: 'auto', story: 'Hi.' };
+  const prompt = buildPrompt(minimalOrder, '', undefined);
+  assert.ok(prompt.includes('Vocals enter early.'), 'clauza oportunista trebuie sa continue sa se adauge automat pentru manele_jale, exact ca pentru orice alt gen diferit de manele_suflet, cand bugetul permite');
+});
+
+test('7d) vocalsEarlyClause (mecanismul deja existent) ramane NESCHIMBAT — se aplica in continuare STRICT genurilor diferite de manele_suflet, inclusiv manele_jale', () => {
   assert.match(server, /const vocalsEarlyClause = \(\(genreOverride \|\| order\.genre\) !== 'manele_suflet'\) \? ' Vocals enter early\.' : '';/);
 });
 
@@ -210,10 +254,10 @@ test('8b) resolvePreviewMaxSeconds(\'manele_jale\') ramane STRICT 50 (EXTENDED_P
 });
 
 // ===============================================================================================
-// SCOPE — celelalte 20 de genuri (toate NEW_GENRES + LEGACY_ONLY_GENRES in afara de manele_jale)
-// raman byte-for-byte neschimbate.
+// TEST 9 (SCOPE) — celelalte 21 de genuri (toate NEW_GENRES + LEGACY_ONLY_GENRES in afara de
+// manele_jale) raman byte-for-byte neschimbate.
 // ===============================================================================================
-test('SCOPE: toate celelalte genuri din GENRE_STYLE_MAP raman byte-for-byte neschimbate (STRICT manele_jale a fost modificat)', () => {
+test('9) toate celelalte genuri din GENRE_STYLE_MAP raman byte-for-byte neschimbate (STRICT manele_jale a fost modificat)', () => {
   const expectedUnchanged = {
     emotional: 'cinematic orchestral ballad, swelling strings and piano, rubato build, breathy vulnerable vocal, tearful climax',
     suflet: 'intimate de suflet ballad, sparse guitar or piano, close warm vocal, quiet confessional unpolished mood',

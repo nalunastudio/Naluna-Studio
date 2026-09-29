@@ -202,16 +202,16 @@ test('1c) CRITIC — noul text NU contine niciodata cuvantul "instrumental" (REG
 });
 
 // ===============================================================================================
-// 2) manele_jale — NEATINS de ACEASTA corectie (2026-09-19, intro scurt manele_suflet). O corectie
-// SEPARATA, ulterioara si explicita (2026-10-06, "manele_jale se aseamana prea mult cu
-// manele_suflet", audit muzical pe 5 referinte audio) a rescris ulterior acest text — vezi
+// 2) manele_jale — NEATINS de ACEASTA corectie (2026-09-19, intro scurt manele_suflet). Corectii
+// SEPARATE, ulterioare si explicite (2026-10-06 si 2026-10-07, diferentiere muzicala fata de
+// manele_suflet, audit pe 5 referinte audio) au rescris ulterior acest text, de doua ori — vezi
 // test/manele-jale-style-differentiation.test.js pentru sursa de adevar curenta a acelei valori.
 // Aici verificam STRICT ca fix-ul de fata (intro scurt) nu l-a atins EL insusi.
 // ===============================================================================================
 test('2) manele_jale ramane BYTE-IDENTIC cu valoarea curenta aprobata (nu a fost atins de ACEASTA corectie de intro scurt)', () => {
   assert.equal(
     GENRE_STYLE_MAP.manele_jale,
-    'Romanian manele de jale, deep minor oriental melody, crying melismatic vocal, expressive violin clarinet, oriental synth, heavy heartbreak'
+    'Romanian manele de jale, powerful projected live vocal, strong oriental melismatic ornamentation, live-band feel, minor-key melody'
   );
 });
 
