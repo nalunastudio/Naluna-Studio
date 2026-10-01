@@ -10523,6 +10523,32 @@ const SENDER_SELF_DECLARATION_MARKERS = {
   tr: [/\bben(im)?\s+/i]
 };
 
+// CORECȚIE (2026-10-01, fals-pozitiv confirmat in productie, comanda reala ea525ede — "sunt" e un
+// omograf real in romana: persoana I singular "I am" SAU persoana a III-a plural "they are"):
+// lista DEDICATA, separata STRICT de SENDER_MODE_COLLECTIVE_WORDS (acea lista e pentru resolveSenderMode,
+// un scop diferit — decuplata intentionat, ca o modificare viitoare acolo sa nu afecteze fara sa vrea
+// aceasta exceptie). Folosita DOAR de isPrecededByPluralSubjectRo mai jos, DOAR pentru marcajul RO
+// "sunt" (niciodata "eu sunt", niciodata alta limba).
+const RO_PLURAL_SUBJECT_BEFORE_SUNT = ['parintii', 'părinții', 'prietenii', 'nasii', 'nașii', 'copiii', 'bunicii', 'fratii', 'frații', 'nepotii', 'nepoții', 'verii'];
+
+// STRICT romana, STRICT pentru marcajul "sunt" (nu "eu sunt") — distinge "sunt" = persoana I
+// singular ("eu sunt") de persoana a III-a plural ("ei/ele sunt"), verificand subiectul gramatical
+// IMEDIAT precedent in clauza CURENTA (max 2 cuvinte inapoi, ca sa prinda un posesiv intercalat:
+// "nasii NOSTRI sunt"). Limita clauzei = . ! ? ; , sau linie noua — INCLUSIV virgula (cerinta
+// explicita: "Nepotii, sunt Andrei..." NU trebuie exceptat, pentru ca "Nepotii" e separat prin
+// virgula de "sunt Andrei", deci nu mai e subiectul gramatical al lui "sunt" in acea clauza).
+function isPrecededByPluralSubjectRo(lowerText, matchIndex) {
+  let boundary = -1;
+  for (const ch of ['.', '!', '?', ';', ',', '\n']) {
+    const idx = lowerText.lastIndexOf(ch, matchIndex - 1);
+    if (idx > boundary) boundary = idx;
+  }
+  const clausePrefix = lowerText.slice(boundary + 1, matchIndex).trim();
+  const words = clausePrefix.split(/\s+/).filter(Boolean);
+  const lastTwo = words.slice(-2);
+  return lastTwo.some(w => RO_PLURAL_SUBJECT_BEFORE_SUNT.includes(w));
+}
+
 // CORECȚIE (2026-09-25, investigatie fals-pozitive dupa manele_suflet "Short lines"): motive de
 // coerenta care raman CALCULATE (vizibile in reasons/perfLog, pentru monitorizare) dar NU mai
 // blocheaza livrarea unei piese — STRICT 'explicit_message_omitted' (vezi comentariul detaliat de
@@ -10573,8 +10599,21 @@ function validateLyricsCoherence(order, recipientSnapshot, lyricsText) {
   // (versurile respinse nu sunt niciodata logate/salvate, prin design) ca respingerea reala de pe
   // bf03a964 a fost intr-adevar un fals-pozitiv (Suno chiar poate fi produs o auto-identificare
   // reala) — comanda s-a recuperat oricum normal, prin mecanismul de reincercare deja existent,
-  // fara nicio comanda ramasa blocata. Decizie: RAMANE NESCHIMBAT — un risc teoretic, neconfirmat,
-  // nu justifica sacrificarea unei protectii deja demonstrate impotriva bug-ului real raportat.
+  // fara nicio comanda ramasa blocata. Decizie INITIALA (2026-09-25): RAMANE NESCHIMBAT.
+  //
+  // CORECȚIE (2026-10-01, comanda reala ea525ede — risc teoretic de mai sus CONFIRMAT in productie):
+  // 3 generari Suno complet independente, toate respinse pentru sender_self_declaration, cu 36 de
+  // credite consumate si zero rezultat pentru client — audit separat, versurile respinse tot
+  // nelogate (nicio dovada DIRECTA ca motivul exact a fost acest fals-pozitiv specific), dar
+  // repetarea identica pe 3 generari independente face improbabil ca Suno sa fi produs aceeasi
+  // eroare reala de 3 ori la rand. Solutie MINIMA, ingusta (vezi isPrecededByPluralSubjectRo() si
+  // RO_PLURAL_SUBJECT_BEFORE_SUNT mai sus): exceptie STRICT pentru marcajul RO "sunt" (niciodata
+  // "eu sunt", niciodata alta limba), STRICT cand subiectul gramatical din ultimele 2 cuvinte ale
+  // CLAUZEI CURENTE (limitata de . ! ? ; , sau linie noua — virgula inclusa explicit, ca
+  // "Nepotii, sunt Andrei..." sa RAMANA respins, subiectul fiind separat prin virgula) e un cuvant
+  // de familie/grup colectiv romanesc. Bug-ul real original ("Iar aici Sunt Bunicului Andrei...")
+  // ramane detectat identic — "iar"/"aici" nu sunt in lista. Lista dedicata, NU reutilizeaza
+  // SENDER_MODE_COLLECTIVE_WORDS (scop diferit, decuplare intentionata).
   const hasSender = typeof senderName === 'string' && senderName.trim().length > 0;
   if (hasSender) {
     const senderLower = senderName.trim().toLowerCase();
@@ -10586,8 +10625,16 @@ function validateLyricsCoherence(order, recipientSnapshot, lyricsText) {
       let m;
       while ((m = globalMarker.exec(lyricsLower)) !== null) {
         if (senderFirstWord && lyricsLower.slice(m.index + m[0].length, m.index + m[0].length + senderFirstWord.length + 5).includes(senderFirstWord)) {
-          reasons.push('sender_self_declaration');
-          break outer;
+          // CORECȚIE (2026-10-01): STRICT marcajul RO "sunt" (niciodata "eu sunt", niciodata alta
+          // limba) — daca subiectul gramatical imediat precedent, in clauza curenta, e un cuvant
+          // din RO_PLURAL_SUBJECT_BEFORE_SUNT ("prietenii", "nasii"...), aceasta aparitie e persoana
+          // a III-a plural legitima, nu auto-identificare — NU respingem PENTRU ACEASTA aparitie,
+          // dar continuam scanarea (o alta aparitie, mai departe in text, poate fi tot respinsa).
+          const isBareRoSuntMarker = lang === 'ro' && marker.source === /\bsunt\s+/i.source;
+          if (!(isBareRoSuntMarker && isPrecededByPluralSubjectRo(lyricsLower, m.index))) {
+            reasons.push('sender_self_declaration');
+            break outer;
+          }
         }
         if (m.index === globalMarker.lastIndex) globalMarker.lastIndex++; // evita bucla infinita pe potriviri de lungime 0
       }

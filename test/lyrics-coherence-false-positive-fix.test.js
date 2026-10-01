@@ -12,17 +12,19 @@
 //     concise. Cauza directa a comenzii reale f76baa46 (povestea continea "te iubesc" — confirmat
 //     direct in baza de date — versurile respinse repetat, cu acelasi motiv, in toate cele 6
 //     incercari ale ciclului initial de generare).
-//   - sender_self_declaration          — ANALIZAT SEPARAT, RAMANE NESCHIMBAT (nicio corectie).
+//   - sender_self_declaration          — ANALIZAT SEPARAT in 2026-09-25, decizie initiala RAMANE
+//     NESCHIMBAT. CORECTAT ULTERIOR (2026-10-01, comanda reala ea525ede): riscul teoretic de mai jos
+//     a fost CONFIRMAT in productie (3 generari Suno independente, toate respinse, 36 credite
+//     consumate, zero rezultat) — fix MINIM adaugat (RO_PLURAL_SUBJECT_BEFORE_SUNT/
+//     isPrecededByPluralSubjectRo, langa SENDER_SELF_DECLARATION_MARKERS), vezi sectiunea 4 mai jos.
 //     "Sunt"/"sono" sunt omografe gramaticale reale (persoana I singular "I am" SAU persoana a
-//     III-a plural "they are"/existential "there are") — teoretic, riscul de fals-pozitiv exista.
-//     O prima incercare de reparatie (cerinta de pozitie la inceputul propozitiei) A FOST RESPINSA
-//     dupa testare directa: rupea un test EXISTENT, deliberat, pentru bug-ul REAL raportat ("Iar
-//     aici Sunt Bunicului Andrei" — vezi test/lyrics-obtain-acceptable-variant.test.js). Spre
-//     deosebire de explicit_message_omitted, NU exista dovezi DIRECTE (versurile respinse nu sunt
-//     niciodata logate/salvate, prin design) ca respingerea reala de pe bf03a964 a fost un
-//     fals-pozitiv — comanda s-a recuperat oricum normal, prin mecanismul de reincercare deja
-//     existent. Un risc teoretic, neconfirmat, nu justifica sacrificarea unei protectii deja
-//     demonstrate — vezi sectiunea 4 mai jos pentru documentarea explicita a acestei decizii.
+//     III-a plural "they are"/existential "there are"). O prima incercare de reparatie (cerinta de
+//     pozitie la inceputul propozitiei) A FOST RESPINSA dupa testare directa: rupea un test EXISTENT,
+//     deliberat, pentru bug-ul REAL raportat ("Iar aici Sunt Bunicului Andrei" — vezi
+//     test/lyrics-obtain-acceptable-variant.test.js) — acel test ramane PASS neschimbat si cu fix-ul
+//     nou (vezi 4b), pentru ca exceptia e ingusta: STRICT marcajul "sunt" (nu "eu sunt"), STRICT
+//     cand subiectul gramatical din clauza curenta (limitata inclusiv de virgula) e un cuvant
+//     colectiv romanesc dedicat.
 //   - song_data_mixing                 — RAMANE blocant, neatins (nume-leak intre cele doua melodii
 //     Premium — defect NEAMBIGUU, nu depinde de stilul de formulare).
 //
@@ -122,20 +124,69 @@ test('3) mesaj important REALMENTE omis (nici forma exacta, nici o reformulare v
 });
 
 // ===================================================================================================
-// 4) sender_self_declaration — ANALIZAT SEPARAT, DECIZIE: NESCHIMBAT. Documentam explicit riscul
-//    teoretic gasit (omograf "sunt"/"sono") SI motivul pentru care nu a fost corectat acum: o
-//    incercare de reparatie (cerinta de pozitie la inceputul propozitiei) a fost testata si RESPINSA
-//    pentru ca rupea protectia deja demonstrata pentru bug-ul real raportat ("Iar aici Sunt X",
-//    vezi test/lyrics-obtain-acceptable-variant.test.js) — fara dovezi DIRECTE ca respingerea reala
-//    (bf03a964) a fost intr-adevar un fals-pozitiv (versurile respinse nu sunt niciodata logate),
-//    riscul teoretic NU justifica sacrificarea unei protectii confirmate.
+// 4) sender_self_declaration — CORECTAT (2026-10-01, comanda reala ea525ede): riscul teoretic
+//    documentat aici initial (2026-09-25) a fost CONFIRMAT in productie (3 generari Suno independente,
+//    toate respinse, 36 credite consumate, zero rezultat) — vezi comentariul detaliat de la
+//    isPrecededByPluralSubjectRo()/RO_PLURAL_SUBJECT_BEFORE_SUNT, langa SENDER_SELF_DECLARATION_MARKERS.
+//    Fix MINIM, ingust: STRICT marcajul RO "sunt" (niciodata "eu sunt"), STRICT cand subiectul
+//    gramatical din ultimele 2 cuvinte ale CLAUZEI CURENTE (limitata si de virgula, nu doar de
+//    punctuatia de propozitie) e un cuvant de familie/grup colectiv romanesc dedicat. Bug-ul real
+//    original ("Iar aici Sunt X") ramane detectat identic — vezi 4b.
 // ===================================================================================================
-test('4) sender_self_declaration: riscul TEORETIC ramane prezent, neschimbat — "sunt" mid-propozitie (persoana a III-a plural, "Prietenii mei sunt Andrei si Maria") tot RESPINGE, comportament NESCHIMBAT fata de inainte (risc rezidual, documentat explicit — vezi raportul)', () => {
+test('4) sender_self_declaration FIX: "Prietenii mei sunt Andrei si Maria" -> ACCEPTAT (persoana III plural, subiect plural imediat precedent)', () => {
   const order = { lang: 'ro', senderName: 'Andrei', story: 'O poveste calda despre prietenie.' };
   const lyrics = 'Prietenii mei sunt Andrei si Maria, doi oameni minunati langa mine.';
   const result = validateLyricsCoherence(order, {}, lyrics);
-  assert.equal(result.ok, false, 'comportament NESCHIMBAT — decizia a fost sa NU se corecteze acest risc teoretic acum, vezi comentariul de mai sus');
+  assert.equal(result.ok, true, 'fix 2026-10-01: subiect plural legitim imediat inaintea lui "sunt" -> nu mai e respins');
+  assert.ok(!result.reasons.includes('sender_self_declaration'));
+});
+
+test('4c) sender_self_declaration FIX: "Parintii sunt Andrei si Maria" -> ACCEPTAT', () => {
+  const order = { lang: 'ro', senderName: 'Andrei', story: 'x' };
+  const lyrics = 'Parintii sunt Andrei si Maria, alaturi de voi mereu.';
+  const result = validateLyricsCoherence(order, {}, lyrics);
+  assert.equal(result.ok, true);
+  assert.ok(!result.reasons.includes('sender_self_declaration'));
+});
+
+test('4d) sender_self_declaration FIX: "Nasii nostri sunt Andrei si Maria" -> ACCEPTAT (posesiv intercalat, fereastra de 2 cuvinte)', () => {
+  const order = { lang: 'ro', senderName: 'Andrei', story: 'x' };
+  const lyrics = 'Nasii nostri sunt Andrei si Maria, suflete bune.';
+  const result = validateLyricsCoherence(order, {}, lyrics);
+  assert.equal(result.ok, true);
+  assert.ok(!result.reasons.includes('sender_self_declaration'));
+});
+
+test('4e) sender_self_declaration FIX: "Nepotii, sunt Andrei si va iubesc." -> RAMANE RESPINS (virgula rupe legatura subiect-verb, "Nepotii" NU mai e subiectul lui "sunt")', () => {
+  const order = { lang: 'ro', senderName: 'Andrei', story: 'x' };
+  const lyrics = 'Nepotii, sunt Andrei si va iubesc.';
+  const result = validateLyricsCoherence(order, {}, lyrics);
+  assert.equal(result.ok, false, 'virgula desparte "Nepotii" (posibil vocativ) de clauza "sunt Andrei" — ramane auto-identificare');
   assert.ok(result.reasons.includes('sender_self_declaration'));
+});
+
+test('4f) sender_self_declaration FIX: subiect plural dintr-o clauza ANTERIOARA nu scuteste auto-identificarea din clauza curenta', () => {
+  const order = { lang: 'ro', senderName: 'Andrei', story: 'x' };
+  const lyrics = 'Prietenii mei sunt alaturi. Sunt Andrei si te iubesc.';
+  const result = validateLyricsCoherence(order, {}, lyrics);
+  assert.equal(result.ok, false, 'a doua clauza ("Sunt Andrei") e auto-identificare reala, separata de prima printr-un punct');
+  assert.ok(result.reasons.includes('sender_self_declaration'));
+});
+
+test('4g) sender_self_declaration FIX: "Eu sunt Andrei..." ramane INTOTDEAUNA blocant, chiar daca precedat artificial de un cuvant din lista', () => {
+  const order = { lang: 'ro', senderName: 'Andrei', story: 'x' };
+  const lyrics = 'Parintii stiu ca eu sunt Andrei si te iubesc.';
+  const result = validateLyricsCoherence(order, {}, lyrics);
+  assert.equal(result.ok, false, 'marcajul "eu sunt" e STRICT exclus din exceptie — mereu neambiguu singular');
+  assert.ok(result.reasons.includes('sender_self_declaration'));
+});
+
+test('4h) sender_self_declaration FIX: uppercase "PARINTII SUNT ANDREI SI MARIA" -> ACCEPTAT (case-insensitive, nealterat de fix)', () => {
+  const order = { lang: 'ro', senderName: 'Andrei', story: 'x' };
+  const lyrics = 'PARINTII SUNT ANDREI SI MARIA, alaturi de voi mereu.';
+  const result = validateLyricsCoherence(order, {}, lyrics);
+  assert.equal(result.ok, true);
+  assert.ok(!result.reasons.includes('sender_self_declaration'));
 });
 
 test('4b) sender_self_declaration: bug-ul REAL raportat, cu formulare introductiva ("Iar aici Sunt X") — RAMANE detectat identic, protectia demonstrata NU a fost sacrificata', () => {
