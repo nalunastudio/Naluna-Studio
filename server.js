@@ -12295,6 +12295,113 @@ async function resumeStuckGenerationsOnBoot() {
 }
 
 // ==========================================================================================
+// RECOVERY PERIODIC (incident productie, "stuck la 80%") — strat SUPLIMENTAR fata de
+// resumeStuckGenerationsOnBoot de mai sus, care ruleaza STRICT o singura data, la pornirea
+// procesului. Intre doua repornir/redeploy-uri, un task Suno care depaseste bugetul local de
+// polling (vezi pollForResult, LOCAL_POLL_TIMEOUT — ~15 minute) ramanea anterior blocat
+// definitiv in 'generating'/'processing_provider_result' (afisat clientului ca procent inghetat,
+// tipic 80%="finalizing") pana la urmatorul deploy sau pana la un callback Suno intarziat care
+// sa ajunga totusi — niciun mecanism nu mai verifica acele comenzi cat timp serverul ruleaza
+// neintrerupt. Acest job acopera exact acel interval.
+//
+// REFOLOSESTE STRICT functiile deja existente (resumeExistingTaskPolling/resumeDualTaskPolling,
+// aceleasi ca la recuperarea de boot) — niciun task Suno nou, nicio generare noua, doar reluarea
+// polling-ului pentru taskId-urile deja create. Protectia impotriva finalizarii duble/polling-ului
+// duplicat vine GRATUIT din mecanismele deja existente, nu dintr-un sistem nou:
+//   - activePollResumptions (garda in-memory, per-proces): resumeExistingTaskPolling/
+//     resumeDualTaskPolling ignora silentios o a doua chemare pentru aceeasi comanda cat timp
+//     prima e inca in desfasurare (boot, callback-ul nu trece pe aici, acest job, sau doua
+//     rulari succesive ale acestui job) — vezi inceputul fiecareia dintre cele doua functii.
+//   - db.claimOrderForProviderFinalization (preluare atomica in Postgres, UPDATE...WHERE...
+//     RETURNING): daca acest job si un callback Suno ajung sa vrea sa finalizeze aceeasi
+//     comanda aproape simultan, doar unul castiga preluarea — celalalt nu face nimic.
+//   - pollForResult reverifica starea reala a comenzii (db.getOrderById) INAINTE de fiecare
+//     interogare catre Suno si se opreste imediat daca a ajuns deja preview_ready/ready/
+//     generation_failed — o comanda finalizata chiar intre SELECT-ul acestui job si reluare
+//     nu produce niciun efect secundar.
+// Pragul de varsta (STUCK_GENERATION_MIN_AGE_MS) exista STRICT ca sa nu "recuperam" comenzi
+// aflate normal la jumatatea generarii — doar cele la care ultima activitate reala (schimbare
+// de faza) e mai veche decat pragul conservator. Ales la 20 de minute, STRICT mai mare decat
+// LOCAL_POLL_TIMEOUT-ul din pollForResult (~15 minute) — nu doar "acelasi ordin de marime":
+// polling-ul original (pornit de cererea HTTP initiala) poate fi inca, legitim, in desfasurare
+// pana aproape de acel prag; un prag de recuperare egal cu 15 minute ar fi putut considera
+// "stuck" o comanda al carei polling original e inca activ. 20 de minute lasa o marja clara.
+// ==========================================================================================
+const STUCK_GENERATION_RECOVERY_INTERVAL_MS = 5 * 60 * 1000;
+const STUCK_GENERATION_MIN_AGE_MS = 20 * 60 * 1000;
+
+async function recoverSingleStuckGeneration(candidateOrderId) {
+  // Reverificare "proaspata" — lista candidatilor a fost citita inainte sa apucam sa ajungem
+  // aici; comanda poate fi deja finalizata intre timp (callback sosit chiar acum) sau poate sa
+  // nu mai aiba deloc un task Suno (stare neasteptata) — in ambele cazuri, nimic de facut.
+  const fresh = await db.getOrderById(candidateOrderId);
+  if (!fresh) {
+    console.log(`[stuck-recovery] skipped order=${candidateOrderId} motiv=order_inexistenta`);
+    return;
+  }
+  if (['preview_ready', 'ready', 'generation_failed'].includes(fresh.status)) {
+    console.log(`[stuck-recovery] skipped order=${candidateOrderId} motiv=deja_finalizata status=${fresh.status}`);
+    return;
+  }
+  if (!fresh.musicTaskId) {
+    console.log(`[stuck-recovery] skipped order=${candidateOrderId} motiv=fara_music_task_id`);
+    return;
+  }
+
+  const isDual = !!fresh.musicTaskId2;
+  console.log(`[stuck-recovery] recovery attempted order=${candidateOrderId} dual=${isDual}`);
+  if (isDual) {
+    await resumeDualTaskPolling(fresh.id);
+  } else {
+    await resumeExistingTaskPolling(fresh.id, fresh.musicTaskId);
+  }
+
+  // Rezultatul reluarii nu e intors explicit de resumeExistingTaskPolling/resumeDualTaskPolling
+  // (acelasi comportament ca la recuperarea de boot) — verificam starea finala direct din DB ca
+  // sa distingem, in loguri, "chiar recuperata acum" de "inca in lucru, se reincearca la
+  // urmatoarea rulare" (NU e o eroare — Suno poate fi inca, legitim, in procesare).
+  const after = await db.getOrderById(candidateOrderId).catch(() => null);
+  if (after && ['preview_ready', 'ready'].includes(after.status)) {
+    console.log(`[stuck-recovery] recovered order=${candidateOrderId}`);
+  } else if (after && after.status === 'generation_failed') {
+    console.log(`[stuck-recovery] recovery attempted order=${candidateOrderId} rezultat=esuata_definitiv (marcata generation_failed)`);
+  } else {
+    console.log(`[stuck-recovery] recovery attempted order=${candidateOrderId} rezultat=inca_in_lucru, se reincearca la urmatoarea rulare`);
+  }
+}
+
+async function recoverStuckGenerationsPeriodic() {
+  let stuck;
+  try {
+    const cutoff = new Date(Date.now() - STUCK_GENERATION_MIN_AGE_MS);
+    stuck = await db.getStuckInFlightOrdersOlderThan(cutoff);
+  } catch (err) {
+    console.error('[stuck-recovery] recovery scan: eroare la interogarea comenzilor blocate:', err.message);
+    return;
+  }
+  console.log(`[stuck-recovery] recovery scan started: ${stuck.length} comanda(e) candidata(e)`);
+  for (const order of stuck) {
+    // Fire-and-forget PER comanda (acelasi tipar ca resumeStuckGenerationsOnBoot) — o comanda
+    // cu Suno inca activ poate avea nevoie sa mai astepte pana la inca ~15 minute de polling
+    // local; asteptarea secventiala aici ar putea tine urmatoarele comenzi din lot (si urmatoarea
+    // rulare a job-ului) blocate inutil de mult.
+    recoverSingleStuckGeneration(order.id).catch(err => {
+      console.error(`[stuck-recovery] failed order=${order.id} motiv=${err.message}`);
+    });
+  }
+}
+
+function startPeriodicStuckGenerationRecovery() {
+  // .unref() — acelasi tipar ca celelalte joburi periodice de mai jos (retentie): nu tine
+  // procesul in viata singur si nu impiedica un shutdown normal (SIGTERM la deploy).
+  setInterval(() => {
+    recoverStuckGenerationsPeriodic().catch(err => {
+      console.error('[stuck-recovery] eroare neasteptata in scanarea periodica:', err.message);
+    });
+  }, STUCK_GENERATION_RECOVERY_INTERVAL_MS).unref();
+}
+
+// ==========================================================================================
 // SOCIAL WORKER (Etapa 3) — alerta prin email cand tokenul Instagram se apropie periculos de
 // expirare SI reinnoirea automata tot esueaza. Acelasi tipar exact ca sendThresholdAlertEmail
 // din credits.js (ADMIN_ALERT_EMAIL + RESEND_API_KEY, text generat din html via
@@ -12354,6 +12461,13 @@ if (require.main === module) {
       checkHeifConvertAvailability(); // fire-and-forget, acelasi motiv
       checkUploadCorsAtBoot(); // fire-and-forget, acelasi motiv
       resumeStuckGenerationsOnBoot(); // fire-and-forget, acelasi motiv
+      // Strat suplimentar, NU inlocuitor: resumeStuckGenerationsOnBoot de mai sus ruleaza o
+      // singura data, acum. startPeriodicStuckGenerationRecovery porneste un setInterval
+      // (.unref(), nu tine procesul in viata) care verifica din nou, la fiecare 5 minute, cat
+      // timp serverul ruleaza neintrerupt — fara sa depinda de un restart/redeploy. Pornit
+      // DOAR prin setInterval (fara apel imediat aici) ca sa nu dubleze inutil exact aceeasi
+      // verificare pe care resumeStuckGenerationsOnBoot tocmai a facut-o.
+      startPeriodicStuckGenerationRecovery();
 
       // CORECTIE (2026-09-18, incident productie — ordine de boot): cele 4 joburi de retentie
       // (purgeStaleSourceMedia/expireStaleFinalMedia/anonymizeStaleStories/purgeStaleFunnelEvents)

@@ -853,6 +853,42 @@ async function initDb() {
   // nu e atinsa la introducerea coloanei (NULL implicit).
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS unpaid_expired_at TIMESTAMPTZ;`);
 
+  // META ADS INSIGHTS (2026-09-25, FAZA A — schema + client + persistenta, FARA worker/sync
+  // automat inca) — Spend/CPA/ROAS viitor din Admin, complet SEPARAT de meta_capi_events
+  // (Purchase) si de orders/funnel_events (neatinse) — vezi lib/meta-ads/. Grupare la nivel de
+  // reclama (ad_id), niciodata adset/campanie — vezi raportul de audit (matching robust
+  // utm_content <-> ad_id, Faza C, inca neimplementata).
+  //
+  // date: DATE (nu TIMESTAMPTZ) — Insights Meta e deja agregat pe zi calendaristica de Meta
+  // insusi (time_increment=1), in timezone-ul CONTULUI (confirmat live: Europe/London, identic
+  // cu tot restul Admin-ului — vezi timeWindowClause mai sus) — nu mai exista o "ora" de pastrat.
+  // spend: NUMERIC(12,2) — bani, niciodata FLOAT (erori de rotunjire). impressions/
+  // inline_link_clicks: BIGINT — pot creste oricat, fara riscul de depasire al INTEGER.
+  // UNIQUE(date, ad_id): cheia naturala a unui rand Insights la level=ad — garanteaza upsert
+  // corect, niciun duplicat, cand Meta RECALCULEAZA aceeasi zi (cerinta explicita) — vezi
+  // upsertMetaAdsInsightRow mai jos, ON CONFLICT (date, ad_id) DO UPDATE.
+  // fetched_at: cand a fost scris/actualizat ULTIMA DATA acest rand (nu cand a rulat Meta
+  // reclama) — util pentru diagnostic ("cat de proaspete sunt datele"), niciodata pentru logica
+  // de business.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS meta_ads_insights_daily (
+      id UUID PRIMARY KEY,
+      date DATE NOT NULL,
+      campaign_id TEXT NOT NULL,
+      campaign_name TEXT,
+      ad_id TEXT NOT NULL,
+      ad_name TEXT,
+      spend NUMERIC(12,2) NOT NULL DEFAULT 0,
+      impressions BIGINT,
+      inline_link_clicks BIGINT,
+      fetched_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE (date, ad_id)
+    );
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_meta_ads_insights_daily_date ON meta_ads_insights_daily(date);`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_meta_ads_insights_daily_ad_id ON meta_ads_insights_daily(ad_id);`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_meta_ads_insights_daily_campaign_id ON meta_ads_insights_daily(campaign_id);`);
+
   // ==================================================================================
   // RECOVERY EMAILS (2026-09-25, IMPLEMENTARE — vezi lib/recovery-emails/) — outbox ACELASI
   // tipar exact ca meta_capi_events (claim atomic FOR UPDATE SKIP LOCKED, retry cu backoff,
@@ -1169,6 +1205,25 @@ async function getOrderByAnyMusicTaskId(taskId) {
 async function getStuckInFlightOrders() {
   const result = await pool.query(
     `SELECT * FROM orders WHERE status IN ('generating', 'processing_provider_result') AND music_task_id IS NOT NULL`
+  );
+  return result.rows.map(rowToOrder);
+}
+
+// RECOVERY PERIODIC (strat suplimentar fata de getStuckInFlightOrders, folosita STRICT la
+// boot): aceeasi conditie de baza (status in-flight + task Suno real pornit), dar ADAUGA un
+// prag de varsta — altfel orice comanda aflata normal la jumatatea generarii (inca in fereastra
+// asteptata de minute) ar fi "recuperata" inutil la fiecare 5 minute. COALESCE cu created_at e
+// strict un fallback defensiv — generation_phase_updated_at e scris aproape imediat (faza
+// 'submitted', vezi recordGenerationProgress) pentru orice comanda ajunsa efectiv 'generating',
+// deci practic intotdeauna disponibila; created_at acopera doar cazul (neasteptat) in care acea
+// coloana ar lipsi.
+async function getStuckInFlightOrdersOlderThan(cutoffDate) {
+  const result = await pool.query(
+    `SELECT * FROM orders
+     WHERE status IN ('generating', 'processing_provider_result')
+       AND music_task_id IS NOT NULL
+       AND COALESCE(generation_phase_updated_at, created_at) < $1`,
+    [cutoffDate]
   );
   return result.rows.map(rowToOrder);
 }
@@ -3625,6 +3680,62 @@ async function getLifetimeCustomerOrderCounts(emails) {
   return map;
 }
 
+// META ADS INSIGHTS (2026-09-25, FAZA A) — vezi comentariul CREATE TABLE de mai sus.
+function rowToMetaAdsInsight(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    date: row.date,
+    campaignId: row.campaign_id,
+    campaignName: row.campaign_name || null,
+    adId: row.ad_id,
+    adName: row.ad_name || null,
+    spend: row.spend === null ? 0 : Number(row.spend),
+    impressions: row.impressions === null ? null : Number(row.impressions),
+    inlineLinkClicks: row.inline_link_clicks === null ? null : Number(row.inline_link_clicks),
+    fetchedAt: row.fetched_at,
+    // was_inserted: STRICT prezent cand randul vine din upsertMetaAdsInsightRow (RETURNING
+    // (xmax = 0) AS was_inserted) — null pentru orice alt caz (ex. un SELECT simplu viitor),
+    // niciodata presupus implicit.
+    wasInserted: row.was_inserted === undefined ? null : row.was_inserted
+  };
+}
+
+// Upsert PENTRU UN SINGUR rand Insights (o zi, o reclama) — apelantul (lib/meta-ads/, in faze
+// viitoare) decide cum itereaza peste mai multe randuri primite de la Meta. ON CONFLICT
+// (date, ad_id) — cheia naturala (vezi UNIQUE de la CREATE TABLE) — DO UPDATE, NICIODATA DO
+// NOTHING: cerinta explicita, Meta poate RECALCULA spend/impressions/clicks pentru o zi deja
+// sincronizata (atribuire intarziata) — un upsert care ar ignora coliziunea ar "inghetha" o
+// valoare veche, gresita, la nesfarsit. campaign_name/ad_name sunt de asemenea reactualizate (o
+// reclama poate fi redenumita in Meta dupa prima sincronizare) — ad_id/campaign_id (cheile STABILE
+// folosite pentru matching, vezi raportul de audit) NU se schimba niciodata la conflict.
+// FAZA B (2026-09-25) — RETURNING (xmax = 0) AS was_inserted: trucul standard Postgres pentru a
+// distinge, in ACEEASI instructiune upsert, un rand nou-inserat (xmax = 0, niciodata modificat)
+// de unul actualizat prin ON CONFLICT (xmax setat de tranzactia curenta) — necesar ca
+// runInsightsSync() (lib/meta-ads/ads-insights-sync.js) sa poata raporta separat inserted/updated,
+// fara un SELECT suplimentar inainte de upsert (care ar introduce o cursa/complexitate inutila).
+async function upsertMetaAdsInsightRow({ date, campaignId, campaignName, adId, adName, spend, impressions, inlineLinkClicks }) {
+  const result = await pool.query(
+    `INSERT INTO meta_ads_insights_daily
+      (id, date, campaign_id, campaign_name, ad_id, ad_name, spend, impressions, inline_link_clicks, fetched_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
+     ON CONFLICT (date, ad_id) DO UPDATE SET
+       campaign_id = EXCLUDED.campaign_id,
+       campaign_name = EXCLUDED.campaign_name,
+       ad_name = EXCLUDED.ad_name,
+       spend = EXCLUDED.spend,
+       impressions = EXCLUDED.impressions,
+       inline_link_clicks = EXCLUDED.inline_link_clicks,
+       fetched_at = now()
+     RETURNING *, (xmax = 0) AS was_inserted`,
+    [
+      randomUUID(), date, campaignId, campaignName || null, adId, adName || null,
+      spend || 0, impressions === undefined ? null : impressions, inlineLinkClicks === undefined ? null : inlineLinkClicks
+    ]
+  );
+  return rowToMetaAdsInsight(result.rows[0]);
+}
+
 async function markInstagramTokenAlertSent() {
   await pool.query(`UPDATE instagram_token_state SET last_alert_sent_at = now() WHERE id = 1`);
 }
@@ -3637,6 +3748,7 @@ module.exports = {
   getPreviewFunnel, getPreviewDataCompleteSince, getPreviewDataAvailability,
   buildOrdersFilter,
   getStuckInFlightOrders,
+  getStuckInFlightOrdersOlderThan,
   anonymizeOrder,
   findOrdersEligibleForSourceMediaPurge,
   purgeOrderSourceMedia,
@@ -3668,6 +3780,7 @@ module.exports = {
   recordInstagramTokenRefreshFailure, markInstagramTokenAlertSent,
   enqueueMetaCapiEvent, claimDueMetaCapiEvent, finalizeMetaCapiEvent, recoverStaleMetaCapiEvents,
   getMetaCapiEventByOrderId,
+  upsertMetaAdsInsightRow,
   enqueueOrderNotification, claimDueOrderNotification, finalizeOrderNotification, recoverStaleOrderNotifications,
   findDueRecoveryCandidates, getRecoveryClientCooldown, touchRecoveryClientCooldown,
   isEmailMarketingSuppressed, addEmailMarketingSuppression, getOrderNotificationSummaries,
