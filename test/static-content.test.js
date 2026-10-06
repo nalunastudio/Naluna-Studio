@@ -147,10 +147,19 @@ test('hotfix upload iPhone: ruta de upload logheaza diagnostic sigur (fara token
   assert.ok(/perfLog\(order\.id, 'media_upload'/.test(server), 'trebuie sa existe un log de diagnostic pentru fiecare cerere de upload');
 });
 
-test('hotfix Premium blocat: pagina de asteptare reverifica statusul imediat la revenirea din fundal', () => {
+// CORECȚIE (2026-10-06, "GENERATION SCREEN RECOVERY FIX" — incident real, comanda Premium
+// `0b010774...`): forceImmediatePoll (hotfix 7 aug 2026, bazat STRICT pe visibilitychange/
+// pageshow cu event.persisted) s-a dovedit insuficient — inlocuit cu un mecanism mai robust in
+// se-compune.html (pollStatus() apelat direct din mai multe declansatoare, gardat de
+// finished/pollInFlight, plus un watchdog periodic). Detalii complete in
+// test/generation-screen-recovery.test.js — acest test verifica doar garantia de nivel inalt,
+// neschimbata: revenirea in prim-plan tot forteaza o verificare imediata.
+test('hotfix Premium blocat: pagina de asteptare reverifica statusul imediat la revenirea din fundal (visibilitychange/pageshow/focus + watchdog, vezi test/generation-screen-recovery.test.js)', () => {
   const html = read('public/se-compune.html');
   assert.ok(html.includes("visibilitychange"), 'trebuie sa existe un listener pentru revenirea tab-ului in prim-plan');
-  assert.ok(html.includes('forceImmediatePoll'), 'revenirea in prim-plan trebuie sa forteze o verificare imediata a starii reale');
+  assert.ok(html.includes("pageshow"), 'trebuie sa existe un listener pentru pageshow (reload complet sau restaurare din bfcache)');
+  assert.ok(html.includes("addEventListener('focus'"), 'trebuie sa existe un listener pentru window focus');
+  assert.ok(html.includes('WATCHDOG_INTERVAL_MS'), 'trebuie sa existe un watchdog periodic ca plasa de siguranta suplimentara');
 });
 
 test('index.html: cele 4 linkuri din footer (.footer-legal) folosesc EXACT var(--gold-deep) — acelasi token de culoare deja folosit de linkurile din paginile legale (terms/privacy/refund) — in toate starile (normal/link/visited/hover/focus/active), niciodata gri sau mov implicit de browser', () => {

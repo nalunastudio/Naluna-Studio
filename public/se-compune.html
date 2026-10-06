@@ -581,9 +581,30 @@
   }
 
   let pollTimer = null;
+  // RECOVERY ROBUST (incident real, 6 oct 2026): comanda Premium `0b010774...` a ajuns
+  // preview_ready in backend la ~2 minute de la creare — dar tab-ul clientului a ramas vizual
+  // pe "Melodia ta se compune acum" cel putin 2 ORE, fara ca evenimentul generation_completed
+  // sa fie inregistrat vreodata pentru acea comanda. Hotfix-ul anterior (7 aug 2026) acoperea
+  // DOAR visibilitychange/pageshow cu event.persisted=true — insuficient, pentru ca iOS Safari
+  // poate suspenda timer-ele unei pagini fara sa garanteze ca aceste evenimente ajung sa se
+  // declanseze in toate scenariile reale (ecran blocat scurt, glance rapid, preview din app
+  // switcher). pollInFlight/lastPollAttemptAt de mai jos permit sa adaugam MULTIPLE declansatoare
+  // de recuperare (vezi mai jos: visibilitychange, pageshow NECONDITIONAT, focus, watchdog
+  // periodic) fara niciun risc de poll-uri concurente, redirect dublu sau generation_completed
+  // dublu — pollStatus() insusi verifica `finished`/`pollInFlight` la inceput, deci oricate
+  // declansatoare ar ajunge sa-l cheme aproape simultan, cel mult UNA executa efectiv un fetch.
+  let pollInFlight = false;
+  let lastPollAttemptAt = 0;
+
   async function pollStatus() {
+    if (finished) return;
+    if (pollInFlight) return; // un request e deja activ — nu pornim un al doilea (fara duplicate)
+    if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+    pollInFlight = true;
+    lastPollAttemptAt = Date.now();
     try {
       const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}?token=${encodeURIComponent(accessToken)}`);
+      if (finished) return; // a finalizat deja intre timp (alt declansator a ajuns primul la raspuns)
       if (!res.ok) {
         consecutivePollFailures++;
         if (consecutivePollFailures >= 2) showSoftNotice();
@@ -628,33 +649,46 @@
       consecutivePollFailures++;
       if (consecutivePollFailures >= 2) showSoftNotice();
       pollTimer = setTimeout(pollStatus, 4000);
+    } finally {
+      pollInFlight = false;
     }
   }
   pollStatus();
 
   // ==========================================================================================
-  // HOTFIX 2026-08-07: pe iPhone, pagina putea parea "blocata" la "Melodia ta se compune acum"
-  // desi generarea se terminase deja cu succes in fundal — confirmat direct intr-un incident
-  // live (comanda Premium reala, verificata in baza de date de productie: statusul ajunsese
-  // 'preview_ready' cu ambele variante gata, dar interfata ramasese pe ecranul de asteptare).
-  // Cauza cea mai probabila: Safari iOS poate suspenda setTimeout-urile unei pagini cat timp
-  // tab-ul nu e vizibil (ecran blocat, schimbare de aplicatie) — lantul de polling la 4s isi
-  // revine la loc cand tab-ul redevine vizibil, dar poate intarzia perceptibil, si utilizatorul
-  // vede in continuare ecranul vechi pana atunci. Fortam aici o verificare IMEDIATA a starii
-  // reale de fiecare data cand tab-ul redevine vizibil (sau pagina e restaurata din bfcache),
-  // fara sa mai asteptam ca timer-ul intrerupt sa se reactiveze singur.
+  // Declansatoare de recuperare — fiecare pur si simplu apeleaza pollStatus(); de-duplicarea
+  // reala se intampla STRICT in interiorul lui pollStatus() (gardat de `finished`/`pollInFlight`
+  // mai sus), nu aici. Pastram visibilitychange/pageshow (hotfix 7 aug 2026), dar: (a) pageshow
+  // nu mai cere event.persisted — un reload COMPLET (nu doar o restaurare din bfcache) trebuie
+  // sa verifice la fel de imediat starea reala, mai ales daca pagina e deschisa/reincarcata DUPA
+  // ce backend-ul terminase deja generarea; (b) adaugam window focus, pentru cazurile in care
+  // revenirea la tab nu produce un eveniment de vizibilitate fiabil.
   // ==========================================================================================
-  function forceImmediatePoll() {
-    if (finished) return;
-    if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
-    pollStatus();
-  }
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) forceImmediatePoll();
+    if (!document.hidden) pollStatus();
   });
-  window.addEventListener('pageshow', (event) => {
-    if (event.persisted) forceImmediatePoll();
+  window.addEventListener('pageshow', () => {
+    pollStatus();
   });
+  window.addEventListener('focus', () => {
+    pollStatus();
+  });
+
+  // Watchdog periodic — plasa de siguranta SUPLIMENTARA pentru cazul in care niciunul din
+  // evenimentele de mai sus nu se declanseaza (timer-e suspendate fara ca pagina sa fi devenit
+  // tehnic "ascunsa", sau orice alt comportament de throttling nedocumentat). Actioneaza STRICT
+  // cand pagina e efectiv vizibila, si STRICT daca a trecut vizibil mai mult decat intervalul
+  // normal de 4s de la ultima incercare de poll — altfel nu face nimic, nu interfereaza cu
+  // polling-ul normal.
+  const WATCHDOG_INTERVAL_MS = 7000;
+  const STALE_POLL_THRESHOLD_MS = 9000;
+  setInterval(() => {
+    if (finished) return;
+    if (document.visibilityState !== 'visible') return;
+    if (Date.now() - lastPollAttemptAt > STALE_POLL_THRESHOLD_MS) {
+      pollStatus();
+    }
+  }, WATCHDOG_INTERVAL_MS);
 
   // -------- Reincercare STRICT manuala — singurul loc din pagina care apeleaza /generate.
   // Trimite o singura cerere, dezactiveaza butonul imediat (previne dublu-click), verifica
