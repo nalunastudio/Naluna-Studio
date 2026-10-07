@@ -132,17 +132,12 @@ test('server.js: DNG e extras la o previzualizare JPEG utilizabila inainte de ve
   assert.ok(server.includes("wasDng = effectiveMimetype === 'image/x-adobe-dng'"), 'DNG trebuie detectat explicit inainte de restul pipeline-ului de upload');
 });
 
-test('se-compune.html: procentul vizibil e restaurat la formula originala de lansare (timp scurs), generationPhasePercent ramane disponibil in backend dar nu mai controleaza afisarea', () => {
-  // RESTAURARE (restore: original generation progress display, 7 oct 2026) — decizie explicita
-  // a clientului dupa compararea cu commit-ul de lansare 6699abe: updateRealProgress() (din
-  // hotfix-ul 7 aug 2026, care citea order.generationPhasePercent pentru afisare) a fost
-  // eliminata. generation_phase_pct ramane calculat si trimis de server (backend neschimbat),
-  // doar nu mai e citit de UI — vezi [[se-compune-original-progress]] (test/generation-screen-original-progress.test.js).
+test('se-compune.html: procentul de progres afisat e REAL (din generationPhasePercent), niciodata dintr-un timer', () => {
   const html = read('public/se-compune.html');
-  assert.ok(!html.includes('updateRealProgress'), 'functia veche, care afisa procentul din raspunsul serverului, a fost eliminata intentionat');
+  assert.ok(html.includes('order.generationPhasePercent'), 'progresul afisat trebuie sa vina din campul real expus de server');
+  assert.ok(html.includes('updateRealProgress'), 'trebuie sa existe o functie dedicata care actualizeaza bara/procentul din raspunsul real al serverului');
   assert.ok(
-    /fraction\s*=\s*Math\.min\(elapsed\s*\/\s*ESTIMATE_MS,\s*0\.99\)/.test(html),
-    'procentul vizibil trebuie calculat din timp scurs (formula exacta din 6699abe), plafonat la 99%'
+    !/estimatePillEl\.textContent\s*=.*elapsed/.test(html),
+    'procentul afisat nu mai trebuie calculat din timp scurs (elapsed)'
   );
-  assert.ok(html.includes('order.generationPhasePercent'), 'campul ramane mentionat (disponibil in raspunsul API), chiar daca nu mai e citit pentru UI');
 });

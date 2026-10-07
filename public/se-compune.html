@@ -100,10 +100,11 @@
     height:7px; border-radius:999px; background:var(--surface); border:1px solid var(--line);
     overflow:hidden; margin-bottom:12px; position:relative;
   }
-  /* Bara ramane nedeterminata (animatie) STRICT pana la primul tick al updateProgress() (sub
-     1s de la incarcare) — restaurare 7 oct 2026 a formulei originale din 6699abe (timp scurs /
-     ESTIMATE_MS, plafonat la 99%). Latimea e apoi controlata explicit din JS (.real), cu
-     tranzitie lina, independent de orice raspuns de retea. */
+  /* Bara ramane nedeterminata (animatie) DOAR pana la primul raspuns real al serverului —
+     server.js expune un procent REAL, bazat pe milestone-uri concrete (submitted/processing/
+     first_stream/finalizing/ready — vezi recordGenerationProgress), niciodata dintr-un timp
+     scurs estimat. De indata ce sosesc date reale, bara trece pe .real si latimea e controlata
+     explicit din JS (updateRealProgress), cu tranzitie lina. */
   .progress-fill{
     height:100%; border-radius:999px; position:absolute; top:0; left:-40%; width:40%;
     background:linear-gradient(90deg, var(--gold-deep), var(--gold-soft));
@@ -463,15 +464,13 @@
     }, 220);
   }
 
-  // RESTAURARE (7 oct 2026, "restore: original generation progress display" — decizie
-  // explicita a clientului, dupa comparatie directa cu commit-ul de lansare 6699abe din 26 iul
-  // 2026): procentul vizibil (bara + #estimate-pill) revine la formula ORIGINALA de atunci —
-  // STRICT pe baza de timp scurs de la pornirea paginii, plafonata la 99%, NICIODATA din
-  // order.generationPhasePercent. Acel camp ramane disponibil, neschimbat, in raspunsul API
-  // (server.js neatins) — doar nu mai controleaza ce se afiseaza aici. Avantaj explicit cerut:
-  // pill-ul nu poate ramane NICIODATA gol, pentru ca nu depinde de niciun raspuns de retea —
-  // ruleaza STRICT din acelasi setInterval de 1s care rotea deja textul calitativ (t.stages),
-  // apelat si o data imediat la incarcare, inainte de orice fetch.
+  // RESTAURARE (7 oct 2026, "restore: september real generation progress" — decizie explicita
+  // a clientului: known-good-ul corect e commitul 7a0f12b (14 sept 2026), NU lansarea 6699abe).
+  // Acest timer controleaza STRICT textul calitativ rotativ (t.stages) afisat langa bara —
+  // reasigurare emotionala pe baza de timp scurs, nu o masuratoare reala. Procentul NUMERIC
+  // real (order.generationPhasePercent) e gestionat EXCLUSIV de updateRealProgress() mai jos,
+  // populat din milestone-uri server-side reale — acest timer NU trebuie sa atinga niciodata
+  // vizibilitatea lui #estimate-pill.
   const STAGE_INTERVAL_MS = ESTIMATE_MS / t.stages.length;
   function updateProgress() {
     if (finished) return;
@@ -481,20 +480,35 @@
       currentStageIndex = stageIndex;
       setStatusMessage(t.stages[stageIndex]);
     }
-
-    // Formula EXACTA din 6699abe (public/se-compune.html, functia updateProgress originala) —
-    // nicio reestimare noua, acelasi ESTIMATE_MS=165000 deja folosit mai sus pentru stage-text.
-    const fraction = Math.min(elapsed / ESTIMATE_MS, 0.99);
-    const pct = Math.round(fraction * 100);
-    // .real comuta bara pe latime explicita, controlata din JS (vezi CSS .progress-fill.real) —
-    // acelasi mecanism CSS folosit si de implementarea anterioara, neschimbat.
-    progressFill.classList.add('real');
-    progressFill.style.width = pct + '%';
-    estimatePillEl.classList.remove('hidden');
-    estimatePillEl.textContent = pct + '%';
   }
   updateProgress();
   const progressTimer = setInterval(updateProgress, 1000);
+
+  // Procentul REAL, pe baza de milestone-uri (order.generationPhasePercent, populat de
+  // recordGenerationProgress in server.js) — inlocuieste bara nedeterminata de indata ce
+  // avem primul raspuns real de la server (nu la incarcarea paginii, cand nu avem inca
+  // nimic). Textul calitativ rotativ (t.stages, de mai sus) ramane neschimbat ca reasigurare
+  // emotionala; procentul e strict aditional, niciodata contradictoriu (ambele vin acum din
+  // surse reale — unul din timp scurs pentru variatia textului, altul din milestone-uri
+  // pentru numarul afisat).
+  let highestShownPercent = 0;
+  function updateRealProgress(order) {
+    // FINISAJ FINAL PACHET STANDARD: in modul de regenerare, procentul vine STRICT din
+    // regenerationProgress (separat complet de generationPhasePercent) — altfel un job de
+    // regenerare pornit dupa ce generarea initiala ajunsese deja 100% ar ramane vizual
+    // "inghetat" la 100% (bug real, gasit prin verificare directa a codului).
+    const percent = isRegenMode ? order.regenerationProgress : order.generationPhasePercent;
+    if (percent == null || typeof percent !== 'number') return;
+    // Niciodata regresiv vizual, chiar daca un raspuns intarziat ar aduce o valoare mai veche
+    // (polling-ul si callback-ul scriu progresul independent — vezi updateGenerationPhaseIfLater).
+    if (percent < highestShownPercent) return;
+    highestShownPercent = percent;
+
+    progressFill.classList.add('real');
+    progressFill.style.width = Math.max(0, Math.min(100, percent)) + '%';
+    estimatePillEl.classList.remove('hidden');
+    estimatePillEl.textContent = percent + '%';
+  }
 
   function finishSuccess() {
     finished = true;
@@ -509,7 +523,6 @@
 
     progressFill.classList.remove('real');
     progressFill.classList.add('done');
-    estimatePillEl.textContent = '100%';
     estimatePillEl.classList.add('hidden');
     hideLongNotice();
     setStatusMessage(t.readyMsg);
@@ -615,9 +628,7 @@
       // Cerinta 2: stilul portocaliu/rosu al mesajului de intarziere e STRICT pentru pachetul
       // Video — Standard/Premium pastreaza stilul neutru existent, neschimbat.
       longNoticeEl.classList.toggle('long-notice-video', order.plan === 'video');
-      // Procentul vizibil NU mai e actualizat de aici (vezi updateProgress mai sus, restaurat
-      // la formula de timp scurs din 6699abe) — order.generationPhasePercent ramane disponibil
-      // in acest raspuns, doar nu mai e citit pentru afisare.
+      updateRealProgress(order);
 
       // FINISAJ FINAL PACHET STANDARD: in modul de regenerare, order.status revine la
       // 'preview_ready' in AMBELE cazuri (succes SAU esec — vezi markGenerationFailed in
@@ -741,9 +752,11 @@
       spinnerCheckEl.classList.remove('show');
       currentStageIndex = -1;
 
-      // O reincercare porneste o generare NOUA (de la 0) — startTime a fost deja resetat mai
-      // sus, deci updateProgress() (formula de timp scurs) reporneste singur de la 0% la
-      // urmatorul tick; aici doar curatam starea vizuala ramasa de la incercarea esuata.
+      // O reincercare porneste o generare NOUA (de la 0) — fara acest reset, procentul ramas
+      // de la incercarea esuata anterior (ex. 55%) ar ramane afisat, inghetat, pana cand noua
+      // generare il depaseste real (updateRealProgress nu regreseaza niciodata vizual) — un
+      // procent "vechi", nu fals, dar inducand in eroare pentru incercarea curenta.
+      highestShownPercent = 0;
       progressFill.classList.remove('real', 'done');
       progressFill.style.width = '';
       estimatePillEl.classList.add('hidden');
