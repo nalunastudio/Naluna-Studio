@@ -112,6 +112,19 @@ function buildSandbox({ fetchImpl, initialSearch = '?id=test-order-id&token=test
     removeItem: (k) => storage.delete(k),
   };
 
+  // Date.now() FALS, sincronizat cu ceasul de timere — codul real (progresul vizual restaurat
+  // din 6699abe) foloseste elapsed = Date.now() - startTime; fara aceasta sincronizare,
+  // Date.now() ar citi ceasul REAL de sistem, neschimbat de clock.advance(), facand imposibila
+  // testarea deterministica a scurgerii timpului simulat.
+  const epoch0 = Date.now();
+  class FakeDate extends Date {
+    constructor(...args) {
+      if (args.length === 0) super(epoch0 + clock.getNow());
+      else super(...args);
+    }
+    static now() { return epoch0 + clock.getNow(); }
+  }
+
   const ctx = {
     document: fakeDocument,
     window: fakeWindow,
@@ -122,7 +135,7 @@ function buildSandbox({ fetchImpl, initialSearch = '?id=test-order-id&token=test
     clearTimeout: clock.clearTimeoutFake,
     setInterval: clock.setIntervalFake,
     clearInterval: clock.clearTimeoutFake, // acelasi Map de timere, stergerea e identica pt. ambele tipuri
-    Date,
+    Date: FakeDate,
     console,
     encodeURIComponent,
     Math,

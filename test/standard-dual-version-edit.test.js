@@ -526,12 +526,18 @@ test('se-compune.html: mode=regenerate schimba titlul/subtitlul, separat de gene
   );
 });
 
-test('se-compune.html: progresul de regenerare vine STRICT din regenerationProgress, niciodata din generationPhasePercent', () => {
+test('se-compune.html: procentul vizibil (restaurat la formula de timp scurs din 6699abe) e IDENTIC in modul de regenerare si in generarea initiala — nu mai exista o ramura separata per regenerationProgress/generationPhasePercent', () => {
+  // RESTAURARE (restore: original generation progress display, 7 oct 2026): updateRealProgress()
+  // — singura functie care facea aceasta distinctie intre regenerationProgress si
+  // generationPhasePercent — a fost eliminata. Ambele moduri (regenerare si generare initiala)
+  // folosesc acum aceeasi functie updateProgress() bazata pe timp scurs (startTime), fara nicio
+  // citire a vreunui camp de progres din backend pentru afisare.
   const html = read('public/se-compune.html');
   assert.ok(
-    html.includes('const percent = isRegenMode ? order.regenerationProgress : order.generationPhasePercent;'),
-    'cele doua surse de progres trebuie sa ramana complet separate'
+    !html.includes('const percent = isRegenMode ? order.regenerationProgress : order.generationPhasePercent;'),
+    'ramura veche de separare pe sursa de progres nu mai trebuie sa existe'
   );
+  assert.ok(!html.includes('order.regenerationProgress'), 'regenerationProgress nu mai e citit de UI (ramane doar backend-ul, neschimbat)');
 });
 
 test('se-compune.html: succesul/esecul unei regenerari se decid prin regenerationStatus, nu prin order.status (identic in ambele cazuri)', () => {
