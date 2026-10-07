@@ -111,8 +111,12 @@ test('Scenariul 7 — eroare de retea (catch) si raspuns HTTP non-ok reprogramea
   assert.match(fn, /if \(!res\.ok\) \{\s*consecutivePollFailures\+\+;\s*if \(consecutivePollFailures >= 2\) showSoftNotice\(\);\s*pollTimer = setTimeout\(pollStatus, 4000\);\s*return;/);
 
   const catchIdx = fn.indexOf('} catch (err) {');
-  const finallyIdx = fn.indexOf('} finally {');
+  // FIX timeout fetch (7 oct 2026): exista acum un "} finally {" INTERN, mai devreme in sursa,
+  // care doar elimina timeout-ul de abort — nu cel care reseteaza pollInFlight. Cautam STRICT
+  // finally-ul exterior (cel care contine `pollInFlight = false;`), nu primul match.
+  const finallyIdx = fn.indexOf('} finally {', catchIdx);
   assert.ok(catchIdx !== -1 && finallyIdx !== -1 && catchIdx < finallyIdx);
+  assert.match(fn.slice(finallyIdx), /pollInFlight = false;/);
   const catchBody = fn.slice(catchIdx, finallyIdx);
   assert.match(catchBody, /consecutivePollFailures\+\+;/);
   assert.match(catchBody, /if \(consecutivePollFailures >= 2\) showSoftNotice\(\);/);

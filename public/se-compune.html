@@ -602,8 +602,23 @@
     if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
     pollInFlight = true;
     lastPollAttemptAt = Date.now();
+    // FIX (incident real, 7 oct 2026 — regresie confirmata prin executie reala a codului):
+    // fetch() nu are niciun timeout implicit. Daca o conexiune ramane blocata fara raspuns
+    // (fara sa se rezolve, fara sa respinga), await-ul de mai jos nu trece NICIODATA mai
+    // departe — pollInFlight ramane true permanent, iar TOATE declansatoarele de recovery
+    // (visibilitychange/pageshow/focus/watchdog) devin inerte, pentru ca toate verifica
+    // STRICT acelasi pollInFlight inainte sa porneasca un fetch nou. AbortController forteaza
+    // fetch-ul sa iasa din starea pending dupa 10s — intra in catch-ul existent (neschimbat),
+    // care oricum trateaza orice eroare de retea identic (reincercare la 4s).
+    const pollAbortController = new AbortController();
+    const pollTimeoutId = setTimeout(() => pollAbortController.abort(), 10000);
     try {
-      const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}?token=${encodeURIComponent(accessToken)}`);
+      let res;
+      try {
+        res = await fetch(`/api/orders/${encodeURIComponent(orderId)}?token=${encodeURIComponent(accessToken)}`, { signal: pollAbortController.signal });
+      } finally {
+        clearTimeout(pollTimeoutId);
+      }
       if (finished) return; // a finalizat deja intre timp (alt declansator a ajuns primul la raspuns)
       if (!res.ok) {
         consecutivePollFailures++;
