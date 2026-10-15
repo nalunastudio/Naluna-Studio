@@ -518,28 +518,58 @@
     </div>
 
     <div class="step-card" data-step="2" style="display:none;">
-      <h1 data-i18n="wizard_step2_title">Spune-ne pentru cine este cântecul</h1>
+      <h1 id="step2-title" data-i18n="wizard_step2_title">Spune-ne pentru cine este cântecul</h1>
 
       <div class="field">
-        <label for="recipient" data-i18n="label_recipient">Pentru cine e cântecul (nume)</label>
+        <label for="recipient" id="recipient-label" data-i18n="label_recipient">Pentru cine e cântecul (nume)</label>
         <input type="text" id="recipient" placeholder="ex: Maria" data-i18n-placeholder="ph_recipient" maxlength="60">
         <div class="field-error" id="err-recipient"></div>
       </div>
-      <div class="field">
+
+      <!-- FORMULAR SPECIAL "PENTRU MINE" (2026-10-12, cerinta explicita) — STRICT pentru
+           occasion==='pentru-mine' (vezi refreshRelationUI, mai jos). "Cum te cheamă?" reutilizeaza
+           campul #recipient de mai sus (eticheta/placeholder schimbate dinamic) — NU un camp nou,
+           ca sa pastreze exact acelasi tipar de validare/colectare/stocare (campul `recipient`
+           ramane sursa canonica a numelui, inclusiv in datele comenzii). -->
+      <div class="field" id="self-theme-field" style="display:none;">
+        <label data-i18n="label_self_theme">Ce vrei să exprime melodia ta?</label>
+        <div class="theme-grid" id="self-theme-grid" role="radiogroup" aria-label="Ce vrei să exprime melodia ta?">
+          <div class="theme-card theme-subcard self-theme-card" data-self-theme="putere-motivatie" role="radio" aria-selected="false" tabindex="0"><div class="theme-name" data-i18n="self_theme_putere">Putere și motivație</div></div>
+          <div class="theme-card theme-subcard self-theme-card" data-self-theme="perioada-grea" role="radio" aria-selected="false" tabindex="0"><div class="theme-name" data-i18n="self_theme_perioada_grea">O perioadă grea din viața mea</div></div>
+          <div class="theme-card theme-subcard self-theme-card" data-self-theme="reusita" role="radio" aria-selected="false" tabindex="0"><div class="theme-name" data-i18n="self_theme_reusita">O reușită personală</div></div>
+          <div class="theme-card theme-subcard self-theme-card" data-self-theme="dor-iubire" role="radio" aria-selected="false" tabindex="0"><div class="theme-name" data-i18n="self_theme_dor_iubire">Dor, iubire sau sentimente</div></div>
+          <div class="theme-card theme-subcard self-theme-card" data-self-theme="povestea-vietii" role="radio" aria-selected="false" tabindex="0"><div class="theme-name" data-i18n="self_theme_povestea_vietii">Povestea vieții mele</div></div>
+        </div>
+        <input type="hidden" id="selfTheme" value="">
+        <div class="field-error" id="err-selfTheme"></div>
+      </div>
+
+      <div class="field" id="sender-field">
         <label for="sender" data-i18n="label_sender">Din partea cui e cântecul</label>
         <input type="text" id="sender" placeholder="ex: Maria, sau Maria și Alexandra" data-i18n-placeholder="ph_sender" maxlength="100">
         <div class="field-error" id="err-sender"></div>
       </div>
-      <div class="field">
+      <div class="field" id="relationship-field">
         <label for="relationship" data-i18n="label_relationship">Ce relație există între voi</label>
         <input type="text" id="relationship" placeholder="ex: soție și soț, mamă și fiică, prieteni" data-i18n-placeholder="ph_relationship" maxlength="60">
         <div class="field-error" id="err-relationship"></div>
       </div>
       <div class="field">
-        <label for="story" data-i18n="label_story">Povestea / detalii de inclus în versuri</label>
+        <label for="story" id="story-label" data-i18n="label_story">Povestea / detalii de inclus în versuri</label>
         <textarea id="story" placeholder="Spune-ne ce vă leagă, ce momente importante ați trăit, ce îi iubești cel mai mult, ce vrei să îi transmiți și orice detaliu pe care vrei să îl auzi în melodie" data-i18n-placeholder="ph_story"></textarea>
         <div class="price-note" style="margin-top:6px;" data-i18n="story_hint">Poți scrie în orice limbă — versurile vor fi generate în limba aleasă mai sus</div>
         <div class="field-error" id="err-story"></div>
+      </div>
+
+      <!-- FORMULAR SPECIAL "PENTRU MINE" (2026-10-12) — "Vrei ca numele tău să apară în melodie?" -->
+      <div class="field" id="include-name-field" style="display:none;">
+        <label data-i18n="label_include_name">Vrei ca numele tău să apară în melodie?</label>
+        <div class="theme-grid" id="include-name-grid" role="radiogroup" aria-label="Vrei ca numele tău să apară în melodie?" style="grid-template-columns:1fr 1fr;">
+          <div class="theme-card theme-subcard include-name-card" data-include-name="yes" role="radio" aria-selected="false" tabindex="0"><div class="theme-name" data-i18n="include_name_yes">Da, vreau să apară numele meu</div></div>
+          <div class="theme-card theme-subcard include-name-card" data-include-name="no" role="radio" aria-selected="false" tabindex="0"><div class="theme-name" data-i18n="include_name_no">Nu, prefer fără numele meu</div></div>
+        </div>
+        <input type="hidden" id="includeNameInSong" value="">
+        <div class="field-error" id="err-includeNameInSong"></div>
       </div>
       <!-- EMAIL (2026-09-27, "Comenzile mele inainte de generare") — campul #email si checkbox-ul
            #email-marketing-optout au fost MUTATE in gate-email-screen (primul ecran, inaintea
@@ -1001,6 +1031,21 @@
       ph_sender: 'ex: Maria, sau Maria și Alexandra',
       label_relationship: 'Ce relație există între voi',
       ph_relationship: 'ex: soție și soț, mamă și fiică, prieteni',
+      // FORMULAR SPECIAL "PENTRU MINE" (2026-10-12, cerinta explicita).
+      label_self_theme: 'Ce vrei să exprime melodia ta?',
+      self_theme_putere: 'Putere și motivație',
+      self_theme_perioada_grea: 'O perioadă grea din viața mea',
+      self_theme_reusita: 'O reușită personală',
+      self_theme_dor_iubire: 'Dor, iubire sau sentimente',
+      self_theme_povestea_vietii: 'Povestea vieții mele',
+      label_include_name: 'Vrei ca numele tău să apară în melodie?',
+      include_name_yes: 'Da, vreau să apară numele meu',
+      include_name_no: 'Nu, prefer fără numele meu',
+      label_recipient_self: 'Cum te chemi?',
+      ph_recipient_self: 'ex: Maria',
+      label_story_self: 'Spune-ne povestea ta',
+      ph_story_self: 'Povestește-ne despre tine, ce ai trăit, ce momente importante te-au marcat, ce ai reușit sau ce sentimente ai vrea să exprime melodia.',
+      wizard_step2_title_self: 'Spune-ne despre tine',
       label_email: 'Emailul tău (primești melodia și aici)',
       label_email_marketing_optout: 'Nu vreau emailuri de reamintire dacă nu finalizez comanda',
       // GATE (2026-09-27, "Comenzile mele inainte de generare") — cele doua ecrane preliminare
@@ -1089,6 +1134,8 @@
       val_recipient: 'Spune-ne pentru cine este cântecul',
       val_sender: 'Spune-ne din partea cui este cântecul',
       val_relationship: 'Spune-ne ce relație aveți',
+      val_self_theme: 'Alege ce vrei să exprime melodia ta',
+      val_include_name: 'Alege dacă vrei ca numele tău să apară în melodie',
       val_story: 'Adaugă câteva detalii despre poveste',
       val_email: 'Adresa de email nu este validă',
       val_phone: 'Numărul de telefon nu este valid',
@@ -1177,6 +1224,20 @@
       ph_sender: 'e.g. Maria, or Maria and Alexandra',
       label_relationship: 'What is your relationship',
       ph_relationship: 'e.g. wife and husband, mother and daughter, friends',
+      label_self_theme: 'What do you want your song to express?',
+      self_theme_putere: 'Strength and motivation',
+      self_theme_perioada_grea: 'A hard period in my life',
+      self_theme_reusita: 'A personal achievement',
+      self_theme_dor_iubire: 'Longing, love or feelings',
+      self_theme_povestea_vietii: 'My life story',
+      label_include_name: 'Do you want your name to appear in the song?',
+      include_name_yes: 'Yes, I want my name to appear',
+      include_name_no: 'No, I prefer without my name',
+      label_recipient_self: 'What is your name?',
+      ph_recipient_self: 'e.g. Maria',
+      label_story_self: 'Tell us your story',
+      ph_story_self: 'Tell us about yourself, what you have been through, the important moments that shaped you, what you achieved, or the feelings you would like the song to express.',
+      wizard_step2_title_self: 'Tell us about yourself',
       label_email: 'Your email (you\'ll also receive the song here)',
       label_email_marketing_optout: "I don't want reminder emails if I don't complete my order",
       gate_email_title: "Let's get started",
@@ -1260,6 +1321,8 @@
       val_recipient: 'Tell us who the song is for',
       val_sender: 'Tell us who the song is from',
       val_relationship: 'Tell us your relationship',
+      val_self_theme: 'Choose what you want your song to express',
+      val_include_name: 'Choose whether you want your name to appear in the song',
       val_story: 'Add a few details about your story',
       val_email: 'The email address is not valid',
       val_phone: 'The phone number is not valid',
@@ -1347,6 +1410,20 @@
       ph_sender: 'z.B. Maria, oder Maria und Alexandra',
       label_relationship: 'Welche Beziehung habt ihr',
       ph_relationship: 'z.B. Ehefrau und Ehemann, Mutter und Tochter, Freunde',
+      label_self_theme: 'Was soll dein Lied ausdrücken?',
+      self_theme_putere: 'Kraft und Motivation',
+      self_theme_perioada_grea: 'Eine schwere Zeit in meinem Leben',
+      self_theme_reusita: 'Ein persönlicher Erfolg',
+      self_theme_dor_iubire: 'Sehnsucht, Liebe oder Gefühle',
+      self_theme_povestea_vietii: 'Die Geschichte meines Lebens',
+      label_include_name: 'Soll dein Name im Lied vorkommen?',
+      include_name_yes: 'Ja, mein Name soll vorkommen',
+      include_name_no: 'Nein, lieber ohne meinen Namen',
+      label_recipient_self: 'Wie heißt du?',
+      ph_recipient_self: 'z.B. Maria',
+      label_story_self: 'Erzähl uns deine Geschichte',
+      ph_story_self: 'Erzähl uns von dir, was du erlebt hast, welche wichtigen Momente dich geprägt haben, was du erreicht hast oder welche Gefühle das Lied ausdrücken soll.',
+      wizard_step2_title_self: 'Erzähl uns von dir',
       label_email: 'Deine E-Mail (du erhältst das Lied auch hier)',
       label_email_marketing_optout: 'Ich möchte keine Erinnerungs-E-Mails, falls ich meine Bestellung nicht abschließe',
       gate_email_title: 'Legen wir los',
@@ -1430,6 +1507,8 @@
       val_recipient: 'Sag uns, für wen das Lied ist',
       val_sender: 'Sag uns, von wem das Lied ist',
       val_relationship: 'Gib eure Beziehung an',
+      val_self_theme: 'Wähle, was dein Lied ausdrücken soll',
+      val_include_name: 'Wähle, ob dein Name im Lied vorkommen soll',
       val_story: 'Füge ein paar Details zu eurer Geschichte hinzu',
       val_email: 'Die E-Mail-Adresse ist ungültig',
       val_phone: 'Die Telefonnummer ist ungültig',
@@ -1517,6 +1596,20 @@
       ph_sender: 'ej: María, o María y Alejandra',
       label_relationship: 'Qué relación tenéis',
       ph_relationship: 'ej: esposa y esposo, madre e hija, amigos',
+      label_self_theme: '¿Qué quieres que exprese tu canción?',
+      self_theme_putere: 'Fuerza y motivación',
+      self_theme_perioada_grea: 'Una etapa difícil de mi vida',
+      self_theme_reusita: 'Un logro personal',
+      self_theme_dor_iubire: 'Añoranza, amor o sentimientos',
+      self_theme_povestea_vietii: 'La historia de mi vida',
+      label_include_name: '¿Quieres que tu nombre aparezca en la canción?',
+      include_name_yes: 'Sí, quiero que aparezca mi nombre',
+      include_name_no: 'No, prefiero sin mi nombre',
+      label_recipient_self: '¿Cómo te llamas?',
+      ph_recipient_self: 'ej: María',
+      label_story_self: 'Cuéntanos tu historia',
+      ph_story_self: 'Cuéntanos sobre ti, qué has vivido, qué momentos importantes te han marcado, qué has logrado o qué sentimientos quieres que exprese la canción.',
+      wizard_step2_title_self: 'Cuéntanos sobre ti',
       label_email: 'Tu email (también recibirás la canción aquí)',
       label_email_marketing_optout: 'No quiero recibir correos de recordatorio si no completo mi pedido',
       gate_email_title: 'Empecemos',
@@ -1600,6 +1693,8 @@
       val_recipient: 'Dinos para quién es la canción',
       val_sender: 'Dinos de parte de quién es la canción',
       val_relationship: 'Indica vuestra relación',
+      val_self_theme: 'Elige qué quieres que exprese tu canción',
+      val_include_name: 'Elige si quieres que tu nombre aparezca en la canción',
       val_story: 'Añade algunos detalles sobre vuestra historia',
       val_email: 'La dirección de correo no es válida',
       val_phone: 'El número de teléfono no es válido',
@@ -1687,6 +1782,20 @@
       ph_sender: 'es: Maria, o Maria e Alessandra',
       label_relationship: 'Che relazione avete',
       ph_relationship: 'es: moglie e marito, madre e figlia, amici',
+      label_self_theme: 'Cosa vuoi che esprima la tua canzone?',
+      self_theme_putere: 'Forza e motivazione',
+      self_theme_perioada_grea: 'Un periodo difficile della mia vita',
+      self_theme_reusita: 'Un successo personale',
+      self_theme_dor_iubire: 'Nostalgia, amore o sentimenti',
+      self_theme_povestea_vietii: 'La storia della mia vita',
+      label_include_name: 'Vuoi che il tuo nome appaia nella canzone?',
+      include_name_yes: 'Sì, voglio che appaia il mio nome',
+      include_name_no: 'No, preferisco senza il mio nome',
+      label_recipient_self: 'Come ti chiami?',
+      ph_recipient_self: 'es: Maria',
+      label_story_self: 'Raccontaci la tua storia',
+      ph_story_self: 'Raccontaci di te, cosa hai vissuto, quali momenti importanti ti hanno segnato, cosa hai realizzato o quali sentimenti vuoi che esprima la canzone.',
+      wizard_step2_title_self: 'Raccontaci di te',
       label_email: 'La tua email (riceverai la canzone anche qui)',
       label_email_marketing_optout: 'Non voglio email di promemoria se non completo il mio ordine',
       gate_email_title: 'Iniziamo',
@@ -1770,6 +1879,8 @@
       val_recipient: 'Dicci per chi è la canzone',
       val_sender: 'Dicci da parte di chi è la canzone',
       val_relationship: 'Indica la vostra relazione',
+      val_self_theme: 'Scegli cosa vuoi che esprima la tua canzone',
+      val_include_name: 'Scegli se vuoi che il tuo nome appaia nella canzone',
       val_story: 'Aggiungi alcuni dettagli sulla vostra storia',
       val_email: 'L\'indirizzo email non è valido',
       val_phone: 'Il numero di telefono non è valido',
@@ -1857,6 +1968,20 @@
       ph_sender: 'ex : Maria, ou Maria et Alexandra',
       label_relationship: 'Quelle est votre relation',
       ph_relationship: 'ex : épouse et mari, mère et fille, amis',
+      label_self_theme: 'Que voulez-vous que votre chanson exprime ?',
+      self_theme_putere: 'Force et motivation',
+      self_theme_perioada_grea: 'Une période difficile de ma vie',
+      self_theme_reusita: 'Une réussite personnelle',
+      self_theme_dor_iubire: 'Manque, amour ou sentiments',
+      self_theme_povestea_vietii: 'L\'histoire de ma vie',
+      label_include_name: 'Voulez-vous que votre nom apparaisse dans la chanson ?',
+      include_name_yes: 'Oui, je veux que mon nom apparaisse',
+      include_name_no: 'Non, je préfère sans mon nom',
+      label_recipient_self: 'Comment t\'appelles-tu ?',
+      ph_recipient_self: 'ex : Maria',
+      label_story_self: 'Racontez-nous votre histoire',
+      ph_story_self: 'Parlez-nous de vous, ce que vous avez vécu, les moments importants qui vous ont marqué, ce que vous avez accompli ou les sentiments que vous aimeriez que la chanson exprime.',
+      wizard_step2_title_self: 'Parlez-nous de vous',
       label_email: 'Votre email (vous recevrez aussi la chanson ici)',
       label_email_marketing_optout: "Je ne veux pas recevoir d'e-mails de rappel si je ne finalise pas ma commande",
       gate_email_title: 'Commençons',
@@ -1940,6 +2065,8 @@
       val_recipient: 'Dites-nous pour qui est la chanson',
       val_sender: 'Dites-nous de la part de qui est la chanson',
       val_relationship: 'Indiquez votre relation',
+      val_self_theme: 'Choisissez ce que votre chanson doit exprimer',
+      val_include_name: 'Choisissez si vous voulez que votre nom apparaisse dans la chanson',
       val_story: 'Ajoutez quelques détails sur votre histoire',
       val_email: 'L\'adresse email n\'est pas valide',
       val_phone: 'Le numéro de téléphone n\'est pas valide',
@@ -2027,6 +2154,20 @@
       ph_sender: 'напр. Мария, или Мария и Александра',
       label_relationship: 'Каква е връзката между вас',
       ph_relationship: 'напр. съпруга и съпруг, майка и дъщеря, приятели',
+      label_self_theme: 'Какво искаш да изразява песента ти?',
+      self_theme_putere: 'Сила и мотивация',
+      self_theme_perioada_grea: 'Труден период от живота ми',
+      self_theme_reusita: 'Личен успех',
+      self_theme_dor_iubire: 'Копнеж, любов или чувства',
+      self_theme_povestea_vietii: 'Историята на живота ми',
+      label_include_name: 'Искаш ли името ти да се появява в песента?',
+      include_name_yes: 'Да, искам името ми да се появява',
+      include_name_no: 'Не, предпочитам без името ми',
+      label_recipient_self: 'Как се казваш?',
+      ph_recipient_self: 'напр. Мария',
+      label_story_self: 'Разкажи ни своята история',
+      ph_story_self: 'Разкажи ни за себе си, какво си преживял, кои важни моменти те са белязали, какво си постигнал или какви чувства искаш да изразява песента.',
+      wizard_step2_title_self: 'Разкажи ни за себе си',
       label_email: 'Твоят имейл (ще получиш песента и тук)',
       label_email_marketing_optout: 'Не искам напомнящи имейли, ако не завърша поръчката си',
       gate_email_title: 'Да започваме',
@@ -2110,6 +2251,8 @@
       val_recipient: 'Кажи ни за кого е песента',
       val_sender: 'Кажи ни от чие име е песента',
       val_relationship: 'Посочи каква е връзката ви',
+      val_self_theme: 'Избери какво искаш да изразява песента ти',
+      val_include_name: 'Избери дали искаш името ти да се появява в песента',
       val_story: 'Добави няколко детайла за вашата история',
       val_email: 'Имейл адресът не е валиден',
       val_phone: 'Телефонният номер не е валиден',
@@ -2197,6 +2340,20 @@
       ph_sender: 'örn: Ayşe, veya Ayşe ve Zeynep',
       label_relationship: 'Aranızdaki ilişki nedir',
       ph_relationship: 'örn: eş ve eş, anne ve kız, arkadaşlar',
+      label_self_theme: 'Şarkının neyi ifade etmesini istiyorsun?',
+      self_theme_putere: 'Güç ve motivasyon',
+      self_theme_perioada_grea: 'Hayatımdaki zor bir dönem',
+      self_theme_reusita: 'Kişisel bir başarı',
+      self_theme_dor_iubire: 'Özlem, aşk veya duygular',
+      self_theme_povestea_vietii: 'Hayat hikayem',
+      label_include_name: 'Adının şarkıda geçmesini ister misin?',
+      include_name_yes: 'Evet, adımın geçmesini istiyorum',
+      include_name_no: 'Hayır, adım olmadan tercih ederim',
+      label_recipient_self: 'Adın ne?',
+      ph_recipient_self: 'örn: Maria',
+      label_story_self: 'Bize hikayeni anlat',
+      ph_story_self: 'Bize kendinden bahset, neler yaşadığını, seni şekillendiren önemli anları, neyi başardığını veya şarkının hangi duyguları ifade etmesini istediğini anlat.',
+      wizard_step2_title_self: 'Bize kendinden bahset',
       label_email: 'E-posta adresiniz (şarkıyı buraya da alacaksınız)',
       label_email_marketing_optout: 'Siparişimi tamamlamazsam hatırlatma e-postası almak istemiyorum',
       gate_email_title: 'Hadi başlayalım',
@@ -2280,6 +2437,8 @@
       val_recipient: 'Şarkının kimin için olduğunu söyleyin',
       val_sender: 'Şarkının kimden geldiğini söyleyin',
       val_relationship: 'Aranızdaki ilişkiyi belirtin',
+      val_self_theme: 'Şarkının neyi ifade etmesini istediğini seç',
+      val_include_name: 'Adının şarkıda geçmesini isteyip istemediğini seç',
       val_story: 'Hikayeniz hakkında birkaç detay ekleyin',
       val_email: 'E-posta adresi geçerli değil',
       val_phone: 'Telefon numarası geçerli değil',
@@ -2497,21 +2656,32 @@
     // #email nu mai e editabil in pasul 2, deci nu mai e revalidat aici.
     if (n === 2) {
       const recipient = document.getElementById('recipient').value.trim();
-      const sender = document.getElementById('sender').value.trim();
-      const relationship = document.getElementById('relationship').value.trim();
       const story = document.getElementById('story').value.trim();
-
-      setFieldError('recipient', recipient ? '' : t('val_recipient'));
-      setFieldError('sender', sender ? '' : t('val_sender'));
-      setFieldError('relationship', relationship ? '' : t('val_relationship'));
-      setFieldError('story', story ? '' : t('val_story'));
+      // FORMULAR SPECIAL "PENTRU MINE" (2026-10-12, cerinta explicita) — sender/relationship nu
+      // mai sunt cerute pentru aceasta ocazie (campurile nici nu mai sunt afisate, vezi
+      // refreshRelationUI); in schimb, selfTheme/includeNameInSong devin obligatorii. Pentru
+      // orice alta ocazie, validarea ramane STRICT neschimbata.
+      const isSelfSongStep = occasionInput.value === 'pentru-mine';
       const phoneOk = validatePhoneField();
-
+      setFieldError('recipient', recipient ? '' : t('val_recipient'));
+      setFieldError('story', story ? '' : t('val_story'));
       if (!recipient) { ok = false; firstInvalid = firstInvalid || 'recipient'; }
-      if (!sender) { ok = false; firstInvalid = firstInvalid || 'sender'; }
-      if (!relationship) { ok = false; firstInvalid = firstInvalid || 'relationship'; }
       if (!story) { ok = false; firstInvalid = firstInvalid || 'story'; }
       if (!phoneOk) { ok = false; firstInvalid = firstInvalid || 'phone'; }
+
+      if (isSelfSongStep) {
+        setFieldError('selfTheme', selfThemeInput.value ? '' : t('val_self_theme'));
+        setFieldError('includeNameInSong', includeNameInput.value ? '' : t('val_include_name'));
+        if (!selfThemeInput.value) { ok = false; firstInvalid = firstInvalid || 'self-theme-field'; }
+        if (!includeNameInput.value) { ok = false; firstInvalid = firstInvalid || 'include-name-field'; }
+      } else {
+        const sender = document.getElementById('sender').value.trim();
+        const relationship = document.getElementById('relationship').value.trim();
+        setFieldError('sender', sender ? '' : t('val_sender'));
+        setFieldError('relationship', relationship ? '' : t('val_relationship'));
+        if (!sender) { ok = false; firstInvalid = firstInvalid || 'sender'; }
+        if (!relationship) { ok = false; firstInvalid = firstInvalid || 'relationship'; }
+      }
     }
 
     if (n === 3) {
@@ -2689,6 +2859,44 @@
   const recipientModeInput = document.getElementById('recipientMode');
   const weddingTypeInput = document.getElementById('weddingType');
 
+  // FORMULAR SPECIAL "PENTRU MINE" (2026-10-12, cerinta explicita) — elementele formularului
+  // standard, reutilizate/ascunse dinamic (vezi refreshRelationUI mai jos), plus elementele
+  // proprii (tema melodiei, alegerea de a include numele).
+  const selfThemeField = document.getElementById('self-theme-field');
+  const selfThemeInput = document.getElementById('selfTheme');
+  const senderField = document.getElementById('sender-field');
+  const senderInput = document.getElementById('sender');
+  const relationshipField = document.getElementById('relationship-field');
+  const relationshipInput = document.getElementById('relationship');
+  const includeNameField = document.getElementById('include-name-field');
+  const includeNameInput = document.getElementById('includeNameInSong');
+  const recipientLabel = document.getElementById('recipient-label');
+  const recipientInput = document.getElementById('recipient');
+  const storyLabel = document.getElementById('story-label');
+  const storyTextarea = document.getElementById('story');
+  const step2Title = document.getElementById('step2-title');
+
+  document.querySelectorAll('.self-theme-card').forEach(c => {
+    c.addEventListener('click', () => {
+      document.querySelectorAll('.self-theme-card').forEach(x => { x.classList.remove('active'); x.setAttribute('aria-selected', 'false'); });
+      c.classList.add('active');
+      c.setAttribute('aria-selected', 'true');
+      selfThemeInput.value = c.dataset.selfTheme;
+      setFieldError('selfTheme', '');
+      saveDraft();
+    });
+  });
+  document.querySelectorAll('.include-name-card').forEach(c => {
+    c.addEventListener('click', () => {
+      document.querySelectorAll('.include-name-card').forEach(x => { x.classList.remove('active'); x.setAttribute('aria-selected', 'false'); });
+      c.classList.add('active');
+      c.setAttribute('aria-selected', 'true');
+      includeNameInput.value = c.dataset.includeName === 'yes' ? 'true' : 'false';
+      setFieldError('includeNameInSong', '');
+      saveDraft();
+    });
+  });
+
   const familyRelationPanel = document.getElementById('family-relation-panel');
   const familyRelationGrid = document.getElementById('family-relation-grid');
   const familyNamesSlot = document.getElementById('family-names-slot');
@@ -2728,6 +2936,17 @@
       nuntaGroup = '';
       name1Input.value = '';
       name2Input.value = '';
+      // FORMULAR SPECIAL "PENTRU MINE" (2026-10-12) — la fel ca restul campurilor de relatie de
+      // mai sus, schimbarea ocaziei principale reseteaza STRICT campurile proprii acestui
+      // formular (tema/alegerea de nume) — niciodata pastrate "agatate" pentru o ocazie
+      // incompatibila. sender/relationship (text liber) se resetează STRICT la intrarea in/din
+      // 'pentru-mine' (vezi refreshRelationUI), nu aici, ca sa nu steargă date valide la o simplă
+      // schimbare intre alte ocazii generice (comportament identic cu inainte pentru ele).
+      selfThemeInput.value = '';
+      includeNameInput.value = '';
+      document.querySelectorAll('.self-theme-card, .include-name-card').forEach(x => { x.classList.remove('active'); x.setAttribute('aria-selected', 'false'); });
+      setFieldError('selfTheme', '');
+      setFieldError('includeNameInSong', '');
       setFieldError('recipientRoleFamily', '');
       setFieldError('recipientRole', '');
       setFieldError('senderRole', '');
@@ -2850,7 +3069,62 @@
     } else {
       nuntaPanel.style.display = 'none';
     }
+
+    // FORMULAR SPECIAL "PENTRU MINE" (2026-10-12, cerinta explicita) — STRICT pentru
+    // occasion==='pentru-mine': ascunde "Din partea cui"/"Ce relație" (nu exista un destinatar
+    // separat), arata "Ce vrei să exprime melodia ta?"/"Vrei ca numele tău să apară în melodie?",
+    // si schimba eticheta/placeholder-ul lui #recipient ("Cum te chemi?") si al lui #story.
+    // Pentru orice alta ocazie, formularul standard ramane EXACT cum era inainte.
+    const isSelfSong = occasion === 'pentru-mine';
+    if (isSelfSong !== wasSelfSong) {
+      // Tranzitie REALA intre 'pentru-mine' si orice alta ocazie — goleste STRICT campurile
+      // incompatibile cu modul nou (cerinta explicita: "revenirea la o alta ocazie fara
+      // pastrarea datelor incompatibile"), niciodata la o simpla schimbare INTRE doua ocazii
+      // generice (ex. 'dor' -> 'declaratie'), unde sender/relationship raman valide si trebuie
+      // pastrate neschimbate.
+      senderInput.value = '';
+      relationshipInput.value = '';
+      setFieldError('sender', '');
+      setFieldError('relationship', '');
+      wasSelfSong = isSelfSong;
+    }
+    selfThemeField.style.display = isSelfSong ? 'block' : 'none';
+    includeNameField.style.display = isSelfSong ? 'block' : 'none';
+    senderField.style.display = isSelfSong ? 'none' : 'block';
+    relationshipField.style.display = isSelfSong ? 'none' : 'block';
+    // Re-sincronizeaza cardurile active STRICT din valoarea curenta a campurilor ascunse —
+    // acelasi principiu idempotent ca restul functiei (necesar la restaurarea unui draft).
+    document.querySelectorAll('.self-theme-card').forEach(c => {
+      const on = c.dataset.selfTheme === selfThemeInput.value;
+      c.classList.toggle('active', on);
+      c.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    document.querySelectorAll('.include-name-card').forEach(c => {
+      const on = (c.dataset.includeName === 'yes' && includeNameInput.value === 'true')
+        || (c.dataset.includeName === 'no' && includeNameInput.value === 'false');
+      c.classList.toggle('active', on);
+      c.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    const recipientLabelKey = isSelfSong ? 'label_recipient_self' : 'label_recipient';
+    const recipientPhKey = isSelfSong ? 'ph_recipient_self' : 'ph_recipient';
+    const storyLabelKey = isSelfSong ? 'label_story_self' : 'label_story';
+    const storyPhKey = isSelfSong ? 'ph_story_self' : 'ph_story';
+    const step2TitleKey = isSelfSong ? 'wizard_step2_title_self' : 'wizard_step2_title';
+    recipientLabel.setAttribute('data-i18n', recipientLabelKey);
+    recipientLabel.textContent = t(recipientLabelKey);
+    recipientInput.setAttribute('data-i18n-placeholder', recipientPhKey);
+    recipientInput.setAttribute('placeholder', t(recipientPhKey));
+    storyLabel.setAttribute('data-i18n', storyLabelKey);
+    storyLabel.textContent = t(storyLabelKey);
+    storyTextarea.setAttribute('data-i18n-placeholder', storyPhKey);
+    storyTextarea.setAttribute('placeholder', t(storyPhKey));
+    step2Title.setAttribute('data-i18n', step2TitleKey);
+    step2Title.textContent = t(step2TitleKey);
   }
+  // Stare locala — vezi tranzitia isSelfSong !== wasSelfSong de mai sus. Initializata din
+  // valoarea curenta a ocaziei, ca restaurarea unui draft existent (pagina reincarcata direct pe
+  // 'pentru-mine') sa nu goleasca gresit sender/relationship la primul apel.
+  let wasSelfSong = occasionInput.value === 'pentru-mine';
 
   document.querySelectorAll('.nunta-type-card').forEach(c => {
     c.addEventListener('click', () => {
@@ -3463,6 +3737,11 @@
       recipient: recipientVal,
       senderName: document.getElementById('sender').value,
       relationship: document.getElementById('relationship').value,
+      // FORMULAR SPECIAL "PENTRU MINE" (2026-10-12) — relevante STRICT pentru occasion==='pentru-mine'
+      // (server-side, POST /api/orders le cere/valideaza doar in acel caz); pentru orice alta
+      // ocazie, raman goale si serverul le ignora complet (acelasi tipar ca weddingType etc.).
+      selfTheme: selfThemeInput.value,
+      includeNameInSong: includeNameInput.value === '' ? null : includeNameInput.value === 'true',
       email: document.getElementById('email').value,
       // emailMarketingOptOut (2026-09-25, corectie PECR soft opt-in) — STRICT boolean, bifa
       // OPTIONALA de la colectarea emailului, COMPLET SEPARATA de Analytics/Marketing (Meta
@@ -3614,7 +3893,10 @@
         // ADAUGAT (2026-08-13) — mini-pagina dedicata datelor persoanei 2.
         song2SenderName: song2SenderNameInput.value,
         song2Relationship: song2RelationshipInput.value,
-        song2Story: song2StoryInput.value
+        song2Story: song2StoryInput.value,
+        // FORMULAR SPECIAL "PENTRU MINE" (2026-10-12).
+        selfTheme: selfThemeInput.value,
+        includeNameInSong: includeNameInput.value
       };
       localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
     } catch (err) {
@@ -3649,6 +3931,10 @@
     if (draft.nuntaGroup) nuntaGroup = draft.nuntaGroup;
     if (draft.name1) name1Input.value = draft.name1;
     if (draft.name2) name2Input.value = draft.name2;
+    // FORMULAR SPECIAL "PENTRU MINE" (2026-10-12) — restaurate INAINTE de refreshRelationUI(),
+    // acelasi tipar ca restul campurilor de relatie de mai sus.
+    if (draft.selfTheme) selfThemeInput.value = draft.selfTheme;
+    if (draft.includeNameInSong) includeNameInput.value = draft.includeNameInSong;
     refreshRelationUI();
     if (draft.recipient) document.getElementById('recipient').value = draft.recipient;
     if (draft.sender) document.getElementById('sender').value = draft.sender;

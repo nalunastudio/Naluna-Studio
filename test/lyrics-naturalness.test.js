@@ -268,10 +268,13 @@ test('VOICE_INSTRUCTIONS_FULL/SHORT (Feminina/Masculina/Duet/Alegem pentru tine)
   assert.match(server, /auto: ''/);
 });
 
-test('indiciul de intro scurt ("like the verse", 8-10 seconds) NU a fost atins — ramane identic in ambele forme FULL', () => {
+test('indiciul de intro scurt ("like the verse", 8-10 seconds) NU a fost atins — ramane identic in formele FULL existente', () => {
   assert.match(server, /Start the vocals around 8-10 seconds, like the verse\./g);
   const count = (server.match(/Start the vocals around 8-10 seconds, like the verse\./g) || []).length;
-  assert.equal(count, 2, 'trebuie sa apara EXACT de doua ori — instructionWithSenderFull si instructionNoSenderFull, neschimbate');
+  // REVIZUIT (2026-10-12, formularul special "Pentru mine" — vezi instructionNoNameFull,
+  // server.js): o a 3-a forma FULL, pentru cazul "numele NU trebuie sa apara in versuri", adauga
+  // acelasi indiciu de intro — 2 -> 3, intentionat, nu o regresie a celor doua forme existente.
+  assert.equal(count, 3, 'trebuie sa apara EXACT de 3 ori — instructionWithSenderFull, instructionNoSenderFull, instructionNoNameFull');
 });
 
 // ===============================================================================================

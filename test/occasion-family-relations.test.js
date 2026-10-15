@@ -78,7 +78,9 @@ test('comanda.html: restoreDraft() reface recipientRole/senderRole/recipientMode
   const html = read('public/comanda.html');
   const idx = html.indexOf('if (draft.recipientRole) recipientRoleInput.value = draft.recipientRole;');
   assert.ok(idx !== -1);
-  const slice = html.slice(idx, idx + 750);
+  // 750 -> 900 (2026-10-12, formularul special "Pentru mine" — 2 linii noi de restaurare,
+  // selfTheme/includeNameInSong, inainte de refreshRelationUI()).
+  const slice = html.slice(idx, idx + 900);
   assert.ok(slice.includes('if (draft.senderRole) senderRoleInput.value = draft.senderRole;'));
   assert.ok(slice.includes('if (draft.recipientMode) recipientModeInput.value = draft.recipientMode;'));
   assert.ok(slice.includes('if (draft.nuntaGroup) nuntaGroup = draft.nuntaGroup;'));

@@ -303,7 +303,7 @@ test('server.js: GENRE_STYLE_MAP, VOICE_INSTRUCTIONS si modelul V4_5 raman nesch
   }
   assert.ok(server.includes("female: ' Use a female lead vocal.',"));
   assert.ok(server.includes("duet: ' Use a male and female duet, with both voices clearly present.',"));
-  const fn = extractFn(server, 'async function callMusicProvider(orderId, requestInput) {');
+  const fn = extractFn(server, 'async function callMusicProvider(orderId, requestInput, genre, voicePreference) {');
   assert.match(fn, /const musicModel = \(process\.env\.MUSIC_MODEL[\s\S]*?\) \|\| 'V4_5ALL';/);
 });
 

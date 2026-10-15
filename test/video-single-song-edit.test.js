@@ -112,7 +112,9 @@ test('server.js: mecanismul dual-genre (Promise.all, replaceVariantId, editVaria
 test('server.js: runGeneration() foloseste ramura cu UN SINGUR gen (!isDualGenrePlan) pentru video, dupa corectia PLAN_VARIANT_COUNT', () => {
   const idx = server.indexOf('async function runGeneration(orderId, feedback, options = {}) {');
   assert.notEqual(idx, -1);
-  const snippet = server.slice(idx, idx + 6000);
+  // 6000 -> 6500 (2026-10-13, "muzica populara — doua directii" — ramura !isDualGenrePlan a
+  // primit un ternar nou pentru genre==='populara', vezi test/populara-direction-selector.test.js).
+  const snippet = server.slice(idx, idx + 6500);
   assert.ok(snippet.includes('const isDualGenrePlan = PLAN_VARIANT_COUNT[order.plan] === 2;'));
   assert.ok(snippet.includes('if (!isDualGenrePlan) {'));
   // pentru video (PLAN_VARIANT_COUNT.video===1), isDualGenrePlan e fals -> intra pe aceasta

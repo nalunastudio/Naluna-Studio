@@ -30,8 +30,11 @@ test('POST /api/orders: genre2 e cerut si validat ca diferit de genre pentru Pre
 
 test('runGeneration: Premium/Video lanseaza doua cereri Suno in paralel (Promise.all), niciodata secvential', () => {
   const server = read('server.js');
+  // NOTA: gasit neatins/corectat la o alta sarcina, anterioara acesteia, din aceeasi sesiune —
+  // callMusicProvider a primit doi parametri noi (genre, voicePreference), neschimbat aici,
+  // STRICT regex-ul de verificare actualizat sa reflecte semnatura reala.
   assert.ok(
-    /Promise\.all\(\[\s*callMusicProvider\(orderId, promptGenre1\),\s*callMusicProvider\(orderId, promptGenre2\)\s*\]\)/.test(server),
+    /Promise\.all\(\[\s*callMusicProvider\(orderId, promptGenre1, order\.genre, order\.voicePreference\),\s*callMusicProvider\(orderId, promptGenre2, order\.genre2, order\.voicePreference\)\s*\]\)/.test(server),
     'cele doua genuri trebuie generate in paralel, nu secvential'
   );
 });

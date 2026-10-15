@@ -46,6 +46,11 @@ function loadModule() {
     const SUNO_SUCCESS_STATUS = 'SUCCESS';
     const __mock = { buildVariantFromTrack: null, callMusicProvider: null, pollForResult: null, buildPrompt: null };
     function perfLog() {}
+    // checkLyricsSemanticCoherence (2026-10-12): AL DOILEA filtru, DOAR pe piese care au trecut
+    // deja de validateLyricsCoherence — testele astea verifica STRICT bugetul de reincercari si
+    // comportamentul regex-ului existent, nu noul filtru AI (acoperit separat); stub no-op
+    // (acelasi comportament de fail-open ca fara ANTHROPIC_API_KEY in productie).
+    async function checkLyricsSemanticCoherence() { return { ok: true, reasons: [] }; }
     async function buildVariantFromTrack(orderId, variantId, track, taskId) { return __mock.buildVariantFromTrack(orderId, variantId, track, taskId); }
     async function callMusicProvider(orderId, prompt) { return __mock.callMusicProvider(orderId, prompt); }
     async function pollForResult(taskId, orderId) { return __mock.pollForResult(taskId, orderId); }
@@ -209,7 +214,9 @@ test('PROTECTIE: GENRE_STYLE_MAP (15 din cele 16 genuri, hiphop exclus) ramane B
   // manele_jale EXCLUS aici (2026-10-06, corectie separata si ulterioara — diferentiere muzicala
   // fata de manele_suflet, audit pe 5 referinte audio, aprobata explicit) — vezi
   // test/manele-jale-style-differentiation.test.js pentru verificarea dedicata a acelei modificari.
-  for (const g of NEW_GENRES.filter(g => g !== 'hiphop' && g !== 'manele_suflet' && g !== 'manele_jale')) assert.equal(after[g], before[g], `genul "${g}" trebuie sa ramana byte-identic`);
+  // populara EXCLUS aici (2026-10-12, corectie separata si ulterioara — "muzica populara
+  // autentica"); sursa de adevar curenta e in test/populara-authentic-folk-style.test.js.
+  for (const g of NEW_GENRES.filter(g => g !== 'hiphop' && g !== 'manele_suflet' && g !== 'manele_jale' && g !== 'populara')) assert.equal(after[g], before[g], `genul "${g}" trebuie sa ramana byte-identic`);
 });
 
 test('PROTECTIE: VOICE_INSTRUCTIONS_FULL/SHORT raman prezente si neatinse (fixul nu le-a modificat)', () => {

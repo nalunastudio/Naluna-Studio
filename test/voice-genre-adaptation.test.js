@@ -68,7 +68,10 @@ function baseOrder(lang, genre, voicePreference) {
 // -----------------------------------------------------------------------------------------------
 const CONTRASTING_PAIRS = [
   ['jazz', 'hiphop', /soulful vocal/i, /rap verses/i],
-  ['populara', 'rock', /folk ornamentation/i, /strong vocal/i],
+  // REVIZUIT (2026-10-12, "muzica populara autentica" — vezi test/populara-authentic-folk-style.test.js):
+  // textul de stil al lui populara a fost rescris cu instrumente concrete; tiparul de mai jos
+  // verifica STRICT noul caracter vocal/identitate curenta (lautaresc).
+  ['populara', 'rock', /lautaresc/i, /strong vocal/i],
   // REVIZUIT RUNDA 2 (2026-10-07, cerinta explicita): textul de stil al lui manele_jale s-a
   // schimbat din nou; tiparul de mai jos verifica STRICT noul caracter vocal curent.
   ['manele_suflet', 'manele_jale', /Balkan oriental, melismatic vocal runs/i, /powerful projected live vocal, strong oriental melismatic ornamentation/i]

@@ -280,7 +280,10 @@ test('TEST 7/9: GENRE_STYLE_MAP ramane BYTE-IDENTIC pentru 15 din cele 16 genuri
   // manele_jale EXCLUS aici (2026-10-06, corectie separata si ulterioara — diferentiere muzicala
   // fata de manele_suflet, audit pe 5 referinte audio, aprobata explicit) — vezi
   // test/manele-jale-style-differentiation.test.js pentru verificarea dedicata a acelei modificari.
-  for (const g of NEW_GENRES.filter(g => g !== 'hiphop' && g !== 'manele_suflet' && g !== 'manele_jale')) {
+  // populara EXCLUS aici (2026-10-12, corectie separata si ulterioara — "muzica populara
+  // autentica", instrumente concrete lautaresti, aprobata explicit) — vezi
+  // test/populara-authentic-folk-style.test.js pentru verificarea dedicata a acelei modificari.
+  for (const g of NEW_GENRES.filter(g => g !== 'hiphop' && g !== 'manele_suflet' && g !== 'manele_jale' && g !== 'populara')) {
     const m = body.match(new RegExp(`\\b${g}: '([^']+)'`));
     assert.ok(m, `nu am gasit "${g}" in versiunea de referinta`);
     assert.equal(GENRE_STYLE_MAP[g], m[1], `genul "${g}" trebuie sa ramana byte-identic`);

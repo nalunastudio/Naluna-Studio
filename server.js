@@ -364,6 +364,12 @@ const NEW_GENRES = ['pop', 'ballad_emotional', 'acoustic_folk', 'rnb', 'country'
 const ALLOWED_GENRES = [...LEGACY_ONLY_GENRES, ...NEW_GENRES];
 const ALLOWED_LANGS = ['ro', 'en', 'de', 'es', 'it', 'fr', 'bg', 'tr'];
 
+// FORMULAR SPECIAL "PENTRU MINE" (2026-10-12, cerinta explicita) — "Ce vrei sa exprime melodia
+// ta?", STRICT pentru occasion==='pentru-mine' (vezi POST /api/orders si
+// SELF_THEME_INSTRUCTIONS/resolveOccasionInstructionSet in buildPrompt). Enum ingust, validat
+// server-side, niciodata dedus din poveste.
+const SELF_THEME_VALUES = ['putere-motivatie', 'perioada-grea', 'reusita', 'dor-iubire', 'povestea-vietii'];
+
 // MODIFICARE STRICTĂ — pagina de ocazie (hotfix 2026-08-08): sistem generalizat de relatii de
 // familie si nunta/botez. Ocaziile de mai jos cer o relatie EXPLICITA a destinatarului
 // (recipientRole), aleasa de client, NICIODATA dedusa din nume/voce — si, in oglinda, relatia
@@ -536,6 +542,27 @@ const MISSING_FIELD_MESSAGES = {
     fr: 'Choisissez pour qui est la deuxième chanson',
     bg: 'Избери за кого е втората песен',
     tr: 'İkinci şarkının kimin için olduğunu seçin'
+  },
+  // FORMULAR SPECIAL "PENTRU MINE" (2026-10-12, cerinta explicita).
+  selfTheme: {
+    ro: 'Alege ce vrei să exprime melodia ta',
+    en: 'Choose what you want your song to express',
+    de: 'Wähle, was dein Lied ausdrücken soll',
+    es: 'Elige qué quieres que exprese tu canción',
+    it: 'Scegli cosa vuoi che esprima la tua canzone',
+    fr: 'Choisissez ce que votre chanson doit exprimer',
+    bg: 'Избери какво искаш да изразява песента ти',
+    tr: 'Şarkının neyi ifade etmesini istediğini seç'
+  },
+  includeNameInSong: {
+    ro: 'Alege dacă vrei ca numele tău să apară în melodie',
+    en: 'Choose whether you want your name to appear in the song',
+    de: 'Wähle, ob dein Name im Lied vorkommen soll',
+    es: 'Elige si quieres que tu nombre aparezca en la canción',
+    it: 'Scegli se vuoi che il tuo nome appaia nella canzone',
+    fr: 'Choisissez si vous voulez que votre nom apparaisse dans la chanson',
+    bg: 'Избери дали искаш името ти да се появява в песента',
+    tr: 'Adının şarkıda geçmesini isteyip istemediğini seç'
   }
 };
 function missingFieldMessage(field, lang) {
@@ -3150,7 +3177,11 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
       // emailMarketingOptOut (2026-09-25, corectie PECR soft opt-in) — bifa OPTIONALA de la
       // colectarea emailului (comanda.html, pasul 2), COMPLET SEPARATA de Analytics/Marketing
       // (Meta Pixel/CAPI) — vezi comentariul de la calculul safeEmailMarketingOptOut mai jos.
-      emailMarketingOptOut
+      emailMarketingOptOut,
+      // FORMULAR SPECIAL "PENTRU MINE" (2026-10-12, cerinta explicita) — relevante STRICT pentru
+      // occasion==='pentru-mine' (validate/persistate mai jos); pentru orice alta ocazie, ignorate
+      // complet (raman null), acelasi tipar ca weddingType/recipientRole etc.
+      selfTheme, includeNameInSong
     } = req.body || {};
     const safeLang = ALLOWED_LANGS.includes(lang) ? lang : 'ro';
 
@@ -3264,11 +3295,34 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
     if (!isValidString(recipient, 1, 60)) {
       return res.status(400).json({ error: missingFieldMessage('recipient', safeLang) });
     }
-    if (!isValidString(senderName, 1, 100)) {
-      return res.status(400).json({ error: missingFieldMessage('sender', safeLang) });
+    // FORMULAR SPECIAL "PENTRU MINE" (2026-10-12, cerinta explicita): clientul e si subiectul
+    // melodiei — nu exista un destinatar/expeditor/relatie SEPARATE de el insusi. `recipient`
+    // (validat mai sus) ramane numele clientului ("Cum te cheama?"), reutilizat ca atare — STRICT
+    // pentru aceasta ocazie, senderName/relationship NU mai sunt cerute (formularul dedicat din
+    // comanda.html nu le mai afiseaza deloc). Pentru orice alta ocazie, comportamentul ramane
+    // STRICT neschimbat (ambele raman obligatorii, exact ca inainte).
+    const isSelfSong = occasion === 'pentru-mine';
+    if (!isSelfSong) {
+      if (!isValidString(senderName, 1, 100)) {
+        return res.status(400).json({ error: missingFieldMessage('sender', safeLang) });
+      }
+      if (!isValidString(relationship, 1, 60)) {
+        return res.status(400).json({ error: missingFieldMessage('relationship', safeLang) });
+      }
     }
-    if (!isValidString(relationship, 1, 60)) {
-      return res.status(400).json({ error: missingFieldMessage('relationship', safeLang) });
+    // selfTheme ("Ce vrei sa exprime melodia ta?") — OBLIGATORIU STRICT pentru 'pentru-mine',
+    // validat impotriva enumerarii fixe SELF_THEME_VALUES; ignorat complet (null) pentru orice
+    // alta ocazie, indiferent ce trimite clientul (acelasi tipar ca weddingType/recipientRole).
+    const safeSelfTheme = isSelfSong && SELF_THEME_VALUES.includes(selfTheme) ? selfTheme : null;
+    if (isSelfSong && !safeSelfTheme) {
+      return res.status(400).json({ error: missingFieldMessage('selfTheme', safeLang) });
+    }
+    // includeNameInSong ("Vrei ca numele tau sa apara in melodie?") — STRICT boolean, OBLIGATORIU
+    // pentru 'pentru-mine' (clientul trebuie sa aleaga explicit Da/Nu, niciodata presupus);
+    // ignorat complet (null) pentru orice alta ocazie.
+    const safeIncludeNameInSong = isSelfSong ? (includeNameInSong === true || includeNameInSong === false ? includeNameInSong : null) : null;
+    if (isSelfSong && safeIncludeNameInSong === null) {
+      return res.status(400).json({ error: missingFieldMessage('includeNameInSong', safeLang) });
     }
     if (!isValidEmail(email)) {
       return res.status(400).json({ error: invalidEmailMessage(safeLang) });
@@ -3494,7 +3548,11 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
       occasion, recipient: recipient.trim(), email: email.trim().toLowerCase(),
       story: story.trim(), genre, genre2: safeGenre2, plan, price, lang: safeLang,
       status: 'draft', editsUsed: 0, variants: [], selectedVariantId: null,
-      senderName: senderName.trim(), relationship: relationship.trim(),
+      // FORMULAR SPECIAL "PENTRU MINE": senderName/relationship nu sunt cerute/trimise pentru
+      // aceasta ocazie (vezi isSelfSong mai sus) — raman null, niciodata '.trim()' pe o valoare
+      // care poate fi absenta.
+      senderName: isSelfSong ? null : senderName.trim(),
+      relationship: isSelfSong ? null : relationship.trim(),
       voicePreference: safeVoicePreference,
       phone: safePhone,
       grandparentType: safeGrandparentType,
@@ -3519,7 +3577,10 @@ app.post('/api/orders', orderCreationLimiter, async (req, res, next) => {
       visitorId: safeVisitorId,
       emailMarketingOptOut: safeEmailMarketingOptOut,
       emailMarketingChoiceAt: new Date(),
-      emailMarketingPolicyVersion: EMAIL_MARKETING_POLICY_VERSION
+      emailMarketingPolicyVersion: EMAIL_MARKETING_POLICY_VERSION,
+      // FORMULAR SPECIAL "PENTRU MINE" (2026-10-12) — null pentru orice alta ocazie.
+      selfTheme: safeSelfTheme,
+      includeNameInSong: safeIncludeNameInSong
     });
 
     // Leaga evenimentele funnel pre-comanda (cta_clicked, order_page_viewed, form_started etc.,
@@ -6457,8 +6518,13 @@ async function resumeExistingTaskPolling(orderId, taskId) {
         const exactLyrics2 = variant2 && typeof variant2.editedLyrics === 'string' ? variant2.editedLyrics.trim() : '';
         const requestPayload2 = exactLyrics2
           ? buildExactLyricsRequest({ ...order, ...recipientSnapshot2 }, exactLyrics2, genre2, order.voicePreference)
-          : buildPrompt({ ...order, ...recipientSnapshot2 }, null, genre2);
-        const taskId2 = await callMusicProvider(orderId, requestPayload2);
+          // MUZICA POPULARA (2026-10-13): STRICT cand versurile NU sunt deja blocate de client
+          // (exactLyrics2 gol) — foloseste mecanismul dedicat (versuri reale + directia
+          // sentimentala aprobata), niciodata buildPrompt()/customMode:false pentru acest gen.
+          : genre2 === 'populara'
+            ? await buildPopularaCustomRequest(orderId, { ...order, ...recipientSnapshot2 })
+            : buildPrompt({ ...order, ...recipientSnapshot2 }, null, genre2);
+        const taskId2 = await callMusicProvider(orderId, requestPayload2, genre2, order.voicePreference);
         await db.updateOrder(orderId, { musicTaskId: taskId, musicTaskId2: taskId2 });
         if (order.regenerationJobId) recordRegenerationProgress(orderId, order.regenerationJobId, 'dispatched_song2').catch(() => {});
         const r2 = await pollForResult(taskId2, orderId);
@@ -6643,8 +6709,8 @@ async function runPremiumEditGeneration(orderId, editSongs, regenerationJobId) {
   // dispatches[1]=melodia 2 (deriva recipientSnapshot din getSong1/getSong2EffectiveData in
   // aceasta ordine fixa); fara aceasta sortare, editarea "doar melodia 2" trimisa inaintea
   // "melodiei 1" intr-un request cu ambele ar amesteca datele de destinatar intre cele doua.
-  const dispatches = editSongs
-    .map(song => {
+  const dispatches = (await Promise.all(editSongs
+    .map(async song => {
       const { isSong2Slot, genreToUse } = premiumEditSlotForVariant(order, song.variantId);
       const recipientSnapshot = isSong2Slot ? getSong2EffectiveData(order) : getSong1EffectiveData(order);
       // MODIFICARE STRICTĂ — editare secventiala, ambele melodii (hotfix, runda 4): vocea aleasa
@@ -6657,16 +6723,19 @@ async function runPremiumEditGeneration(orderId, editSongs, regenerationJobId) {
       // manual versurile ACESTEI melodii (song.exactLyrics), le trimitem VERBATIM catre Suno
       // prin customMode:true (buildExactLyricsRequest) — niciodata prin buildPrompt(), care le-ar
       // fi trecut doar ca un "ghidaj" text, fara nicio garantie de reproducere exacta.
+      // MUZICA POPULARA (2026-10-13): STRICT cand versurile NU sunt deja blocate de client.
       const requestPayload = song.exactLyrics
         ? buildExactLyricsRequest({ ...order, ...recipientSnapshot }, song.exactLyrics, genreToUse, effectiveVoice, song.feedback)
-        : buildPrompt({ ...order, ...recipientSnapshot, voicePreference: effectiveVoice }, song.feedback, genreToUse);
-      return { variantId: song.variantId, isSong2Slot, genreToUse, recipientSnapshot, requestPayload };
-    })
+        : genreToUse === 'populara'
+          ? await buildPopularaCustomRequest(orderId, { ...order, ...recipientSnapshot, voicePreference: effectiveVoice })
+          : buildPrompt({ ...order, ...recipientSnapshot, voicePreference: effectiveVoice }, song.feedback, genreToUse);
+      return { variantId: song.variantId, isSong2Slot, genreToUse, recipientSnapshot, requestPayload, voicePreference: effectiveVoice };
+    })))
     .sort((a, b) => Number(a.isSong2Slot) - Number(b.isSong2Slot));
 
   if (dispatches.length === 1) {
     const [d] = dispatches;
-    const taskId = await callMusicProvider(orderId, d.requestPayload);
+    const taskId = await callMusicProvider(orderId, d.requestPayload, d.genreToUse, d.voicePreference);
     recordRegenerationProgress(orderId, regenerationJobId, 'dispatched').catch(() => {});
     await db.updateOrder(orderId, { musicTaskId: taskId, musicTaskId2: null });
     recordRegenerationProgress(orderId, regenerationJobId, 'processing').catch(() => {});
@@ -6700,7 +6769,7 @@ async function runPremiumEditGeneration(orderId, editSongs, regenerationJobId) {
   // melodii noi, niciodata doar una" si logica de reluare existenta (musicTaskId2 e setat abia
   // dupa ce melodia 1 s-a confirmat, niciodata inainte).
   const [d1, d2] = dispatches;
-  const taskId1 = await callMusicProvider(orderId, d1.requestPayload);
+  const taskId1 = await callMusicProvider(orderId, d1.requestPayload, d1.genreToUse, d1.voicePreference);
   await db.updateOrder(orderId, { musicTaskId: taskId1, musicTaskId2: null });
   recordRegenerationProgress(orderId, regenerationJobId, 'dispatched').catch(() => {});
   perfLog(orderId, 'premium_edit_song1_dispatched', `gen1=${d1.genreToUse}`);
@@ -6714,7 +6783,7 @@ async function runPremiumEditGeneration(orderId, editSongs, regenerationJobId) {
     throw new Error(`Suno a raportat un status de eroare pentru prima melodie: ${r1.status}`);
   }
 
-  const taskId2 = await callMusicProvider(orderId, d2.requestPayload);
+  const taskId2 = await callMusicProvider(orderId, d2.requestPayload, d2.genreToUse, d2.voicePreference);
   await db.updateOrder(orderId, { musicTaskId: taskId1, musicTaskId2: taskId2 });
   recordRegenerationProgress(orderId, regenerationJobId, 'dispatched_song2').catch(() => {});
   perfLog(orderId, 'premium_edit_song2_dispatched', `gen2=${d2.genreToUse}`);
@@ -6790,8 +6859,11 @@ async function runGeneration(orderId, feedback, options = {}) {
     // niciodata prin buildPrompt(), care nu garanteaza nicio reproducere exacta.
     const requestPayload = options.exactLyrics
       ? buildExactLyricsRequest({ ...order, ...recipientSnapshot }, options.exactLyrics, genreToUse, order.voicePreference, effectiveFeedback)
-      : buildPrompt({ ...order, ...recipientSnapshot }, effectiveFeedback, genreToUse);
-    const taskId = await callMusicProvider(orderId, requestPayload);
+      // MUZICA POPULARA (2026-10-13): STRICT cand versurile NU sunt deja blocate de client.
+      : genreToUse === 'populara'
+        ? await buildPopularaCustomRequest(orderId, { ...order, ...recipientSnapshot })
+        : buildPrompt({ ...order, ...recipientSnapshot }, effectiveFeedback, genreToUse);
+    const taskId = await callMusicProvider(orderId, requestPayload, genreToUse, order.voicePreference);
     recordRegenerationProgress(orderId, options.regenerationJobId, 'dispatched').catch(() => {});
     await db.updateOrder(orderId, { musicTaskId: taskId, musicTaskId2: null });
     recordRegenerationProgress(orderId, options.regenerationJobId, 'processing').catch(() => {});
@@ -6820,8 +6892,11 @@ async function runGeneration(orderId, feedback, options = {}) {
     // identic din ramura Premium/Video de mai sus.
     const requestPayload = options.exactLyrics
       ? buildExactLyricsRequest(order, options.exactLyrics, order.genre, order.voicePreference, effectiveFeedback)
-      : buildPrompt(order, effectiveFeedback);
-    const taskId = await callMusicProvider(orderId, requestPayload);
+      // MUZICA POPULARA (2026-10-13): STRICT cand versurile NU sunt deja blocate de client.
+      : order.genre === 'populara'
+        ? await buildPopularaCustomRequest(orderId, order)
+        : buildPrompt(order, effectiveFeedback);
+    const taskId = await callMusicProvider(orderId, requestPayload, order.genre, order.voicePreference);
     recordRegenerationProgress(orderId, options.regenerationJobId, 'dispatched').catch(() => {});
     await db.updateOrder(orderId, { musicTaskId: taskId, musicTaskId2: null });
     recordRegenerationProgress(orderId, options.regenerationJobId, 'processing').catch(() => {});
@@ -6857,11 +6932,17 @@ async function runGeneration(orderId, feedback, options = {}) {
   // promisiunea "exact doua melodii" a pachetului. Vezi POST /api/music/callback: pentru
   // comenzi cu musicTaskId2 setat, callback-ul NU declanseaza finalizarea — doar polling-ul
   // (de mai jos, care asteapta explicit AMBELE sarcini) o face.
-  const promptGenre1 = buildPrompt(order, feedback, order.genre);
-  const promptGenre2 = buildPrompt({ ...order, ...getSong2EffectiveData(order) }, feedback, order.genre2);
+  // MUZICA POPULARA (2026-10-13): STRICT genul/genurile care sunt chiar populara — Premium
+  // cere 2 genuri DIFERITE, deci cel mult unul dintre cele doua poate fi populara.
+  const promptGenre1 = order.genre === 'populara'
+    ? await buildPopularaCustomRequest(orderId, order)
+    : buildPrompt(order, feedback, order.genre);
+  const promptGenre2 = order.genre2 === 'populara'
+    ? await buildPopularaCustomRequest(orderId, { ...order, ...getSong2EffectiveData(order) })
+    : buildPrompt({ ...order, ...getSong2EffectiveData(order) }, feedback, order.genre2);
   const [taskId1, taskId2] = await Promise.all([
-    callMusicProvider(orderId, promptGenre1),
-    callMusicProvider(orderId, promptGenre2)
+    callMusicProvider(orderId, promptGenre1, order.genre, order.voicePreference),
+    callMusicProvider(orderId, promptGenre2, order.genre2, order.voicePreference)
   ]);
   await db.updateOrder(orderId, { musicTaskId: taskId1, musicTaskId2: taskId2 });
   perfLog(orderId, 'dual_genre_tasks_created', `gen1=${order.genre}, gen2=${order.genre2}`);
@@ -7050,7 +7131,17 @@ async function obtainAcceptableVariant(orderId, tracks, taskId, genre, order, re
       // DIAGNOSTIC (2026-09-07, audit retry muzica): STRICT cod de motiv (enumerare fixa) +
       // indexul piesei + faza (initial/retry) — niciodata versuri, poveste sau nume.
       perfLog(orderId, 'lyrics_coherence_check', `faza=${phase}, piesa=${trackIndex}, ok=${coherence.ok}, motive=${coherence.reasons.length ? coherence.reasons.join('|') : 'niciunul'}`);
-      if (coherence.ok) return { built: candidate, lastErr: null };
+      if (coherence.ok) {
+        // AL DOILEA filtru (2026-10-12), DOAR pe piese care au trecut deja de regex (gratuit) —
+        // evita cheltuiala AI pe piese deja stiute ca defecte. No-op garantat fara
+        // ANTHROPIC_API_KEY (vezi checkLyricsSemanticCoherence) — neschimbat fata de comportamentul
+        // de pana acum pana la activarea explicita a cheii.
+        const semantic = await checkLyricsSemanticCoherence(order, recipientSnapshot || order, candidate.originalLyrics);
+        perfLog(orderId, 'lyrics_semantic_check', `faza=${phase}, piesa=${trackIndex}, ok=${semantic.ok}`);
+        if (semantic.ok) return { built: candidate, lastErr: null };
+        trackIndex++;
+        continue;
+      }
       // piesa procesata TEHNIC cu succes, dar incoerenta/goala — NU o acceptam, continuam
       // cautarea (nu exista niciun `break` aici — exact bug-ul de fixat).
       trackIndex++;
@@ -7078,8 +7169,11 @@ async function obtainAcceptableVariant(orderId, tracks, taskId, genre, order, re
     console.warn(`Comanda ${orderId}: nicio piesa acceptabila (versuri goale sau incoerente gramatical/narativ) pentru genul "${genre}" — reincercare ${retryAttempt}/${MAX_COHERENCE_RETRIES}.`);
     try {
       const retryOrder = recipientSnapshot ? { ...order, ...recipientSnapshot } : order;
-      const retryPrompt = buildPrompt(retryOrder, '', genre);
-      const retryTaskId = await callMusicProvider(orderId, retryPrompt);
+      // MUZICA POPULARA (2026-10-13): STRICT genul populara — restul genurilor neatinse.
+      const retryPrompt = genre === 'populara'
+        ? await buildPopularaCustomRequest(orderId, retryOrder)
+        : buildPrompt(retryOrder, '', genre);
+      const retryTaskId = await callMusicProvider(orderId, retryPrompt, genre, retryOrder.voicePreference);
       const retryResult = await pollForResult(retryTaskId, orderId);
       if (retryResult.status === SUNO_SUCCESS_STATUS && retryResult.tracks && retryResult.tracks.length) {
         const second = await attempt(retryResult.tracks, retryTaskId, 'retry');
@@ -7092,6 +7186,93 @@ async function obtainAcceptableVariant(orderId, tracks, taskId, genre, order, re
   }
   console.error(`Comanda ${orderId}: nicio piesa acceptabila pentru genul "${genre}" dupa ${MAX_COHERENCE_RETRIES} reincercari — cererea e tratata ca esuata, NICIO varianta incoerenta nu e salvata.`);
   return { built: null, lastErr: lastAttempt.lastErr };
+}
+
+// Verificare SEMANTICA reala a versurilor (2026-10-12, cerinta explicita) — foloseste un model AI
+// extern (Claude Haiku, Anthropic), STRICT ca AL DOILEA filtru, DUPA ce validateLyricsCoherence()
+// (regex, gratuit) a trecut deja — evita cheltuirea bugetului AI pe piese deja stiute ca defecte
+// (sender_self_declaration, person_drift, song_data_mixing, occasion_death_contradiction).
+// Fail-OPEN prin design, in TOATE punctele posibile de esec: daca ANTHROPIC_API_KEY lipseste
+// (cazul implicit, azi), raspunsul HTTP nu e ok, JSON-ul nu poate fi parsat, sau campul `ok` nu e
+// boolean — functia intoarce {ok:true, reasons:[]} fara sa arunce eroare. O defectiune a unui
+// serviciu extern NOU, platit separat, NU trebuie sa poata bloca livrarea unei comenzi deja
+// platite — vezi markGenerationFailed()/testele admin-retry-extras-payment-gate.test.js pentru
+// plasa de siguranta existenta, neschimbata de aceasta adaugare.
+// `fetchImpl` injectabil STRICT pentru testare (niciun apel real de retea in teste — acelasi
+// tipar de izolare deja folosit in tot fisierul pentru alte integrari externe).
+// INACTIV implicit: fara ANTHROPIC_API_KEY setat in mediu (nu e cazul azi, nicio cheie adaugata),
+// aceasta verificare e un no-op garantat — activarea reala necesita adaugarea cheii in productie,
+// o decizie separata, dupa aprobarea costului.
+const SEMANTIC_CHECK_MODEL = 'claude-haiku-4-5-20251001';
+const SEMANTIC_CHECK_TIMEOUT_MS = 15000;
+
+async function checkLyricsSemanticCoherence(order, recipientSnapshot, lyricsText, fetchImpl) {
+  const doFetch = fetchImpl || fetchWithTimeout;
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return { ok: true, reasons: [] }; // serviciu neconfigurat - fail-open, nu blocam comenzi
+
+  const lang = (recipientSnapshot && recipientSnapshot.lang) || order.lang;
+  const story = (recipientSnapshot && 'story' in recipientSnapshot) ? recipientSnapshot.story : order.story;
+  const recipient = (recipientSnapshot && recipientSnapshot.recipient) || order.recipient;
+  const senderName = (recipientSnapshot && 'senderName' in recipientSnapshot) ? recipientSnapshot.senderName : order.senderName;
+  const occasion = (recipientSnapshot && recipientSnapshot.occasion) || order.occasion;
+
+  const prompt = `You are a strict but FAIR quality checker for personalized song lyrics (language code: ${lang}).
+
+STORY (the real facts from the client - names, relationships, events):
+"""${story || '(no story provided)'}"""
+Recipient: ${recipient || '(unknown)'}
+Sender: ${senderName || '(unknown)'}
+Occasion: ${occasion || '(unknown)'}
+
+LYRICS TO CHECK:
+"""${lyricsText}"""
+
+Check ONLY for these concrete problems:
+1. Grammatically broken or nonsensical lines (not just stylistic choices).
+2. Names, relationships, or events in the lyrics that CONTRADICT the story (invented people/events not implied by the story).
+3. Emotional tone clearly contradicting the occasion (e.g. implying death/breakup when the story gives no such indication).
+4. Severely forced rhymes that produce meaningless phrases.
+
+DO NOT flag: valid metaphors, poetic/artistic language, emotional intensity, repetition used as a chorus, or minor stylistic choices. When in doubt, ACCEPT the lyrics - only reject for CLEAR, concrete problems.
+
+Respond with ONLY valid JSON, no other text: {"ok": true or false, "issues": ["short issue description", ...]}`;
+
+  try {
+    const res = await doFetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: SEMANTIC_CHECK_MODEL,
+        max_tokens: 300,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    }, SEMANTIC_CHECK_TIMEOUT_MS);
+
+    if (!res.ok) {
+      console.error(`[checkLyricsSemanticCoherence] Anthropic API a raspuns cu status HTTP ${res.status} - fail-open, tratam ca ok.`);
+      return { ok: true, reasons: [] };
+    }
+    const data = await res.json();
+    const text = data && data.content && data.content[0] && data.content[0].text;
+    if (!text) return { ok: true, reasons: [] };
+
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return { ok: true, reasons: [] };
+    const parsed = JSON.parse(jsonMatch[0]);
+    if (typeof parsed.ok !== 'boolean') return { ok: true, reasons: [] };
+    return {
+      ok: parsed.ok,
+      reasons: Array.isArray(parsed.issues) ? parsed.issues.map(i => `ai_semantic: ${i}`) : []
+    };
+  } catch (err) {
+    console.error(`[checkLyricsSemanticCoherence] Eroare la apelul AI (fail-open, tratam ca ok): ${err.message}`);
+    return { ok: true, reasons: [] };
+  }
 }
 
 function checkLyricsContainExpectedNames(order, variant) {
@@ -9478,7 +9659,162 @@ function extractSunoTracks(payload) {
 // cantate ("The prompt will be strictly used as the lyrics and sung in the generated
 // track." — docs.sunoapi.org). Foloseste ACEEASI functie/acelasi endpoint pentru ambele
 // cazuri, ca sa nu duplicam logica de creare a task-ului/gestionare erori.
-async function callMusicProvider(orderId, requestInput) {
+// MANELE_JALE_NEGATIVE_TAGS / applySunoVoiceOverrides: adaugate 2026-10-11, pe baza unui test
+// REAL (SunoAPI, Upload & Cover + generate text2music cu parametri structurati) care a demonstrat
+// empiric ca vocea manele_jale e aproape absenta din mix (sub 9% din energia audio, masurat cu
+// Demucs pe ferestre de 10s) atunci cand genul si vocea sunt comunicate STRICT prin text descriptiv
+// in `prompt` (comportamentul de productie dinainte de aceasta schimbare). Trecerea la parametri
+// STRUCTURATI reali (vocalGender, negativeTags, model V6) a adus vocea la 41-42% din energia
+// audio, prezenta in toate ferestrele, inclusiv la final — vezi test/manele-jale-voice-params.test.js.
+//
+// CORECTIE 2026-10-12 (verificat direct in documentatia oficiala SunoAPI): vocalGender si
+// negativeTags sunt valabile STRICT cand customMode:true ("Do not pass this field when customMode
+// is false") — varianta initiala a acestei functii le trimitea necondidtionat, incalcand acest
+// contract pentru fluxul standard (customMode:false, folosit de majoritatea comenzilor). Modelul
+// (V6) nu are aceasta restrictie — se aplica indiferent de customMode.
+//
+// STRICT scope manele_jale — niciun alt gen nu e atins, buildPrompt()/buildExactLyricsRequest()
+// raman complet neschimbate (povestea, ocazia, preview-ul de 50s si instructiunea textuala de
+// voce din prompt raman exact cum erau).
+const MANELE_JALE_NEGATIVE_TAGS = 'harmonica, accordion, church organ, drums, choir, backing vocals, crowd noise, applause, EDM, trap, electronic beat';
+const MANELE_JALE_MODEL = 'V6';
+
+function applySunoVoiceOverrides(requestBody, genre, voicePreference) {
+  if (genre !== 'manele_jale') return requestBody;
+  const result = { ...requestBody, model: MANELE_JALE_MODEL };
+  // vocalGender/negativeTags: documentat STRICT ca valabile doar la customMode:true — nu le
+  // trimitem deloc la customMode:false, ca sa nu incalcam contractul API ("Do not pass this
+  // field when customMode is false"). Instructiunea textuala existenta din buildPrompt() (Use a
+  // female/male lead vocal. / Use a male and female duet...) ramane singurul mecanism la
+  // customMode:false, neschimbata.
+  if (requestBody.customMode === true) {
+    result.negativeTags = MANELE_JALE_NEGATIVE_TAGS;
+    // Suno nu are o valoare vocalGender pentru duet — pentru 'duet'/'auto'/orice alta valoare,
+    // nu setam vocalGender deloc; instructiunea textuala ramane singurul mecanism pentru duet.
+    if (voicePreference === 'female') result.vocalGender = 'f';
+    else if (voicePreference === 'male') result.vocalGender = 'm';
+  }
+  return result;
+}
+
+// ==========================================================================================
+// MUZICA POPULARA (2026-10-13): directie unica APROBATA ("sentimentala" — customMode:true,
+// versuri scrise explicit, style detaliat + negativeTags care exclud explicit autotune/voce
+// robotica/sintetizator — testat separat, APROBAT dupa ascultare).
+//
+// (O a doua directie "vesela si ritmata", cu selectie automata dupa ocazie/poveste, a fost
+// investigata si testata pe parcursul mai multor runde — persona audio, control numeric de
+// tempo, chiuituri literale in versuri — dar NU a fost aprobata dupa ascultare repetata. Intregul
+// mecanism aferent (stil/negativeTags ritmata, injectia de chiuituri, clasificatorul automat de
+// directie) a fost eliminat la cererea explicita a clientului. Genul MUZICA POPULARA ramane STRICT
+// cu directia sentimentala de mai jos.)
+//
+// ROOT CAUSE al respingerii configuratiei initiale (customMode:false, descriptiv): API-ul SunoAPI
+// interzice explicit negativeTags/vocalGender la customMode:false ("Do not pass this field when
+// customMode is false") — fara negativeTags, nu exista NICIUN mecanism sa excludem explicit
+// autotune/voce robotica/sintetizator, oricat de bine formulat ar fi textul pozitiv. Varianta
+// customMode:true de mai jos a rezolvat asta.
+//
+// MECANISM: pentru genre==='populara', generarea INITIALA (si reincercarile ei) NU mai
+// foloseste buildPrompt()/customMode:false — foloseste in schimb buildPopularaCustomRequest()
+// (mai jos): (1) obtine versuri REALE, personalizate, de la Suno insusi (POST /api/v1/lyrics —
+// endpoint separat, DOAR versuri, buget 200 caractere STRICT, verificat direct impotriva
+// API-ului), (2) construieste style+negativeTags pentru directia sentimentala, (3) returneaza un
+// obiect {lyrics, style, title, negativeTags, vocalGender} — ACELASI tipar de obiect pe care
+// callMusicProvider() il accepta deja pentru customMode:true (vezi isCustomLyrics mai jos), DOAR
+// cu 2 campuri noi, STRICT optionale (negativeTags/vocalGender), care nu exista niciodata pe
+// obiectul intors de buildExactLyricsRequest() — ZERO impact asupra oricarui alt apelant existent.
+//
+// Editarea/regenerarea cu versuri BLOCATE de client (canonicalLyrics) ramane COMPLET NEATINSA —
+// foloseste in continuare buildExactLyricsRequest() exact ca pana acum, pentru orice gen,
+// inclusiv populara (clientul a fixat deja versurile — nu mai are sens sa cerem altele noi de
+// la Suno). Validarea de coerenta (validateLyricsCoherence, obtainAcceptableVariant) ramane de
+// asemenea complet neschimbata — se aplica identic versurilor obtinute astfel, exact cum se
+// aplica oricaror versuri scrise de furnizor pentru orice alt gen.
+const POPULARA_MODEL = 'V6';
+
+// Stil APROBAT (varianta "sentimentala", 2026-10-13) — verificat prin ascultare reala. NU modifica
+// fara aprobare explicita noua.
+const POPULARA_SENTIMENTALA_STYLE = "Romanian and Moldovan lautaresc folk orchestra, live acoustic ensemble performance. Solo violin as the lead melodic voice, ornamented with trills and expressive slides. Accordion and clarinet weave a countermelody around it. Upright double bass holds the traditional dance rhythm. Natural, warm, expressive folk singing voice with authentic Romanian vocal ornamentation and vibrato, like a real traditional singer — never robotic, never auto-tuned, never a studio pop vocal. Fully acoustic, organic instrument timbre throughout, no synthesizers, no digital pads. Lively traditional Romanian/Moldovan folk dance feel. Sing entirely in Romanian, clear natural diction.";
+const POPULARA_SENTIMENTALA_NEGATIVE_TAGS = "autotune, robotic vocal, vocoder, synthetic vocal, electronic music, synthesizer pad, drum machine, EDM, trap beat, digital distortion, artificial choir, generic orchestral strings, pop ballad production, auto-tuned, vocal effects, reverb-heavy pop vocal";
+
+// Prompt COMPACT, STRICT pentru POST /api/v1/lyrics — buget de 200 caractere, verificat direct
+// impotriva API-ului real (SunoAPI respinge orice peste 200 cu HTTP 400, testat empiric). Mult
+// mai restrans decat buildPrompt() (600) — prioritate STRICT: ocazie + destinatar + poveste
+// (fragment); fara instructiuni de stil muzical (acelea traiesc in POPULARA_*_STYLE, campul
+// `style`, buget separat de 1000 caractere la customMode:true).
+function buildPopularaLyricsPrompt(order) {
+  const lyricsLanguage = LYRICS_LANGUAGE_NAMES[order.lang] || 'Romanian';
+  const occasionLabel = OCCASION_LABELS[order.occasion] || OCCASION_LABELS.altceva;
+  const recipient = truncateSafely(normalizeSingingText(String(order.recipient || '').trim(), order.lang), 40);
+  const fixedPart = `${lyricsLanguage} folk song, occasion: ${occasionLabel}. For ${recipient}. `;
+  const storyBudget = Math.max(0, 200 - Array.from(fixedPart).length);
+  const story = truncateSafely(normalizeSingingText(String(order.story || '').trim(), order.lang), storyBudget);
+  return truncateSafely(`${fixedPart}${story}`, 200);
+}
+
+// Apeleaza POST /api/v1/lyrics (endpoint SEPARAT de /api/v1/generate — STRICT versuri, fara
+// generare audio), polling pana la raspuns sau timeout. Arunca pe orice esec — apelantul
+// (buildPopularaCustomRequest) nu are niciun fallback silentios aici (o eroare aici inseamna ca
+// NU exista versuri personalizate de trimis mai departe — mai bine o eroare clara decat versuri
+// generice/goale trimise la generarea muzicii).
+async function requestPopularaLyrics(orderId, order) {
+  const prompt = buildPopularaLyricsPrompt(order);
+  const createRes = await fetchWithTimeout(`${process.env.MUSIC_API_BASE_URL}/api/v1/lyrics`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${process.env.MUSIC_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt, callBackUrl: `${DOMAIN}/api/music/callback` })
+  }, 30000);
+  if (!createRes.ok) {
+    throw new Error(`SunoAPI /api/v1/lyrics a raspuns cu eroare HTTP ${createRes.status} la crearea task-ului de versuri.`);
+  }
+  const createData = await createRes.json();
+  if (createData.code !== 200) {
+    throw new Error(`SunoAPI /api/v1/lyrics: ${createData.msg || 'eroare necunoscuta la crearea task-ului de versuri'}`);
+  }
+  const taskId = createData.data && createData.data.taskId;
+  if (!taskId) {
+    throw new Error('Raspunsul SunoAPI /api/v1/lyrics nu contine data.taskId.');
+  }
+  perfLog(orderId, 'populara_lyrics_task_created', `taskId=${taskId.slice(0, 8)}`);
+
+  for (let attempt = 0; attempt < 30; attempt++) {
+    await new Promise(resolve => setTimeout(resolve, 4000));
+    const pollRes = await fetchWithTimeout(
+      `${process.env.MUSIC_API_BASE_URL}/api/v1/lyrics/record-info?taskId=${encodeURIComponent(taskId)}`,
+      { headers: { 'Authorization': `Bearer ${process.env.MUSIC_API_KEY}` } },
+      15000
+    );
+    if (!pollRes.ok) continue;
+    const pollData = await pollRes.json();
+    const entries = pollData.data && pollData.data.response && pollData.data.response.data;
+    if (Array.isArray(entries) && entries[0] && typeof entries[0].text === 'string' && entries[0].text.trim()) {
+      perfLog(orderId, 'populara_lyrics_ready', `attempt=${attempt + 1}`);
+      return entries[0].text.trim();
+    }
+  }
+  throw new Error('Timeout la generarea versurilor pentru muzica populara (SunoAPI /api/v1/lyrics).');
+}
+
+// Combina toate piesele de mai sus intr-un singur obiect, in ACELASI format pe care
+// callMusicProvider() il accepta deja pentru customMode:true ({lyrics, style, title} —
+// identic cu buildExactLyricsRequest()) — STRICT 2 campuri noi, optionale
+// (negativeTags/vocalGender), niciodata prezente pe obiectul intors de buildExactLyricsRequest()
+// pentru niciun alt gen.
+async function buildPopularaCustomRequest(orderId, order) {
+  const lyrics = await requestPopularaLyrics(orderId, order);
+  const result = {
+    lyrics,
+    style: POPULARA_SENTIMENTALA_STYLE,
+    title: composeSongTitle(order),
+    negativeTags: POPULARA_SENTIMENTALA_NEGATIVE_TAGS
+  };
+  if (order.voicePreference === 'female') result.vocalGender = 'f';
+  else if (order.voicePreference === 'male') result.vocalGender = 'm';
+  return result;
+}
+
+async function callMusicProvider(orderId, requestInput, genre, voicePreference) {
   const isCustomLyrics = requestInput && typeof requestInput === 'object';
   const prompt = isCustomLyrics ? requestInput.lyrics : requestInput;
 
@@ -9496,7 +9832,11 @@ async function callMusicProvider(orderId, requestInput) {
   // valorile acceptate de furnizor (V4_5ALL, V4, V4_5, V4_5PLUS, V5). Daca variabila lipseste
   // sau e goala, ramanem pe V4_5ALL (modelul folosit dintotdeauna) — schimbarea modelului e
   // deci strict opt-in, niciodata automata.
-  const musicModel = (process.env.MUSIC_MODEL && process.env.MUSIC_MODEL.trim()) || 'V4_5ALL';
+  // STRICT genre==='populara' (2026-10-13, aprobat dupa testare) — model V6, neconditionat de
+  // MUSIC_MODEL (acelasi principiu ca MANELE_JALE_MODEL, vezi applySunoVoiceOverrides).
+  const musicModel = genre === 'populara'
+    ? POPULARA_MODEL
+    : (process.env.MUSIC_MODEL && process.env.MUSIC_MODEL.trim()) || 'V4_5ALL';
 
   const requestBody = isCustomLyrics
     ? {
@@ -9506,7 +9846,12 @@ async function callMusicProvider(orderId, requestInput) {
         customMode: true,
         instrumental: false,
         model: musicModel,
-        callBackUrl: `${DOMAIN}/api/music/callback`
+        callBackUrl: `${DOMAIN}/api/music/callback`,
+        // STRICT cand apelantul le furnizeaza (buildPopularaCustomRequest, mai sus) — niciodata
+        // prezente pe obiectul intors de buildExactLyricsRequest() pentru orice alt gen, deci
+        // ZERO impact asupra oricarui apelant existent.
+        ...(requestInput.negativeTags ? { negativeTags: requestInput.negativeTags } : {}),
+        ...(requestInput.vocalGender ? { vocalGender: requestInput.vocalGender } : {})
       }
     : {
         prompt,
@@ -9515,6 +9860,8 @@ async function callMusicProvider(orderId, requestInput) {
         model: musicModel,
         callBackUrl: `${DOMAIN}/api/music/callback`
       };
+
+  const finalRequestBody = applySunoVoiceOverrides(requestBody, genre, voicePreference);
 
   // DIAGNOSTIC (2026-09-07, prioritate absoluta "3-4 minute vs 20-30s"): timpul EXACT la
   // care request-ul pleaca efectiv catre SunoAPI — inainte de acest punct, timpul consumat
@@ -9526,7 +9873,7 @@ async function callMusicProvider(orderId, requestInput) {
       'Authorization': `Bearer ${process.env.MUSIC_API_KEY}`,
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify(requestBody)
+    body: JSON.stringify(finalRequestBody)
   }, 30000);
 
   if (!createRes.ok) {
@@ -10359,7 +10706,63 @@ const GENRE_STYLE_MAP = {
   // CORECȚIE (2026-09-13): "unornamented vocal"/"no autotune" eliminate — ornamentatia vocala
   // e autentica si legitima in muzica populara romaneasca; diferentierea reala fata de Manele
   // vine din identitatea de ansamblu traditional/ritm traditional, nu din absenta ornamentatiei.
-  populara: 'Romanian muzica populara, traditional folk ensemble, violin accordion or flute, traditional dance rhythm, folk ornamentation',
+  //
+  // REVIZUIT (2026-10-12, cerinta explicita — "suna prea mult a colind"): descrierea veche
+  // ("traditional folk ensemble, violin accordion or flute") era prea VAGA/generica — fara
+  // instrumente NUMITE explicit, modelul aluneca spre un sunet de ansamblu traditional "cald,
+  // comunal" aproape identic cu intrarea `colind` de mai jos.
+  //
+  // REVIZUIT RUNDA 2 (2026-10-12, respins dupa ascultare — "nu suna a muzica populara in genul
+  // pe care il vreau"): clientul a dat 3 referinte audio OFICIALE (Olguța Berbec — Măriuță,
+  // Măriuță; Ion Paladi / Orchestra Lăutarii; Fetele din Botoșani — Așa-s Moldovencele).
+  // VERIFICARE REALA (nu presupusa — descarcate STRICT pentru analiza acustica locala, STERSE
+  // dupa analiza, niciodata redistribuite/redate clientului/nu stocate permanent): librosa,
+  // tempo/beat-tracking + separare harmonic/percussiv + centroid spectral + densitate onset-uri.
+  // Rezultate masurate: tempo 108-162 BPM (dans popular, alert), raport energie PERCUSIVA FOARTE
+  // SCAZUT (16-29% — ritmul NU vine dintr-o baterie/percutie dominanta, ci din INTERACTIUNEA
+  // instrumentelor melodice), centroid spectral 1700-2300Hz (timbru luminos — vioara/acordeon/
+  // clarinet, nu bas greu), densitate onset 4.3-5.2/sec (frazare DENSA, ornamentata — trilluri,
+  // note de trecere rapide, caracteristice stilului lautaresc). Instrumentele EXACTE nu pot fi
+  // identificate cu certitudine STRICT din analiza de semnal (ar necesita un model dedicat de
+  // clasificare a instrumentelor, inexistent aici) — inferate din combinatia masurata de mai sus
+  // + conventia genului lautaresc (vioara solista + acordeon/clarinet, ansamblu "taraf").
+  // Rescris sa reflecte EXACT aceste caracteristici: vioara ca melodie CONDUCATOARE (nu doar
+  // enumerata alaturi de alte instrumente), acordeon+clarinet, frazare ORNAMENTATA explicit
+  // numita (tintind direct densitatea mare de onset-uri masurata) — STRICT caracteristici
+  // MUZICALE ale genului, niciun nume de artist (cerinta explicita: referintele raman STRICT
+  // inspiratie de stil, nu clonare/imitatie — nicio melodie/linie melodica/identitate vocala
+  // reprodusa). Lungime masurata: 95 caractere (sub pragul deja dovedit sigur, 143 — vezi
+  // `hiphop` mai jos) — o varianta mai lunga (142 caractere, cu clarinet+cimbalom+double bass+
+  // "studio recording") a fost testata si RESPINSA explicit: verificat direct ca impinge
+  // scenariul cel mai incarcat deja documentat (bunici+expeditor/relatie lungi+duet) peste
+  // limita unde povestea clientului dispare complet din prompt — aceasta varianta (95 caractere)
+  // a fost reverificata impotriva ACELUIASI scenariu si NU regreseaza (povestea ramane prezenta,
+  // promptul ramane <= 600, identic cu inainte — vezi test/story-floor-occasion-fallback-fix.test.js
+  // si test/populara-authentic-folk-style.test.js).
+  //
+  // Mood-ul (vesel/trist/calm) NU e codificat aici — ramane STRICT responsabilitatea sistemului
+  // de ocazie deja existent (OCCASION_INSTRUCTIONS), exact ca la toate celelalte genuri — cerinta
+  // explicita "o melodie de dor trebuie sa transmita dor, nu transforma totul vesel doar pentru
+  // ca referintele au ritm alert" e deja satisfacuta de acel mecanism, neatins de aceasta
+  // schimbare — tempo-ul ALERT al referintelor informeaza STRICT caracterul instrumental/
+  // ansamblul, nu un mood fortat universal.
+  //
+  // "Fara atmosfera de concert/public/aplauze, productie curata de studio" (cerinta explicita,
+  // chiar daca o referinta e o inregistrare live): satisfacuta prin ABSENTA oricarei mentiuni de
+  // "live"/"concert"/"audience" in text (acelasi comportament implicit ca restul celor 22 de
+  // genuri, niciunul mentionand explicit "studio") — o mentiune explicita suplimentara AICI
+  // ("studio recording", testata separat) a fost RESPINSA dupa masurare directa (vezi mai sus,
+  // regreseaza bugetul povestii in scenariul extrem) — cerinta ramane satisfacuta, dar implicit.
+  //
+  // Excluderea "not a Christmas carol" (vezi inline in buildPrompt()/buildExactLyricsRequest(),
+  // imediat dupa citirea styleTags, aplicata DOAR genului populara) nu e inclusa AICI — e
+  // condiționala (omisa cand povestea clientului mentioneaza explicit Craciun/Christmas/
+  // Weihnachten etc., cerinta explicita #7), deci nu poate fi o constanta fixa in acest tabel.
+  // Implementata INLINE (nu printr-un helper separat, top-level) STRICT ca sa ramana in interiorul
+  // ariei deja extrase de zecile de teste existente care sandbox-eaza buildPrompt()/
+  // buildExactLyricsRequest() printr-o lista curatata de fragmente — un helper nou, extern, le-ar
+  // fi rupt pe toate (ReferenceError, gasit prin testare directa).
+  populara: 'Romanian Moldovan lautaresc orchestra, lead violin accordion clarinet, ornamented folk phrasing',
   copii: 'cheerful song for children, simple major-key melody, easy sing-along chorus, piano ukulele or bells, bright vocal',
   colind: 'traditional Romanian Christmas carol, warm communal vocal, acoustic instruments, tasteful bells, ceremonial warmth',
   romantic: 'timeless romantic love song, piano or acoustic guitar, optional strings, soft percussion, intimate vocal',
@@ -10369,6 +10772,7 @@ const LYRICS_LANGUAGE_NAMES = {
   ro: 'Romanian', en: 'English', de: 'German', es: 'Spanish',
   it: 'Italian', fr: 'French', bg: 'Bulgarian', tr: 'Turkish'
 };
+
 
 // CORECȚIE (2026-08-30, "Mai veselă" nu ajungea efectiv la furnizor — client a ales genul
 // "Emoțional" + a scris "Mai veselă", dar cererea finala pastra fara neutralizare descriptori
@@ -10561,6 +10965,22 @@ function isPrecededByPluralSubjectRo(lowerText, matchIndex) {
 // unei formulari anume.
 const NON_BLOCKING_COHERENCE_REASONS = new Set(['explicit_message_omitted']);
 
+// Termeni NEAMBIGUI de deces/doliu, per limba — folositi STRICT la punctul (4) din
+// validateLyricsCoherence, ca sa respingem o piesa care presupune decesul unei persoane cand
+// ocazia nu e 'pierdere' si povestea nu-l mentioneaza. Lista restransa INTENTIONAT (vezi
+// comentariul de la punctul 4) — termeni fara sens alternativ uzual in context de manea/cantec
+// de ocazie (mormant, nu "inger"/"veSnicie"/"s-a stins" - prea ambigue, excluse explicit).
+const DEATH_THEME_MARKERS = {
+  ro: [/mormânt/i, /înmormântare/i, /\ba murit\b/i, /decedat/i, /sicriu/i, /cimitir/i, /s-a stins din viață/i, /îngropat/i],
+  en: [/\bgrave\b/i, /funeral/i, /deceased/i, /\bcoffin\b/i, /\bcemetery\b/i, /passed away/i, /rest in peace/i],
+  de: [/\bGrab\b/i, /Beerdigung/i, /Begräbnis/i, /verstorben/i, /\bSarg\b/i, /Friedhof/i, /ist gestorben/i],
+  es: [/\btumba\b/i, /funeral/i, /fallecid[oa]/i, /\bataúd\b/i, /cementerio/i, /\bha muerto\b/i],
+  it: [/\btomba\b/i, /funerale/i, /defunt[oa]/i, /\bbara\b/i, /cimitero/i, /\bè mort[oa]\b/i],
+  fr: [/\btombe\b/i, /funérailles/i, /enterrement/i, /décédé/i, /\bcercueil\b/i, /cimetière/i, /\best mort[e]?\b/i],
+  bg: [/гроб/i, /погребение/i, /починал/i, /ковчег/i, /гробище/i],
+  tr: [/\bmezar\b/i, /cenaze/i, /\bvefat\b/i, /\btabut\b/i, /mezarlık/i]
+};
+
 // Validare semantica REALA a versurilor primite de la furnizor — inlocuieste/completeaza
 // checkLyricsContainExpectedNames (care doar cauta numele si avertizeaza). Returneaza
 // {ok, reasons:[...]} — apelantul (finalizeVariantsIfNeeded) foloseste asta pentru a alege
@@ -10689,6 +11109,24 @@ function validateLyricsCoherence(order, recipientSnapshot, lyricsText) {
     }
   }
 
+  // 4) ocazie vs. continut de deces/doliu nepermis (2026-10-12, cerinta explicita "nu presupune
+  // decesul daca povestea nu-l mentioneaza"). Lista RESTRANSA, termeni NEAMBIGUI (mormant,
+  // inmormantare, decedat...) — NU cuvinte generice din vocabularul normal al ocaziei 'dor'
+  // (dor/lipsa/absenta raman complet permise, sunt mesajul ei legitim). STRICT ocazia 'pierdere'
+  // e exceptata — e singura ocazie conceputa explicit pentru doliu (vezi OCCASION_INSTRUCTIONS).
+  // Abordare CONSERVATOARE prin design: o lista ingusta de termeni fara ambiguitate practica
+  // (nu un detector general de "tristete") — un fals-negativ (decesul scapa nedetectat) e
+  // preferabil unui fals-pozitiv care ar respinge o piesa buna, corecta, fara motiv real.
+  if (order.occasion !== 'pierdere') {
+    const markers = DEATH_THEME_MARKERS[lang] || DEATH_THEME_MARKERS.en;
+    for (const marker of markers) {
+      if (marker.test(lyrics)) {
+        reasons.push('occasion_death_contradiction');
+        break;
+      }
+    }
+  }
+
   const blockingReasons = reasons.filter(r => !NON_BLOCKING_COHERENCE_REASONS.has(r));
   return { ok: blockingReasons.length === 0, reasons };
 }
@@ -10718,7 +11156,29 @@ function buildPrompt(order, feedback, genreOverride) {
   // client) — restul promptului (poveste, destinatar, ocazie, voce) ramane IDENTIC intre
   // cele doua cereri; DOAR stilul muzical difera, ca ambele melodii sa fie despre aceeasi
   // poveste reala, in doua interpretari muzicale reale, distincte.
-  const styleTags = GENRE_STYLE_MAP[genreOverride || order.genre] || 'pop, warm vocals';
+  let styleTags = GENRE_STYLE_MAP[genreOverride || order.genre] || 'pop, warm vocals';
+  // MUZICA POPULARA (2026-10-12, cerinta explicita #6/#7): exclude implicit atmosfera de colind/
+  // cor bisericesc — dar NU cand povestea clientului mentioneaza explicit Craciunul (cerinta #7).
+  // Nu exista o ocazie dedicata "craciun" in ALLOWED_OCCASIONS — semnalul e STRICT povestea
+  // clientului, acelasi tipar deja aprobat/testat pentru DEATH_THEME_MARKERS (vezi
+  // validateLyricsCoherence) — lista restransa de termeni NEAMBIGUI per limba, NU un detector
+  // general de sarbatori/iarna. Inline (nu un helper top-level) — vezi comentariul de la
+  // GENRE_STYLE_MAP.populara pentru motiv (zeci de teste existente sandbox-eaza aceasta functie
+  // printr-o lista curatata de fragmente — un helper nou extern le-ar fi rupt pe toate).
+  // CORECTIE (2026-10-12): citirea stilului de mai sus ramane LITERAL neschimbata (nu factorizata
+  // intr-o variabila noua) — test/manele-suflet-short-intro.test.js ("1b", regresie-proofing)
+  // numara explicit EXACT 2 aparitii ale acelui tipar exact in server.js.
+  if ((genreOverride || order.genre) === 'populara') {
+    const christmasMarkers = {
+      ro: [/cr[ăa]ciun/i, /colind/i, /mo[șs] cr[ăa]ciun/i],
+      en: [/christmas/i, /xmas/i], de: [/weihnacht/i], es: [/navidad/i], it: [/natale/i],
+      fr: [/noël/i, /noel/i], bg: [/коледа/i], tr: [/\bnoel\b/i]
+    };
+    const markers = christmasMarkers[order.lang] || christmasMarkers.en;
+    if (!markers.some(marker => marker.test(String(order.story || '')))) {
+      styleTags += ', not a Christmas carol';
+    }
+  }
   // TASK (2026-09-25, regresie versuri manele_suflet — cerinta explicita, comparatie directa intre
   // doua generari reale ale aceluiasi client): versiunea PLACUTA avea linii scurte, naturale, usor
   // de cantat (4-6 cuvinte/linie, verificat direct pe exemplele reale primite); versiunea NEPLACUTA
@@ -10808,6 +11268,36 @@ function buildPrompt(order, feedback, genreOverride) {
   // declaratie de mai jos e NECONDITIONAT (nu un flag sheddable — vezi comentariul mare de la
   // PARENT_ROLE_OCCASION_INSTRUCTIONS pentru motiv: bugetul opereaza la zero slack, un adaos
   // sheddable ar fi cod mort, cade mereu inainte sa ajunga la Suno).
+  // FORMULAR SPECIAL "PENTRU MINE" (2026-10-12, cerinta explicita #2, "Ce vrei sa exprime melodia
+  // ta?") — INLOCUIRE a intrarii generice OCCASION_INSTRUCTIONS['pentru-mine'] (acelasi principiu
+  // "REPLACE, NEVER ADD" deja folosit de PARENT_ROLE_OCCASION_INSTRUCTIONS/DECLARATIE_ENRICHED),
+  // STRICT cand order.selfTheme se potriveste unei chei cunoscute — fallback sigur pe intrarea
+  // generica pentru orice comanda veche/fara tema (inclusiv a doua melodie Premium, care nu
+  // colecteaza separat o tema proprie). Declarata LOCAL (nu top-level, ca OCCASION_INSTRUCTIONS) —
+  // STRICT ca sa ramana in interiorul ariei deja extrase de zecile de teste care sandbox-eaza
+  // buildPrompt() (acelasi motiv ca inline-ul Christmas de mai sus, langa GENRE_STYLE_MAP).
+  const SELF_THEME_INSTRUCTIONS = {
+    'putere-motivatie': {
+      full: 'The idea, mood and chorus must be an empowering, motivational message to oneself — strength, resolve and self-belief, using only the story below; never invent a recipient, a family member, or any relationship.',
+      short: 'Motivational self-message: strength and self-belief; never invents a recipient or relationship.'
+    },
+    'perioada-grea': {
+      full: 'The idea, mood and chorus must be a personal message to oneself about overcoming a hard period — resilience and hope, using only the story below; never invent a recipient, a family member, or any relationship.',
+      short: 'Personal message about overcoming a hard period; resilience and hope; never invents a recipient or relationship.'
+    },
+    reusita: {
+      full: 'The idea, mood and chorus must be a proud personal message to oneself celebrating an achievement — pride and gratitude, using only the story below; never invent a recipient, a family member, or any relationship.',
+      short: 'Proud personal message celebrating an achievement; never invents a recipient or relationship.'
+    },
+    'dor-iubire': {
+      full: 'The idea, mood and chorus must be an intimate personal message to oneself about longing, love or deep feelings, using only the story below; never invent a recipient, a family member, or any relationship.',
+      short: 'Intimate personal message about longing or love; never invents a recipient or relationship.'
+    },
+    'povestea-vietii': {
+      full: 'The idea, mood and chorus must be a reflective personal message to oneself telling their own life story — real milestones and feelings, using only the story below; never invent a recipient, a family member, or any relationship.',
+      short: 'Reflective personal message telling their own life story; never invents a recipient or relationship.'
+    }
+  };
   function resolveOccasionInstructionSet() {
     if (order.occasion === 'nunta' && WEDDING_TYPE_INSTRUCTIONS[order.weddingType]) {
       return isWeddingNonCoupleRecipient ? WEDDING_TYPE_INSTRUCTIONS_NONCOUPLE[order.weddingType] : WEDDING_TYPE_INSTRUCTIONS[order.weddingType];
@@ -10816,6 +11306,9 @@ function buildPrompt(order, feedback, genreOverride) {
       return PARENT_ROLE_OCCASION_INSTRUCTIONS[effectiveRecipientRole];
     }
     if (order.occasion === 'declaratie') return DECLARATIE_ENRICHED;
+    if (order.occasion === 'pentru-mine' && SELF_THEME_INSTRUCTIONS[order.selfTheme]) {
+      return SELF_THEME_INSTRUCTIONS[order.selfTheme];
+    }
     return OCCASION_INSTRUCTIONS[order.occasion] || OCCASION_INSTRUCTION_FALLBACK;
   }
   let useShortOccasionInstruction = false;
@@ -10935,6 +11428,15 @@ function buildPrompt(order, feedback, genreOverride) {
   // Comenzile vechi (dinainte de sender/relationship) nu au aceste campuri — tratate optional.
   const hasSender = typeof order.senderName === 'string' && order.senderName.trim().length > 0;
   const hasRelationship = hasSender && typeof order.relationship === 'string' && order.relationship.trim().length > 0;
+  // FORMULAR SPECIAL "PENTRU MINE" (2026-10-12, cerinta explicita #4, "Vrei ca numele tau sa
+  // apara in melodie?"): cand clientul alege explicit NU, numele lui (campul `recipient`, folosit
+  // ca atare pentru aceasta ocazie) nu trebuie transmis ca informatie de inclus in versuri —
+  // ramane STRICT in datele comenzii (titlu/afisare, neatinse de acest flag). `recipient` NU mai
+  // e trecut prin buildHeadPart1 (linia "Recipient: ...") si instructiunea de personalizare NU mai
+  // cere numele — vezi instructionNoNameFull/Short si buildHeadPart1 mai jos. STRICT pentru
+  // occasion==='pentru-mine' — orice alta ocazie/comanda (inclusiv a doua melodie Premium, fara
+  // camp propriu includeNameInSong2) ramane complet neatinsa.
+  const suppressRecipientName = order.occasion === 'pentru-mine' && order.includeNameInSong === false;
 
   // CORECȚIE STRICTĂ (hotfix 2026-08-08, punctul 3): pentru "Nuntă/Botez" (si ocaziile de
   // familie) cu "Amândoi", `recipient` poate contine DOUA nume complete (ex. "Alina și Andrei")
@@ -11108,6 +11610,11 @@ function buildPrompt(order, feedback, genreOverride) {
   const instructionWithSenderShort = ' Short lines; story detail early+throughout, never invented/repeated; no shortened words; name recipient early+chorus; sender once.';
   const instructionNoSenderFull = ' Open on a real, specific, never-invented story detail, then weave more throughout — never generic or repeated, natural over forced rhyme. Use only complete, grammatically correct words — never shortened. Start the vocals around 8-10 seconds, like the verse. Address the recipient by name naturally in the lyrics.';
   const instructionNoSenderShort = ' Short lines; story detail early+throughout, never invented/repeated. Address by name naturally, no shortened words.';
+  // FORMULAR SPECIAL "PENTRU MINE" (2026-10-12) — variante fara nume, folosite STRICT cand
+  // suppressRecipientName e true (vezi mai sus) — identice structural cu instructionNoSender*
+  // (niciun expeditor pentru aceasta ocazie), dar cer explicit sa NU se foloseasca niciun nume.
+  const instructionNoNameFull = ' Open on a real, specific, never-invented story detail, then weave more throughout — never generic or repeated, natural over forced rhyme. Use only complete, grammatically correct words — never shortened. Start the vocals around 8-10 seconds, like the verse. Never use any person\'s name in the lyrics — write in first person.';
+  const instructionNoNameShort = ' Short lines; story detail early+throughout, never invented/repeated; no shortened words; never use any name, first person.';
 
   let useShortInstruction = false;
   // SISTEM EMOTIONAL STORY-AWARE (2026-09-28, sectiunea 5, hook/refren memorabil) — MASURAT DIRECT
@@ -11126,6 +11633,9 @@ function buildPrompt(order, feedback, genreOverride) {
   // samanta unui hook personal, memorabil; nicio clauza noua, separata, nu s-a putut adauga in
   // siguranta in acest buget fara teste reale de calitate Suno.
   function currentInstruction() {
+    if (suppressRecipientName) {
+      return useShortInstruction ? instructionNoNameShort : instructionNoNameFull;
+    }
     return hasSender
       ? (useShortInstruction ? instructionWithSenderShort : instructionWithSenderFull)
       : (useShortInstruction ? instructionNoSenderShort : instructionNoSenderFull);
@@ -11159,7 +11669,11 @@ function buildPrompt(order, feedback, genreOverride) {
   // final se schimba (vezi mai jos); cascada de scurtare de mai jos ramane neschimbata (masoara
   // acelasi total).
   function buildHeadPart1(rec, snd, rel) {
-    let lines = `Recipient: ${rec}.`;
+    // FORMULAR SPECIAL "PENTRU MINE" (2026-10-12) — cand clientul a ales explicit sa NU apara
+    // numele in versuri, linia "Recipient: ..." (care ar transmite exact acel nume) e omisa
+    // complet — currentInstruction() (vezi instructionNoNameFull/Short) cere deja explicit sa nu
+    // se foloseasca niciun nume, deci eticheta ar fi fost oricum contradictorie/irosita.
+    let lines = suppressRecipientName ? '' : `Recipient: ${rec}.`;
     // IMPORTANT: verificam valoarea CURENTA (snd/rel, care pot fi golite de cascada de
     // scurtare de mai jos), nu flag-urile fixe hasSender/hasRelationship calculate o
     // singura data la inceput — altfel, o relatie golita explicit tot ar aparea ca
@@ -11177,7 +11691,9 @@ function buildPrompt(order, feedback, genreOverride) {
       lines += ` Sender: ${snd}${senderPersonHint}.`;
     }
     if (hasRelationship && rel) lines += ` Relationship: ${rel}.`;
-    return `${styleTags}. Write the song lyrics entirely in ${lyricsLanguage}. ${lines}`;
+    // suppressRecipientName (2026-10-12): `lines` poate fi complet gol — evitam un spatiu dublu
+    // irosit (". " + " Story...") inainte de storyFull, care incepe oricum cu propriul spatiu.
+    return `${styleTags}. Write the song lyrics entirely in ${lyricsLanguage}.${lines ? ' ' + lines : ''}`;
   }
   function buildHeadPart2() {
     return ` Occasion: ${occasionLabel}.${currentOccasionInstruction()}${currentInstruction()}${currentVoiceInstruction()}`;
@@ -11645,7 +12161,22 @@ function buildExactLyricsRequest(order, exactLyrics, genreOverride, voicePrefere
   }
 
   const lyricsLanguage = LYRICS_LANGUAGE_NAMES[order.lang] || 'Romanian';
-  const styleTags = GENRE_STYLE_MAP[genreOverride || order.genre] || 'pop, warm vocals';
+  let styleTags = GENRE_STYLE_MAP[genreOverride || order.genre] || 'pop, warm vocals';
+  // MUZICA POPULARA (2026-10-12) — identic cu inline-ul din buildPrompt() de mai sus (acelasi
+  // comentariu/motiv), aplicat si pe calea customMode:true (editare/regenerare cu versuri exacte).
+  // Citirea stilului de mai sus ramane LITERAL neschimbata fata de buildPrompt() (vezi comentariul
+  // identic de acolo — test/manele-suflet-short-intro.test.js "1b").
+  if ((genreOverride || order.genre) === 'populara') {
+    const christmasMarkers = {
+      ro: [/cr[ăa]ciun/i, /colind/i, /mo[șs] cr[ăa]ciun/i],
+      en: [/christmas/i, /xmas/i], de: [/weihnacht/i], es: [/navidad/i], it: [/natale/i],
+      fr: [/noël/i, /noel/i], bg: [/коледа/i], tr: [/\bnoel\b/i]
+    };
+    const markers = christmasMarkers[order.lang] || christmasMarkers.en;
+    if (!markers.some(marker => marker.test(String(order.story || '')))) {
+      styleTags += ', not a Christmas carol';
+    }
+  }
 
   const VOICE_STYLE_NOTE = {
     female: ' Female lead vocal.',

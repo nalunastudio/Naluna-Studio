@@ -308,7 +308,9 @@ test('comanda.html: saveDraft/restoreDraft persista weddingType, nuntaType, nunt
   assert.ok(saveSlice.includes('nuntaType: nuntaType,'));
   assert.ok(saveSlice.includes('name1: name1Input.value,'));
 
-  const restoreSlice = html.slice(saveEndIdx, saveEndIdx + 1500);
+  // 1500 -> 1700 (2026-10-12, formularul special "Pentru mine" — 2 linii noi de restaurare,
+  // selfTheme/includeNameInSong, inainte de refreshRelationUI()).
+  const restoreSlice = html.slice(saveEndIdx, saveEndIdx + 1700);
   assert.ok(restoreSlice.includes('if (draft.weddingType) weddingTypeInput.value = draft.weddingType;'));
   assert.ok(restoreSlice.includes('if (draft.nuntaType) nuntaType = draft.nuntaType;'));
   assert.ok(restoreSlice.includes('refreshRelationUI();'));

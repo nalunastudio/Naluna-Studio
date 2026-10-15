@@ -257,7 +257,11 @@ test('8b) resolvePreviewMaxSeconds(\'manele_jale\') ramane STRICT 50 (EXTENDED_P
 // TEST 9 (SCOPE) — celelalte 21 de genuri (toate NEW_GENRES + LEGACY_ONLY_GENRES in afara de
 // manele_jale) raman byte-for-byte neschimbate.
 // ===============================================================================================
-test('9) toate celelalte genuri din GENRE_STYLE_MAP raman byte-for-byte neschimbate (STRICT manele_jale a fost modificat)', () => {
+test('9) toate celelalte genuri din GENRE_STYLE_MAP raman byte-for-byte neschimbate (STRICT manele_jale a fost modificat in acea sesiune)', () => {
+  // populara EXCLUS intentionat din lista de mai jos (2026-10-12, sarcina separata, explicit
+  // autorizata — "muzica populara autentica", vezi test/genre-differentiation-v2.test.js pentru
+  // verificarea noii lui descrieri) — ramane totusi STRICT acel singur genre in plus fata de
+  // manele_jale; toate celelalte 21 raman verificate byte-for-byte mai jos, neatinse.
   const expectedUnchanged = {
     emotional: 'cinematic orchestral ballad, swelling strings and piano, rubato build, breathy vulnerable vocal, tearful climax',
     suflet: 'intimate de suflet ballad, sparse guitar or piano, close warm vocal, quiet confessional unpolished mood',
@@ -274,7 +278,6 @@ test('9) toate celelalte genuri din GENRE_STYLE_MAP raman byte-for-byte neschimb
     rock: 'live rock band, distorted electric guitar riff, bass, drums, strong vocal, chorus expands from verse, ranges soft-rock to stadium rock',
     hiphop: '2000s street hip-hop, hard drums, punchy kick, dry snare, deep heavy bass, sparse dark gritty beat from the first beat, rap verses, street hook',
     edm_dance: 'EDM dance, four-on-the-floor kick, synth-driven, powerful bass, build-up into drop, danceable groove, festival energy',
-    populara: 'Romanian muzica populara, traditional folk ensemble, violin accordion or flute, traditional dance rhythm, folk ornamentation',
     copii: 'cheerful song for children, simple major-key melody, easy sing-along chorus, piano ukulele or bells, bright vocal',
     colind: 'traditional Romanian Christmas carol, warm communal vocal, acoustic instruments, tasteful bells, ceremonial warmth',
     romantic: 'timeless romantic love song, piano or acoustic guitar, optional strings, soft percussion, intimate vocal',

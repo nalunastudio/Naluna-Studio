@@ -264,8 +264,12 @@ test('server.js: genurile, vocile, modelul V4_5 si duration target 3:15-3:40 ram
     assert.ok(new RegExp(`\\b${key}\\s*:`).test(mapSrc), `cheia de gen "${key}" lipseste`);
   }
   assert.ok(server.includes("duet: ' Use a male and female duet, with both voices clearly present.',"));
-  const fn = extractFn(server, 'async function callMusicProvider(orderId, requestInput) {');
-  assert.match(fn, /const musicModel = \(process\.env\.MUSIC_MODEL[\s\S]*?\) \|\| 'V4_5ALL';/);
+  const fn = extractFn(server, 'async function callMusicProvider(orderId, requestInput, genre, voicePreference) {');
+  // REVIZUIT (2026-10-13, "muzica populara — doua directii"): un ternar STRICT pentru genre===
+  // 'populara' precede acum fallback-ul original (neatins) — vezi
+  // test/populara-direction-selector.test.js pentru verificarea dedicata.
+  assert.match(fn, /\(process\.env\.MUSIC_MODEL[\s\S]*?\) \|\| 'V4_5ALL';/);
+  assert.match(fn, /genre === 'populara'\s*\n\s*\? POPULARA_MODEL/);
   assert.ok(server.includes("const durationTargetClause = ' Target song length 3:15-3:40.';"));
 });
 

@@ -220,7 +220,7 @@ test('server.js: buildExactLyricsRequest trimite versurile editate VERBATIM (cus
 });
 
 test('server.js: callMusicProvider trimite customMode:true cu campul "prompt" setat la versurile exacte, cand primeste un obiect {style,title,lyrics}', () => {
-  const idx = server.indexOf('async function callMusicProvider(orderId, requestInput) {');
+  const idx = server.indexOf('async function callMusicProvider(orderId, requestInput, genre, voicePreference) {');
   assert.ok(idx !== -1);
   const body = server.slice(idx, idx + 1800);
   assert.ok(body.includes("const prompt = isCustomLyrics ? requestInput.lyrics : requestInput;"));
@@ -319,9 +319,14 @@ test('server.js: getSong2EffectiveData() NU copiaza niciodata senderName/relatio
 });
 
 test('server.js: ambele melodii Premium initiale folosesc buildPrompt cu getSong2EffectiveData(order) pentru melodia 2 (mecanismul de suprascriere ramane cablat corect)', () => {
-  const dualGenIdx = server.indexOf('const promptGenre1 = buildPrompt(order, feedback, order.genre);');
-  assert.ok(dualGenIdx !== -1);
-  assert.ok(server.includes('const promptGenre2 = buildPrompt({ ...order, ...getSong2EffectiveData(order) }, feedback, order.genre2);'));
+  // REVIZUIT (2026-10-13, "muzica populara — doua directii"): promptGenre1/2 devin acum un
+  // ternar (STRICT genul populara foloseste buildPopularaCustomRequest, restul genurilor
+  // raman pe buildPrompt() neschimbat) — vezi test/populara-direction-selector.test.js pentru
+  // verificarea dedicata a acelei ramuri noi.
+  assert.ok(server.includes('buildPrompt(order, feedback, order.genre)'));
+  assert.ok(server.includes('buildPrompt({ ...order, ...getSong2EffectiveData(order) }, feedback, order.genre2)'));
+  assert.match(server, /const promptGenre1 = order\.genre === 'populara'/);
+  assert.match(server, /const promptGenre2 = order\.genre2 === 'populara'/);
 });
 
 // Verificare FUNCTIONALA (nu doar text static) — exact exemplul obligatoriu din cerinta:
@@ -419,8 +424,8 @@ test('server.js: editarea a doua melodii Premium dispecerizeaza catre Suno STRIC
   const end = server.indexOf('async function runGeneration(orderId, feedback, options = {}) {');
   const body = server.slice(idx, end);
   assert.ok(!body.includes('Promise.all(dispatches.map(d => callMusicProvider'), 'cele doua sarcini Suno nu mai trebuie pornite simultan');
-  assert.ok(body.includes('const taskId1 = await callMusicProvider(orderId, d1.requestPayload);'));
-  assert.ok(body.includes('const taskId2 = await callMusicProvider(orderId, d2.requestPayload);'));
+  assert.ok(body.includes('const taskId1 = await callMusicProvider(orderId, d1.requestPayload, d1.genreToUse, d1.voicePreference);'));
+  assert.ok(body.includes('const taskId2 = await callMusicProvider(orderId, d2.requestPayload, d2.genreToUse, d2.voicePreference);'));
   const taskId1Idx = body.indexOf('const taskId1 = await callMusicProvider');
   const r1Idx = body.indexOf('const r1 = await pollForResult(taskId1, orderId);');
   const taskId2Idx = body.indexOf('const taskId2 = await callMusicProvider');

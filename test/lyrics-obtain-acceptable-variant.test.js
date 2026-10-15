@@ -70,6 +70,11 @@ function loadModule() {
     // (2026-09-07) — stub no-op aici, comportamentul lui real e verificat separat in
     // test/lyrics-coherence-check-logging.test.js.
     function perfLog() {}
+    // checkLyricsSemanticCoherence (2026-10-12): AL DOILEA filtru, DOAR pe piese care au trecut
+    // deja de validateLyricsCoherence — testele astea verifica STRICT logica obtainAcceptableVariant
+    // (retry/fallback tehnic), nu noul filtru AI (acoperit separat); stub no-op (acelasi
+    // comportament de fail-open ca fara ANTHROPIC_API_KEY in productie).
+    async function checkLyricsSemanticCoherence() { return { ok: true, reasons: [] }; }
     async function buildVariantFromTrack(orderId, variantId, track, taskId) {
       return __mock.buildVariantFromTrack(orderId, variantId, track, taskId);
     }

@@ -254,8 +254,11 @@ test('server.js: VOICE_INSTRUCTIONS_FULL/SHORT (buildPrompt) raman neschimbate',
 });
 
 test('server.js: modelul Suno ramane V4_5ALL implicit, callMusicProvider() nu a fost modificat cu niciun camp de durata', () => {
-  const fn = extractFn(server, 'async function callMusicProvider(orderId, requestInput) {');
-  assert.match(fn, /const musicModel = \(process\.env\.MUSIC_MODEL[\s\S]*?\) \|\| 'V4_5ALL';/, 'default-ul modelului trebuie sa ramana V4_5ALL, neschimbat');
+  const fn = extractFn(server, 'async function callMusicProvider(orderId, requestInput, genre, voicePreference) {');
+  // REVIZUIT (2026-10-13, "muzica populara — doua directii"): un ternar STRICT pentru
+  // genre==='populara' precede acum fallback-ul original V4_5ALL (neatins) — vezi
+  // test/populara-direction-selector.test.js.
+  assert.match(fn, /\(process\.env\.MUSIC_MODEL[\s\S]*?\) \|\| 'V4_5ALL';/, 'default-ul modelului trebuie sa ramana V4_5ALL, neschimbat');
   assert.ok(!/duration/i.test(fn), 'callMusicProvider() nu trebuie sa trimita niciun camp de durata catre furnizor — API-ul nu il suporta');
   assert.ok(!/instrumental:\s*true/.test(fn), 'instrumental trebuie sa ramana false, neschimbat');
 });

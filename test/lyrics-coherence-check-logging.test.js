@@ -8,7 +8,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const server = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+const server = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8').replace(/\r\n/g, '\n');
 
 function attemptBody() {
   const fnIdx = server.indexOf('async function obtainAcceptableVariant(orderId, tracks, taskId, genre, order, recipientSnapshot, canonicalLyrics) {');
@@ -40,21 +40,23 @@ test('lyrics_coherence_check: NU include niciodata versurile, povestea sau numel
 
 test('obtainAcceptableVariant: apelurile catre attempt() transmit explicit faza corecta ("initial" la prima incercare, "retry" la reincercare)', () => {
   const fnIdx = server.indexOf('async function obtainAcceptableVariant(orderId, tracks, taskId, genre, order, recipientSnapshot, canonicalLyrics) {');
-  const body = server.slice(fnIdx, fnIdx + 4500);
+  const body = server.slice(fnIdx, fnIdx + 5200);
   assert.match(body, /const first = await attempt\(tracks, taskId, 'initial'\);/);
   assert.match(body, /const second = await attempt\(retryResult\.tracks, retryTaskId, 'retry'\);/);
 });
 
 test('REGRESIE: regula de retry NU a fost modificata — o reincercare COMPLETA a intregii generari se declanseaza STRICT daca prima incercare nu a produs nicio piesa acceptabila (first.built e null)', () => {
   const fnIdx = server.indexOf('async function obtainAcceptableVariant(orderId, tracks, taskId, genre, order, recipientSnapshot, canonicalLyrics) {');
-  const body = server.slice(fnIdx, fnIdx + 4500);
+  const body = server.slice(fnIdx, fnIdx + 5200);
   assert.match(body, /if \(first\.built \|\| canonicalLyrics\) return first;/, 'o piesa valida obtinuta la prima incercare trebuie pastrata, fara reincercare completa');
-  assert.match(body, /const retryTaskId = await callMusicProvider\(orderId, retryPrompt\);/);
+  assert.match(body, /const retryTaskId = await callMusicProvider\(orderId, retryPrompt, genre, retryOrder\.voicePreference\);/);
   assert.match(body, /const retryResult = await pollForResult\(retryTaskId, orderId\);/);
 });
 
 test('REGRESIE: attempt() continua la urmatoarea piesa (fara "break") cand o piesa procesata tehnic cu succes e totusi incoerenta/goala — bugul original ramane fixat', () => {
   const body = attemptBody();
-  assert.match(body, /if \(coherence\.ok\) return \{ built: candidate, lastErr: null \};/);
+  // (2026-10-12) coherence.ok acum deschide un bloc care adauga AL DOILEA filtru (semantic, AI) —
+  // acceptarea finala e STRICT conditionata si de el (semantic.ok), nu doar de coherence.ok.
+  assert.match(body, /if \(semantic\.ok\) return \{ built: candidate, lastErr: null \};/);
   assert.doesNotMatch(body.slice(body.indexOf('if (coherence.ok)'), body.indexOf('return { built: null, lastErr };')), /\bbreak;/);
 });

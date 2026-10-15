@@ -194,8 +194,14 @@ test('DIFERENTIERE: Manele de suflet ramane caldut/plin de speranta, Manele de j
   assert.ok(!/hopeful|devoted/i.test(GENRE_STYLE_MAP.manele_jale), 'Manele de jale nu trebuie sa contina descriptori de speranta/devotament');
 });
 
-test('DIFERENTIERE: Populara ramane un ansamblu traditional romanesc, NU manele — fara ornamentatie melismatica de tip manele, fara excludere nejustificata a ornamentatiei vocale in general', () => {
-  assert.match(GENRE_STYLE_MAP.populara, /traditional/i);
+test('DIFERENTIERE: Populara ramane un ansamblu traditional romanesc/moldovenesc, NU manele — fara ornamentatie melismatica de tip manele, fara excludere nejustificata a ornamentatiei vocale in general', () => {
+  // REVIZUIT (2026-10-12, "suna prea mult a colind" — descrierea a fost rescrisa cu instrumente
+  // CONCRETE, mai specifice decat cuvantul generic "traditional" insusi; vezi server.js pentru
+  // masurarea exacta a lungimii/bugetului).
+  // REVIZUIT RUNDA 2 (2026-10-12, "nu suna a muzica populara in genul pe care il vreau" — 3
+  // referinte audio oficiale, analiza acustica reala, vezi server.js pentru detalii complete).
+  assert.match(GENRE_STYLE_MAP.populara, /lautaresc/i);
+  assert.match(GENRE_STYLE_MAP.populara, /violin/i);
   assert.ok(!/melismatic/i.test(GENRE_STYLE_MAP.populara), 'Populara nu trebuie sa foloseasca ornamentatia melismatica specifica manelelor');
   assert.ok(!GENRE_STYLE_MAP.populara.includes('keyboard'), 'Populara nu trebuie sa foloseasca textura de claviatura caracteristica manelelor');
   // Corectie explicita: NU mai trebuie sa interzica ornamentatia vocala in general.

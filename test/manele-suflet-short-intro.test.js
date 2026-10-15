@@ -228,8 +228,10 @@ test('3) niciun alt gen din GENRE_STYLE_MAP nu a fost modificat (comparat byte-c
   // manele_jale exclus aici — schimbat de o corectie SEPARATA, ulterioara (2026-10-06), neatinsa
   // de comparatia acestui test fata de baseline-ul de dinaintea fix-ului de intro scurt; sursa de
   // adevar curenta e in test/manele-jale-style-differentiation.test.js.
+  // populara exclus aici — schimbat de o corectie SEPARATA, ulterioara (2026-10-12, "muzica
+  // populara autentica"); sursa de adevar curenta e in test/populara-authentic-folk-style.test.js.
   for (const g of [...LEGACY_ONLY_GENRES, ...NEW_GENRES]) {
-    if (g === 'manele_suflet' || g === 'manele_jale') continue;
+    if (g === 'manele_suflet' || g === 'manele_jale' || g === 'populara') continue;
     const m = body.match(new RegExp(`\\n  ${g}: '([^']+)'`));
     assert.ok(m, `nu am gasit "${g}" in HEAD`);
     assert.equal(GENRE_STYLE_MAP[g], m[1], `genul "${g}" trebuie sa ramana byte-identic fata de HEAD`);

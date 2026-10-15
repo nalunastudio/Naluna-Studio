@@ -138,15 +138,19 @@ test('createOrder: persista email_marketing_opt_out/choice_at/policy_version —
   await withMockPool(() => ({ rows: [{ id: 'o1', email_marketing_opt_out: false, email_marketing_choice_at: new Date(), email_marketing_policy_version: '2026-09-25-softoptin-v1', variants: [] }] }), async (calls) => {
     await db.createOrder({ id: 'o1', accessToken: 'tok', occasion: 'x', recipient: 'r', email: 'a@x.com', story: 's', genre: 'pop', plan: 'standard', price: 10, lang: 'ro', status: 'draft', editsUsed: 0, variants: [], selectedVariantId: null, emailMarketingOptOut: true, emailMarketingChoiceAt: new Date('2026-09-25'), emailMarketingPolicyVersion: '2026-09-25-softoptin-v1' });
     assert.match(calls[0].sql, /email_marketing_opt_out, email_marketing_choice_at, email_marketing_policy_version/);
-    assert.equal(calls[0].params[calls[0].params.length - 3], true);
-    assert.equal(calls[0].params[calls[0].params.length - 1], '2026-09-25-softoptin-v1');
+    // FORMULAR SPECIAL "PENTRU MINE" (2026-10-12): self_theme/include_name_in_song adaugate DUPA
+    // email_marketing_policy_version (2 parametri noi, STRICT la final) — indicii relativi fata
+    // de finalul array-ului s-au deplasat cu 2 (length-3 -> length-5, length-1 -> length-3).
+    assert.equal(calls[0].params[calls[0].params.length - 5], true);
+    assert.equal(calls[0].params[calls[0].params.length - 3], '2026-09-25-softoptin-v1');
   });
 });
 
 test('createOrder: emailMarketingOptOut absent/undefined -> persistat STRICT ca false (niciodata true implicit)', async () => {
   await withMockPool(() => ({ rows: [{ id: 'o1', variants: [] }] }), async (calls) => {
     await db.createOrder({ id: 'o1', accessToken: 'tok', occasion: 'x', recipient: 'r', email: 'a@x.com', story: 's', genre: 'pop', plan: 'standard', price: 10, lang: 'ro', status: 'draft', editsUsed: 0, variants: [], selectedVariantId: null });
-    assert.equal(calls[0].params[calls[0].params.length - 3], false);
+    // vezi comentariul de mai sus (self_theme/include_name_in_song, 2 parametri noi la final).
+    assert.equal(calls[0].params[calls[0].params.length - 5], false);
   });
 });
 

@@ -129,7 +129,11 @@ test('server.js: editarea nu regenereaza melodia neselectata — runPremiumEditG
   const idx = server.indexOf('async function runPremiumEditGeneration(orderId, editSongs, regenerationJobId) {');
   assert.ok(idx !== -1);
   const body = server.slice(idx, idx + 1200);
-  assert.ok(body.includes('const dispatches = editSongs'), 'dispatch-urile provin STRICT din editSongs (ce a trimis clientul), niciodata din order.variants intreg');
+  // REVIZUIT (2026-10-13, "muzica populara — doua directii"): editSongs.map() a devenit async
+  // (STRICT populara foloseste buildPopularaCustomRequest, care necesita await) — infasurat acum
+  // in Promise.all, dar sursa ramane STRICT editSongs, neschimbata — vezi
+  // test/populara-direction-selector.test.js.
+  assert.ok(body.includes('const dispatches = (await Promise.all(editSongs'), 'dispatch-urile provin STRICT din editSongs (ce a trimis clientul), niciodata din order.variants intreg');
 });
 
 // MODIFICARE STRICTĂ — editare secventiala, pe rand, pentru AMBELE melodii (hotfix, runda 4):

@@ -631,6 +631,18 @@ async function initDb() {
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS email_marketing_choice_at TIMESTAMPTZ;`);
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS email_marketing_policy_version TEXT;`);
 
+  // FORMULAR SPECIAL "PENTRU MINE" (2026-10-12, cerinta explicita): occasion='pentru-mine' nu mai
+  // foloseste formularul generic de destinatar/expeditor/relatie — senderName/relationship raman
+  // NULL pentru aceste comenzi (clientul e subiectul melodiei, nu exista un "destinatar" separat;
+  // vezi POST /api/orders si buildPrompt() pentru logica completa). self_theme = alegerea
+  // clientului despre ce vrea sa exprime melodia (enum ingust, validat server-side — vezi
+  // SELF_THEME_VALUES); include_name_in_song = true/false daca numele clientului (campul
+  // `recipient`, reutilizat ca atare) poate aparea CANTAT in versuri — pastrat STRICT in datele
+  // comenzii (afisare/titlu) indiferent de alegere, niciodata transmis spre versuri cand e false
+  // (vezi inline in buildPrompt()). NULL pentru orice alta ocazie/comanda veche, neschimbat.
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS self_theme TEXT;`);
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS include_name_in_song BOOLEAN;`);
+
   // ==================================================================================
   // FUNNEL_EVENTS (2026-09-18, Funnel Analytics) — jurnal de evenimente ANONIME pentru etapele
   // funnel-ului care preced existenta unei comenzi (nu au unde sa fie stocate pe orders, pentru
@@ -1074,6 +1086,11 @@ function rowToOrder(row) {
       : !!row.email_marketing_opt_out,
     emailMarketingChoiceAt: row.email_marketing_choice_at || null,
     emailMarketingPolicyVersion: row.email_marketing_policy_version || null,
+    // FORMULAR SPECIAL "PENTRU MINE" (2026-10-12) — vezi comentariul ALTER TABLE de mai sus.
+    selfTheme: row.self_theme || null,
+    includeNameInSong: row.include_name_in_song === null || row.include_name_in_song === undefined
+      ? null
+      : !!row.include_name_in_song,
     // RETENTIE COMENZI NEPLATITE (2026-09-27, 7 zile) — vezi expireStaleUnpaidOrders (server.js).
     // Expus, spre deosebire de final_media_expired_at/source_media_purged_at/story_anonymized_at
     // (raman STRICT interne, citite doar prin SQL brut in functiile lor dedicate) — necesar aici
@@ -1086,8 +1103,8 @@ function rowToOrder(row) {
 async function createOrder(order) {
   const result = await pool.query(
     `INSERT INTO orders
-      (id, access_token, occasion, recipient, email, story, genre, genre2, plan, price, lang, status, edits_used, variants, selected_variant_id, sender_name, relationship, voice_preference, phone, grandparent_type, recipient_role, sender_role, recipient_mode, recipient_names, wedding_type, song2_target, occasion_2, recipient_role_2, sender_role_2, recipient_mode_2, recipient_names_2, recipient_2, wedding_type_2, sender_name_2, relationship_2, story_2, utm_source, utm_medium, utm_campaign, utm_content, utm_term, fbclid, fbp, visitor_id, email_marketing_opt_out, email_marketing_choice_at, email_marketing_policy_version)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44,$45,$46,$47)
+      (id, access_token, occasion, recipient, email, story, genre, genre2, plan, price, lang, status, edits_used, variants, selected_variant_id, sender_name, relationship, voice_preference, phone, grandparent_type, recipient_role, sender_role, recipient_mode, recipient_names, wedding_type, song2_target, occasion_2, recipient_role_2, sender_role_2, recipient_mode_2, recipient_names_2, recipient_2, wedding_type_2, sender_name_2, relationship_2, story_2, utm_source, utm_medium, utm_campaign, utm_content, utm_term, fbclid, fbp, visitor_id, email_marketing_opt_out, email_marketing_choice_at, email_marketing_policy_version, self_theme, include_name_in_song)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44,$45,$46,$47,$48,$49)
      RETURNING *`,
     [
       order.id, order.accessToken, order.occasion, order.recipient, order.email,
@@ -1108,7 +1125,10 @@ async function createOrder(order) {
       order.utmContent || null, order.utmTerm || null, order.fbclid || null, order.fbp || null,
       order.visitorId || null,
       // Email marketing opt-out (2026-09-25) — vezi comentariul ALTER TABLE/rowToOrder.
-      order.emailMarketingOptOut === true, order.emailMarketingChoiceAt || null, order.emailMarketingPolicyVersion || null
+      order.emailMarketingOptOut === true, order.emailMarketingChoiceAt || null, order.emailMarketingPolicyVersion || null,
+      // FORMULAR SPECIAL "PENTRU MINE" (2026-10-12) — vezi comentariul ALTER TABLE/rowToOrder.
+      order.selfTheme || null,
+      order.includeNameInSong === null || order.includeNameInSong === undefined ? null : order.includeNameInSong === true
     ]
   );
   return rowToOrder(result.rows[0]);

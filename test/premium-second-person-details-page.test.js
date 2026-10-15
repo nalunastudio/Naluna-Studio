@@ -160,5 +160,11 @@ test('comanda.html: campurile #sender/#relationship/#story (melodia 1, Standard/
 });
 
 test('server.js: validarea/campurile senderName/relationship/story (melodia 1) raman neatinse — nicio schimbare in afara de campurile noi *2', () => {
-  assert.ok(server.includes("senderName: senderName.trim(), relationship: relationship.trim(),"));
+  // REVIZUIT (2026-10-12, formularul special "Pentru mine" — cerinta explicita, separata):
+  // senderName/relationship devin null STRICT pentru occasion==='pentru-mine' (isSelfSong) —
+  // vezi test/pentru-mine-backend-validation.test.js pentru verificarea dedicata a acelei
+  // schimbari. Pentru orice alta ocazie, valoarea trimisa ramane EXACT senderName.trim()/
+  // relationship.trim(), neschimbata.
+  assert.ok(server.includes("senderName: isSelfSong ? null : senderName.trim(),"));
+  assert.ok(server.includes("relationship: isSelfSong ? null : relationship.trim(),"));
 });

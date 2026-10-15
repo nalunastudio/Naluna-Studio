@@ -501,8 +501,10 @@ test('server.js: PLAN_VARIANT_COUNT.premium ramane exact 2 (neschimbat)', () => 
 });
 
 test('server.js: runGeneration dual-genre porneste exact DOUA cereri Suno in paralel, cu snapshot-uri distincte per melodie', () => {
-  assert.match(server, /const promptGenre1 = buildPrompt\(order, feedback, order\.genre\);/);
-  assert.match(server, /const promptGenre2 = buildPrompt\(\{ \.\.\.order, \.\.\.getSong2EffectiveData\(order\) \}, feedback, order\.genre2\);/);
+  // REVIZUIT (2026-10-13, "muzica populara — doua directii") — vezi comentariul identic din
+  // test/lyrics-exact-story-premium-sequential.test.js.
+  assert.match(server, /buildPrompt\(order, feedback, order\.genre\)/);
+  assert.match(server, /buildPrompt\(\{ \.\.\.order, \.\.\.getSong2EffectiveData\(order\) \}, feedback, order\.genre2\)/);
   assert.match(server, /const \[taskId1, taskId2\] = await Promise\.all\(\[/);
 });
 
