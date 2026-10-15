@@ -608,8 +608,11 @@
           <div class="genre-card" data-genre="hiphop" role="radio" aria-selected="false" tabindex="0"><span data-i18n="genre_hiphop">Hip-hop</span></div>
           <div class="genre-card" data-genre="edm_dance" role="radio" aria-selected="false" tabindex="0"><span data-i18n="genre_edm_dance">EDM / Dance</span></div>
           <div class="genre-card" data-genre="manele_suflet" role="radio" aria-selected="false" tabindex="0"><span data-i18n="genre_manele_suflet">Manele de suflet</span></div>
-          <div class="genre-card" data-genre="manele_jale" role="radio" aria-selected="false" tabindex="0"><span data-i18n="genre_manele_jale">Manele de jale</span></div>
-          <div class="genre-card" data-genre="populara" role="radio" aria-selected="false" tabindex="0"><span data-i18n="genre_populara">Populară</span></div>
+          <!-- MASURA TEMPORARA DE PROTECTIE (2026-10-13, cerinta explicita): genul live nu suna
+               corect fata de configuratia aprobata — ascunse pana la o corectie verificata prin
+               ascultare. Comenzile existente cu aceste genuri raman complet neatinse. -->
+          <div class="genre-card" data-genre="manele_jale" role="radio" aria-selected="false" tabindex="0" style="display:none;"><span data-i18n="genre_manele_jale">Manele de jale</span></div>
+          <div class="genre-card" data-genre="populara" role="radio" aria-selected="false" tabindex="0" style="display:none;"><span data-i18n="genre_populara">Populară</span></div>
           <div class="genre-card" data-genre="copii" role="radio" aria-selected="false" tabindex="0"><span data-i18n="genre_copii">Pentru copii</span></div>
           <div class="genre-card" data-genre="colind" role="radio" aria-selected="false" tabindex="0"><span data-i18n="genre_colind">Colind</span></div>
           <div class="genre-card" data-genre="romantic" role="radio" aria-selected="false" tabindex="0"><span data-i18n="genre_romantic">Romantic</span></div>
@@ -705,8 +708,10 @@
           <div class="genre-card genre2-card" data-genre="hiphop" role="radio" aria-selected="false" tabindex="0"><span data-i18n="genre_hiphop">Hip-hop</span></div>
           <div class="genre-card genre2-card" data-genre="edm_dance" role="radio" aria-selected="false" tabindex="0"><span data-i18n="genre_edm_dance">EDM / Dance</span></div>
           <div class="genre-card genre2-card" data-genre="manele_suflet" role="radio" aria-selected="false" tabindex="0"><span data-i18n="genre_manele_suflet">Manele de suflet</span></div>
-          <div class="genre-card genre2-card" data-genre="manele_jale" role="radio" aria-selected="false" tabindex="0"><span data-i18n="genre_manele_jale">Manele de jale</span></div>
-          <div class="genre-card genre2-card" data-genre="populara" role="radio" aria-selected="false" tabindex="0"><span data-i18n="genre_populara">Populară</span></div>
+          <!-- MASURA TEMPORARA DE PROTECTIE (2026-10-13) — vezi comentariul identic de la
+               selectorul principal de gen, mai sus. -->
+          <div class="genre-card genre2-card" data-genre="manele_jale" role="radio" aria-selected="false" tabindex="0" style="display:none;"><span data-i18n="genre_manele_jale">Manele de jale</span></div>
+          <div class="genre-card genre2-card" data-genre="populara" role="radio" aria-selected="false" tabindex="0" style="display:none;"><span data-i18n="genre_populara">Populară</span></div>
           <div class="genre-card genre2-card" data-genre="copii" role="radio" aria-selected="false" tabindex="0"><span data-i18n="genre_copii">Pentru copii</span></div>
           <div class="genre-card genre2-card" data-genre="colind" role="radio" aria-selected="false" tabindex="0"><span data-i18n="genre_colind">Colind</span></div>
           <div class="genre-card genre2-card" data-genre="romantic" role="radio" aria-selected="false" tabindex="0"><span data-i18n="genre_romantic">Romantic</span></div>
